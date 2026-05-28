@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from .cache import VoiceCache
 from .config import Settings
 from .elevenlabs_client import ElevenLabsClient, ElevenLabsError
-from .models import CachedVoice, VoiceSample, VoiceSettings
+from .models import CachedVoice, ModelSummary, SubscriptionSummary, VoiceSample, VoiceSettings
 from .voice_library import VoiceLibrary
 
 
@@ -61,6 +61,29 @@ def create_app(
     @app.get("/api/voices")
     def voices() -> dict[str, object]:
         return resolved_library.list_payload()
+
+    @app.get("/api/subscription")
+    async def subscription() -> dict[str, object]:
+        try:
+            summary = await resolved_client.get_subscription()
+        except RuntimeError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        except ElevenLabsError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        return _subscription_payload(summary)
+
+    @app.get("/api/models")
+    async def models() -> dict[str, object]:
+        try:
+            model_list = await resolved_client.list_models()
+        except RuntimeError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        except ElevenLabsError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        return {
+            "defaultModelId": resolved_settings.elevenlabs_model_id,
+            "models": [_model_payload(model) for model in model_list],
+        }
 
     @app.get("/api/voices/{voice_id}/sample")
     def voice_sample(voice_id: str) -> FileResponse:
@@ -153,6 +176,33 @@ def _audio_response(
             "X-Voice-Id": cached_voice.voice_id,
         },
     )
+
+
+def _subscription_payload(summary: SubscriptionSummary) -> dict[str, object]:
+    return {
+        "tier": summary.tier,
+        "status": summary.status,
+        "characterCount": summary.character_count,
+        "characterLimit": summary.character_limit,
+        "remainingCharacters": summary.remaining_characters,
+        "canExtendCharacterLimit": summary.can_extend_character_limit,
+        "maxCreditLimitExtension": summary.max_credit_limit_extension,
+        "nextCharacterCountResetUnix": summary.next_character_count_reset_unix,
+    }
+
+
+def _model_payload(model: ModelSummary) -> dict[str, object]:
+    return {
+        "modelId": model.model_id,
+        "name": model.name,
+        "description": model.description,
+        "canUseStyle": model.can_use_style,
+        "canUseSpeakerBoost": model.can_use_speaker_boost,
+        "characterCostMultiplier": model.character_cost_multiplier,
+        "maxCharactersRequestFreeUser": model.max_characters_request_free_user,
+        "maxCharactersRequestSubscribedUser": model.max_characters_request_subscribed_user,
+        "maximumTextLengthPerRequest": model.maximum_text_length_per_request,
+    }
 
 
 app = create_app()
