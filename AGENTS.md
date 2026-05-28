@@ -7,6 +7,7 @@
 - Treat `storage/` as runtime data. Do not commit generated audio or `voice-cache.json` if this later becomes a repository.
 - Treat `assets/voices/` as local user-provided voice assets. Only documentation/placeholders in that directory should be tracked.
 - For non-trivial future changes after initial publication, use branch + draft PR workflow with atomic commits.
+- Use Title Case for UI headings, labels, actions, badges, and source-link labels. Keep explanatory prose, placeholders, errors, runtime data, and API/model identifiers in sentence case.
 
 ## Validation
 - Run `make check` for local verification after code changes.

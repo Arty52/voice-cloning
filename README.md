@@ -44,7 +44,7 @@ It gives you a small voice library, text-to-speech generation, model selection, 
 
 Your ElevenLabs API key is read only by the FastAPI backend from `.env`. The frontend never receives the key.
 
-Voice samples are local files under `assets/voices/` and are ignored by git. Cloned voice cache data is written under `storage/`, which is also ignored by git. Generated MP3 output is saved in your browser's IndexedDB by default, not on the backend; use the Generated audio panel to remove one item or clear all saved browser audio.
+Voice samples are local files under `assets/voices/` and are ignored by git. Cloned voice cache data is written under `storage/`, which is also ignored by git. Generated MP3 output is saved in your browser's IndexedDB by default, not on the backend; use the Generated Audio panel to remove one item or clear all saved browser audio.
 
 Text, voice samples, selected model id, and tuning settings are sent to ElevenLabs when you generate speech. Subscription and model metadata are fetched through the backend when the configured key has the required read permissions. Review ElevenLabs' policies and obtain consent before cloning or generating with any voice.
 
@@ -56,7 +56,7 @@ ElevenLabs may charge credits for text-to-speech and voice cloning. The main usa
 - selected ElevenLabs model
 - whether a voice sample has already been cloned and cached
 
-The Cost & quota panel shows a pre-run estimate and the remaining ElevenLabs-reported character quota. Estimates are approximate. After a generation, the app shows the actual `x-character-count` response header when ElevenLabs provides it.
+The Cost & Quota panel shows a pre-run estimate and the remaining ElevenLabs-reported character quota. Estimates are approximate. After a generation, the app shows the actual `x-character-count` response header when ElevenLabs provides it.
 
 The optional live smoke test calls ElevenLabs and may consume credits.
 
@@ -81,7 +81,7 @@ For a restricted ElevenLabs API key, grant the least-privilege permissions below
 | `models_read` | Read | Load `GET /v1/models` for the model selector and model-rate estimate metadata. |
 | `user_read` | Read | Load `GET /v1/user/subscription` for quota and remaining-credit display. |
 
-`models_read` and `user_read` are not required to generate speech, but the Cost & quota panel will show model or quota metadata as unavailable without them. Keep key restrictions enabled and add only the scopes this app needs.
+`models_read` and `user_read` are not required to generate speech, but the Cost & Quota panel will show model or quota metadata as unavailable without them. Keep key restrictions enabled and add only the scopes this app needs.
 
 ## From Zero To One
 
@@ -123,10 +123,10 @@ Then:
 2. Give it a local name, such as `Gray`.
 3. Save the voice.
 4. Enter text.
-5. Check the Cost & quota panel and choose a model if model metadata is available.
+5. Check the Cost & Quota panel and choose a model if model metadata is available.
 6. Adjust tuning sliders if needed.
 7. Generate speech.
-8. Play, download, or remove saved generated MP3s from the Generated audio panel.
+8. Play, download, or remove saved generated MP3s from the Generated Audio panel.
 
 The API is available at:
 
@@ -176,7 +176,7 @@ This calls ElevenLabs with the real API key, may consume credits, and writes `st
 - `PUT /api/voices/default`
 - `POST /api/speech`
 
-`GET /api/subscription` returns a sanitized quota summary for the Cost & quota panel:
+`GET /api/subscription` returns a sanitized quota summary for the Cost & Quota panel:
 
 ```json
 {
@@ -278,7 +278,7 @@ WEB_PORT=4440 API_PORT=6520 make up
 
 ### ElevenLabs quota or billing errors
 
-Check your ElevenLabs account subscription and usage. Shorter text and lower-cost models can reduce credit usage. The app links to ElevenLabs API request analytics from the Cost & quota panel for quick inspection.
+Check your ElevenLabs account subscription and usage. Shorter text and lower-cost models can reduce credit usage. The app links to ElevenLabs API request analytics from the Cost & Quota panel for quick inspection.
 
 ### Quota or model metadata unavailable
 
@@ -297,7 +297,7 @@ Remove backend cache data:
 make clean-cache
 ```
 
-Generated audio saved in the browser can be removed from the Generated audio panel with Remove or Clear all. The panel also lets you choose a browser storage cap of 25 MB, 50 MB, 100 MB, or 250 MB. Lowering the cap prompts before pruning older saved audio.
+Generated audio saved in the browser can be removed from the Generated Audio panel with Remove or Clear All. The panel also lets you choose a browser storage cap of 25 MB, 50 MB, 100 MB, or 250 MB. Lowering the cap prompts before pruning older saved audio.
 
 Remove containers and volumes:
 
