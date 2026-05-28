@@ -4,6 +4,7 @@
 __pycache__/
 .pytest_cache/
 .ruff_cache/
+.playwright-mcp/
 node_modules/
 frontend/node_modules/
 frontend/dist/
