@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import App from "./App"
 
 const audioBlob = new Blob(["fake audio"], { type: "audio/mpeg" })
+const formatTestNumber = (value: number) => new Intl.NumberFormat().format(value)
 
 const defaultVoice = {
   id: "default",
@@ -26,6 +27,43 @@ const grayVoice = {
   createdAt: "2026-05-28T00:00:00+00:00",
 }
 
+const subscription = {
+  available: true,
+  error: null,
+  tier: "starter",
+  status: "active",
+  characterCount: 1000,
+  characterLimit: 10000,
+  remainingCharacters: 9000,
+  canExtendCharacterLimit: true,
+  maxCreditLimitExtension: 10000,
+  nextCharacterCountResetUnix: 1770000000,
+}
+
+const multilingualModel = {
+  modelId: "eleven_multilingual_v2",
+  name: "Eleven Multilingual v2",
+  description: "Stable narration.",
+  canUseStyle: true,
+  canUseSpeakerBoost: true,
+  characterCostMultiplier: 1,
+  maxCharactersRequestFreeUser: 2500,
+  maxCharactersRequestSubscribedUser: 10000,
+  maximumTextLengthPerRequest: 10000,
+}
+
+const flashModel = {
+  modelId: "eleven_flash_v2_5",
+  name: "Eleven Flash v2.5",
+  description: "Fast speech.",
+  canUseStyle: false,
+  canUseSpeakerBoost: true,
+  characterCostMultiplier: 0.5,
+  maxCharactersRequestFreeUser: 2500,
+  maxCharactersRequestSubscribedUser: 40000,
+  maximumTextLengthPerRequest: 40000,
+}
+
 function okJson(payload: unknown) {
   return Promise.resolve(
     new Response(JSON.stringify(payload), {
@@ -35,15 +73,18 @@ function okJson(payload: unknown) {
   )
 }
 
-function okAudio() {
+function okAudio(headers: Record<string, string> = {}) {
   return Promise.resolve(
     new Response(audioBlob, {
       status: 200,
       headers: {
         "Content-Type": "audio/mpeg",
         "X-App-Voice-Id": "default",
+        "X-Character-Count": "54",
+        "X-Request-Id": "req_test_123",
         "X-Voice-Cache": "miss",
         "X-Voice-Id": "voice-123",
+        ...headers,
       },
     })
   )
@@ -54,6 +95,17 @@ function mockFetch() {
     const url = String(input)
     if (url === "/api/voices" && !init) {
       return okJson({ defaultVoiceId: "default", voices: [defaultVoice] })
+    }
+    if (url === "/api/subscription" && !init) {
+      return okJson(subscription)
+    }
+    if (url === "/api/models" && !init) {
+      return okJson({
+        available: true,
+        error: null,
+        defaultModelId: "eleven_multilingual_v2",
+        models: [multilingualModel, flashModel],
+      })
     }
     if (url === "/api/voices" && init?.method === "POST") {
       return Promise.resolve(
@@ -101,6 +153,55 @@ describe("App", () => {
     expect(await screen.findByText("default/default-voice.mp3")).toBeInTheDocument()
   })
 
+  it("places cost quota under add voice and expands details", async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    const costHeading = await screen.findByText("Cost & quota")
+    const addVoiceHeading = screen.getByText("Add voice")
+    expect(addVoiceHeading.compareDocumentPosition(costHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(await screen.findByText(`${formatTestNumber(9000)} remaining`)).toBeInTheDocument()
+    expect(screen.getByText(`~${formatTestNumber(117)}`)).toBeInTheDocument()
+    expect(screen.getByText("No run")).toBeInTheDocument()
+    const costQuotaDetails = document.querySelector("#cost-quota-details")
+    expect(costQuotaDetails).toBeInTheDocument()
+    expect(costQuotaDetails).not.toBeVisible()
+    expect(screen.getByLabelText(/model/i)).not.toBeVisible()
+    expect(screen.getByText(`${formatTestNumber(1000)} / ${formatTestNumber(10000)}`)).not.toBeVisible()
+
+    const expandButton = screen.getByRole("button", { name: /expand/i })
+    expect(expandButton).toHaveAttribute("aria-expanded", "false")
+    await user.click(expandButton)
+
+    expect(screen.getByRole("button", { name: /collapse/i })).toHaveAttribute("aria-expanded", "true")
+    expect(screen.getByLabelText(/model/i)).toHaveValue("eleven_multilingual_v2")
+    expect(screen.getByText(`${formatTestNumber(1000)} / ${formatTestNumber(10000)}`)).toBeVisible()
+    expect(screen.getByRole("link", { name: /api requests/i })).toHaveAttribute(
+      "href",
+      "https://elevenlabs.io/app/developers/analytics/api-requests"
+    )
+    expect(screen.getByRole("link", { name: /models/i })).toHaveAttribute(
+      "href",
+      "https://elevenlabs.io/docs/api-reference/get-models"
+    )
+  })
+
+  it("collapses cost quota details while keeping the overview", async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await screen.findByText(`${formatTestNumber(9000)} remaining`)
+    await user.click(screen.getByRole("button", { name: /expand/i }))
+    expect(screen.getByLabelText(/model/i)).toBeVisible()
+
+    await user.click(screen.getByRole("button", { name: /collapse/i }))
+
+    expect(screen.getByText(`${formatTestNumber(9000)} remaining`)).toBeInTheDocument()
+    expect(screen.getByText(`~${formatTestNumber(117)}`)).toBeInTheDocument()
+    expect(screen.getByLabelText(/model/i)).not.toBeVisible()
+    expect(screen.queryByRole("link", { name: /api requests/i })).not.toBeInTheDocument()
+  })
+
   it("shows pending state while generating speech", async () => {
     let resolveSpeech: (value: Response) => void = () => undefined
     vi.stubGlobal(
@@ -131,6 +232,8 @@ describe("App", () => {
         headers: {
           "Content-Type": "audio/mpeg",
           "X-App-Voice-Id": "default",
+          "X-Character-Count": "54",
+          "X-Request-Id": "req_test_123",
           "X-Voice-Cache": "miss",
           "X-Voice-Id": "voice-123",
         },
@@ -267,10 +370,83 @@ describe("App", () => {
     )
     const body = speechCall?.[1]?.body as FormData
     expect(body.get("voiceId")).toBe("default")
+    expect(body.get("modelId")).toBe("eleven_multilingual_v2")
     expect(body.get("stability")).toBe("0.42")
     expect(body.get("similarityBoost")).toBe("0.84")
     expect(body.get("style")).toBe("0.2")
     expect(body.get("speed")).toBe("1.1")
     expect(body.get("useSpeakerBoost")).toBe("false")
+  })
+
+  it("sends selected model and shows actual usage metadata", async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.click(screen.getByRole("button", { name: /expand/i }))
+    await user.selectOptions(screen.getByLabelText(/model/i), "eleven_flash_v2_5")
+    await user.click(screen.getByRole("button", { name: /generate/i }))
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/speech", expect.objectContaining({ method: "POST" })))
+    const speechCall = vi.mocked(fetch).mock.calls.find(
+      ([url, init]) => String(url) === "/api/speech" && init?.method === "POST"
+    )
+    const body = speechCall?.[1]?.body as FormData
+    expect(body.get("modelId")).toBe("eleven_flash_v2_5")
+    const formattedCharacterCount = formatTestNumber(54)
+    expect(await screen.findAllByText(formattedCharacterCount)).toHaveLength(1)
+    expect(screen.getByText(new RegExp(`${formattedCharacterCount} chars`))).toBeInTheDocument()
+    expect(screen.getByText(/req_test_123/)).toBeInTheDocument()
+  })
+
+  it("reports the backend resolved model when model metadata is still loading", async () => {
+    let resolveModels: (value: Response) => void = () => undefined
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        if (url === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "default", voices: [defaultVoice] })
+        }
+        if (url === "/api/subscription" && !init) {
+          return okJson(subscription)
+        }
+        if (url === "/api/models" && !init) {
+          return new Promise<Response>((resolve) => {
+            resolveModels = resolve
+          })
+        }
+        if (url === "/api/speech" && init?.method === "POST") {
+          return okAudio({ "X-Model-Id": "eleven_turbo_v2_5" })
+        }
+        return okJson({})
+      })
+    )
+    const user = userEvent.setup()
+    render(<App />)
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.click(screen.getByRole("button", { name: /generate/i }))
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/speech", expect.objectContaining({ method: "POST" })))
+    const speechCall = vi.mocked(fetch).mock.calls.find(
+      ([url, init]) => String(url) === "/api/speech" && init?.method === "POST"
+    )
+    const body = speechCall?.[1]?.body as FormData
+    expect(body.has("modelId")).toBe(false)
+    expect(await screen.findByText(/Model eleven_turbo_v2_5/)).toBeInTheDocument()
+    expect(screen.queryByText(/Model eleven_multilingual_v2/)).not.toBeInTheDocument()
+
+    resolveModels(
+      new Response(
+        JSON.stringify({
+          available: true,
+          error: null,
+          defaultModelId: "eleven_turbo_v2_5",
+          models: [multilingualModel],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    )
   })
 })
