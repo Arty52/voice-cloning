@@ -363,7 +363,7 @@ describe("App", () => {
     const body = uploadCall?.[1]?.body as FormData
     expect(body.get("name")).toBe("Voice_Clone_01")
     expect(body.get("sampleFile")).toBe(file)
-    expect(await screen.findByRole("button", { name: /Voice_Clone_01/i })).toBeInTheDocument()
+    expect(await screen.findByRole("button", { name: /^Voice_Clone_01/i })).toBeInTheDocument()
   })
 
   it("sets the selected voice as the local default", async () => {
@@ -386,7 +386,7 @@ describe("App", () => {
     const user = userEvent.setup()
     render(<App />)
 
-    await user.click(await screen.findByRole("button", { name: /Voice_Clone_01/i }))
+    await user.click(await screen.findByRole("button", { name: /^Voice_Clone_01/i }))
     await user.click(screen.getByRole("button", { name: /set as default/i }))
 
     await waitFor(() =>
@@ -398,6 +398,102 @@ describe("App", () => {
         })
       )
     )
+  })
+
+  it("plays a voice from the action menu", async () => {
+    const play = vi.fn().mockResolvedValue(undefined)
+    const pause = vi.fn()
+    const AudioMock = vi.fn(function (this: HTMLAudioElement, src: string) {
+      Object.assign(this, { pause, play, src })
+    })
+    vi.stubGlobal("Audio", AudioMock)
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        if (url === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "default", voices: [defaultVoice, voiceCloneVoice] })
+        }
+        return okJson({})
+      })
+    )
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByRole("button", { name: /open actions for voice_clone_01/i }))
+    await user.click(screen.getByRole("menuitem", { name: /play/i }))
+
+    expect(AudioMock).toHaveBeenCalledWith("/api/voices/voice-clone-01/sample")
+    expect(play).toHaveBeenCalled()
+    expect(screen.getByText((_, element) => element?.textContent === "Source: Voice_Clone_01")).toBeInTheDocument()
+  })
+
+  it("renames a voice from the action menu", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        if (url === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "default", voices: [defaultVoice, voiceCloneVoice] })
+        }
+        if (url === "/api/voices/voice-clone-01" && init?.method === "PATCH") {
+          return okJson({
+            defaultVoiceId: "default",
+            voices: [{ ...voiceCloneVoice, name: "Narration Take 01" }, defaultVoice],
+          })
+        }
+        return okJson({})
+      })
+    )
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByRole("button", { name: /open actions for voice_clone_01/i }))
+    await user.click(screen.getByRole("menuitem", { name: /rename/i }))
+    const dialog = screen.getByRole("dialog", { name: /rename voice/i })
+    await user.clear(within(dialog).getByLabelText(/voice name/i))
+    await user.type(within(dialog).getByLabelText(/voice name/i), "Narration Take 01")
+    await user.click(within(dialog).getByRole("button", { name: /^rename$/i }))
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/voices/voice-clone-01",
+        expect.objectContaining({
+          body: JSON.stringify({ name: "Narration Take 01" }),
+          method: "PATCH",
+        })
+      )
+    )
+    expect(await screen.findByRole("button", { name: /^Narration Take 01/i })).toBeInTheDocument()
+  })
+
+  it("deletes the last voice and shows the empty voice state", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        if (url === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "voice-clone-01", voices: [voiceCloneVoice] })
+        }
+        if (url === "/api/voices/voice-clone-01" && init?.method === "DELETE") {
+          return okJson({ defaultVoiceId: "", voices: [] })
+        }
+        return okJson({})
+      })
+    )
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByRole("button", { name: /open actions for voice_clone_01/i }))
+    await user.click(screen.getByRole("menuitem", { name: /delete/i }))
+    const dialog = screen.getByRole("dialog", { name: /delete voice/i })
+    await user.click(within(dialog).getByRole("button", { name: /^delete$/i }))
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith("/api/voices/voice-clone-01", expect.objectContaining({ method: "DELETE" }))
+    )
+    expect(await screen.findByText(/add or record a voice to proceed/i)).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /^Generate$/ })).toBeDisabled()
   })
 
   it("shows tuning help and selects standard narration by default", async () => {
@@ -636,21 +732,22 @@ describe("App", () => {
     expect(await screen.findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
     expect(await screen.findByText((_, element) => element?.textContent === "30 MB / 100 MB")).toBeInTheDocument()
 
-    const capSelect = screen.getByLabelText(/cap/i)
-    await user.selectOptions(capSelect, String(25 * BYTES_PER_MEBIBYTE))
+    await user.click(screen.getByRole("button", { name: /cap: 100 mb/i }))
+    await user.click(screen.getByRole("menuitemradio", { name: /25 mb/i }))
 
     let dialog = screen.getByRole("dialog", { name: /lower storage cap/i })
     expect(within(dialog).getByText(/remove the oldest saved generated audio/i)).toBeInTheDocument()
     await user.click(within(dialog).getByRole("button", { name: /cancel/i }))
-    expect(capSelect).toHaveValue(String(100 * BYTES_PER_MEBIBYTE))
+    expect(screen.getByRole("button", { name: /cap: 100 mb/i })).toBeInTheDocument()
     expect(screen.getByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
 
-    await user.selectOptions(capSelect, String(25 * BYTES_PER_MEBIBYTE))
+    await user.click(screen.getByRole("button", { name: /cap: 100 mb/i }))
+    await user.click(screen.getByRole("menuitemradio", { name: /25 mb/i }))
     dialog = screen.getByRole("dialog", { name: /lower storage cap/i })
     await user.click(within(dialog).getByRole("button", { name: /lower cap/i }))
 
     await waitFor(() => expect(screen.queryByLabelText(/generated voice playback for default voice/i)).not.toBeInTheDocument())
-    expect(capSelect).toHaveValue(String(25 * BYTES_PER_MEBIBYTE))
+    expect(screen.getByRole("button", { name: /cap: 25 mb/i })).toBeInTheDocument()
   })
 
   it("reports the backend resolved model when model metadata is still loading", async () => {

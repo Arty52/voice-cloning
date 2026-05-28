@@ -9,6 +9,7 @@ import {
   HardDrive,
   Info,
   LoaderCircle,
+  Pencil,
   RefreshCw,
   Save,
   Sparkles,
@@ -29,9 +30,11 @@ import {
   useState,
 } from "react"
 
+import { ActionMenu } from "@/components/ui/action-menu"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { MenuSelect } from "@/components/ui/menu-select"
 import { Textarea } from "@/components/ui/textarea"
 import {
   BYTES_PER_MEBIBYTE,
@@ -263,6 +266,10 @@ function App() {
   const [uploadPreviewUrl, setUploadPreviewUrl] = useState<string | null>(null)
   const [uploadStatus, setUploadStatus] = useState<AsyncStatus>("idle")
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const [renameVoice, setRenameVoice] = useState<VoiceAsset | null>(null)
+  const [renameName, setRenameName] = useState("")
+  const [renameError, setRenameError] = useState<string | null>(null)
+  const [voiceActionStatus, setVoiceActionStatus] = useState<AsyncStatus>("idle")
   const [defaultStatus, setDefaultStatus] = useState<AsyncStatus>("idle")
   const [subscription, setSubscription] = useState<SubscriptionResponse | null>(null)
   const [subscriptionStatus, setSubscriptionStatus] = useState<AsyncStatus>("idle")
@@ -285,6 +292,7 @@ function App() {
   const textRef = useRef<HTMLTextAreaElement | null>(null)
   const generationAbortController = useRef<AbortController | null>(null)
   const generatedAudioItemsRef = useRef<GeneratedResult[]>([])
+  const voicePlaybackRef = useRef<HTMLAudioElement | null>(null)
 
   const selectedVoice = voices.find((voice) => voice.id === selectedVoiceId) ?? null
   const selectedModel = models.find((model) => model.modelId === selectedModelId) ?? null
@@ -292,6 +300,7 @@ function App() {
   const isGenerating = status === "generating"
   const isUploading = uploadStatus === "loading"
   const isSettingDefault = defaultStatus === "loading"
+  const isUpdatingVoice = voiceActionStatus === "loading"
   const canGenerate = text.trim().length > 0 && selectedVoice !== null && !isGenerating
   const canUpload = uploadName.trim().length > 0 && uploadFile !== null && !isUploading
   const canSetDefault = selectedVoice !== null && selectedVoice.id !== defaultVoiceId && !isSettingDefault
@@ -369,8 +378,20 @@ function App() {
     return () => {
       revokeGeneratedAudioUrls(generatedAudioItemsRef.current)
       generationAbortController.current?.abort()
+      voicePlaybackRef.current?.pause()
     }
   }, [])
+
+  function applyVoicePayload(payload: VoicesResponse) {
+    setVoices(payload.voices)
+    setDefaultVoiceId(payload.defaultVoiceId)
+    setSelectedVoiceId((current) => {
+      if (payload.voices.some((voice) => voice.id === current)) {
+        return current
+      }
+      return payload.defaultVoiceId || payload.voices[0]?.id || ""
+    })
+  }
 
   function handleUploadFileChange(event: ChangeEvent<HTMLInputElement>) {
     const nextFile = event.target.files?.[0] ?? null
@@ -400,6 +421,7 @@ function App() {
       })
       setVoices((current) => [...current, payload.voice])
       setSelectedVoiceId(payload.voice.id)
+      setDefaultVoiceId((current) => current || payload.voice.id)
       setUploadName("")
       setUploadFile(null)
       setUploadPreviewUrl(null)
@@ -407,6 +429,81 @@ function App() {
     } catch (caught) {
       setUploadStatus("error")
       setUploadError(caught instanceof Error ? caught.message : "Unable to save voice.")
+    }
+  }
+
+  function handlePlayVoice(voice: VoiceAsset) {
+    setSelectedVoiceId(voice.id)
+    setVoiceError(null)
+    voicePlaybackRef.current?.pause()
+    const audio = new Audio(`/api/voices/${encodeURIComponent(voice.id)}/sample`)
+    voicePlaybackRef.current = audio
+    void audio.play().catch(() => {
+      setVoiceError("Unable to play voice sample.")
+    })
+  }
+
+  function handleRenameRequest(voice: VoiceAsset) {
+    setRenameVoice(voice)
+    setRenameName(voice.name)
+    setRenameError(null)
+  }
+
+  async function handleRenameVoice(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!renameVoice) {
+      return
+    }
+    const nextName = renameName.trim()
+    if (!nextName) {
+      setRenameError("Voice name is required.")
+      return
+    }
+
+    setVoiceActionStatus("loading")
+    setRenameError(null)
+    try {
+      const payload = await fetchJson<VoicesResponse>(`/api/voices/${encodeURIComponent(renameVoice.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: nextName }),
+      })
+      applyVoicePayload(payload)
+      setRenameVoice(null)
+      setRenameName("")
+      setVoiceActionStatus("success")
+    } catch (caught) {
+      setVoiceActionStatus("error")
+      setRenameError(caught instanceof Error ? caught.message : "Unable to rename voice.")
+    }
+  }
+
+  function requestDeleteVoice(voice: VoiceAsset) {
+    setConfirmation({
+      body: `Delete "${voice.name}" from the local voice library? This removes the saved sample file and cannot be undone.`,
+      confirmLabel: "Delete",
+      destructive: true,
+      onConfirm: () => handleDeleteVoice(voice),
+      title: "Delete Voice",
+    })
+  }
+
+  async function handleDeleteVoice(voice: VoiceAsset) {
+    setVoiceActionStatus("loading")
+    setVoiceError(null)
+    try {
+      const payload = await fetchJson<VoicesResponse>(`/api/voices/${encodeURIComponent(voice.id)}`, {
+        method: "DELETE",
+      })
+      applyVoicePayload(payload)
+      if (voicePlaybackRef.current) {
+        voicePlaybackRef.current.pause()
+        voicePlaybackRef.current = null
+      }
+      setVoiceActionStatus("success")
+    } catch (caught) {
+      setVoiceActionStatus("error")
+      setVoiceError(caught instanceof Error ? caught.message : "Unable to delete voice.")
     }
   }
 
@@ -893,32 +990,58 @@ function App() {
                 ) : null}
                 {voiceStatus !== "loading" && voices.length === 0 ? (
                   <div className="rounded-md border border-dashed border-border bg-background/50 p-4 text-sm text-muted-foreground">
-                    No voices saved yet. Add a named voice sample to generate speech.
+                    No voices saved yet. Add or record a voice to proceed.
                   </div>
                 ) : null}
                 {voices.map((voice) => {
                   const isSelected = voice.id === selectedVoiceId
                   const isDefault = voice.id === defaultVoiceId
                   return (
-                    <button
+                    <div
                       className={cn(
-                        "flex w-full items-center justify-between gap-3 rounded-md border border-border bg-background/60 px-3 py-3 text-left text-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        "flex w-full items-center gap-2 rounded-md border border-border bg-background/60 p-1 text-sm transition hover:bg-muted",
                         isSelected && "border-primary bg-primary/10"
                       )}
-                      disabled={isGenerating}
                       key={voice.id}
-                      onClick={() => setSelectedVoiceId(voice.id)}
-                      type="button"
                     >
-                      <span className="min-w-0">
-                        <span className="block truncate font-medium text-foreground">{voice.name}</span>
-                        <span className="block truncate font-mono text-xs text-muted-foreground">{voice.filePath}</span>
-                      </span>
-                      <span className="flex shrink-0 items-center gap-2">
-                        {isDefault ? <Star aria-label="Default voice" className="size-4 text-primary" /> : null}
-                        {isSelected ? <Check aria-label="Selected voice" className="size-4 text-primary" /> : null}
-                      </span>
-                    </button>
+                      <button
+                        className="flex min-w-0 flex-1 items-center justify-between gap-3 rounded px-2 py-2 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
+                        disabled={isGenerating || isUpdatingVoice}
+                        onClick={() => setSelectedVoiceId(voice.id)}
+                        type="button"
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium text-foreground">{voice.name}</span>
+                          <span className="block truncate font-mono text-xs text-muted-foreground">{voice.filePath}</span>
+                        </span>
+                        <span className="flex shrink-0 items-center gap-2">
+                          {isDefault ? <Star aria-label="Default voice" className="size-4 text-primary" /> : null}
+                          {isSelected ? <Check aria-label="Selected voice" className="size-4 text-primary" /> : null}
+                        </span>
+                      </button>
+                      <ActionMenu
+                        ariaLabel={`Open actions for ${voice.name}`}
+                        disabled={isGenerating || isUpdatingVoice}
+                        items={[
+                          {
+                            icon: <Volume2 aria-hidden="true" className="size-4" />,
+                            label: "Play",
+                            onSelect: () => handlePlayVoice(voice),
+                          },
+                          {
+                            icon: <Pencil aria-hidden="true" className="size-4" />,
+                            label: "Rename",
+                            onSelect: () => handleRenameRequest(voice),
+                          },
+                          {
+                            destructive: true,
+                            icon: <Trash2 aria-hidden="true" className="size-4" />,
+                            label: "Delete",
+                            onSelect: () => requestDeleteVoice(voice),
+                          },
+                        ]}
+                      />
+                    </div>
                   )
                 })}
               </div>
@@ -966,12 +1089,17 @@ function App() {
                 <label className="block space-y-2 text-sm font-medium" htmlFor="voice-name">
                   <span>Voice Name</span>
                   <Input
+                    aria-describedby="voice-name-help"
                     disabled={isUploading}
                     id="voice-name"
                     onChange={(event) => setUploadName(event.target.value)}
                     placeholder="Voice_Clone_01"
+                    required
                     value={uploadName}
                   />
+                  <span className="block text-xs font-normal text-muted-foreground" id="voice-name-help">
+                    Enter a voice name to enable Save Voice.
+                  </span>
                 </label>
                 <label className="block space-y-2 text-sm font-medium" htmlFor="sample-upload">
                   <span>Sample File</span>
@@ -1027,6 +1155,19 @@ function App() {
           </aside>
         </div>
       </div>
+      <RenameVoiceDialog
+        error={renameError}
+        isSaving={isUpdatingVoice}
+        name={renameName}
+        onCancel={() => {
+          setRenameVoice(null)
+          setRenameName("")
+          setRenameError(null)
+        }}
+        onNameChange={setRenameName}
+        onSubmit={handleRenameVoice}
+        voice={renameVoice}
+      />
       <ConfirmationDialog confirmation={confirmation} onCancel={() => setConfirmation(null)} />
     </main>
   )
@@ -1313,21 +1454,18 @@ function GeneratedAudio({
               {formatBytes(resolvedUsage.usedBytes)} / {formatBytes(resolvedUsage.limitBytes)}
             </div>
           </div>
-          <label className="flex items-center gap-2 text-sm font-medium" htmlFor="generated-audio-storage-cap">
+          <div className="flex items-center gap-2 text-sm font-medium">
             <span>Cap</span>
-            <select
-              className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
-              id="generated-audio-storage-cap"
-              onChange={(event) => onStorageLimitChange(Number(event.target.value))}
-              value={storageLimitBytes}
-            >
-              {GENERATED_AUDIO_STORAGE_LIMIT_PRESETS_BYTES.map((limitBytes) => (
-                <option key={limitBytes} value={limitBytes}>
-                  {formatBytes(limitBytes)}
-                </option>
-              ))}
-            </select>
-          </label>
+            <MenuSelect
+              ariaLabel="Cap"
+              onChange={(value) => onStorageLimitChange(Number(value))}
+              options={GENERATED_AUDIO_STORAGE_LIMIT_PRESETS_BYTES.map((limitBytes) => ({
+                label: formatBytes(limitBytes),
+                value: String(limitBytes),
+              }))}
+              value={String(storageLimitBytes)}
+            />
+          </div>
         </div>
         <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
           <div className="h-full rounded-full bg-primary" style={{ width: `${usagePercent}%` }} />
@@ -1393,6 +1531,108 @@ function GeneratedAudio({
         </div>
       )}
     </section>
+  )
+}
+
+function RenameVoiceDialog({
+  error,
+  isSaving,
+  name,
+  onCancel,
+  onNameChange,
+  onSubmit,
+  voice,
+}: {
+  error: string | null
+  isSaving: boolean
+  name: string
+  onCancel: () => void
+  onNameChange: (name: string) => void
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void
+  voice: VoiceAsset | null
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null)
+  const dialogRef = useRef<HTMLDivElement | null>(null)
+  const onCancelRef = useRef(onCancel)
+
+  useEffect(() => {
+    onCancelRef.current = onCancel
+  }, [onCancel])
+
+  useEffect(() => {
+    if (!voice) {
+      return
+    }
+
+    inputRef.current?.focus()
+    inputRef.current?.select()
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault()
+        onCancelRef.current()
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown)
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown)
+    }
+  }, [voice])
+
+  if (!voice) {
+    return null
+  }
+
+  const titleId = "rename-voice-dialog-title"
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 px-4 backdrop-blur-sm">
+      <div
+        aria-labelledby={titleId}
+        aria-modal="true"
+        className="w-full max-w-md rounded-lg border border-border bg-card p-5 shadow-xl"
+        ref={dialogRef}
+        role="dialog"
+      >
+        <h2 className="text-lg font-medium" id={titleId}>
+          Rename Voice
+        </h2>
+        <form className="mt-4 space-y-4" onSubmit={onSubmit}>
+          <label className="block space-y-2 text-sm font-medium" htmlFor="rename-voice-name">
+            <span>Voice Name</span>
+            <Input
+              aria-describedby={error ? "rename-voice-error" : undefined}
+              aria-invalid={Boolean(error)}
+              disabled={isSaving}
+              id="rename-voice-name"
+              onChange={(event) => onNameChange(event.target.value)}
+              ref={inputRef}
+              required
+              value={name}
+            />
+          </label>
+          {error ? (
+            <div
+              className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm"
+              id="rename-voice-error"
+              role="alert"
+            >
+              {error}
+            </div>
+          ) : null}
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button disabled={isSaving} onClick={onCancel} type="button" variant="secondary">
+              Cancel
+            </Button>
+            <Button disabled={isSaving || name.trim().length === 0} type="submit">
+              {isSaving ? <LoaderCircle aria-hidden="true" className="size-4 animate-spin" /> : null}
+              Rename
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
   )
 }
 
