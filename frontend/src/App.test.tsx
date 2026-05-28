@@ -174,12 +174,12 @@ describe("App", () => {
     const user = userEvent.setup()
     render(<App />)
 
-    const costHeading = await screen.findByText("Cost & quota")
-    const addVoiceHeading = screen.getByText("Add voice")
+    const costHeading = await screen.findByText("Cost & Quota")
+    const addVoiceHeading = screen.getByText("Add Voice")
     expect(addVoiceHeading.compareDocumentPosition(costHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(await screen.findByText(`${formatTestNumber(9000)} remaining`)).toBeInTheDocument()
     expect(screen.getByText(`~${formatTestNumber(117)}`)).toBeInTheDocument()
-    expect(screen.getByText("No run")).toBeInTheDocument()
+    expect(screen.getByText("No Run")).toBeInTheDocument()
     const costQuotaDetails = document.querySelector("#cost-quota-details")
     expect(costQuotaDetails).toBeInTheDocument()
     expect(costQuotaDetails).not.toBeVisible()
@@ -199,7 +199,7 @@ describe("App", () => {
     )
     expect(screen.getByRole("link", { name: /models/i })).toHaveAttribute(
       "href",
-      "https://elevenlabs.io/docs/api-reference/get-models"
+      "https://elevenlabs.io/docs/api-reference/models/list"
     )
   })
 
@@ -511,7 +511,7 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
 
     expect(await screen.findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
-    expect(screen.getByText("1 saved")).toBeInTheDocument()
+    expect(screen.getByText("1 Saved")).toBeInTheDocument()
     unmount()
 
     render(<App />)
@@ -561,8 +561,8 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
 
     expect(await screen.findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
-    expect(screen.getByText("1 unsaved")).toBeInTheDocument()
-    expect(screen.queryByText("1 saved")).not.toBeInTheDocument()
+    expect(screen.getByText("1 Unsaved")).toBeInTheDocument()
+    expect(screen.queryByText("1 Saved")).not.toBeInTheDocument()
     expect(screen.getByText(/browser storage could not save it/i)).toBeInTheDocument()
 
     await user.click(screen.getByRole("button", { name: /remove generated audio for default voice/i }))
