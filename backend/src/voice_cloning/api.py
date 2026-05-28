@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import asyncio
+from contextlib import suppress
+from typing import Awaitable, TypeVar
 from typing import Annotated
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
@@ -13,9 +16,15 @@ from .elevenlabs_client import ElevenLabsClient, ElevenLabsError
 from .models import CachedVoice, ModelSummary, SubscriptionSummary, VoiceSample, VoiceSettings
 from .voice_library import VoiceLibrary
 
+T = TypeVar("T")
+
 
 class DefaultVoiceRequest(BaseModel):
     voiceId: str
+
+
+class SpeechGenerationCanceled(Exception):
+    pass
 
 
 def create_app(
@@ -109,6 +118,7 @@ def create_app(
 
     @app.post("/api/speech")
     async def create_speech(
+        request: Request,
         text: str = Form(...),
         voiceId: str | None = Form(None),
         modelId: str | None = Form(None),
@@ -150,18 +160,25 @@ def create_app(
         if cached_voice is None:
             cache_state = "miss"
             try:
-                clone = await resolved_client.create_voice(sample)
+                clone = await _await_or_cancel_on_disconnect(request, resolved_client.create_voice(sample))
+            except SpeechGenerationCanceled as exc:
+                raise HTTPException(status_code=499, detail="Speech generation was canceled.") from exc
             except ElevenLabsError as exc:
                 raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
             cached_voice = resolved_cache.set(sample, clone)
 
         try:
-            speech = await resolved_client.create_speech(
-                cached_voice.voice_id,
-                normalized_text,
-                voice_settings,
-                selected_model_id,
+            speech = await _await_or_cancel_on_disconnect(
+                request,
+                resolved_client.create_speech(
+                    cached_voice.voice_id,
+                    normalized_text,
+                    voice_settings,
+                    selected_model_id,
+                ),
             )
+        except SpeechGenerationCanceled as exc:
+            raise HTTPException(status_code=499, detail="Speech generation was canceled.") from exc
         except ElevenLabsError as exc:
             raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
@@ -177,6 +194,30 @@ def create_app(
         )
 
     return app
+
+
+async def _await_or_cancel_on_disconnect(
+    request: Request,
+    work: Awaitable[T],
+    poll_interval: float = 0.1,
+) -> T:
+    task = asyncio.ensure_future(work)
+    try:
+        while True:
+            done, _ = await asyncio.wait({task}, timeout=poll_interval)
+            if task in done:
+                return await task
+            if await request.is_disconnected():
+                task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await task
+                raise SpeechGenerationCanceled
+    except BaseException:
+        if not task.done():
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
+        raise
 
 
 def _audio_response(
