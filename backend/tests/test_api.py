@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
-from voice_cloning.api import create_app
+from voice_cloning.api import SpeechGenerationCanceled, _await_or_cancel_on_disconnect, create_app
 from voice_cloning.cache import VoiceCache
 from voice_cloning.config import Settings
 from voice_cloning.elevenlabs_client import (
@@ -30,6 +32,8 @@ class FakeElevenLabsClient:
         self.create_voice_error: ElevenLabsError | None = None
         self.subscription_error: ElevenLabsError | None = None
         self.models_error: ElevenLabsError | None = None
+        self.create_voice_delay = 0.0
+        self.create_speech_delay = 0.0
         self.speech_character_count: int | None = 24
         self.speech_request_id: str | None = "req_test_123"
         self.subscription = SubscriptionSummary(
@@ -80,6 +84,8 @@ class FakeElevenLabsClient:
     async def create_voice(self, sample: VoiceSample) -> VoiceClone:
         if self.create_voice_error is not None:
             raise self.create_voice_error
+        if self.create_voice_delay:
+            await asyncio.sleep(self.create_voice_delay)
         self.created_samples.append(sample)
         return VoiceClone(voice_id=f"voice-{sample.sha256[:8]}", requires_verification=False)
 
@@ -90,6 +96,8 @@ class FakeElevenLabsClient:
         voice_settings: VoiceSettings | None = None,
         model_id: str | None = None,
     ) -> SpeechResult:
+        if self.create_speech_delay:
+            await asyncio.sleep(self.create_speech_delay)
         self.speech_requests.append((voice_id, text, voice_settings, model_id))
         return SpeechResult(
             audio=b"fake-mp3",
@@ -285,6 +293,107 @@ def test_create_speech_clones_once_then_uses_cache(tmp_path: Path) -> None:
     assert first.headers["x-app-voice-id"] == "default"
     assert len(fake_client.created_samples) == 1
     assert len(fake_client.speech_requests) == 2
+
+
+def test_disconnect_cancels_pending_speech_request(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    client, fake_client = make_client(tmp_path)
+    fake_client.create_voice_delay = 1.0
+
+    async def is_disconnected(_request: object) -> bool:
+        return True
+
+    monkeypatch.setattr("starlette.requests.Request.is_disconnected", is_disconnected)
+
+    response = client.post("/api/speech", data={"text": "Cancel this.", "voiceId": "default"})
+
+    assert response.status_code == 499
+    assert response.json()["detail"] == "Speech generation was canceled."
+    assert fake_client.created_samples == []
+    assert fake_client.speech_requests == []
+
+
+def test_disconnect_helper_preserves_successful_result() -> None:
+    class ConnectedRequest:
+        async def is_disconnected(self) -> bool:
+            return False
+
+    async def work() -> str:
+        await asyncio.sleep(0.001)
+        return "done"
+
+    async def run() -> None:
+        result = await _await_or_cancel_on_disconnect(ConnectedRequest(), work, poll_interval=0.001)  # type: ignore[arg-type]
+        assert result == "done"
+
+    asyncio.run(run())
+
+
+def test_disconnect_helper_cancels_pending_work() -> None:
+    class DisconnectsAfterStartRequest:
+        def __init__(self) -> None:
+            self.check_count = 0
+
+        async def is_disconnected(self) -> bool:
+            self.check_count += 1
+            return self.check_count > 1
+
+    was_cancelled = False
+
+    async def work() -> None:
+        nonlocal was_cancelled
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError:
+            was_cancelled = True
+            raise
+
+    async def run() -> None:
+        with pytest.raises(SpeechGenerationCanceled):
+            await _await_or_cancel_on_disconnect(DisconnectsAfterStartRequest(), work, poll_interval=0.001)  # type: ignore[arg-type]
+
+    asyncio.run(run())
+    assert was_cancelled is True
+
+
+def test_disconnect_helper_does_not_start_work_when_already_disconnected() -> None:
+    class DisconnectedRequest:
+        async def is_disconnected(self) -> bool:
+            return True
+
+    started = False
+
+    async def work() -> None:
+        nonlocal started
+        started = True
+
+    async def run() -> None:
+        with pytest.raises(SpeechGenerationCanceled):
+            await _await_or_cancel_on_disconnect(DisconnectedRequest(), work, poll_interval=0.001)  # type: ignore[arg-type]
+
+    asyncio.run(run())
+    assert started is False
+
+
+def test_disconnect_helper_prefers_cancellation_when_work_cleanup_fails() -> None:
+    class DisconnectsAfterStartRequest:
+        def __init__(self) -> None:
+            self.check_count = 0
+
+        async def is_disconnected(self) -> bool:
+            self.check_count += 1
+            return self.check_count > 1
+
+    async def work() -> None:
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError as exc:
+            raise RuntimeError("cleanup failed") from exc
+
+    async def run() -> None:
+        with pytest.raises(SpeechGenerationCanceled):
+            await _await_or_cancel_on_disconnect(DisconnectsAfterStartRequest(), work, poll_interval=0.001)  # type: ignore[arg-type]
+
+    asyncio.run(run())
 
 
 def test_create_speech_returns_usage_metadata(tmp_path: Path) -> None:
