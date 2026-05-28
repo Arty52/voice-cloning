@@ -193,15 +193,71 @@ describe("App", () => {
     )
   })
 
+  it("shows tuning help and selects standard narration by default", async () => {
+    render(<App />)
+
+    await screen.findByText("default/default-voice.mp3")
+
+    expect(screen.getByRole("button", { name: /stability help/i })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /similarity help/i })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /style help/i })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /speed help/i })).toBeInTheDocument()
+    expect(screen.getByText(/lower values allow more expressive/i)).toBeInTheDocument()
+    expect(screen.getByText(/very high similarity can preserve them/i)).toBeInTheDocument()
+    expect(screen.getByText(/zero is the most natural/i)).toBeInTheDocument()
+    expect(screen.getByText(/one point zero is the baseline pace/i)).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /standard narration/i })).toHaveAttribute("aria-pressed", "true")
+    expect(screen.getByRole("button", { name: /animated dialogue/i })).toHaveAttribute("aria-pressed", "false")
+    expect(screen.getByRole("slider", { name: /stability/i })).toHaveValue("0.5")
+    expect(screen.getByRole("slider", { name: /similarity/i })).toHaveValue("0.75")
+    expect(screen.getByRole("slider", { name: /style/i })).toHaveValue("0")
+    expect(screen.getByRole("slider", { name: /speed/i })).toHaveValue("1")
+    expect(screen.queryByText("Custom")).not.toBeInTheDocument()
+  })
+
+  it("applies animated dialogue and marks manual tuning as custom", async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.click(screen.getByRole("button", { name: /animated dialogue/i }))
+
+    expect(screen.getByRole("button", { name: /standard narration/i })).toHaveAttribute("aria-pressed", "false")
+    expect(screen.getByRole("button", { name: /animated dialogue/i })).toHaveAttribute("aria-pressed", "true")
+    expect(screen.getByRole("slider", { name: /stability/i })).toHaveValue("0.4")
+    expect(screen.getByRole("slider", { name: /similarity/i })).toHaveValue("0.75")
+    expect(screen.getByRole("slider", { name: /style/i })).toHaveValue("0.35")
+    expect(screen.getByRole("slider", { name: /speed/i })).toHaveValue("1")
+
+    fireEvent.change(screen.getByRole("slider", { name: /speed/i }), { target: { value: "1.1" } })
+
+    expect(screen.getByText("Custom")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /animated dialogue/i })).toHaveAttribute("aria-pressed", "false")
+    expect(screen.getByRole("slider", { name: /speed/i })).toHaveValue("1.1")
+  })
+
+  it("marks tuning as custom when speaker boost changes", async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await screen.findByText("default/default-voice.mp3")
+    expect(screen.getByRole("button", { name: /standard narration/i })).toHaveAttribute("aria-pressed", "true")
+
+    await user.click(screen.getByLabelText(/Speaker boost/i))
+
+    expect(screen.getByText("Custom")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /standard narration/i })).toHaveAttribute("aria-pressed", "false")
+  })
+
   it("sends tuning values with speech generation", async () => {
     const user = userEvent.setup()
     render(<App />)
 
     await screen.findByText("default/default-voice.mp3")
-    fireEvent.change(screen.getByLabelText(/Stability/i), { target: { value: "0.42" } })
-    fireEvent.change(screen.getByLabelText(/Similarity/i), { target: { value: "0.84" } })
-    fireEvent.change(screen.getByLabelText(/Style/i), { target: { value: "0.2" } })
-    fireEvent.change(screen.getByLabelText(/Speed/i), { target: { value: "1.1" } })
+    fireEvent.change(screen.getByRole("slider", { name: /stability/i }), { target: { value: "0.42" } })
+    fireEvent.change(screen.getByRole("slider", { name: /similarity/i }), { target: { value: "0.84" } })
+    fireEvent.change(screen.getByRole("slider", { name: /style/i }), { target: { value: "0.2" } })
+    fireEvent.change(screen.getByRole("slider", { name: /speed/i }), { target: { value: "1.1" } })
     await user.click(screen.getByLabelText(/Speaker boost/i))
     await user.click(screen.getByRole("button", { name: /generate/i }))
 

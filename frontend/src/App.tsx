@@ -2,6 +2,7 @@ import {
   Check,
   Download,
   FileAudio,
+  Info,
   LoaderCircle,
   RefreshCw,
   Save,
@@ -60,9 +61,19 @@ type VoiceTuning = {
   useSpeakerBoost: boolean
 }
 
+type TuningPresetId = "standard" | "animated" | "custom"
+
+type TuningPreset = {
+  id: Exclude<TuningPresetId, "custom">
+  label: string
+  description: string
+  values: Pick<VoiceTuning, "stability" | "similarityBoost" | "style" | "speed">
+}
+
 type SliderConfig = {
   id: keyof Pick<VoiceTuning, "stability" | "similarityBoost" | "style" | "speed">
   label: string
+  help: string
   min: number
   max: number
   step: number
@@ -79,11 +90,64 @@ const DEFAULT_TUNING: VoiceTuning = {
   useSpeakerBoost: true,
 }
 
+const TUNING_PRESETS: TuningPreset[] = [
+  {
+    id: "standard",
+    label: "Standard narration",
+    description: "Balanced clone similarity for steady narration.",
+    values: {
+      stability: 0.5,
+      similarityBoost: 0.75,
+      style: 0,
+      speed: 1,
+    },
+  },
+  {
+    id: "animated",
+    label: "Animated dialogue",
+    description: "More expressive delivery for character reads.",
+    values: {
+      stability: 0.4,
+      similarityBoost: 0.75,
+      style: 0.35,
+      speed: 1,
+    },
+  },
+]
+
 const SLIDERS: SliderConfig[] = [
-  { id: "stability", label: "Stability", min: 0, max: 1, step: 0.01 },
-  { id: "similarityBoost", label: "Similarity", min: 0, max: 1, step: 0.01 },
-  { id: "style", label: "Style", min: 0, max: 1, step: 0.01 },
-  { id: "speed", label: "Speed", min: 0.7, max: 1.2, step: 0.01 },
+  {
+    id: "stability",
+    label: "Stability",
+    help: "Lower values allow more expressive, variable delivery. Higher values keep the voice consistent but can flatten emotion.",
+    min: 0,
+    max: 1,
+    step: 0.01,
+  },
+  {
+    id: "similarityBoost",
+    label: "Similarity",
+    help: "Higher values stay closer to the cloned voice. If the source has noise, clicks, or artifacts, very high similarity can preserve them.",
+    min: 0,
+    max: 1,
+    step: 0.01,
+  },
+  {
+    id: "style",
+    label: "Style",
+    help: "Zero is the most natural and consistent. Higher values exaggerate the speaker's style and may add latency or artifacts.",
+    min: 0,
+    max: 1,
+    step: 0.01,
+  },
+  {
+    id: "speed",
+    label: "Speed",
+    help: "One point zero is the baseline pace. Move toward 0.7 to slow down or 1.2 to speed up; extremes can reduce quality.",
+    min: 0.7,
+    max: 1.2,
+    step: 0.01,
+  },
 ]
 
 function App() {
@@ -103,6 +167,7 @@ function App() {
   const [status, setStatus] = useState<RequestStatus>("idle")
   const [error, setError] = useState<string | null>(null)
   const [tuning, setTuning] = useState<VoiceTuning>(DEFAULT_TUNING)
+  const [selectedTuningPreset, setSelectedTuningPreset] = useState<TuningPresetId>("standard")
   const textRef = useRef<HTMLTextAreaElement | null>(null)
 
   const selectedVoice = voices.find((voice) => voice.id === selectedVoiceId) ?? null
@@ -273,9 +338,18 @@ function App() {
   }
 
   function updateTuningValue(key: SliderConfig["id"], value: string) {
+    setSelectedTuningPreset("custom")
     setTuning((current) => ({
       ...current,
       [key]: Number(value),
+    }))
+  }
+
+  function applyTuningPreset(preset: TuningPreset) {
+    setSelectedTuningPreset(preset.id)
+    setTuning((current) => ({
+      ...current,
+      ...preset.values,
     }))
   }
 
@@ -350,13 +424,51 @@ function App() {
                   <h2 className="text-base font-medium">Voice tuning</h2>
                   <p className="mt-1 text-sm text-muted-foreground">Adjust ElevenLabs voice settings before generating.</p>
                 </div>
-                <Badge>Per request</Badge>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  {selectedTuningPreset === "custom" ? <Badge>Custom</Badge> : null}
+                  <Badge>Per request</Badge>
+                </div>
+              </div>
+              <div className="mb-4 space-y-2">
+                <div className="text-sm font-medium">Preset</div>
+                <div
+                  aria-label="Voice tuning presets"
+                  className="grid gap-1 rounded-md border border-border bg-background/60 p-1 sm:grid-cols-2"
+                  role="group"
+                >
+                  {TUNING_PRESETS.map((preset) => {
+                    const isSelected = selectedTuningPreset === preset.id
+                    return (
+                      <button
+                        aria-pressed={isSelected}
+                        className={cn(
+                          "rounded px-3 py-2 text-left text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          isSelected
+                            ? "bg-secondary text-secondary-foreground shadow-sm"
+                            : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                        )}
+                        disabled={isGenerating}
+                        key={preset.id}
+                        onClick={() => applyTuningPreset(preset)}
+                        type="button"
+                      >
+                        <span className="block font-medium">{preset.label}</span>
+                        <span className="mt-1 block text-xs leading-5">{preset.description}</span>
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 {SLIDERS.map((slider) => (
-                  <label className="space-y-2" htmlFor={slider.id} key={slider.id}>
+                  <div className="space-y-2" key={slider.id}>
                     <div className="flex items-center justify-between gap-3 text-sm">
-                      <span className="font-medium">{slider.label}</span>
+                      <div className="flex items-center gap-1.5">
+                        <label className="font-medium" htmlFor={slider.id}>
+                          {slider.label}
+                        </label>
+                        <TuningInfo description={slider.help} id={slider.id} label={slider.label} />
+                      </div>
                       <span className="font-mono text-xs text-muted-foreground">
                         {tuning[slider.id].toFixed(2)}
                       </span>
@@ -372,7 +484,7 @@ function App() {
                       type="range"
                       value={tuning[slider.id]}
                     />
-                  </label>
+                  </div>
                 ))}
               </div>
               <label className="mt-4 flex items-center justify-between gap-4 rounded-md border border-border bg-background/60 p-3 text-sm">
@@ -381,9 +493,10 @@ function App() {
                   checked={tuning.useSpeakerBoost}
                   className="size-5 accent-primary"
                   disabled={isGenerating}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    setSelectedTuningPreset("custom")
                     setTuning((current) => ({ ...current, useSpeakerBoost: event.target.checked }))
-                  }
+                  }}
                   type="checkbox"
                 />
               </label>
@@ -528,6 +641,30 @@ function App() {
         </div>
       </div>
     </main>
+  )
+}
+
+function TuningInfo({ description, id, label }: { description: string; id: string; label: string }) {
+  const tooltipId = `${id}-help`
+
+  return (
+    <span className="group relative inline-flex">
+      <button
+        aria-describedby={tooltipId}
+        aria-label={`${label} help`}
+        className="inline-flex size-5 items-center justify-center rounded-full text-muted-foreground transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        type="button"
+      >
+        <Info aria-hidden="true" className="size-3.5" />
+      </button>
+      <span
+        className="pointer-events-none absolute left-0 top-6 z-20 w-72 max-w-[min(18rem,calc(100vw-3rem))] rounded-md border border-border bg-background p-3 text-xs leading-5 text-muted-foreground opacity-0 shadow-lg transition group-focus-within:opacity-100 group-hover:opacity-100"
+        id={tooltipId}
+        role="tooltip"
+      >
+        {description}
+      </span>
+    </span>
   )
 }
 
