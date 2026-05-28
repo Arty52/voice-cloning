@@ -571,6 +571,35 @@ describe("App", () => {
     expect(screen.queryByText(/browser storage could not save it/i)).not.toBeInTheDocument()
   })
 
+  it("keeps confirmation dialog focus contained and closes with Escape", async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.click(screen.getByRole("button", { name: /^Generate$/ }))
+    expect(await screen.findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
+
+    const clearAllButton = screen.getByRole("button", { name: /clear all/i })
+    await user.click(clearAllButton)
+    const dialog = screen.getByRole("dialog", { name: /clear generated audio/i })
+    const cancelButton = within(dialog).getByRole("button", { name: /cancel/i })
+    const confirmButton = within(dialog).getByRole("button", { name: /clear all/i })
+
+    expect(cancelButton).toHaveFocus()
+
+    await user.keyboard("{Shift>}{Tab}{/Shift}")
+    expect(confirmButton).toHaveFocus()
+
+    await user.tab()
+    expect(cancelButton).toHaveFocus()
+
+    await user.keyboard("{Escape}")
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /clear generated audio/i })).not.toBeInTheDocument())
+    expect(clearAllButton).toHaveFocus()
+    expect(screen.getByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
+  })
+
   it("confirms before lowering the storage cap when saved audio would be pruned", async () => {
     const largeAudioBlob = new Blob(["fake audio"], { type: "audio/mpeg" })
     Object.defineProperty(largeAudioBlob, "size", { value: 30 * BYTES_PER_MEBIBYTE })

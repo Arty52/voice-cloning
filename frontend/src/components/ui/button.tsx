@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes } from "react"
+import { forwardRef, type ButtonHTMLAttributes } from "react"
 
 import { cn } from "@/lib/utils"
 
@@ -22,13 +22,10 @@ const sizeClasses: Record<ButtonSize, string> = {
   icon: "size-10",
 }
 
-export function Button({
-  className,
-  variant = "primary",
-  size = "default",
-  type = "button",
-  ...props
-}: ButtonProps) {
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+  { className, variant = "primary", size = "default", type = "button", ...props },
+  ref
+) {
   return (
     <button
       className={cn(
@@ -37,8 +34,9 @@ export function Button({
         sizeClasses[size],
         className
       )}
+      ref={ref}
       type={type}
       {...props}
     />
   )
-}
+})
