@@ -1,7 +1,10 @@
 import {
+  BarChart3,
   Check,
   Download,
+  ExternalLink,
   FileAudio,
+  Gauge,
   Info,
   LoaderCircle,
   RefreshCw,
@@ -14,6 +17,7 @@ import {
 import {
   type ChangeEvent,
   type FormEvent,
+  type ReactNode,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -45,11 +49,46 @@ type VoicesResponse = {
   voices: VoiceAsset[]
 }
 
+type SubscriptionResponse = {
+  available: boolean
+  error: string | null
+  tier: string
+  status: string
+  characterCount: number
+  characterLimit: number
+  remainingCharacters: number
+  canExtendCharacterLimit: boolean
+  maxCreditLimitExtension: number | string | null
+  nextCharacterCountResetUnix: number | null
+}
+
+type ModelOption = {
+  modelId: string
+  name: string
+  description: string
+  canUseStyle: boolean
+  canUseSpeakerBoost: boolean
+  characterCostMultiplier: number | null
+  maxCharactersRequestFreeUser: number | null
+  maxCharactersRequestSubscribedUser: number | null
+  maximumTextLengthPerRequest: number | null
+}
+
+type ModelsResponse = {
+  available: boolean
+  error: string | null
+  defaultModelId: string
+  models: ModelOption[]
+}
+
 type GeneratedResult = {
   url: string
   cacheState: string
   voiceId: string
   appVoiceId: string
+  modelId: string
+  characterCount: number | null
+  requestId: string | null
   generatedAt: string
 }
 
@@ -81,6 +120,8 @@ type SliderConfig = {
 
 const DEFAULT_TEXT =
   "Welcome to the local voice clone lab. This sample is generated through ElevenLabs using the selected voice reference."
+
+const DEFAULT_MODEL_ID = "eleven_multilingual_v2"
 
 const DEFAULT_TUNING: VoiceTuning = {
   stability: 0.5,
@@ -150,6 +191,29 @@ const SLIDERS: SliderConfig[] = [
   },
 ]
 
+const DOC_LINKS = [
+  {
+    label: "API requests",
+    href: "https://elevenlabs.io/app/developers/analytics/api-requests",
+  },
+  {
+    label: "Costs header",
+    href: "https://elevenlabs.io/docs/api-reference/introduction",
+  },
+  {
+    label: "Subscription",
+    href: "https://elevenlabs.io/docs/api-reference/user/subscription/get",
+  },
+  {
+    label: "Models",
+    href: "https://elevenlabs.io/docs/api-reference/get-models",
+  },
+  {
+    label: "Create speech",
+    href: "https://elevenlabs.io/docs/api-reference/text-to-speech/convert",
+  },
+]
+
 function App() {
   const [text, setText] = useState(DEFAULT_TEXT)
   const [voices, setVoices] = useState<VoiceAsset[]>([])
@@ -163,6 +227,13 @@ function App() {
   const [uploadStatus, setUploadStatus] = useState<AsyncStatus>("idle")
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [defaultStatus, setDefaultStatus] = useState<AsyncStatus>("idle")
+  const [subscription, setSubscription] = useState<SubscriptionResponse | null>(null)
+  const [subscriptionStatus, setSubscriptionStatus] = useState<AsyncStatus>("idle")
+  const [subscriptionError, setSubscriptionError] = useState<string | null>(null)
+  const [models, setModels] = useState<ModelOption[]>([])
+  const [modelStatus, setModelStatus] = useState<AsyncStatus>("idle")
+  const [modelError, setModelError] = useState<string | null>(null)
+  const [selectedModelId, setSelectedModelId] = useState(DEFAULT_MODEL_ID)
   const [result, setResult] = useState<GeneratedResult | null>(null)
   const [status, setStatus] = useState<RequestStatus>("idle")
   const [error, setError] = useState<string | null>(null)
@@ -171,6 +242,7 @@ function App() {
   const textRef = useRef<HTMLTextAreaElement | null>(null)
 
   const selectedVoice = voices.find((voice) => voice.id === selectedVoiceId) ?? null
+  const selectedModel = models.find((model) => model.modelId === selectedModelId) ?? null
   const isGenerating = status === "generating"
   const isUploading = uploadStatus === "loading"
   const isSettingDefault = defaultStatus === "loading"
@@ -178,6 +250,9 @@ function App() {
   const canUpload = uploadName.trim().length > 0 && uploadFile !== null && !isUploading
   const canSetDefault = selectedVoice !== null && selectedVoice.id !== defaultVoiceId && !isSettingDefault
   const characterCount = useMemo(() => text.trim().length, [text])
+  const modelMultiplier = selectedModel?.characterCostMultiplier ?? null
+  const estimatedCredits = modelMultiplier === null ? characterCount : Math.ceil(characterCount * modelMultiplier)
+  const hasModelRate = modelMultiplier !== null
 
   useEffect(() => {
     async function loadVoices() {
@@ -196,6 +271,11 @@ function App() {
     }
 
     void loadVoices()
+  }, [])
+
+  useEffect(() => {
+    void loadSubscription()
+    void loadModels()
   }, [])
 
   useLayoutEffect(() => {
@@ -282,6 +362,53 @@ function App() {
     }
   }
 
+  async function loadSubscription() {
+    setSubscriptionStatus("loading")
+    setSubscriptionError(null)
+    try {
+      const payload = await fetchJson<SubscriptionResponse>("/api/subscription")
+      if (payload.available) {
+        setSubscription(payload)
+        setSubscriptionStatus("success")
+      } else {
+        setSubscription(null)
+        setSubscriptionStatus("error")
+        setSubscriptionError(payload.error || "Quota unavailable.")
+      }
+    } catch (caught) {
+      setSubscription(null)
+      setSubscriptionStatus("error")
+      setSubscriptionError(caught instanceof Error ? caught.message : "Unable to load quota.")
+    }
+  }
+
+  async function loadModels() {
+    setModelStatus("loading")
+    setModelError(null)
+    try {
+      const payload = await fetchJson<ModelsResponse>("/api/models")
+      const loadedModels = Array.isArray(payload.models) ? payload.models : []
+      setModels(payload.available ? loadedModels : [])
+      setSelectedModelId((current) => {
+        if (payload.available && loadedModels.some((model) => model.modelId === current)) {
+          return current
+        }
+        return payload.defaultModelId || loadedModels[0]?.modelId || DEFAULT_MODEL_ID
+      })
+      if (payload.available) {
+        setModelStatus("success")
+      } else {
+        setModelStatus("error")
+        setModelError(payload.error || "Model metadata unavailable.")
+      }
+    } catch (caught) {
+      setModels([])
+      setSelectedModelId((current) => current || DEFAULT_MODEL_ID)
+      setModelStatus("error")
+      setModelError(caught instanceof Error ? caught.message : "Unable to load models.")
+    }
+  }
+
   async function handleGenerate(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault()
     if (!canGenerate || !selectedVoice) {
@@ -296,6 +423,9 @@ function App() {
     const formData = new FormData()
     formData.append("text", text.trim())
     formData.append("voiceId", selectedVoice.id)
+    if (models.some((model) => model.modelId === selectedModelId)) {
+      formData.append("modelId", selectedModelId)
+    }
     formData.append("stability", String(tuning.stability))
     formData.append("similarityBoost", String(tuning.similarityBoost))
     formData.append("style", String(tuning.style))
@@ -327,6 +457,9 @@ function App() {
           cacheState: response.headers.get("X-Voice-Cache") || "unknown",
           voiceId: response.headers.get("X-Voice-Id") || "unknown",
           appVoiceId: response.headers.get("X-App-Voice-Id") || selectedVoice.id,
+          modelId: selectedModelId,
+          characterCount: parseNullableInt(response.headers.get("X-Character-Count")),
+          requestId: response.headers.get("X-Request-Id"),
           generatedAt,
         }
       })
@@ -417,6 +550,27 @@ function App() {
                 </div>
               </div>
             </form>
+
+            <CostQuotaPanel
+              characterCount={characterCount}
+              estimatedCredits={estimatedCredits}
+              hasModelRate={hasModelRate}
+              isGenerating={isGenerating}
+              modelError={modelError}
+              modelStatus={modelStatus}
+              models={models}
+              onModelChange={setSelectedModelId}
+              onRefresh={() => {
+                void loadSubscription()
+                void loadModels()
+              }}
+              result={result}
+              selectedModel={selectedModel}
+              selectedModelId={selectedModelId}
+              subscription={subscription}
+              subscriptionError={subscriptionError}
+              subscriptionStatus={subscriptionStatus}
+            />
 
             <section className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5">
               <div className="mb-4 flex items-center justify-between gap-3">
@@ -668,6 +822,169 @@ function TuningInfo({ description, id, label }: { description: string; id: strin
   )
 }
 
+function CostQuotaPanel({
+  characterCount,
+  estimatedCredits,
+  hasModelRate,
+  isGenerating,
+  modelError,
+  modelStatus,
+  models,
+  onModelChange,
+  onRefresh,
+  result,
+  selectedModel,
+  selectedModelId,
+  subscription,
+  subscriptionError,
+  subscriptionStatus,
+}: {
+  characterCount: number
+  estimatedCredits: number
+  hasModelRate: boolean
+  isGenerating: boolean
+  modelError: string | null
+  modelStatus: AsyncStatus
+  models: ModelOption[]
+  onModelChange: (modelId: string) => void
+  onRefresh: () => void
+  result: GeneratedResult | null
+  selectedModel: ModelOption | null
+  selectedModelId: string
+  subscription: SubscriptionResponse | null
+  subscriptionError: string | null
+  subscriptionStatus: AsyncStatus
+}) {
+  const isLoading = subscriptionStatus === "loading" || modelStatus === "loading"
+  const quotaStatus =
+    subscriptionStatus === "loading"
+      ? "Loading quota..."
+      : subscription
+        ? `${formatNumber(subscription.remainingCharacters)} remaining`
+        : "Quota unavailable"
+  const usedPercent =
+    subscription && subscription.characterLimit > 0
+      ? Math.min(100, Math.round((subscription.characterCount / subscription.characterLimit) * 100))
+      : null
+
+  return (
+    <section className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-base font-medium">Cost & quota</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Estimate credits before generation and compare actual usage after.</p>
+        </div>
+        <Button
+          aria-label="Refresh cost and quota"
+          disabled={isLoading}
+          onClick={onRefresh}
+          size="icon"
+          type="button"
+          variant="secondary"
+        >
+          <RefreshCw aria-hidden="true" className={cn("size-4", isLoading && "animate-spin")} />
+        </Button>
+      </div>
+
+      <div className="grid gap-3 border-y border-border py-3 sm:grid-cols-3 sm:divide-x sm:divide-border">
+        <MetricTile
+          icon={<BarChart3 aria-hidden="true" className="size-4" />}
+          label="Estimate"
+          value={`~${formatNumber(estimatedCredits)}`}
+        />
+        <MetricTile icon={<Gauge aria-hidden="true" className="size-4" />} label="Quota" value={quotaStatus} />
+        <MetricTile
+          icon={<Check aria-hidden="true" className="size-4" />}
+          label="Actual"
+          value={
+            result?.characterCount !== null && result?.characterCount !== undefined
+              ? formatNumber(result.characterCount)
+              : "No run"
+          }
+        />
+      </div>
+
+      <label className="mt-4 block space-y-2 text-sm font-medium" htmlFor="model-select">
+        <span>Model</span>
+        <select
+          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+          disabled={isGenerating || modelStatus === "loading" || models.length === 0}
+          id="model-select"
+          onChange={(event) => onModelChange(event.target.value)}
+          value={selectedModelId}
+        >
+          {models.length > 0 ? (
+            models.map((model) => (
+              <option key={model.modelId} value={model.modelId}>
+                {model.name}
+              </option>
+            ))
+          ) : (
+            <option value={selectedModelId}>Backend default model</option>
+          )}
+        </select>
+      </label>
+
+      <div className="mt-4 grid gap-3 border-b border-border pb-3 text-xs text-muted-foreground sm:grid-cols-2">
+        <div>
+          <div className="font-medium text-foreground">Estimate basis</div>
+          <div className="mt-1 font-mono tabular-nums">
+            {formatNumber(characterCount)} chars
+            {hasModelRate ? ` x ${selectedModel?.characterCostMultiplier}` : " x character count"}
+          </div>
+          <div className="mt-1">{hasModelRate ? "Uses model rate metadata." : "Rate unavailable; using character count."}</div>
+        </div>
+        <div>
+          <div className="font-medium text-foreground">Account period</div>
+          <div className="mt-1 font-mono tabular-nums">
+            {subscription ? `${formatNumber(subscription.characterCount)} / ${formatNumber(subscription.characterLimit)}` : "Unavailable"}
+          </div>
+          <div className="mt-1">
+            {subscription
+              ? `${subscription.tier} - ${subscription.status}${usedPercent === null ? "" : ` - ${usedPercent}% used`}`
+              : subscriptionError || "No quota loaded."}
+          </div>
+        </div>
+      </div>
+
+      {modelError ? (
+        <div className="mt-3 text-sm text-muted-foreground">Model metadata unavailable: {modelError}</div>
+      ) : null}
+
+      {result?.requestId ? (
+        <div className="mt-3 font-mono text-xs text-muted-foreground">Request {result.requestId}</div>
+      ) : null}
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        {DOC_LINKS.map((link) => (
+          <a
+            className="inline-flex items-center gap-1 rounded-md border border-border bg-background/60 px-2.5 py-1.5 text-xs text-muted-foreground transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            href={link.href}
+            key={link.href}
+            rel="noreferrer"
+            target="_blank"
+          >
+            {link.label}
+            <ExternalLink aria-hidden="true" className="size-3" />
+          </a>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function MetricTile({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
+  return (
+    <div className="min-w-0 sm:px-3 first:sm:pl-0">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        {icon}
+        <span>{label}</span>
+      </div>
+      <div className="mt-2 truncate font-mono text-sm tabular-nums text-foreground">{value}</div>
+    </div>
+  )
+}
+
 function GeneratedAudio({ error, result }: { error: string | null; result: GeneratedResult | null }) {
   return (
     <section className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5">
@@ -690,7 +1007,11 @@ function GeneratedAudio({ error, result }: { error: string | null; result: Gener
           <audio aria-label="Generated voice playback" controls src={result.url} />
           <div className="flex flex-col gap-3 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
             <span className="font-mono">Voice {result.voiceId}</span>
-            <span>Generated {result.generatedAt}</span>
+            <span className="font-mono">Model {result.modelId}</span>
+            <span>
+              {result.characterCount === null ? "Generated" : `${formatNumber(result.characterCount)} chars`}{" "}
+              {result.generatedAt}
+            </span>
           </div>
           <a
             className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border bg-secondary px-4 text-sm font-medium text-secondary-foreground transition hover:bg-secondary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -728,6 +1049,18 @@ async function readError(response: Response) {
   }
   const text = await response.text()
   return text || `Request failed with status ${response.status}.`
+}
+
+function parseNullableInt(value: string | null) {
+  if (!value) {
+    return null
+  }
+  const parsed = Number.parseInt(value, 10)
+  return Number.isNaN(parsed) ? null : parsed
+}
+
+function formatNumber(value: number) {
+  return new Intl.NumberFormat().format(value)
 }
 
 export default App
