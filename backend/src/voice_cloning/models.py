@@ -33,6 +33,38 @@ class VoiceSettings:
 
 
 @dataclass(frozen=True)
+class SubscriptionSummary:
+    tier: str
+    status: str
+    character_count: int
+    character_limit: int
+    remaining_characters: int
+    can_extend_character_limit: bool
+    max_credit_limit_extension: int | str | None
+    next_character_count_reset_unix: int | None
+
+
+@dataclass(frozen=True)
+class ModelSummary:
+    model_id: str
+    name: str
+    description: str
+    can_use_style: bool
+    can_use_speaker_boost: bool
+    character_cost_multiplier: float | None
+    max_characters_request_free_user: int | None
+    max_characters_request_subscribed_user: int | None
+    maximum_text_length_per_request: int | None
+
+
+@dataclass(frozen=True)
+class SpeechResult:
+    audio: bytes
+    character_count: int | None
+    request_id: str | None
+
+
+@dataclass(frozen=True)
 class VoiceClone:
     voice_id: str
     requires_verification: bool

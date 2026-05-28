@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from .cache import VoiceCache
 from .config import Settings
 from .elevenlabs_client import ElevenLabsClient, ElevenLabsError
-from .models import CachedVoice, VoiceSample, VoiceSettings
+from .models import CachedVoice, ModelSummary, SubscriptionSummary, VoiceSample, VoiceSettings
 from .voice_library import VoiceLibrary
 
 
@@ -40,6 +40,8 @@ def create_app(
             "Content-Disposition",
             "X-App-Voice-Id",
             "X-Sample-Sha256",
+            "X-Character-Count",
+            "X-Request-Id",
             "X-Voice-Cache",
             "X-Voice-Id",
         ],
@@ -62,6 +64,31 @@ def create_app(
     def voices() -> dict[str, object]:
         return resolved_library.list_payload()
 
+    @app.get("/api/subscription")
+    async def subscription() -> dict[str, object]:
+        try:
+            summary = await resolved_client.get_subscription()
+        except RuntimeError as exc:
+            return _subscription_error_payload(str(exc))
+        except ElevenLabsError as exc:
+            return _subscription_error_payload(str(exc))
+        return _subscription_payload(summary)
+
+    @app.get("/api/models")
+    async def models() -> dict[str, object]:
+        try:
+            model_list = await resolved_client.list_models()
+        except RuntimeError as exc:
+            return _models_error_payload(resolved_settings.elevenlabs_model_id, str(exc))
+        except ElevenLabsError as exc:
+            return _models_error_payload(resolved_settings.elevenlabs_model_id, str(exc))
+        return {
+            "available": True,
+            "error": None,
+            "defaultModelId": resolved_settings.elevenlabs_model_id,
+            "models": [_model_payload(model) for model in model_list],
+        }
+
     @app.get("/api/voices/{voice_id}/sample")
     def voice_sample(voice_id: str) -> FileResponse:
         asset = resolved_library.get_asset(voice_id)
@@ -83,6 +110,7 @@ def create_app(
     async def create_speech(
         text: str = Form(...),
         voiceId: str | None = Form(None),
+        modelId: str | None = Form(None),
         stability: Annotated[float, Form(ge=0, le=1)] = 0.5,
         similarityBoost: Annotated[float, Form(ge=0, le=1)] = 0.75,
         style: Annotated[float, Form(ge=0, le=1)] = 0,
@@ -108,6 +136,7 @@ def create_app(
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
         sample = resolved_library.get_sample(app_voice_id)
+        selected_model_id = modelId.strip() if modelId and modelId.strip() else resolved_settings.elevenlabs_model_id
         voice_settings = VoiceSettings(
             stability=stability,
             similarity_boost=similarityBoost,
@@ -126,11 +155,24 @@ def create_app(
             cached_voice = resolved_cache.set(sample, clone)
 
         try:
-            audio = await resolved_client.create_speech(cached_voice.voice_id, normalized_text, voice_settings)
+            speech = await resolved_client.create_speech(
+                cached_voice.voice_id,
+                normalized_text,
+                voice_settings,
+                selected_model_id,
+            )
         except ElevenLabsError as exc:
             raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
-        return _audio_response(audio, sample, cached_voice, cache_state, app_voice_id)
+        return _audio_response(
+            speech.audio,
+            sample,
+            cached_voice,
+            cache_state,
+            app_voice_id,
+            speech.character_count,
+            speech.request_id,
+        )
 
     return app
 
@@ -141,18 +183,78 @@ def _audio_response(
     cached_voice: CachedVoice,
     cache_state: str,
     app_voice_id: str,
+    character_count: int | None,
+    request_id: str | None,
 ) -> Response:
+    headers = {
+        "Content-Disposition": 'attachment; filename="voice-clone.mp3"',
+        "X-App-Voice-Id": app_voice_id,
+        "X-Sample-Sha256": sample.sha256,
+        "X-Voice-Cache": cache_state,
+        "X-Voice-Id": cached_voice.voice_id,
+    }
+    if character_count is not None:
+        headers["X-Character-Count"] = str(character_count)
+    if request_id:
+        headers["X-Request-Id"] = request_id
     return Response(
         content=audio,
         media_type="audio/mpeg",
-        headers={
-            "Content-Disposition": 'attachment; filename="voice-clone.mp3"',
-            "X-App-Voice-Id": app_voice_id,
-            "X-Sample-Sha256": sample.sha256,
-            "X-Voice-Cache": cache_state,
-            "X-Voice-Id": cached_voice.voice_id,
-        },
+        headers=headers,
     )
+
+
+def _subscription_payload(summary: SubscriptionSummary) -> dict[str, object]:
+    return {
+        "available": True,
+        "error": None,
+        "tier": summary.tier,
+        "status": summary.status,
+        "characterCount": summary.character_count,
+        "characterLimit": summary.character_limit,
+        "remainingCharacters": summary.remaining_characters,
+        "canExtendCharacterLimit": summary.can_extend_character_limit,
+        "maxCreditLimitExtension": summary.max_credit_limit_extension,
+        "nextCharacterCountResetUnix": summary.next_character_count_reset_unix,
+    }
+
+
+def _subscription_error_payload(error: str) -> dict[str, object]:
+    return {
+        "available": False,
+        "error": error,
+        "tier": "unknown",
+        "status": "unavailable",
+        "characterCount": 0,
+        "characterLimit": 0,
+        "remainingCharacters": 0,
+        "canExtendCharacterLimit": False,
+        "maxCreditLimitExtension": None,
+        "nextCharacterCountResetUnix": None,
+    }
+
+
+def _models_error_payload(default_model_id: str, error: str) -> dict[str, object]:
+    return {
+        "available": False,
+        "error": error,
+        "defaultModelId": default_model_id,
+        "models": [],
+    }
+
+
+def _model_payload(model: ModelSummary) -> dict[str, object]:
+    return {
+        "modelId": model.model_id,
+        "name": model.name,
+        "description": model.description,
+        "canUseStyle": model.can_use_style,
+        "canUseSpeakerBoost": model.can_use_speaker_boost,
+        "characterCostMultiplier": model.character_cost_multiplier,
+        "maxCharactersRequestFreeUser": model.max_characters_request_free_user,
+        "maxCharactersRequestSubscribedUser": model.max_characters_request_subscribed_user,
+        "maximumTextLengthPerRequest": model.maximum_text_length_per_request,
+    }
 
 
 app = create_app()
