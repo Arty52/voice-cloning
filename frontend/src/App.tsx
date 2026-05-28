@@ -9,11 +9,14 @@ import {
   HardDrive,
   Info,
   LoaderCircle,
+  Mic,
   Pencil,
   RefreshCw,
+  RotateCcw,
   Save,
   Sparkles,
   Star,
+  Square,
   Trash2,
   Upload,
   Volume2,
@@ -52,9 +55,16 @@ import {
   type StoredGeneratedAudio,
 } from "@/lib/generated-audio-storage"
 import { cn } from "@/lib/utils"
+import {
+  MAX_VOICE_RECORDING_SECONDS,
+  startVoiceRecorder,
+  type VoiceRecorderSession,
+} from "@/lib/voice-recorder"
 
 type RequestStatus = "idle" | "generating" | "success" | "error" | "canceled"
 type AsyncStatus = "idle" | "loading" | "success" | "error"
+type RecorderStatus = "idle" | "recording" | "recorded" | "error"
+type VoiceSampleInputMode = "upload" | "record"
 
 type VoiceAsset = {
   id: string
@@ -266,6 +276,10 @@ function App() {
   const [uploadPreviewUrl, setUploadPreviewUrl] = useState<string | null>(null)
   const [uploadStatus, setUploadStatus] = useState<AsyncStatus>("idle")
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const [voiceSampleInputMode, setVoiceSampleInputMode] = useState<VoiceSampleInputMode>("upload")
+  const [recorderStatus, setRecorderStatus] = useState<RecorderStatus>("idle")
+  const [recorderError, setRecorderError] = useState<string | null>(null)
+  const [recordingDurationSeconds, setRecordingDurationSeconds] = useState(0)
   const [renameVoice, setRenameVoice] = useState<VoiceAsset | null>(null)
   const [renameName, setRenameName] = useState("")
   const [renameError, setRenameError] = useState<string | null>(null)
@@ -293,6 +307,9 @@ function App() {
   const generationAbortController = useRef<AbortController | null>(null)
   const generatedAudioItemsRef = useRef<GeneratedResult[]>([])
   const voicePlaybackRef = useRef<HTMLAudioElement | null>(null)
+  const recordingSessionRef = useRef<VoiceRecorderSession | null>(null)
+  const recordingTimerRef = useRef<number | null>(null)
+  const recordingAutoStopTimerRef = useRef<number | null>(null)
 
   const selectedVoice = voices.find((voice) => voice.id === selectedVoiceId) ?? null
   const selectedModel = models.find((model) => model.modelId === selectedModelId) ?? null
@@ -301,8 +318,9 @@ function App() {
   const isUploading = uploadStatus === "loading"
   const isSettingDefault = defaultStatus === "loading"
   const isUpdatingVoice = voiceActionStatus === "loading"
+  const isRecording = recorderStatus === "recording"
   const canGenerate = text.trim().length > 0 && selectedVoice !== null && !isGenerating
-  const canUpload = uploadName.trim().length > 0 && uploadFile !== null && !isUploading
+  const canUpload = uploadName.trim().length > 0 && uploadFile !== null && !isUploading && !isRecording
   const canSetDefault = selectedVoice !== null && selectedVoice.id !== defaultVoiceId && !isSettingDefault
   const characterCount = useMemo(() => text.trim().length, [text])
   const modelMultiplier = selectedModel?.characterCostMultiplier ?? null
@@ -379,6 +397,8 @@ function App() {
       revokeGeneratedAudioUrls(generatedAudioItemsRef.current)
       generationAbortController.current?.abort()
       voicePlaybackRef.current?.pause()
+      clearRecordingTimers(recordingTimerRef, recordingAutoStopTimerRef)
+      void recordingSessionRef.current?.discard()
     }
   }, [])
 
@@ -395,16 +415,94 @@ function App() {
 
   function handleUploadFileChange(event: ChangeEvent<HTMLInputElement>) {
     const nextFile = event.target.files?.[0] ?? null
+    setVoiceSampleInputMode("upload")
     setUploadFile(nextFile)
     setUploadPreviewUrl(nextFile ? URL.createObjectURL(nextFile) : null)
     setUploadError(null)
+  }
+
+  function handleVoiceSampleInputModeChange(mode: VoiceSampleInputMode) {
+    if (isRecording) {
+      return
+    }
+    setVoiceSampleInputMode(mode)
+    setUploadError(null)
+    if (mode === "record") {
+      setUploadFile(null)
+      setUploadPreviewUrl(null)
+      setRecorderError(null)
+      setRecorderStatus("idle")
+      setRecordingDurationSeconds(0)
+    }
+  }
+
+  async function handleStartRecording() {
+    if (isUploading || isRecording) {
+      return
+    }
+
+    setVoiceSampleInputMode("record")
+    setRecorderStatus("recording")
+    setRecorderError(null)
+    setUploadError(null)
+    setUploadFile(null)
+    setUploadPreviewUrl(null)
+    setRecordingDurationSeconds(0)
+
+    try {
+      const session = await startVoiceRecorder()
+      recordingSessionRef.current = session
+      recordingTimerRef.current = window.setInterval(() => {
+        setRecordingDurationSeconds(session.getElapsedSeconds())
+      }, 250)
+      recordingAutoStopTimerRef.current = window.setTimeout(() => {
+        void handleStopRecording(session)
+      }, MAX_VOICE_RECORDING_SECONDS * 1000)
+    } catch (caught) {
+      setRecorderStatus("error")
+      setRecorderError(caught instanceof Error ? caught.message : "Unable to start microphone recording.")
+    }
+  }
+
+  async function handleStopRecording(session = recordingSessionRef.current) {
+    if (!session) {
+      return
+    }
+
+    clearRecordingTimers(recordingTimerRef, recordingAutoStopTimerRef)
+    recordingSessionRef.current = null
+    try {
+      const recording = await session.stop()
+      setUploadFile(recording.file)
+      setUploadPreviewUrl(URL.createObjectURL(recording.file))
+      setRecordingDurationSeconds(recording.durationSeconds)
+      setRecorderStatus("recorded")
+      setRecorderError(null)
+    } catch (caught) {
+      setRecorderStatus("error")
+      setRecorderError(caught instanceof Error ? caught.message : "Unable to save microphone recording.")
+    }
+  }
+
+  async function handleDiscardRecording() {
+    clearRecordingTimers(recordingTimerRef, recordingAutoStopTimerRef)
+    const session = recordingSessionRef.current
+    recordingSessionRef.current = null
+    if (session) {
+      await session.discard()
+    }
+    setUploadFile(null)
+    setUploadPreviewUrl(null)
+    setRecorderStatus("idle")
+    setRecorderError(null)
+    setRecordingDurationSeconds(0)
   }
 
   async function handleUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!canUpload || !uploadFile) {
       setUploadStatus("error")
-      setUploadError("Add a voice name and audio sample before saving.")
+      setUploadError("Add a voice name and upload or record an audio sample before saving.")
       return
     }
 
@@ -425,6 +523,9 @@ function App() {
       setUploadName("")
       setUploadFile(null)
       setUploadPreviewUrl(null)
+      setRecorderStatus("idle")
+      setRecorderError(null)
+      setRecordingDurationSeconds(0)
       setUploadStatus("success")
     } catch (caught) {
       setUploadStatus("error")
@@ -1101,22 +1202,97 @@ function App() {
                     Enter a voice name to enable Save Voice.
                   </span>
                 </label>
-                <label className="block space-y-2 text-sm font-medium" htmlFor="sample-upload">
-                  <span>Sample File</span>
-                  <Input
-                    accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac"
-                    disabled={isUploading}
-                    id="sample-upload"
-                    onChange={handleUploadFileChange}
-                    type="file"
-                  />
-                </label>
+                <div className="grid grid-cols-2 gap-1 rounded-md border border-border bg-background/60 p-1" role="group" aria-label="Voice sample source">
+                  <Button
+                    aria-pressed={voiceSampleInputMode === "upload"}
+                    className={cn(voiceSampleInputMode !== "upload" && "bg-transparent")}
+                    disabled={isUploading || isRecording}
+                    onClick={() => handleVoiceSampleInputModeChange("upload")}
+                    type="button"
+                    variant={voiceSampleInputMode === "upload" ? "secondary" : "ghost"}
+                  >
+                    <Upload aria-hidden="true" className="size-4" />
+                    Upload
+                  </Button>
+                  <Button
+                    aria-pressed={voiceSampleInputMode === "record"}
+                    className={cn(voiceSampleInputMode !== "record" && "bg-transparent")}
+                    disabled={isUploading || isRecording}
+                    onClick={() => handleVoiceSampleInputModeChange("record")}
+                    type="button"
+                    variant={voiceSampleInputMode === "record" ? "secondary" : "ghost"}
+                  >
+                    <Mic aria-hidden="true" className="size-4" />
+                    Record
+                  </Button>
+                </div>
+
+                {voiceSampleInputMode === "upload" ? (
+                  <label className="block space-y-2 text-sm font-medium" htmlFor="sample-upload">
+                    <span>Sample File</span>
+                    <Input
+                      accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac"
+                      disabled={isUploading}
+                      id="sample-upload"
+                      onChange={handleUploadFileChange}
+                      type="file"
+                    />
+                  </label>
+                ) : (
+                  <div className="rounded-md border border-border bg-background/60 p-3">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div className="text-sm font-medium">Recorder</div>
+                      <div className="font-mono text-xs tabular-nums text-muted-foreground">
+                        {formatRecordingDuration(recordingDurationSeconds)}
+                      </div>
+                    </div>
+                    {recorderError ? (
+                      <div className="mb-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm" role="alert">
+                        {recorderError}
+                      </div>
+                    ) : null}
+                    <div className="flex flex-wrap gap-2">
+                      <Button disabled={isUploading || isRecording} onClick={() => void handleStartRecording()} size="sm" type="button">
+                        <Mic aria-hidden="true" className="size-4" />
+                        Start Recording
+                      </Button>
+                      <Button
+                        disabled={!isRecording}
+                        onClick={() => void handleStopRecording()}
+                        size="sm"
+                        type="button"
+                        variant="secondary"
+                      >
+                        <Square aria-hidden="true" className="size-4" />
+                        Stop
+                      </Button>
+                      <Button
+                        disabled={isUploading || (recorderStatus === "idle" && !uploadFile)}
+                        onClick={() => void handleDiscardRecording()}
+                        size="sm"
+                        type="button"
+                        variant="ghost"
+                      >
+                        <RotateCcw aria-hidden="true" className="size-4" />
+                        Discard
+                      </Button>
+                    </div>
+                  </div>
+                )}
                 <div className="rounded-md border border-border bg-background/60 p-3">
-                  <div className="mb-2 text-sm font-medium">Upload Preview</div>
+                  <div className="mb-2 text-sm font-medium">
+                    {voiceSampleInputMode === "record" ? "Recording Preview" : "Upload Preview"}
+                  </div>
                   {uploadPreviewUrl ? (
-                    <audio aria-label="Uploaded voice sample preview" controls src={uploadPreviewUrl} />
+                    <audio
+                      aria-label={voiceSampleInputMode === "record" ? "Recorded voice sample preview" : "Uploaded voice sample preview"}
+                      controls
+                      src={uploadPreviewUrl}
+                    />
                   ) : (
-                    <p className="text-sm text-muted-foreground">No upload selected.</p>
+                    <p className="text-sm text-muted-foreground">
+                      {voiceSampleInputMode === "record" ? "No recording captured." : "No upload selected."}
+                    </p>
                   )}
                 </div>
                 <Button className="w-full" disabled={!canUpload} type="submit">
@@ -1766,6 +1942,20 @@ function parseNullableInt(value: string | null) {
   return Number.isNaN(parsed) ? null : parsed
 }
 
+function clearRecordingTimers(
+  recordingTimerRef: { current: number | null },
+  recordingAutoStopTimerRef: { current: number | null }
+) {
+  if (recordingTimerRef.current !== null) {
+    window.clearInterval(recordingTimerRef.current)
+    recordingTimerRef.current = null
+  }
+  if (recordingAutoStopTimerRef.current !== null) {
+    window.clearTimeout(recordingAutoStopTimerRef.current)
+    recordingAutoStopTimerRef.current = null
+  }
+}
+
 function formatNumber(value: number) {
   return new Intl.NumberFormat().format(value)
 }
@@ -1776,6 +1966,13 @@ function formatBytes(value: number) {
   }
   const mebibytes = value / BYTES_PER_MEBIBYTE
   return `${Number.isInteger(mebibytes) ? formatNumber(mebibytes) : mebibytes.toFixed(1)} MB`
+}
+
+function formatRecordingDuration(durationSeconds: number) {
+  const seconds = Math.max(0, Math.floor(durationSeconds))
+  const minutes = Math.floor(seconds / 60)
+  const remainingSeconds = seconds % 60
+  return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`
 }
 
 function storedAudioToResult(record: StoredGeneratedAudio): GeneratedResult {
