@@ -66,6 +66,19 @@ The optional live smoke test calls ElevenLabs and may consume credits.
   - Python 3.14+
   - Node.js 24+
 
+## ElevenLabs API Key Permissions
+
+For a restricted ElevenLabs API key, grant the least-privilege permissions below. The Developer Console may show human-readable labels instead of raw scope names; choose the matching product permission.
+
+| Permission scope | Access type | Required for |
+| --- | --- | --- |
+| `text_to_speech` | Generate/execute | Generate speech through `POST /v1/text-to-speech/{voice_id}`. This can consume credits. |
+| `create_instant_voice_clone` | Write/create | Clone a new uploaded sample through `POST /v1/voices/add`. This is needed the first time a sample hash is not already in the local clone cache. |
+| `models_read` | Read | Load `GET /v1/models` for the model selector and model-rate estimate metadata. |
+| `user_read` | Read | Load `GET /v1/user/subscription` for quota and remaining-credit display. |
+
+`models_read` and `user_read` are not required to generate speech, but the Cost & quota panel will show model or quota metadata as unavailable without them. Keep key restrictions enabled and add only the scopes this app needs.
+
 ## From Zero To One
 
 Clone the repository:
@@ -265,7 +278,12 @@ Check your ElevenLabs account subscription and usage. Shorter text and lower-cos
 
 ### Quota or model metadata unavailable
 
-Some ElevenLabs keys are scoped and may not include `user_read` or `models_read`. In that case, the Cost & quota panel shows quota or model metadata as unavailable, but generation can still proceed with the backend default model.
+Some ElevenLabs keys are scoped. Use the permission error to update the key in the ElevenLabs Developer Console:
+
+- Missing `user_read` means subscription/quota reads return unavailable.
+- Missing `models_read` means model metadata returns unavailable and generation falls back to `ELEVENLABS_MODEL_ID`.
+- Missing `create_instant_voice_clone` or the matching voice-clone create/write permission can break first-time cloning of a new voice sample.
+- Missing `text_to_speech` can break speech generation.
 
 ### Reset local runtime data
 
@@ -284,10 +302,12 @@ make destroy
 ## References
 
 - [ElevenLabs API Documentation](https://docs.elevenlabs.io/)
+- [ElevenLabs API Authentication and Scoped Keys](https://elevenlabs.io/docs/api-reference/authentication)
 - [ElevenLabs API Request Analytics](https://elevenlabs.io/app/developers/analytics/api-requests)
 - [Tracking generation costs](https://elevenlabs.io/docs/api-reference/introduction)
 - [Get User Subscription API](https://elevenlabs.io/docs/api-reference/user/subscription/get)
-- [List Models API](https://elevenlabs.io/docs/api-reference/get-models)
+- [List Models API](https://elevenlabs.io/docs/api-reference/models/list)
+- [Create IVC Voice API](https://elevenlabs.io/docs/api-reference/voices/ivc/create)
 - [Create Speech API](https://elevenlabs.io/docs/api-reference/text-to-speech/convert)
 - [Instant Voice Cloning Documentation](https://elevenlabs.io/docs/eleven-creative/voices/voice-cloning/instant-voice-cloning)
 
