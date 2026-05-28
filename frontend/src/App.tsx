@@ -123,6 +123,7 @@ const DEFAULT_TEXT =
   "Welcome to the local voice clone lab. This sample is generated through ElevenLabs using the selected voice reference."
 
 const DEFAULT_MODEL_ID = "eleven_multilingual_v2"
+const BACKEND_DEFAULT_MODEL_LABEL = "Backend default model"
 
 const DEFAULT_TUNING: VoiceTuning = {
   stability: 0.5,
@@ -234,6 +235,7 @@ function App() {
   const [models, setModels] = useState<ModelOption[]>([])
   const [modelStatus, setModelStatus] = useState<AsyncStatus>("idle")
   const [modelError, setModelError] = useState<string | null>(null)
+  const [backendDefaultModelId, setBackendDefaultModelId] = useState<string | null>(null)
   const [selectedModelId, setSelectedModelId] = useState(DEFAULT_MODEL_ID)
   const [result, setResult] = useState<GeneratedResult | null>(null)
   const [status, setStatus] = useState<RequestStatus>("idle")
@@ -390,6 +392,7 @@ function App() {
     try {
       const payload = await fetchJson<ModelsResponse>("/api/models")
       const loadedModels = Array.isArray(payload.models) ? payload.models : []
+      setBackendDefaultModelId(payload.defaultModelId || null)
       setModels(payload.available ? loadedModels : [])
       setSelectedModelId((current) => {
         if (payload.available && loadedModels.some((model) => model.modelId === current)) {
@@ -405,6 +408,7 @@ function App() {
       }
     } catch (caught) {
       setModels([])
+      setBackendDefaultModelId(null)
       setSelectedModelId((current) => current || DEFAULT_MODEL_ID)
       setModelStatus("error")
       setModelError(caught instanceof Error ? caught.message : "Unable to load models.")
@@ -423,10 +427,11 @@ function App() {
     setError(null)
 
     const formData = new FormData()
+    const submittedModelId = models.some((model) => model.modelId === selectedModelId) ? selectedModelId : null
     formData.append("text", text.trim())
     formData.append("voiceId", selectedVoice.id)
-    if (models.some((model) => model.modelId === selectedModelId)) {
-      formData.append("modelId", selectedModelId)
+    if (submittedModelId) {
+      formData.append("modelId", submittedModelId)
     }
     formData.append("stability", String(tuning.stability))
     formData.append("similarityBoost", String(tuning.similarityBoost))
@@ -459,7 +464,7 @@ function App() {
           cacheState: response.headers.get("X-Voice-Cache") || "unknown",
           voiceId: response.headers.get("X-Voice-Id") || "unknown",
           appVoiceId: response.headers.get("X-App-Voice-Id") || selectedVoice.id,
-          modelId: selectedModelId,
+          modelId: response.headers.get("X-Model-Id") || submittedModelId || backendDefaultModelId || BACKEND_DEFAULT_MODEL_LABEL,
           characterCount: parseNullableInt(response.headers.get("X-Character-Count")),
           requestId: response.headers.get("X-Request-Id"),
           generatedAt,

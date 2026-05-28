@@ -72,7 +72,7 @@ function okJson(payload: unknown) {
   )
 }
 
-function okAudio() {
+function okAudio(headers: Record<string, string> = {}) {
   return Promise.resolve(
     new Response(audioBlob, {
       status: 200,
@@ -83,6 +83,7 @@ function okAudio() {
         "X-Request-Id": "req_test_123",
         "X-Voice-Cache": "miss",
         "X-Voice-Id": "voice-123",
+        ...headers,
       },
     })
   )
@@ -391,5 +392,56 @@ describe("App", () => {
     expect(await screen.findAllByText("54")).toHaveLength(1)
     expect(screen.getByText(/54 chars/)).toBeInTheDocument()
     expect(screen.getByText(/req_test_123/)).toBeInTheDocument()
+  })
+
+  it("reports the backend resolved model when model metadata is still loading", async () => {
+    let resolveModels: (value: Response) => void = () => undefined
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        if (url === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "default", voices: [defaultVoice] })
+        }
+        if (url === "/api/subscription" && !init) {
+          return okJson(subscription)
+        }
+        if (url === "/api/models" && !init) {
+          return new Promise<Response>((resolve) => {
+            resolveModels = resolve
+          })
+        }
+        if (url === "/api/speech" && init?.method === "POST") {
+          return okAudio({ "X-Model-Id": "eleven_turbo_v2_5" })
+        }
+        return okJson({})
+      })
+    )
+    const user = userEvent.setup()
+    render(<App />)
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.click(screen.getByRole("button", { name: /generate/i }))
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/speech", expect.objectContaining({ method: "POST" })))
+    const speechCall = vi.mocked(fetch).mock.calls.find(
+      ([url, init]) => String(url) === "/api/speech" && init?.method === "POST"
+    )
+    const body = speechCall?.[1]?.body as FormData
+    expect(body.has("modelId")).toBe(false)
+    expect(await screen.findByText(/Model eleven_turbo_v2_5/)).toBeInTheDocument()
+    expect(screen.queryByText(/Model eleven_multilingual_v2/)).not.toBeInTheDocument()
+
+    resolveModels(
+      new Response(
+        JSON.stringify({
+          available: true,
+          error: null,
+          defaultModelId: "eleven_turbo_v2_5",
+          models: [multilingualModel],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    )
   })
 })

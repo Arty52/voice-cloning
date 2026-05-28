@@ -41,6 +41,7 @@ def create_app(
             "X-App-Voice-Id",
             "X-Sample-Sha256",
             "X-Character-Count",
+            "X-Model-Id",
             "X-Request-Id",
             "X-Voice-Cache",
             "X-Voice-Id",
@@ -170,6 +171,7 @@ def create_app(
             cached_voice,
             cache_state,
             app_voice_id,
+            selected_model_id,
             speech.character_count,
             speech.request_id,
         )
@@ -183,6 +185,7 @@ def _audio_response(
     cached_voice: CachedVoice,
     cache_state: str,
     app_voice_id: str,
+    model_id: str,
     character_count: int | None,
     request_id: str | None,
 ) -> Response:
@@ -192,6 +195,7 @@ def _audio_response(
         "X-Sample-Sha256": sample.sha256,
         "X-Voice-Cache": cache_state,
         "X-Voice-Id": cached_voice.voice_id,
+        "X-Model-Id": model_id,
     }
     if character_count is not None:
         headers["X-Character-Count"] = str(character_count)

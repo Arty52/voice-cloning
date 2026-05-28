@@ -294,6 +294,7 @@ def test_create_speech_returns_usage_metadata(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert response.headers["x-character-count"] == "24"
+    assert response.headers["x-model-id"] == "eleven_multilingual_v2"
     assert response.headers["x-request-id"] == "req_test_123"
 
 
@@ -308,6 +309,8 @@ def test_create_speech_uses_model_fallback_and_override(tmp_path: Path) -> None:
 
     assert fallback.status_code == 200
     assert override.status_code == 200
+    assert fallback.headers["x-model-id"] == "eleven_multilingual_v2"
+    assert override.headers["x-model-id"] == "eleven_flash_v2_5"
     assert fake_client.speech_requests[0][3] == "eleven_multilingual_v2"
     assert fake_client.speech_requests[1][3] == "eleven_flash_v2_5"
 
