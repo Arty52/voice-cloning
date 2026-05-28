@@ -6,12 +6,14 @@ import {
   ExternalLink,
   FileAudio,
   Gauge,
+  HardDrive,
   Info,
   LoaderCircle,
   RefreshCw,
   Save,
   Sparkles,
   Star,
+  Trash2,
   Upload,
   Volume2,
   X,
@@ -31,6 +33,21 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  BYTES_PER_MEBIBYTE,
+  DEFAULT_GENERATED_AUDIO_STORAGE_LIMIT_BYTES,
+  GENERATED_AUDIO_STORAGE_LIMIT_PRESETS_BYTES,
+  GeneratedAudioStorageQuotaError,
+  clearGeneratedAudio,
+  deleteGeneratedAudio,
+  getGeneratedAudioStorageLimitBytes,
+  getGeneratedAudioUsage,
+  listGeneratedAudio,
+  saveGeneratedAudio,
+  updateGeneratedAudioStorageLimitBytes,
+  type GeneratedAudioUsage,
+  type StoredGeneratedAudio,
+} from "@/lib/generated-audio-storage"
 import { cn } from "@/lib/utils"
 
 type RequestStatus = "idle" | "generating" | "success" | "error" | "canceled"
@@ -84,14 +101,27 @@ type ModelsResponse = {
 }
 
 type GeneratedResult = {
+  id: string
   url: string
+  sizeBytes: number
+  contentType: string
   cacheState: string
   voiceId: string
   appVoiceId: string
+  voiceName: string
   modelId: string
   characterCount: number | null
   requestId: string | null
+  createdAt: string
   generatedAt: string
+}
+
+type ConfirmationState = {
+  body: string
+  confirmLabel: string
+  destructive?: boolean
+  onConfirm: () => Promise<void> | void
+  title: string
 }
 
 type VoiceTuning = {
@@ -242,7 +272,11 @@ function App() {
   const [modelError, setModelError] = useState<string | null>(null)
   const [backendDefaultModelId, setBackendDefaultModelId] = useState<string | null>(null)
   const [selectedModelId, setSelectedModelId] = useState(DEFAULT_MODEL_ID)
-  const [result, setResult] = useState<GeneratedResult | null>(null)
+  const [generatedAudioItems, setGeneratedAudioItems] = useState<GeneratedResult[]>([])
+  const [generatedAudioUsage, setGeneratedAudioUsage] = useState<GeneratedAudioUsage | null>(null)
+  const [generatedAudioStorageError, setGeneratedAudioStorageError] = useState<string | null>(null)
+  const [storageLimitBytes, setStorageLimitBytes] = useState(() => getGeneratedAudioStorageLimitBytes())
+  const [confirmation, setConfirmation] = useState<ConfirmationState | null>(null)
   const [status, setStatus] = useState<RequestStatus>("idle")
   const [error, setError] = useState<string | null>(null)
   const [tuning, setTuning] = useState<VoiceTuning>(DEFAULT_TUNING)
@@ -250,9 +284,11 @@ function App() {
   const [isCostQuotaExpanded, setIsCostQuotaExpanded] = useState(false)
   const textRef = useRef<HTMLTextAreaElement | null>(null)
   const generationAbortController = useRef<AbortController | null>(null)
+  const generatedAudioItemsRef = useRef<GeneratedResult[]>([])
 
   const selectedVoice = voices.find((voice) => voice.id === selectedVoiceId) ?? null
   const selectedModel = models.find((model) => model.modelId === selectedModelId) ?? null
+  const result = generatedAudioItems[0] ?? null
   const isGenerating = status === "generating"
   const isUploading = uploadStatus === "loading"
   const isSettingDefault = defaultStatus === "loading"
@@ -288,6 +324,30 @@ function App() {
     void loadModels()
   }, [])
 
+  useEffect(() => {
+    async function loadGeneratedAudioLibrary() {
+      try {
+        const limitBytes = getGeneratedAudioStorageLimitBytes()
+        const [records, usage] = await Promise.all([listGeneratedAudio(), getGeneratedAudioUsage(limitBytes)])
+        const nextItems = records.map(storedAudioToResult)
+        setGeneratedAudioItems((previous) => {
+          revokeGeneratedAudioUrls(previous)
+          return nextItems
+        })
+        setGeneratedAudioUsage(usage)
+        setGeneratedAudioStorageError(null)
+      } catch (caught) {
+        setGeneratedAudioStorageError(caught instanceof Error ? caught.message : "Unable to load generated audio.")
+      }
+    }
+
+    void loadGeneratedAudioLibrary()
+  }, [])
+
+  useEffect(() => {
+    generatedAudioItemsRef.current = generatedAudioItems
+  }, [generatedAudioItems])
+
   useLayoutEffect(() => {
     const textarea = textRef.current
     if (!textarea) {
@@ -307,14 +367,7 @@ function App() {
 
   useEffect(() => {
     return () => {
-      if (result) {
-        URL.revokeObjectURL(result.url)
-      }
-    }
-  }, [result])
-
-  useEffect(() => {
-    return () => {
+      revokeGeneratedAudioUrls(generatedAudioItemsRef.current)
       generationAbortController.current?.abort()
     }
   }, [])
@@ -427,6 +480,110 @@ function App() {
     }
   }
 
+  function replaceGeneratedAudioItems(records: StoredGeneratedAudio[]) {
+    const nextItems = records.map(storedAudioToResult)
+    setGeneratedAudioItems((previous) => {
+      revokeGeneratedAudioUrls(previous)
+      return nextItems
+    })
+  }
+
+  function showTemporaryGeneratedAudio(record: StoredGeneratedAudio) {
+    const temporaryItem = storedAudioToResult(record)
+    setGeneratedAudioItems((previous) => [temporaryItem, ...previous])
+  }
+
+  async function handleDeleteGeneratedAudio(id: string) {
+    if (isTemporaryGeneratedAudioId(id)) {
+      removeGeneratedAudioItemFromState(id)
+      setGeneratedAudioStorageError(null)
+      return
+    }
+
+    try {
+      const usage = await deleteGeneratedAudio(id)
+      removeGeneratedAudioItemFromState(id)
+      setGeneratedAudioUsage(usage)
+      setGeneratedAudioStorageError(null)
+    } catch (caught) {
+      setGeneratedAudioStorageError(caught instanceof Error ? caught.message : "Unable to remove generated audio.")
+    }
+  }
+
+  function removeGeneratedAudioItemFromState(id: string) {
+    setGeneratedAudioItems((previous) => {
+      const nextItems: GeneratedResult[] = []
+      for (const item of previous) {
+        if (item.id === id) {
+          URL.revokeObjectURL(item.url)
+        } else {
+          nextItems.push(item)
+        }
+      }
+      return nextItems
+    })
+  }
+
+  function requestClearGeneratedAudio() {
+    if (generatedAudioItems.length === 0) {
+      return
+    }
+    setConfirmation({
+      body: "This removes every saved generated audio item from this browser.",
+      confirmLabel: "Clear all",
+      destructive: true,
+      onConfirm: handleClearGeneratedAudio,
+      title: "Clear generated audio?",
+    })
+  }
+
+  async function handleClearGeneratedAudio() {
+    try {
+      const usage = await clearGeneratedAudio()
+      setGeneratedAudioItems((previous) => {
+        revokeGeneratedAudioUrls(previous)
+        return []
+      })
+      setGeneratedAudioUsage(usage)
+      setGeneratedAudioStorageError(null)
+    } catch (caught) {
+      setGeneratedAudioStorageError(caught instanceof Error ? caught.message : "Unable to clear generated audio.")
+    }
+  }
+
+  function handleStorageLimitChange(nextLimitBytes: number) {
+    if (nextLimitBytes === storageLimitBytes) {
+      return
+    }
+
+    const usedBytes = generatedAudioUsage?.usedBytes ?? 0
+    if (nextLimitBytes < storageLimitBytes && usedBytes > nextLimitBytes) {
+      setConfirmation({
+        body: `This will remove the oldest saved generated audio until usage fits under ${formatBytes(nextLimitBytes)}.`,
+        confirmLabel: "Lower cap",
+        destructive: true,
+        onConfirm: () => applyGeneratedAudioStorageLimit(nextLimitBytes),
+        title: "Lower storage cap?",
+      })
+      return
+    }
+
+    void applyGeneratedAudioStorageLimit(nextLimitBytes)
+  }
+
+  async function applyGeneratedAudioStorageLimit(nextLimitBytes: number) {
+    try {
+      const result = await updateGeneratedAudioStorageLimitBytes(nextLimitBytes)
+      const records = await listGeneratedAudio()
+      replaceGeneratedAudioItems(records)
+      setStorageLimitBytes(result.usage.limitBytes)
+      setGeneratedAudioUsage(result.usage)
+      setGeneratedAudioStorageError(null)
+    } catch (caught) {
+      setGeneratedAudioStorageError(caught instanceof Error ? caught.message : "Unable to update generated audio storage.")
+    }
+  }
+
   async function handleGenerate(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault()
     if (!canGenerate || !selectedVoice) {
@@ -469,27 +626,34 @@ function App() {
       }
 
       const audioBlob = await response.blob()
-      const audioUrl = URL.createObjectURL(audioBlob)
-      const generatedAt = new Date().toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-      })
-      setResult((previous) => {
-        if (previous) {
-          URL.revokeObjectURL(previous.url)
-        }
-        return {
-          url: audioUrl,
-          cacheState: response.headers.get("X-Voice-Cache") || "unknown",
-          voiceId: response.headers.get("X-Voice-Id") || "unknown",
-          appVoiceId: response.headers.get("X-App-Voice-Id") || selectedVoice.id,
-          modelId: response.headers.get("X-Model-Id") || submittedModelId || backendDefaultModelId || BACKEND_DEFAULT_MODEL_LABEL,
-          characterCount: parseNullableInt(response.headers.get("X-Character-Count")),
-          requestId: response.headers.get("X-Request-Id"),
-          generatedAt,
-        }
-      })
+      const createdAt = new Date().toISOString()
+      const generatedAudioInput = {
+        appVoiceId: response.headers.get("X-App-Voice-Id") || selectedVoice.id,
+        blob: audioBlob,
+        cacheState: response.headers.get("X-Voice-Cache") || "unknown",
+        characterCount: parseNullableInt(response.headers.get("X-Character-Count")),
+        contentType: audioBlob.type || response.headers.get("Content-Type") || "audio/mpeg",
+        createdAt,
+        modelId: response.headers.get("X-Model-Id") || submittedModelId || backendDefaultModelId || BACKEND_DEFAULT_MODEL_LABEL,
+        requestId: response.headers.get("X-Request-Id"),
+        voiceId: response.headers.get("X-Voice-Id") || "unknown",
+        voiceName: selectedVoice.name,
+      }
+
+      try {
+        const saved = await saveGeneratedAudio(generatedAudioInput, storageLimitBytes)
+        const records = await listGeneratedAudio()
+        replaceGeneratedAudioItems(records)
+        setGeneratedAudioUsage(saved.usage)
+        setGeneratedAudioStorageError(null)
+      } catch (storageError) {
+        showTemporaryGeneratedAudio({
+          ...generatedAudioInput,
+          id: createTemporaryGeneratedAudioId(),
+          sizeBytes: audioBlob.size,
+        })
+        setGeneratedAudioStorageError(formatGeneratedAudioStorageError(storageError))
+      }
       setStatus("success")
     } catch (caught) {
       if (isAbortError(caught)) {
@@ -692,7 +856,17 @@ function App() {
               </label>
             </section>
 
-            <GeneratedAudio error={error} result={result} status={status} />
+            <GeneratedAudio
+              error={error}
+              items={generatedAudioItems}
+              onClear={requestClearGeneratedAudio}
+              onDelete={(id) => void handleDeleteGeneratedAudio(id)}
+              onStorageLimitChange={handleStorageLimitChange}
+              status={status}
+              storageError={generatedAudioStorageError}
+              storageLimitBytes={storageLimitBytes}
+              usage={generatedAudioUsage}
+            />
           </section>
 
           <aside className="flex flex-col gap-4">
@@ -853,6 +1027,7 @@ function App() {
           </aside>
         </div>
       </div>
+      <ConfirmationDialog confirmation={confirmation} onCancel={() => setConfirmation(null)} />
     </main>
   )
 }
@@ -1064,23 +1239,47 @@ function MetricTile({ icon, label, value }: { icon: ReactNode; label: string; va
 
 function GeneratedAudio({
   error,
-  result,
+  items,
+  onClear,
+  onDelete,
+  onStorageLimitChange,
   status,
+  storageError,
+  storageLimitBytes,
+  usage,
 }: {
   error: string | null
-  result: GeneratedResult | null
+  items: GeneratedResult[]
+  onClear: () => void
+  onDelete: (id: string) => void
+  onStorageLimitChange: (limitBytes: number) => void
   status: RequestStatus
+  storageError: string | null
+  storageLimitBytes: number
+  usage: GeneratedAudioUsage | null
 }) {
   const isCanceled = status === "canceled"
+  const resolvedUsage = usage ?? {
+    itemCount: items.length,
+    limitBytes: storageLimitBytes || DEFAULT_GENERATED_AUDIO_STORAGE_LIMIT_BYTES,
+    remainingBytes: storageLimitBytes || DEFAULT_GENERATED_AUDIO_STORAGE_LIMIT_BYTES,
+    usedBytes: 0,
+  }
+  const usagePercent =
+    resolvedUsage.limitBytes > 0 ? Math.min(100, Math.round((resolvedUsage.usedBytes / resolvedUsage.limitBytes) * 100)) : 0
+  const savedItemCount =
+    usage?.itemCount ?? items.filter((item) => !isTemporaryGeneratedAudioId(item.id)).length
+  const temporaryItemCount = Math.max(0, items.length - savedItemCount)
+  const itemCountBadge = formatGeneratedAudioCountBadge(savedItemCount, temporaryItemCount)
 
   return (
     <section className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-medium">Generated audio</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Playback and download appear after a run.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Saved in this browser for playback and download.</p>
         </div>
-        {result ? <Badge>{result.cacheState === "hit" ? "cache hit" : "cache miss"}</Badge> : null}
+        {itemCountBadge ? <Badge>{itemCountBadge}</Badge> : null}
       </div>
 
       {error ? (
@@ -1097,25 +1296,96 @@ function GeneratedAudio({
         </div>
       ) : null}
 
-      {result ? (
-        <div className="space-y-3">
-          <audio aria-label="Generated voice playback" controls src={result.url} />
-          <div className="flex flex-col gap-3 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-            <span className="font-mono">Voice {result.voiceId}</span>
-            <span className="font-mono">Model {result.modelId}</span>
-            <span>
-              {result.characterCount === null ? "Generated" : `${formatNumber(result.characterCount)} chars`}{" "}
-              {result.generatedAt}
-            </span>
+      {storageError ? (
+        <div className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm" role="alert">
+          {storageError}
+        </div>
+      ) : null}
+
+      <div className="mb-4 rounded-md border border-border bg-background/60 p-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <HardDrive aria-hidden="true" className="size-4 text-primary" />
+              Browser storage
+            </div>
+            <div className="mt-1 font-mono text-xs text-muted-foreground">
+              {formatBytes(resolvedUsage.usedBytes)} / {formatBytes(resolvedUsage.limitBytes)}
+            </div>
           </div>
-          <a
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-border bg-secondary px-4 text-sm font-medium text-secondary-foreground transition hover:bg-secondary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            download={`voice-clone-${result.appVoiceId}.mp3`}
-            href={result.url}
-          >
-            <Download aria-hidden="true" className="size-4" />
-            Download
-          </a>
+          <label className="flex items-center gap-2 text-sm font-medium" htmlFor="generated-audio-storage-cap">
+            <span>Cap</span>
+            <select
+              className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
+              id="generated-audio-storage-cap"
+              onChange={(event) => onStorageLimitChange(Number(event.target.value))}
+              value={storageLimitBytes}
+            >
+              {GENERATED_AUDIO_STORAGE_LIMIT_PRESETS_BYTES.map((limitBytes) => (
+                <option key={limitBytes} value={limitBytes}>
+                  {formatBytes(limitBytes)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+          <div className="h-full rounded-full bg-primary" style={{ width: `${usagePercent}%` }} />
+        </div>
+      </div>
+
+      {items.length > 0 ? (
+        <div className="space-y-3">
+          <div className="flex justify-end">
+            <Button onClick={onClear} size="sm" type="button" variant="secondary">
+              <Trash2 aria-hidden="true" className="size-4" />
+              Clear all
+            </Button>
+          </div>
+          {items.map((item, index) => (
+            <div className="rounded-md border border-border bg-background/60 p-3" key={item.id}>
+              <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium">{item.voiceName}</div>
+                  <div className="mt-1 truncate font-mono text-xs text-muted-foreground">Voice {item.voiceId}</div>
+                </div>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  {index === 0 ? <Badge>Latest</Badge> : null}
+                  <Badge>{item.cacheState === "hit" ? "cache hit" : "cache miss"}</Badge>
+                </div>
+              </div>
+              <audio aria-label={`Generated voice playback for ${item.voiceName}`} controls src={item.url} />
+              <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
+                <span className="truncate font-mono">Model {item.modelId}</span>
+                <span>
+                  {item.characterCount === null ? "Generated" : `${formatNumber(item.characterCount)} chars`}{" "}
+                  {item.generatedAt}
+                </span>
+                <span className="font-mono">{formatBytes(item.sizeBytes)}</span>
+              </div>
+              {item.requestId ? <div className="mt-2 truncate font-mono text-xs text-muted-foreground">Request {item.requestId}</div> : null}
+              <div className="mt-3 flex flex-wrap gap-2">
+                <a
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-secondary px-3 text-sm font-medium text-secondary-foreground transition hover:bg-secondary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  download={`voice-clone-${item.appVoiceId}-${item.id}.mp3`}
+                  href={item.url}
+                >
+                  <Download aria-hidden="true" className="size-4" />
+                  Download
+                </a>
+                <Button
+                  aria-label={`Remove generated audio for ${item.voiceName}`}
+                  onClick={() => onDelete(item.id)}
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                >
+                  <Trash2 aria-hidden="true" className="size-4" />
+                  Remove
+                </Button>
+              </div>
+            </div>
+          ))}
         </div>
       ) : (
         <div className="rounded-md border border-dashed border-border bg-background/50 p-5 text-sm text-muted-foreground">
@@ -1123,6 +1393,108 @@ function GeneratedAudio({
         </div>
       )}
     </section>
+  )
+}
+
+function ConfirmationDialog({ confirmation, onCancel }: { confirmation: ConfirmationState | null; onCancel: () => void }) {
+  const cancelButtonRef = useRef<HTMLButtonElement | null>(null)
+  const dialogRef = useRef<HTMLDivElement | null>(null)
+  const onCancelRef = useRef(onCancel)
+  const previouslyFocusedElementRef = useRef<HTMLElement | null>(null)
+
+  useEffect(() => {
+    onCancelRef.current = onCancel
+  }, [onCancel])
+
+  useEffect(() => {
+    if (!confirmation) {
+      return
+    }
+
+    previouslyFocusedElementRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    cancelButtonRef.current?.focus()
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault()
+        onCancelRef.current()
+        return
+      }
+      if (event.key !== "Tab") {
+        return
+      }
+
+      const dialog = dialogRef.current
+      if (!dialog) {
+        return
+      }
+      const focusableElements = getFocusableDialogElements(dialog)
+      if (focusableElements.length === 0) {
+        event.preventDefault()
+        dialog.focus()
+        return
+      }
+
+      const firstElement = focusableElements[0]
+      const lastElement = focusableElements[focusableElements.length - 1]
+      const activeElement = document.activeElement
+
+      if (event.shiftKey && (activeElement === firstElement || !dialog.contains(activeElement))) {
+        event.preventDefault()
+        lastElement.focus()
+      } else if (!event.shiftKey && activeElement === lastElement) {
+        event.preventDefault()
+        firstElement.focus()
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown)
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown)
+      const previousElement = previouslyFocusedElementRef.current
+      if (previousElement?.isConnected) {
+        previousElement.focus()
+      }
+    }
+  }, [confirmation])
+
+  if (!confirmation) {
+    return null
+  }
+  const titleId = "confirmation-dialog-title"
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 px-4 backdrop-blur-sm">
+      <div
+        aria-labelledby={titleId}
+        aria-modal="true"
+        className="w-full max-w-md rounded-lg border border-border bg-card p-5 shadow-xl"
+        ref={dialogRef}
+        role="dialog"
+        tabIndex={-1}
+      >
+        <h2 className="text-lg font-medium" id={titleId}>
+          {confirmation.title}
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">{confirmation.body}</p>
+        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button onClick={onCancel} ref={cancelButtonRef} type="button" variant="secondary">
+            Cancel
+          </Button>
+          <Button
+            className={cn(confirmation.destructive && "border-destructive/60 text-foreground hover:bg-destructive/15")}
+            onClick={() => {
+              onCancel()
+              void confirmation.onConfirm()
+            }}
+            type="button"
+            variant={confirmation.destructive ? "secondary" : "primary"}
+          >
+            {confirmation.confirmLabel}
+          </Button>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -1156,6 +1528,90 @@ function parseNullableInt(value: string | null) {
 
 function formatNumber(value: number) {
   return new Intl.NumberFormat().format(value)
+}
+
+function formatBytes(value: number) {
+  if (value < BYTES_PER_MEBIBYTE) {
+    return `${formatNumber(value)} B`
+  }
+  const mebibytes = value / BYTES_PER_MEBIBYTE
+  return `${Number.isInteger(mebibytes) ? formatNumber(mebibytes) : mebibytes.toFixed(1)} MB`
+}
+
+function storedAudioToResult(record: StoredGeneratedAudio): GeneratedResult {
+  return {
+    appVoiceId: record.appVoiceId,
+    cacheState: record.cacheState,
+    characterCount: record.characterCount,
+    contentType: record.contentType,
+    createdAt: record.createdAt,
+    generatedAt: formatGeneratedAudioTime(record.createdAt),
+    id: record.id,
+    modelId: record.modelId,
+    requestId: record.requestId,
+    sizeBytes: record.sizeBytes,
+    url: URL.createObjectURL(record.blob),
+    voiceId: record.voiceId,
+    voiceName: record.voiceName,
+  }
+}
+
+function revokeGeneratedAudioUrls(items: GeneratedResult[]) {
+  for (const item of items) {
+    URL.revokeObjectURL(item.url)
+  }
+}
+
+function formatGeneratedAudioTime(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return "unknown time"
+  }
+  return date.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  })
+}
+
+function formatGeneratedAudioCountBadge(savedItemCount: number, temporaryItemCount: number) {
+  const parts: string[] = []
+  if (savedItemCount > 0) {
+    parts.push(savedItemCount === 1 ? "1 saved" : `${savedItemCount} saved`)
+  }
+  if (temporaryItemCount > 0) {
+    parts.push(temporaryItemCount === 1 ? "1 unsaved" : `${temporaryItemCount} unsaved`)
+  }
+  return parts.join(", ")
+}
+
+function getFocusableDialogElements(dialog: HTMLElement) {
+  return Array.from(
+    dialog.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )
+  ).filter((element) => !element.hasAttribute("disabled") && element.getAttribute("aria-hidden") !== "true")
+}
+
+function createTemporaryGeneratedAudioId() {
+  if (typeof window.crypto?.randomUUID === "function") {
+    return `unsaved-${window.crypto.randomUUID()}`
+  }
+  return `unsaved-${Date.now()}`
+}
+
+function isTemporaryGeneratedAudioId(id: string) {
+  return id.startsWith("unsaved-")
+}
+
+function formatGeneratedAudioStorageError(value: unknown) {
+  if (value instanceof GeneratedAudioStorageQuotaError) {
+    return "Generated audio is playable now, but it is larger than the active browser storage cap and was not saved."
+  }
+  if (value instanceof Error) {
+    return `Generated audio is playable now, but browser storage could not save it: ${value.message}`
+  }
+  return "Generated audio is playable now, but browser storage could not save it."
 }
 
 function isAbortError(value: unknown) {

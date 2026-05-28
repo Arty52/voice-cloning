@@ -29,6 +29,7 @@ It gives you a small voice library, text-to-speech generation, model selection, 
 - Select a text-to-speech model for the next generation without rewriting `.env`.
 - Show actual `x-character-count` and request id metadata after generation when ElevenLabs returns it.
 - Cancel an in-flight generation from the browser with a clear ElevenLabs cost caveat.
+- Persist generated MP3 audio in browser-local storage with an adjustable size cap.
 - Adjust per-request ElevenLabs voice settings:
   - stability
   - similarity boost
@@ -36,14 +37,14 @@ It gives you a small voice library, text-to-speech generation, model selection, 
   - speed
   - speaker boost
 - Preview source voice samples.
-- Play and download generated MP3 audio.
+- Play, download, and remove saved generated MP3 audio.
 - Run automated backend and frontend checks with one command.
 
 ## Privacy Model
 
 Your ElevenLabs API key is read only by the FastAPI backend from `.env`. The frontend never receives the key.
 
-Voice samples are local files under `assets/voices/` and are ignored by git. Generated output and cloned voice cache data are written under `storage/`, which is also ignored by git.
+Voice samples are local files under `assets/voices/` and are ignored by git. Cloned voice cache data is written under `storage/`, which is also ignored by git. Generated MP3 output is saved in your browser's IndexedDB by default, not on the backend; use the Generated audio panel to remove one item or clear all saved browser audio.
 
 Text, voice samples, selected model id, and tuning settings are sent to ElevenLabs when you generate speech. Subscription and model metadata are fetched through the backend when the configured key has the required read permissions. Review ElevenLabs' policies and obtain consent before cloning or generating with any voice.
 
@@ -125,7 +126,7 @@ Then:
 5. Check the Cost & quota panel and choose a model if model metadata is available.
 6. Adjust tuning sliders if needed.
 7. Generate speech.
-8. Play or download the MP3.
+8. Play, download, or remove saved generated MP3s from the Generated audio panel.
 
 The API is available at:
 
@@ -290,11 +291,13 @@ Some ElevenLabs keys are scoped. Use the permission error to update the key in t
 
 ### Reset local runtime data
 
-Remove generated audio/cache data:
+Remove backend cache data:
 
 ```sh
 make clean-cache
 ```
+
+Generated audio saved in the browser can be removed from the Generated audio panel with Remove or Clear all. The panel also lets you choose a browser storage cap of 25 MB, 50 MB, 100 MB, or 250 MB. Lowering the cap prompts before pruning older saved audio.
 
 Remove containers and volumes:
 
