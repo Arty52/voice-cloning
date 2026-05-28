@@ -28,6 +28,7 @@ It gives you a small voice library, text-to-speech generation, model selection, 
 - Show ElevenLabs-reported quota remaining from the local backend.
 - Select a text-to-speech model for the next generation without rewriting `.env`.
 - Show actual `x-character-count` and request id metadata after generation when ElevenLabs returns it.
+- Cancel an in-flight generation from the browser with a clear ElevenLabs cost caveat.
 - Adjust per-request ElevenLabs voice settings:
   - stability
   - similarity boost
@@ -57,6 +58,8 @@ ElevenLabs may charge credits for text-to-speech and voice cloning. The main usa
 The Cost & quota panel shows a pre-run estimate and the remaining ElevenLabs-reported character quota. Estimates are approximate. After a generation, the app shows the actual `x-character-count` response header when ElevenLabs provides it.
 
 The optional live smoke test calls ElevenLabs and may consume credits.
+
+Canceling a generation aborts the browser request and lets the local API stop waiting on the in-flight operation. ElevenLabs does not currently expose a server-side cancel endpoint for text-to-speech requests, so a canceled generation may still consume credits.
 
 ## Prerequisites
 

@@ -14,6 +14,7 @@ import {
   Star,
   Upload,
   Volume2,
+  X,
 } from "lucide-react"
 import {
   type ChangeEvent,
@@ -32,7 +33,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 
-type RequestStatus = "idle" | "generating" | "success" | "error"
+type RequestStatus = "idle" | "generating" | "success" | "error" | "canceled"
 type AsyncStatus = "idle" | "loading" | "success" | "error"
 
 type VoiceAsset = {
@@ -122,6 +123,10 @@ type SliderConfig = {
 const DEFAULT_TEXT =
   "Welcome to the local voice clone lab. This sample is generated through ElevenLabs using the selected voice reference."
 
+const CANCEL_GENERATION_CONFIRMATION =
+  "Cancel this generation? ElevenLabs does not offer server-side cancellation for text-to-speech requests, so this may still consume credits."
+const CANCELED_GENERATION_MESSAGE =
+  "Generation canceled in this browser. ElevenLabs may still charge for the request."
 const DEFAULT_MODEL_ID = "eleven_multilingual_v2"
 const BACKEND_DEFAULT_MODEL_LABEL = "Backend default model"
 
@@ -244,6 +249,7 @@ function App() {
   const [selectedTuningPreset, setSelectedTuningPreset] = useState<TuningPresetId>("standard")
   const [isCostQuotaExpanded, setIsCostQuotaExpanded] = useState(false)
   const textRef = useRef<HTMLTextAreaElement | null>(null)
+  const generationAbortController = useRef<AbortController | null>(null)
 
   const selectedVoice = voices.find((voice) => voice.id === selectedVoiceId) ?? null
   const selectedModel = models.find((model) => model.modelId === selectedModelId) ?? null
@@ -306,6 +312,12 @@ function App() {
       }
     }
   }, [result])
+
+  useEffect(() => {
+    return () => {
+      generationAbortController.current?.abort()
+    }
+  }, [])
 
   function handleUploadFileChange(event: ChangeEvent<HTMLInputElement>) {
     const nextFile = event.target.files?.[0] ?? null
@@ -425,6 +437,8 @@ function App() {
 
     setStatus("generating")
     setError(null)
+    const abortController = new AbortController()
+    generationAbortController.current = abortController
 
     const formData = new FormData()
     const submittedModelId = models.some((model) => model.modelId === selectedModelId) ? selectedModelId : null
@@ -443,7 +457,13 @@ function App() {
       const response = await fetch("/api/speech", {
         method: "POST",
         body: formData,
+        signal: abortController.signal,
       })
+      if (response.status === 499) {
+        setStatus("canceled")
+        setError(CANCELED_GENERATION_MESSAGE)
+        return
+      }
       if (!response.ok) {
         throw new Error(await readError(response))
       }
@@ -472,8 +492,28 @@ function App() {
       })
       setStatus("success")
     } catch (caught) {
+      if (isAbortError(caught)) {
+        setStatus("canceled")
+        setError(CANCELED_GENERATION_MESSAGE)
+        return
+      }
       setStatus("error")
       setError(caught instanceof Error ? caught.message : "Unable to generate speech.")
+    } finally {
+      if (generationAbortController.current === abortController) {
+        generationAbortController.current = null
+      }
+    }
+  }
+
+  function handleCancelGeneration() {
+    const abortController = generationAbortController.current
+    if (!abortController) {
+      return
+    }
+    const shouldCancel = window.confirm(CANCEL_GENERATION_CONFIRMATION)
+    if (shouldCancel) {
+      abortController.abort()
     }
   }
 
@@ -554,6 +594,16 @@ function App() {
                     <RefreshCw aria-hidden="true" className="size-4" />
                     Retry
                   </Button>
+                  {isGenerating ? (
+                    <Button
+                      className="border-destructive/60 text-foreground hover:bg-destructive/15"
+                      onClick={handleCancelGeneration}
+                      variant="secondary"
+                    >
+                      <X aria-hidden="true" className="size-4" />
+                      Cancel
+                    </Button>
+                  ) : null}
                 </div>
               </div>
             </form>
@@ -642,7 +692,7 @@ function App() {
               </label>
             </section>
 
-            <GeneratedAudio error={error} result={result} />
+            <GeneratedAudio error={error} result={result} status={status} />
           </section>
 
           <aside className="flex flex-col gap-4">
@@ -1012,7 +1062,17 @@ function MetricTile({ icon, label, value }: { icon: ReactNode; label: string; va
   )
 }
 
-function GeneratedAudio({ error, result }: { error: string | null; result: GeneratedResult | null }) {
+function GeneratedAudio({
+  error,
+  result,
+  status,
+}: {
+  error: string | null
+  result: GeneratedResult | null
+  status: RequestStatus
+}) {
+  const isCanceled = status === "canceled"
+
   return (
     <section className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5">
       <div className="mb-4 flex items-center justify-between gap-3">
@@ -1024,7 +1084,15 @@ function GeneratedAudio({ error, result }: { error: string | null; result: Gener
       </div>
 
       {error ? (
-        <div className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-foreground" role="alert">
+        <div
+          className={cn(
+            "mb-4 rounded-md border p-3 text-sm",
+            isCanceled
+              ? "border-border bg-background/60 text-muted-foreground"
+              : "border-destructive/40 bg-destructive/10 text-foreground"
+          )}
+          role={isCanceled ? "status" : "alert"}
+        >
           {error}
         </div>
       ) : null}
@@ -1088,6 +1156,10 @@ function parseNullableInt(value: string | null) {
 
 function formatNumber(value: number) {
   return new Intl.NumberFormat().format(value)
+}
+
+function isAbortError(value: unknown) {
+  return typeof value === "object" && value !== null && "name" in value && value.name === "AbortError"
 }
 
 export default App
