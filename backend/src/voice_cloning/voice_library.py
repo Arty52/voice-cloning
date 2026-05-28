@@ -58,7 +58,11 @@ class VoiceLibrary:
 
         manifest = self._read_manifest()
         voice_id = slugify_voice_name(display_name)
-        if any(item.get("id") == voice_id for item in manifest["voices"]):
+        if any(
+            isinstance(item, dict)
+            and (item.get("id") == voice_id or slugify_voice_name(str(item.get("name", ""))) == voice_id)
+            for item in manifest["voices"]
+        ):
             raise HTTPException(status_code=409, detail="A voice with that name already exists.")
 
         extension = Path(upload.filename or "").suffix.lower() or ".mp3"
@@ -77,8 +81,53 @@ class VoiceLibrary:
             created_at=datetime.now(UTC).isoformat(),
         )
         manifest["voices"].append(self._asset_to_payload(asset))
+        if not manifest.get("defaultVoiceId"):
+            manifest["defaultVoiceId"] = asset.id
         self._write_manifest(manifest)
         return asset
+
+    def rename_asset(self, voice_id: str, name: str) -> dict[str, object]:
+        display_name = name.strip()
+        if not display_name:
+            raise HTTPException(status_code=422, detail="Voice name is required.")
+
+        manifest = self._read_manifest()
+        voices = manifest["voices"]
+        voice_index = self._find_voice_index(voices, voice_id)
+        normalized_name = slugify_voice_name(display_name)
+        if any(
+            index != voice_index and slugify_voice_name(str(item.get("name", ""))) == normalized_name
+            for index, item in enumerate(voices)
+            if isinstance(item, dict)
+        ):
+            raise HTTPException(status_code=409, detail="A voice with that name already exists.")
+
+        voices[voice_index]["name"] = display_name
+        self._write_manifest(manifest)
+        return {
+            "defaultVoiceId": manifest["defaultVoiceId"],
+            "voices": manifest["voices"],
+        }
+
+    def delete_asset(self, voice_id: str) -> dict[str, object]:
+        manifest = self._read_manifest()
+        voices = manifest["voices"]
+        voice_index = self._find_voice_index(voices, voice_id)
+        asset = self._asset_from_payload(voices[voice_index])
+
+        path = self.resolve_asset_path(asset)
+        if path.exists():
+            path.unlink()
+
+        del voices[voice_index]
+        if manifest.get("defaultVoiceId") == voice_id:
+            manifest["defaultVoiceId"] = voices[0].get("id") if voices and isinstance(voices[0], dict) else ""
+
+        self._write_manifest(manifest)
+        return {
+            "defaultVoiceId": manifest["defaultVoiceId"],
+            "voices": manifest["voices"],
+        }
 
     def set_default(self, voice_id: str) -> dict[str, object]:
         manifest = self._read_manifest()
@@ -142,6 +191,13 @@ class VoiceLibrary:
         temp_path = self.manifest_path.with_suffix(".tmp")
         temp_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
         temp_path.replace(self.manifest_path)
+
+    @staticmethod
+    def _find_voice_index(voices: list[object], voice_id: str) -> int:
+        for index, item in enumerate(voices):
+            if isinstance(item, dict) and item.get("id") == voice_id:
+                return index
+        raise HTTPException(status_code=404, detail="Voice asset was not found.")
 
     @staticmethod
     def _asset_from_payload(payload: dict[str, Any]) -> VoiceAsset:

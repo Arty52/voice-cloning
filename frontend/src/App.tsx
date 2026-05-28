@@ -969,7 +969,7 @@ function App() {
                     disabled={isUploading}
                     id="voice-name"
                     onChange={(event) => setUploadName(event.target.value)}
-                    placeholder="Gray"
+                    placeholder="Voice_Clone_01"
                     value={uploadName}
                   />
                 </label>

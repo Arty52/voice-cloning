@@ -120,7 +120,7 @@ http://localhost:4340
 Then:
 
 1. Upload a voice sample.
-2. Give it a local name, such as `Gray`.
+2. Give it a local name, such as `Voice_Clone_01`.
 3. Save the voice.
 4. Enter text.
 5. Check the Cost & Quota panel and choose a model if model metadata is available.
@@ -173,6 +173,8 @@ This calls ElevenLabs with the real API key, may consume credits, and writes `st
 - `GET /api/subscription`
 - `GET /api/models`
 - `POST /api/voices`
+- `PATCH /api/voices/{voiceId}`
+- `DELETE /api/voices/{voiceId}`
 - `PUT /api/voices/default`
 - `POST /api/speech`
 
@@ -214,10 +216,18 @@ If model metadata is unavailable, generation still works by omitting `modelId` a
 - `name`: local voice display name
 - `sampleFile`: audio file to store in `assets/voices/`
 
+`PATCH /api/voices/{voiceId}` accepts JSON and renames a local voice without changing its stable local id or sample file:
+
+```json
+{ "name": "Voice_Clone_01" }
+```
+
+`DELETE /api/voices/{voiceId}` removes a local voice sample and reassigns the default to the first remaining voice, or to none when the library is empty.
+
 `PUT /api/voices/default` accepts JSON:
 
 ```json
-{ "voiceId": "gray" }
+{ "voiceId": "voice-clone-01" }
 ```
 
 `POST /api/speech` accepts multipart form fields:

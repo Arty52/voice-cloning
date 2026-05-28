@@ -7,4 +7,4 @@ Real voice samples are intentionally ignored by git. A public clone starts with 
 Expected local files after using the app:
 
 - `voices.json`
-- one or more audio files such as `gray.wav` or `default/default-voice.mp3`
+- one or more audio files such as `voice-clone-01.wav` or `default/default-voice.mp3`
