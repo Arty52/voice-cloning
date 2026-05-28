@@ -158,7 +158,7 @@ const CANCEL_GENERATION_CONFIRMATION =
 const CANCELED_GENERATION_MESSAGE =
   "Generation canceled in this browser. ElevenLabs may still charge for the request."
 const DEFAULT_MODEL_ID = "eleven_multilingual_v2"
-const BACKEND_DEFAULT_MODEL_LABEL = "Backend default model"
+const BACKEND_DEFAULT_MODEL_LABEL = "Backend Default Model"
 
 const DEFAULT_TUNING: VoiceTuning = {
   stability: 0.5,
@@ -171,7 +171,7 @@ const DEFAULT_TUNING: VoiceTuning = {
 const TUNING_PRESETS: TuningPreset[] = [
   {
     id: "standard",
-    label: "Standard narration",
+    label: "Standard Narration",
     description: "Balanced clone similarity for steady narration.",
     values: {
       stability: 0.5,
@@ -182,7 +182,7 @@ const TUNING_PRESETS: TuningPreset[] = [
   },
   {
     id: "animated",
-    label: "Animated dialogue",
+    label: "Animated Dialogue",
     description: "More expressive delivery for character reads.",
     values: {
       stability: 0.4,
@@ -230,11 +230,11 @@ const SLIDERS: SliderConfig[] = [
 
 const DOC_LINKS = [
   {
-    label: "API requests",
+    label: "API Requests",
     href: "https://elevenlabs.io/app/developers/analytics/api-requests",
   },
   {
-    label: "Costs header",
+    label: "Costs Header",
     href: "https://elevenlabs.io/docs/api-reference/introduction",
   },
   {
@@ -243,10 +243,10 @@ const DOC_LINKS = [
   },
   {
     label: "Models",
-    href: "https://elevenlabs.io/docs/api-reference/get-models",
+    href: "https://elevenlabs.io/docs/api-reference/models/list",
   },
   {
-    label: "Create speech",
+    label: "Create Speech",
     href: "https://elevenlabs.io/docs/api-reference/text-to-speech/convert",
   },
 ]
@@ -530,10 +530,10 @@ function App() {
     }
     setConfirmation({
       body: "This removes every saved generated audio item from this browser.",
-      confirmLabel: "Clear all",
+      confirmLabel: "Clear All",
       destructive: true,
       onConfirm: handleClearGeneratedAudio,
-      title: "Clear generated audio?",
+      title: "Clear Generated Audio?",
     })
   }
 
@@ -560,10 +560,10 @@ function App() {
     if (nextLimitBytes < storageLimitBytes && usedBytes > nextLimitBytes) {
       setConfirmation({
         body: `This will remove the oldest saved generated audio until usage fits under ${formatBytes(nextLimitBytes)}.`,
-        confirmLabel: "Lower cap",
+        confirmLabel: "Lower Cap",
         destructive: true,
         onConfirm: () => applyGeneratedAudioStorageLimit(nextLimitBytes),
-        title: "Lower storage cap?",
+        title: "Lower Storage Cap?",
       })
       return
     }
@@ -704,7 +704,7 @@ function App() {
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
               <Volume2 aria-hidden="true" className="size-4 text-primary" />
-              Local ElevenLabs workspace
+              Local ElevenLabs Workspace
             </div>
             <h1 className="text-3xl font-semibold tracking-normal sm:text-4xl">Voice Clone Lab</h1>
             <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
@@ -726,7 +726,7 @@ function App() {
             >
               <div className="mb-3 flex items-center justify-between gap-3">
                 <label className="text-sm font-medium" htmlFor="speech-text">
-                  Text to speak
+                  Text to Speak
                 </label>
                 <span className="font-mono text-xs text-muted-foreground">{characterCount}/5000</span>
               </div>
@@ -775,12 +775,12 @@ function App() {
             <section className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-base font-medium">Voice tuning</h2>
+                  <h2 className="text-base font-medium">Voice Tuning</h2>
                   <p className="mt-1 text-sm text-muted-foreground">Adjust ElevenLabs voice settings before generating.</p>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   {selectedTuningPreset === "custom" ? <Badge>Custom</Badge> : null}
-                  <Badge>Per request</Badge>
+                  <Badge>Per Request</Badge>
                 </div>
               </div>
               <div className="mb-4 space-y-2">
@@ -842,7 +842,7 @@ function App() {
                 ))}
               </div>
               <label className="mt-4 flex items-center justify-between gap-4 rounded-md border border-border bg-background/60 p-3 text-sm">
-                <span className="font-medium">Speaker boost</span>
+                <span className="font-medium">Speaker Boost</span>
                 <input
                   checked={tuning.useSpeakerBoost}
                   className="size-5 accent-primary"
@@ -873,7 +873,7 @@ function App() {
             <section className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-base font-medium">Voice library</h2>
+                  <h2 className="text-base font-medium">Voice Library</h2>
                   <p className="mt-1 text-sm text-muted-foreground">Select, preview, and set the local default voice.</p>
                 </div>
                 <FileAudio aria-hidden="true" className="size-5 text-primary" />
@@ -924,7 +924,7 @@ function App() {
               </div>
 
               <div className="mt-4 rounded-md border border-border bg-background/60 p-3">
-                <div className="mb-2 text-sm font-medium">Selected preview</div>
+                <div className="mb-2 text-sm font-medium">Selected Preview</div>
                 {selectedVoice ? (
                   <audio
                     aria-label="Selected voice sample preview"
@@ -943,14 +943,14 @@ function App() {
                 ) : (
                   <Star aria-hidden="true" className="size-4" />
                 )}
-                {selectedVoice?.id === defaultVoiceId ? "Default voice" : "Set as default"}
+                {selectedVoice?.id === defaultVoiceId ? "Default Voice" : "Set as Default"}
               </Button>
             </section>
 
             <form className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5" onSubmit={handleUpload}>
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-base font-medium">Add voice</h2>
+                  <h2 className="text-base font-medium">Add Voice</h2>
                   <p className="mt-1 text-sm text-muted-foreground">Save a named sample into the project voice assets.</p>
                 </div>
                 <Upload aria-hidden="true" className="size-5 text-primary" />
@@ -964,7 +964,7 @@ function App() {
 
               <div className="space-y-3">
                 <label className="block space-y-2 text-sm font-medium" htmlFor="voice-name">
-                  <span>Voice name</span>
+                  <span>Voice Name</span>
                   <Input
                     disabled={isUploading}
                     id="voice-name"
@@ -974,7 +974,7 @@ function App() {
                   />
                 </label>
                 <label className="block space-y-2 text-sm font-medium" htmlFor="sample-upload">
-                  <span>Sample file</span>
+                  <span>Sample File</span>
                   <Input
                     accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac"
                     disabled={isUploading}
@@ -984,7 +984,7 @@ function App() {
                   />
                 </label>
                 <div className="rounded-md border border-border bg-background/60 p-3">
-                  <div className="mb-2 text-sm font-medium">Upload preview</div>
+                  <div className="mb-2 text-sm font-medium">Upload Preview</div>
                   {uploadPreviewUrl ? (
                     <audio aria-label="Uploaded voice sample preview" controls src={uploadPreviewUrl} />
                   ) : (
@@ -997,7 +997,7 @@ function App() {
                   ) : (
                     <Save aria-hidden="true" className="size-4" />
                   )}
-                  {isUploading ? "Saving..." : "Save voice"}
+                  {isUploading ? "Saving..." : "Save Voice"}
                 </Button>
               </div>
             </form>
@@ -1110,7 +1110,7 @@ function CostQuotaPanel({
     <section className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-base font-medium">Cost & quota</h2>
+          <h2 className="text-base font-medium">Cost & Quota</h2>
           <p className="mt-1 text-sm text-muted-foreground">Estimate, quota, and last run usage.</p>
         </div>
         <Button
@@ -1175,14 +1175,14 @@ function CostQuotaPanel({
                 </option>
               ))
             ) : (
-              <option value={selectedModelId}>Backend default model</option>
+              <option value={selectedModelId}>{BACKEND_DEFAULT_MODEL_LABEL}</option>
             )}
           </select>
         </label>
 
         <div className="grid gap-3 border-b border-border pb-3 text-xs text-muted-foreground sm:grid-cols-2">
           <div>
-            <div className="font-medium text-foreground">Estimate basis</div>
+            <div className="font-medium text-foreground">Estimate Basis</div>
             <div className="mt-1 font-mono tabular-nums">
               {formatNumber(characterCount)} chars
               {hasModelRate ? ` x ${selectedModel?.characterCostMultiplier}` : " x character count"}
@@ -1190,7 +1190,7 @@ function CostQuotaPanel({
             <div className="mt-1">{hasModelRate ? "Uses model rate metadata." : "Rate unavailable; using character count."}</div>
           </div>
           <div>
-            <div className="font-medium text-foreground">Account period</div>
+            <div className="font-medium text-foreground">Account Period</div>
             <div className="mt-1 font-mono tabular-nums">
               {subscription ? `${formatNumber(subscription.characterCount)} / ${formatNumber(subscription.characterLimit)}` : "Unavailable"}
             </div>
@@ -1276,7 +1276,7 @@ function GeneratedAudio({
     <section className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-base font-medium">Generated audio</h2>
+          <h2 className="text-base font-medium">Generated Audio</h2>
           <p className="mt-1 text-sm text-muted-foreground">Saved in this browser for playback and download.</p>
         </div>
         {itemCountBadge ? <Badge>{itemCountBadge}</Badge> : null}
@@ -1307,7 +1307,7 @@ function GeneratedAudio({
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-sm font-medium">
               <HardDrive aria-hidden="true" className="size-4 text-primary" />
-              Browser storage
+              Browser Storage
             </div>
             <div className="mt-1 font-mono text-xs text-muted-foreground">
               {formatBytes(resolvedUsage.usedBytes)} / {formatBytes(resolvedUsage.limitBytes)}
@@ -1339,7 +1339,7 @@ function GeneratedAudio({
           <div className="flex justify-end">
             <Button onClick={onClear} size="sm" type="button" variant="secondary">
               <Trash2 aria-hidden="true" className="size-4" />
-              Clear all
+              Clear All
             </Button>
           </div>
           {items.map((item, index) => (
@@ -1351,7 +1351,7 @@ function GeneratedAudio({
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
                   {index === 0 ? <Badge>Latest</Badge> : null}
-                  <Badge>{item.cacheState === "hit" ? "cache hit" : "cache miss"}</Badge>
+                  <Badge>{item.cacheState === "hit" ? "Cache Hit" : "Cache Miss"}</Badge>
                 </div>
               </div>
               <audio aria-label={`Generated voice playback for ${item.voiceName}`} controls src={item.url} />

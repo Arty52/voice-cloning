@@ -174,8 +174,8 @@ describe("App", () => {
     const user = userEvent.setup()
     render(<App />)
 
-    const costHeading = await screen.findByText("Cost & quota")
-    const addVoiceHeading = screen.getByText("Add voice")
+    const costHeading = await screen.findByText("Cost & Quota")
+    const addVoiceHeading = screen.getByText("Add Voice")
     expect(addVoiceHeading.compareDocumentPosition(costHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(await screen.findByText(`${formatTestNumber(9000)} remaining`)).toBeInTheDocument()
     expect(screen.getByText(`~${formatTestNumber(117)}`)).toBeInTheDocument()
@@ -199,7 +199,7 @@ describe("App", () => {
     )
     expect(screen.getByRole("link", { name: /models/i })).toHaveAttribute(
       "href",
-      "https://elevenlabs.io/docs/api-reference/get-models"
+      "https://elevenlabs.io/docs/api-reference/models/list"
     )
   })
 
