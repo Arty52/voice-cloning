@@ -1,8 +1,13 @@
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { RECORDED_VOICE_MIME_TYPE, createWavFile, encodeWav } from "./voice-recorder"
+import { RECORDED_VOICE_MIME_TYPE, createWavFile, encodeWav, startVoiceRecorder } from "./voice-recorder"
 
 describe("voice recorder", () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
   it("encodes mono PCM samples as a WAV blob", async () => {
     const blob = encodeWav(new Float32Array([-1, 0, 1]), 48000)
     const view = new DataView(await blob.arrayBuffer())
@@ -24,6 +29,32 @@ describe("voice recorder", () => {
     expect(file.name).toBe("recorded.wav")
     expect(file.type).toBe(RECORDED_VOICE_MIME_TYPE)
     expect(file.size).toBe(46)
+  })
+
+  it("caps session duration by sample rate and rejects empty captures", async () => {
+    const stopTrack = vi.fn()
+    const source = { connect: vi.fn(), disconnect: vi.fn() }
+    const processor = { connect: vi.fn(), disconnect: vi.fn(), onaudioprocess: null }
+    class FakeAudioContext {
+      destination = {}
+      sampleRate = 96000
+      state = "running"
+
+      close = vi.fn(async () => {
+        this.state = "closed"
+      })
+
+      createMediaStreamSource = vi.fn(() => source)
+      createScriptProcessor = vi.fn(() => processor)
+    }
+    vi.stubGlobal("navigator", { ...navigator, mediaDevices: { getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [{ stop: stopTrack }] }) } })
+    vi.stubGlobal("AudioContext", FakeAudioContext)
+
+    const session = await startVoiceRecorder()
+
+    expect(session.maxDurationSeconds).toBeLessThan(90)
+    await expect(session.stop()).rejects.toThrow(/did not capture audio/i)
+    expect(stopTrack).toHaveBeenCalled()
   })
 })
 

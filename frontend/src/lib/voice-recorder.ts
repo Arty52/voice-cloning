@@ -1,5 +1,9 @@
 export const MAX_VOICE_RECORDING_SECONDS = 90
+export const MAX_RECORDED_VOICE_UPLOAD_BYTES = 10 * 1024 * 1024
 export const RECORDED_VOICE_MIME_TYPE = "audio/wav"
+
+const WAV_HEADER_BYTES = 44
+const WAV_BYTES_PER_SAMPLE = 2
 
 export type VoiceRecording = {
   durationSeconds: number
@@ -9,6 +13,7 @@ export type VoiceRecording = {
 export type VoiceRecorderSession = {
   discard: () => Promise<void>
   getElapsedSeconds: () => number
+  maxDurationSeconds: number
   stop: () => Promise<VoiceRecording>
 }
 
@@ -33,6 +38,8 @@ export async function startVoiceRecorder(): Promise<VoiceRecorderSession> {
   const processor = audioContext.createScriptProcessor(4096, 1, 1)
   const chunks: Float32Array[] = []
   const startedAt = performance.now()
+  const maxSampleCount = getMaxRecordedSampleCount()
+  const maxDurationSeconds = Math.min(MAX_VOICE_RECORDING_SECONDS, maxSampleCount / audioContext.sampleRate)
   let sampleCount = 0
   let stopPromise: Promise<VoiceRecording> | null = null
 
@@ -62,11 +69,18 @@ export async function startVoiceRecorder(): Promise<VoiceRecorderSession> {
     getElapsedSeconds() {
       return Math.max(0, (performance.now() - startedAt) / 1000)
     },
+    maxDurationSeconds,
     stop() {
       stopPromise ??= (async () => {
         const sampleRate = audioContext.sampleRate
         const samples = mergeAudioChunks(chunks, sampleCount)
         await cleanup()
+        if (samples.length === 0) {
+          throw new Error("Recording did not capture audio. Try again and let the recorder run for a moment.")
+        }
+        if (samples.length > maxSampleCount) {
+          throw new Error("Recording is too large to save. Try a shorter take.")
+        }
         const durationSeconds = sampleRate > 0 ? samples.length / sampleRate : 0
         const file = createWavFile(samples, sampleRate, `recorded-voice-${Date.now()}.wav`)
         return { durationSeconds, file }
@@ -84,10 +98,9 @@ export function createWavFile(samples: Float32Array, sampleRate: number, filenam
 }
 
 export function encodeWav(samples: Float32Array, sampleRate: number): Blob {
-  const bytesPerSample = 2
   const channelCount = 1
-  const dataByteLength = samples.length * bytesPerSample
-  const buffer = new ArrayBuffer(44 + dataByteLength)
+  const dataByteLength = samples.length * WAV_BYTES_PER_SAMPLE
+  const buffer = new ArrayBuffer(WAV_HEADER_BYTES + dataByteLength)
   const view = new DataView(buffer)
 
   writeAscii(view, 0, "RIFF")
@@ -98,20 +111,24 @@ export function encodeWav(samples: Float32Array, sampleRate: number): Blob {
   view.setUint16(20, 1, true)
   view.setUint16(22, channelCount, true)
   view.setUint32(24, sampleRate, true)
-  view.setUint32(28, sampleRate * channelCount * bytesPerSample, true)
-  view.setUint16(32, channelCount * bytesPerSample, true)
+  view.setUint32(28, sampleRate * channelCount * WAV_BYTES_PER_SAMPLE, true)
+  view.setUint16(32, channelCount * WAV_BYTES_PER_SAMPLE, true)
   view.setUint16(34, 16, true)
   writeAscii(view, 36, "data")
   view.setUint32(40, dataByteLength, true)
 
-  let offset = 44
+  let offset = WAV_HEADER_BYTES
   for (const sample of samples) {
     const clampedSample = Math.max(-1, Math.min(1, sample))
     view.setInt16(offset, clampedSample < 0 ? clampedSample * 0x8000 : clampedSample * 0x7fff, true)
-    offset += bytesPerSample
+    offset += WAV_BYTES_PER_SAMPLE
   }
 
   return new Blob([view], { type: RECORDED_VOICE_MIME_TYPE })
+}
+
+function getMaxRecordedSampleCount() {
+  return Math.floor((MAX_RECORDED_VOICE_UPLOAD_BYTES - WAV_HEADER_BYTES) / WAV_BYTES_PER_SAMPLE)
 }
 
 function mergeAudioChunks(chunks: Float32Array[], sampleCount: number) {

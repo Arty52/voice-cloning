@@ -548,6 +548,50 @@ describe("App", () => {
     expect(stopTrack).toHaveBeenCalled()
   })
 
+  it("clears a recorded sample when switching back to upload", async () => {
+    type AudioProcessHandler = (event: { inputBuffer: { getChannelData: (channel: number) => Float32Array } }) => void
+    const getUserMedia = vi.fn().mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] })
+    const source = { connect: vi.fn(), disconnect: vi.fn() }
+    const processor: { connect: ReturnType<typeof vi.fn>; disconnect: ReturnType<typeof vi.fn>; onaudioprocess: AudioProcessHandler | null } = {
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      onaudioprocess: null,
+    }
+    class FakeAudioContext {
+      destination = {}
+      sampleRate = 48000
+      state = "running"
+
+      close = vi.fn(async () => {
+        this.state = "closed"
+      })
+
+      createMediaStreamSource = vi.fn(() => source)
+      createScriptProcessor = vi.fn(() => processor)
+    }
+    vi.stubGlobal("navigator", { ...navigator, mediaDevices: { getUserMedia } })
+    vi.stubGlobal("AudioContext", FakeAudioContext)
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.type(await screen.findByLabelText(/voice name/i), "Voice_Clone_01")
+    await user.click(screen.getByRole("button", { name: /^Record$/ }))
+    await user.click(screen.getByRole("button", { name: /start recording/i }))
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledWith({ audio: true }))
+    processor.onaudioprocess?.({
+      inputBuffer: {
+        getChannelData: () => new Float32Array([0.25]),
+      },
+    })
+    await user.click(screen.getByRole("button", { name: /^Stop$/ }))
+    expect(await screen.findByLabelText(/recorded voice sample preview/i)).toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: /^Upload$/ }))
+
+    expect(screen.getByText(/no upload selected/i)).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /save voice/i })).toBeDisabled()
+  })
+
   it("reports unsupported recording and keeps upload available", async () => {
     vi.stubGlobal("navigator", { ...navigator, mediaDevices: undefined })
     const user = userEvent.setup()

@@ -56,14 +56,13 @@ import {
 } from "@/lib/generated-audio-storage"
 import { cn } from "@/lib/utils"
 import {
-  MAX_VOICE_RECORDING_SECONDS,
   startVoiceRecorder,
   type VoiceRecorderSession,
 } from "@/lib/voice-recorder"
 
 type RequestStatus = "idle" | "generating" | "success" | "error" | "canceled"
 type AsyncStatus = "idle" | "loading" | "success" | "error"
-type RecorderStatus = "idle" | "starting" | "recording" | "recorded" | "error"
+type RecorderStatus = "idle" | "starting" | "recording" | "stopping" | "recorded" | "error"
 type VoiceSampleInputMode = "upload" | "record"
 
 type VoiceAsset = {
@@ -319,7 +318,7 @@ function App() {
   const isSettingDefault = defaultStatus === "loading"
   const isUpdatingVoice = voiceActionStatus === "loading"
   const isRecording = recorderStatus === "recording"
-  const isRecorderBusy = recorderStatus === "starting" || recorderStatus === "recording"
+  const isRecorderBusy = recorderStatus === "starting" || recorderStatus === "recording" || recorderStatus === "stopping"
   const canGenerate = text.trim().length > 0 && selectedVoice !== null && !isGenerating
   const canUpload = uploadName.trim().length > 0 && uploadFile !== null && !isUploading && !isRecorderBusy
   const canSetDefault = selectedVoice !== null && selectedVoice.id !== defaultVoiceId && !isSettingDefault
@@ -426,13 +425,20 @@ function App() {
     if (isRecorderBusy) {
       return
     }
+    if (mode === voiceSampleInputMode) {
+      return
+    }
     setVoiceSampleInputMode(mode)
     setUploadError(null)
+    setUploadFile(null)
+    setUploadPreviewUrl(null)
     if (mode === "record") {
-      setUploadFile(null)
-      setUploadPreviewUrl(null)
       setRecorderError(null)
       setRecorderStatus("idle")
+      setRecordingDurationSeconds(0)
+    } else {
+      setRecorderStatus("idle")
+      setRecorderError(null)
       setRecordingDurationSeconds(0)
     }
   }
@@ -459,7 +465,7 @@ function App() {
       }, 250)
       recordingAutoStopTimerRef.current = window.setTimeout(() => {
         void handleStopRecording(session)
-      }, MAX_VOICE_RECORDING_SECONDS * 1000)
+      }, session.maxDurationSeconds * 1000)
     } catch (caught) {
       setRecorderStatus("error")
       setRecorderError(caught instanceof Error ? caught.message : "Unable to start microphone recording.")
@@ -473,6 +479,7 @@ function App() {
 
     clearRecordingTimers(recordingTimerRef, recordingAutoStopTimerRef)
     recordingSessionRef.current = null
+    setRecorderStatus("stopping")
     try {
       const recording = await session.stop()
       setUploadFile(recording.file)
@@ -1269,7 +1276,7 @@ function App() {
                         Stop
                       </Button>
                       <Button
-                        disabled={isUploading || (recorderStatus === "idle" && !uploadFile)}
+                        disabled={isUploading || isRecorderBusy || (recorderStatus === "idle" && !uploadFile)}
                         onClick={() => void handleDiscardRecording()}
                         size="sm"
                         type="button"
