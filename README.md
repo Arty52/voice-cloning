@@ -8,7 +8,7 @@ It gives you a small voice library, text-to-speech generation, model selection, 
 
 - A local development tool for testing ElevenLabs instant voice cloning.
 - A React + TypeScript frontend backed by a Python FastAPI service.
-- A browser UI for uploading named voice samples, choosing a default voice, selecting a TTS model, tuning generation settings, checking quota, and downloading generated MP3 output.
+- A browser UI for uploading or recording named voice samples, choosing a default voice, selecting a TTS model, tuning generation settings, checking quota, and downloading generated MP3 output.
 - A Docker Compose app that runs on `localhost`.
 
 ## What This Is Not
@@ -20,7 +20,7 @@ It gives you a small voice library, text-to-speech generation, model selection, 
 
 ## Features
 
-- Save named local voice samples into `assets/voices/`.
+- Save named local voice samples into `assets/voices/` from upload or browser microphone recording.
 - Select any saved voice and mark one as the local default.
 - Generate speech from text using ElevenLabs text-to-speech.
 - Reuse ElevenLabs cloned voices by sample hash through a local cache.
@@ -119,7 +119,7 @@ http://localhost:4340
 
 Then:
 
-1. Upload a voice sample.
+1. Upload or record a voice sample.
 2. Give it a local name, such as `Voice_Clone_01`.
 3. Save the voice.
 4. Enter text.
@@ -308,6 +308,12 @@ make clean-cache
 ```
 
 Generated audio saved in the browser can be removed from the Generated Audio panel with Remove or Clear All. The panel also lets you choose a browser storage cap of 25 MB, 50 MB, 100 MB, or 250 MB. Lowering the cap prompts before pruning older saved audio.
+
+### Browser voice recording
+
+The Add Voice panel can record through the browser microphone or fall back to file upload. Browser recordings are encoded as local WAV files before they are sent to the backend, avoiding browser-specific `MediaRecorder` container differences across Safari, Chrome, Edge on Windows, and Firefox. Recordings stop before the backend's 10 MB upload cap; most devices can record up to 90 seconds, while very high sample-rate devices may stop sooner.
+
+Recording requires a browser that supports microphone access on `localhost` and user permission for the microphone. If permission is denied or the microphone API is unavailable, use Sample File upload instead.
 
 Remove containers and volumes:
 
