@@ -69,9 +69,9 @@ def create_app(
         try:
             summary = await resolved_client.get_subscription()
         except RuntimeError as exc:
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
+            return _subscription_error_payload(str(exc))
         except ElevenLabsError as exc:
-            raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+            return _subscription_error_payload(str(exc))
         return _subscription_payload(summary)
 
     @app.get("/api/models")
@@ -79,10 +79,12 @@ def create_app(
         try:
             model_list = await resolved_client.list_models()
         except RuntimeError as exc:
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
+            return _models_error_payload(resolved_settings.elevenlabs_model_id, str(exc))
         except ElevenLabsError as exc:
-            raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+            return _models_error_payload(resolved_settings.elevenlabs_model_id, str(exc))
         return {
+            "available": True,
+            "error": None,
             "defaultModelId": resolved_settings.elevenlabs_model_id,
             "models": [_model_payload(model) for model in model_list],
         }
@@ -204,6 +206,8 @@ def _audio_response(
 
 def _subscription_payload(summary: SubscriptionSummary) -> dict[str, object]:
     return {
+        "available": True,
+        "error": None,
         "tier": summary.tier,
         "status": summary.status,
         "characterCount": summary.character_count,
@@ -212,6 +216,30 @@ def _subscription_payload(summary: SubscriptionSummary) -> dict[str, object]:
         "canExtendCharacterLimit": summary.can_extend_character_limit,
         "maxCreditLimitExtension": summary.max_credit_limit_extension,
         "nextCharacterCountResetUnix": summary.next_character_count_reset_unix,
+    }
+
+
+def _subscription_error_payload(error: str) -> dict[str, object]:
+    return {
+        "available": False,
+        "error": error,
+        "tier": "unknown",
+        "status": "unavailable",
+        "characterCount": 0,
+        "characterLimit": 0,
+        "remainingCharacters": 0,
+        "canExtendCharacterLimit": False,
+        "maxCreditLimitExtension": None,
+        "nextCharacterCountResetUnix": None,
+    }
+
+
+def _models_error_payload(default_model_id: str, error: str) -> dict[str, object]:
+    return {
+        "available": False,
+        "error": error,
+        "defaultModelId": default_model_id,
+        "models": [],
     }
 
 

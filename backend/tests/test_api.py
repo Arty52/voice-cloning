@@ -179,6 +179,8 @@ def test_subscription_endpoint_returns_sanitized_quota(tmp_path: Path) -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload == {
+        "available": True,
+        "error": None,
         "tier": "starter",
         "status": "active",
         "characterCount": 1000,
@@ -198,8 +200,9 @@ def test_subscription_endpoint_sanitizes_errors(tmp_path: Path) -> None:
 
     response = client.get("/api/subscription")
 
-    assert response.status_code == 502
-    assert response.json()["detail"] == "ElevenLabs API returned 401: Invalid API key."
+    assert response.status_code == 200
+    assert response.json()["available"] is False
+    assert response.json()["error"] == "ElevenLabs API returned 401: Invalid API key."
     assert "test-key" not in response.text
 
 
@@ -210,6 +213,8 @@ def test_models_endpoint_returns_default_and_tts_models(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     payload = response.json()
+    assert payload["available"] is True
+    assert payload["error"] is None
     assert payload["defaultModelId"] == "eleven_multilingual_v2"
     assert [model["modelId"] for model in payload["models"]] == [
         "eleven_multilingual_v2",
@@ -217,6 +222,25 @@ def test_models_endpoint_returns_default_and_tts_models(tmp_path: Path) -> None:
     ]
     assert payload["models"][1]["characterCostMultiplier"] == 0.5
     assert payload["models"][1]["canUseStyle"] is False
+
+
+def test_models_endpoint_returns_sanitized_unavailable_payload(tmp_path: Path) -> None:
+    client, fake_client = make_client(tmp_path)
+    fake_client.models_error = ElevenLabsError(
+        "ElevenLabs API returned 401: The API key is missing models_read.",
+        502,
+    )
+
+    response = client.get("/api/models")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "available": False,
+        "error": "ElevenLabs API returned 401: The API key is missing models_read.",
+        "defaultModelId": "eleven_multilingual_v2",
+        "models": [],
+    }
+    assert "test-key" not in response.text
 
 
 def test_model_payload_filtering_uses_tts_capability() -> None:
