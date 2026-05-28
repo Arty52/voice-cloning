@@ -322,16 +322,20 @@ def test_disconnect_helper_preserves_successful_result() -> None:
         return "done"
 
     async def run() -> None:
-        result = await _await_or_cancel_on_disconnect(ConnectedRequest(), work(), poll_interval=0.001)  # type: ignore[arg-type]
+        result = await _await_or_cancel_on_disconnect(ConnectedRequest(), work, poll_interval=0.001)  # type: ignore[arg-type]
         assert result == "done"
 
     asyncio.run(run())
 
 
 def test_disconnect_helper_cancels_pending_work() -> None:
-    class DisconnectedRequest:
+    class DisconnectsAfterStartRequest:
+        def __init__(self) -> None:
+            self.check_count = 0
+
         async def is_disconnected(self) -> bool:
-            return True
+            self.check_count += 1
+            return self.check_count > 1
 
     was_cancelled = False
 
@@ -345,10 +349,51 @@ def test_disconnect_helper_cancels_pending_work() -> None:
 
     async def run() -> None:
         with pytest.raises(SpeechGenerationCanceled):
-            await _await_or_cancel_on_disconnect(DisconnectedRequest(), work(), poll_interval=0.001)  # type: ignore[arg-type]
+            await _await_or_cancel_on_disconnect(DisconnectsAfterStartRequest(), work, poll_interval=0.001)  # type: ignore[arg-type]
 
     asyncio.run(run())
     assert was_cancelled is True
+
+
+def test_disconnect_helper_does_not_start_work_when_already_disconnected() -> None:
+    class DisconnectedRequest:
+        async def is_disconnected(self) -> bool:
+            return True
+
+    started = False
+
+    async def work() -> None:
+        nonlocal started
+        started = True
+
+    async def run() -> None:
+        with pytest.raises(SpeechGenerationCanceled):
+            await _await_or_cancel_on_disconnect(DisconnectedRequest(), work, poll_interval=0.001)  # type: ignore[arg-type]
+
+    asyncio.run(run())
+    assert started is False
+
+
+def test_disconnect_helper_prefers_cancellation_when_work_cleanup_fails() -> None:
+    class DisconnectsAfterStartRequest:
+        def __init__(self) -> None:
+            self.check_count = 0
+
+        async def is_disconnected(self) -> bool:
+            self.check_count += 1
+            return self.check_count > 1
+
+    async def work() -> None:
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError as exc:
+            raise RuntimeError("cleanup failed") from exc
+
+    async def run() -> None:
+        with pytest.raises(SpeechGenerationCanceled):
+            await _await_or_cancel_on_disconnect(DisconnectsAfterStartRequest(), work, poll_interval=0.001)  # type: ignore[arg-type]
+
+    asyncio.run(run())
 
 
 def test_create_speech_returns_usage_metadata(tmp_path: Path) -> None:

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import suppress
-from typing import Awaitable, TypeVar
 from typing import Annotated
+from typing import Awaitable, Callable, TypeVar
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -160,7 +160,7 @@ def create_app(
         if cached_voice is None:
             cache_state = "miss"
             try:
-                clone = await _await_or_cancel_on_disconnect(request, resolved_client.create_voice(sample))
+                clone = await _await_or_cancel_on_disconnect(request, lambda: resolved_client.create_voice(sample))
             except SpeechGenerationCanceled as exc:
                 raise HTTPException(status_code=499, detail="Speech generation was canceled.") from exc
             except ElevenLabsError as exc:
@@ -170,7 +170,7 @@ def create_app(
         try:
             speech = await _await_or_cancel_on_disconnect(
                 request,
-                resolved_client.create_speech(
+                lambda: resolved_client.create_speech(
                     cached_voice.voice_id,
                     normalized_text,
                     voice_settings,
@@ -198,26 +198,31 @@ def create_app(
 
 async def _await_or_cancel_on_disconnect(
     request: Request,
-    work: Awaitable[T],
+    start_work: Callable[[], Awaitable[T]],
     poll_interval: float = 0.1,
 ) -> T:
-    task = asyncio.ensure_future(work)
+    if await request.is_disconnected():
+        raise SpeechGenerationCanceled
+
+    task = asyncio.ensure_future(start_work())
     try:
         while True:
             done, _ = await asyncio.wait({task}, timeout=poll_interval)
             if task in done:
                 return await task
             if await request.is_disconnected():
-                task.cancel()
-                with suppress(asyncio.CancelledError):
-                    await task
+                await _cancel_and_drain_task(task)
                 raise SpeechGenerationCanceled
     except BaseException:
         if not task.done():
-            task.cancel()
-            with suppress(asyncio.CancelledError):
-                await task
+            await _cancel_and_drain_task(task)
         raise
+
+
+async def _cancel_and_drain_task(task: asyncio.Task[object]) -> None:
+    task.cancel()
+    with suppress(asyncio.CancelledError, Exception):
+        await task
 
 
 def _audio_response(
