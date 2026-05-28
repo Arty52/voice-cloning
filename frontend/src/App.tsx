@@ -1267,6 +1267,10 @@ function GeneratedAudio({
   }
   const usagePercent =
     resolvedUsage.limitBytes > 0 ? Math.min(100, Math.round((resolvedUsage.usedBytes / resolvedUsage.limitBytes) * 100)) : 0
+  const savedItemCount =
+    usage?.itemCount ?? items.filter((item) => !isTemporaryGeneratedAudioId(item.id)).length
+  const temporaryItemCount = Math.max(0, items.length - savedItemCount)
+  const itemCountBadge = formatGeneratedAudioCountBadge(savedItemCount, temporaryItemCount)
 
   return (
     <section className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5">
@@ -1275,7 +1279,7 @@ function GeneratedAudio({
           <h2 className="text-base font-medium">Generated audio</h2>
           <p className="mt-1 text-sm text-muted-foreground">Saved in this browser for playback and download.</p>
         </div>
-        {items.length > 0 ? <Badge>{items.length === 1 ? "1 saved" : `${items.length} saved`}</Badge> : null}
+        {itemCountBadge ? <Badge>{itemCountBadge}</Badge> : null}
       </div>
 
       {error ? (
@@ -1505,6 +1509,17 @@ function formatGeneratedAudioTime(value: string) {
     minute: "2-digit",
     second: "2-digit",
   })
+}
+
+function formatGeneratedAudioCountBadge(savedItemCount: number, temporaryItemCount: number) {
+  const parts: string[] = []
+  if (savedItemCount > 0) {
+    parts.push(savedItemCount === 1 ? "1 saved" : `${savedItemCount} saved`)
+  }
+  if (temporaryItemCount > 0) {
+    parts.push(temporaryItemCount === 1 ? "1 unsaved" : `${temporaryItemCount} unsaved`)
+  }
+  return parts.join(", ")
 }
 
 function createTemporaryGeneratedAudioId() {

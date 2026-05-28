@@ -561,6 +561,8 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
 
     expect(await screen.findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
+    expect(screen.getByText("1 unsaved")).toBeInTheDocument()
+    expect(screen.queryByText("1 saved")).not.toBeInTheDocument()
     expect(screen.getByText(/browser storage could not save it/i)).toBeInTheDocument()
 
     await user.click(screen.getByRole("button", { name: /remove generated audio for default voice/i }))
