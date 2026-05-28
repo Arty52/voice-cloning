@@ -1,8 +1,9 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import App from "./App"
+import { BYTES_PER_MEBIBYTE, GENERATED_AUDIO_DB_NAME } from "./lib/generated-audio-storage"
 
 const audioBlob = new Blob(["fake audio"], { type: "audio/mpeg" })
 const formatTestNumber = (value: number) => new Intl.NumberFormat().format(value)
@@ -73,9 +74,9 @@ function okJson(payload: unknown) {
   )
 }
 
-function okAudio(headers: Record<string, string> = {}) {
+function okAudio(headers: Record<string, string> = {}, body: Blob = audioBlob) {
   return Promise.resolve(
-    new Response(audioBlob, {
+    new Response(body, {
       status: 200,
       headers: {
         "Content-Type": "audio/mpeg",
@@ -93,6 +94,15 @@ function okAudio(headers: Record<string, string> = {}) {
 function expectAbortSignal(signal: AbortSignal | null, aborted: boolean) {
   expect(signal).not.toBeNull()
   expect(signal?.aborted).toBe(aborted)
+}
+
+function deleteDatabase(name: string) {
+  return new Promise<void>((resolve, reject) => {
+    const request = indexedDB.deleteDatabase(name)
+    request.onerror = () => reject(request.error)
+    request.onsuccess = () => resolve()
+    request.onblocked = () => reject(new Error(`Unable to delete ${name}; database is blocked.`))
+  })
 }
 
 function mockFetch() {
@@ -131,7 +141,9 @@ function mockFetch() {
 }
 
 describe("App", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await deleteDatabase(GENERATED_AUDIO_DB_NAME)
+    localStorage.clear()
     Object.defineProperty(HTMLTextAreaElement.prototype, "scrollHeight", {
       configurable: true,
       value: 320,
@@ -228,7 +240,7 @@ describe("App", () => {
     render(<App />)
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(screen.getByRole("button", { name: /generate/i }))
+    await user.click(screen.getByRole("button", { name: /^Generate$/ }))
 
     expect(screen.getByRole("button", { name: /generating/i })).toBeDisabled()
     expect(screen.getByRole("button", { name: /cancel/i })).toBeInTheDocument()
@@ -273,7 +285,7 @@ describe("App", () => {
     render(<App />)
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(screen.getByRole("button", { name: /generate/i }))
+    await user.click(screen.getByRole("button", { name: /^Generate$/ }))
     await user.click(screen.getByRole("button", { name: /cancel/i }))
 
     expect(window.confirm).toHaveBeenCalledWith(
@@ -309,7 +321,7 @@ describe("App", () => {
     render(<App />)
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(screen.getByRole("button", { name: /generate/i }))
+    await user.click(screen.getByRole("button", { name: /^Generate$/ }))
     await user.click(screen.getByRole("button", { name: /cancel/i }))
 
     expect(window.confirm).toHaveBeenCalled()
@@ -454,7 +466,7 @@ describe("App", () => {
     fireEvent.change(screen.getByRole("slider", { name: /style/i }), { target: { value: "0.2" } })
     fireEvent.change(screen.getByRole("slider", { name: /speed/i }), { target: { value: "1.1" } })
     await user.click(screen.getByLabelText(/Speaker boost/i))
-    await user.click(screen.getByRole("button", { name: /generate/i }))
+    await user.click(screen.getByRole("button", { name: /^Generate$/ }))
 
     await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/speech", expect.objectContaining({ method: "POST" })))
     const speechCall = vi.mocked(fetch).mock.calls.find(
@@ -477,7 +489,7 @@ describe("App", () => {
     await screen.findByText("default/default-voice.mp3")
     await user.click(screen.getByRole("button", { name: /expand/i }))
     await user.selectOptions(screen.getByLabelText(/model/i), "eleven_flash_v2_5")
-    await user.click(screen.getByRole("button", { name: /generate/i }))
+    await user.click(screen.getByRole("button", { name: /^Generate$/ }))
 
     await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/speech", expect.objectContaining({ method: "POST" })))
     const speechCall = vi.mocked(fetch).mock.calls.find(
@@ -488,7 +500,98 @@ describe("App", () => {
     const formattedCharacterCount = formatTestNumber(54)
     expect(await screen.findAllByText(formattedCharacterCount)).toHaveLength(1)
     expect(screen.getByText(new RegExp(`${formattedCharacterCount} chars`))).toBeInTheDocument()
-    expect(screen.getByText(/req_test_123/)).toBeInTheDocument()
+    expect(screen.getAllByText(/req_test_123/)).toHaveLength(2)
+  })
+
+  it("persists generated audio across remounts", async () => {
+    const user = userEvent.setup()
+    const { unmount } = render(<App />)
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.click(screen.getByRole("button", { name: /^Generate$/ }))
+
+    expect(await screen.findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
+    expect(screen.getByText("1 saved")).toBeInTheDocument()
+    unmount()
+
+    render(<App />)
+
+    expect(await screen.findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: /download/i })).toHaveAttribute("download", expect.stringMatching(/^voice-clone-default-/))
+  })
+
+  it("removes one generated audio item and clears all saved audio", async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.click(screen.getByRole("button", { name: /^Generate$/ }))
+    expect(await screen.findAllByLabelText(/generated voice playback for default voice/i)).toHaveLength(1)
+    await user.click(screen.getByRole("button", { name: /^Generate$/ }))
+    await waitFor(() => expect(screen.getAllByLabelText(/generated voice playback for default voice/i)).toHaveLength(2))
+
+    await user.click(screen.getAllByRole("button", { name: /remove generated audio for default voice/i })[0])
+    await waitFor(() => expect(screen.getAllByLabelText(/generated voice playback for default voice/i)).toHaveLength(1))
+
+    await user.click(screen.getByRole("button", { name: /clear all/i }))
+    const dialog = screen.getByRole("dialog", { name: /clear generated audio/i })
+    await user.click(within(dialog).getByRole("button", { name: /clear all/i }))
+
+    await waitFor(() => expect(screen.queryByLabelText(/generated voice playback for default voice/i)).not.toBeInTheDocument())
+    expect(screen.getByText("No generated speech yet.")).toBeInTheDocument()
+  })
+
+  it("confirms before lowering the storage cap when saved audio would be pruned", async () => {
+    const largeAudioBlob = new Blob(["fake audio"], { type: "audio/mpeg" })
+    Object.defineProperty(largeAudioBlob, "size", { value: 30 * BYTES_PER_MEBIBYTE })
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        if (url === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "default", voices: [defaultVoice] })
+        }
+        if (url === "/api/speech" && init?.method === "POST") {
+          const response = new Response(null, {
+            status: 200,
+            headers: {
+              "Content-Type": "audio/mpeg",
+              "X-App-Voice-Id": "default",
+              "X-Character-Count": "54",
+              "X-Request-Id": "req_test_123",
+              "X-Voice-Cache": "miss",
+              "X-Voice-Id": "voice-123",
+            },
+          })
+          Object.defineProperty(response, "blob", { value: () => Promise.resolve(largeAudioBlob) })
+          return Promise.resolve(response)
+        }
+        return okJson({})
+      })
+    )
+    const user = userEvent.setup()
+    render(<App />)
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.click(screen.getByRole("button", { name: /^Generate$/ }))
+    expect(await screen.findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
+    expect(await screen.findByText((_, element) => element?.textContent === "30 MB / 100 MB")).toBeInTheDocument()
+
+    const capSelect = screen.getByLabelText(/cap/i)
+    await user.selectOptions(capSelect, String(25 * BYTES_PER_MEBIBYTE))
+
+    let dialog = screen.getByRole("dialog", { name: /lower storage cap/i })
+    expect(within(dialog).getByText(/remove the oldest saved generated audio/i)).toBeInTheDocument()
+    await user.click(within(dialog).getByRole("button", { name: /cancel/i }))
+    expect(capSelect).toHaveValue(String(100 * BYTES_PER_MEBIBYTE))
+    expect(screen.getByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
+
+    await user.selectOptions(capSelect, String(25 * BYTES_PER_MEBIBYTE))
+    dialog = screen.getByRole("dialog", { name: /lower storage cap/i })
+    await user.click(within(dialog).getByRole("button", { name: /lower cap/i }))
+
+    await waitFor(() => expect(screen.queryByLabelText(/generated voice playback for default voice/i)).not.toBeInTheDocument())
+    expect(capSelect).toHaveValue(String(25 * BYTES_PER_MEBIBYTE))
   })
 
   it("reports the backend resolved model when model metadata is still loading", async () => {
@@ -518,7 +621,7 @@ describe("App", () => {
     render(<App />)
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(screen.getByRole("button", { name: /generate/i }))
+    await user.click(screen.getByRole("button", { name: /^Generate$/ }))
 
     await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/speech", expect.objectContaining({ method: "POST" })))
     const speechCall = vi.mocked(fetch).mock.calls.find(
