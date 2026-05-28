@@ -61,6 +61,15 @@ type VoiceTuning = {
   useSpeakerBoost: boolean
 }
 
+type TuningPresetId = "standard" | "animated" | "custom"
+
+type TuningPreset = {
+  id: Exclude<TuningPresetId, "custom">
+  label: string
+  description: string
+  values: Pick<VoiceTuning, "stability" | "similarityBoost" | "style" | "speed">
+}
+
 type SliderConfig = {
   id: keyof Pick<VoiceTuning, "stability" | "similarityBoost" | "style" | "speed">
   label: string
@@ -80,6 +89,31 @@ const DEFAULT_TUNING: VoiceTuning = {
   speed: 1,
   useSpeakerBoost: true,
 }
+
+const TUNING_PRESETS: TuningPreset[] = [
+  {
+    id: "standard",
+    label: "Standard narration",
+    description: "Balanced clone similarity for steady narration.",
+    values: {
+      stability: 0.5,
+      similarityBoost: 0.75,
+      style: 0,
+      speed: 1,
+    },
+  },
+  {
+    id: "animated",
+    label: "Animated dialogue",
+    description: "More expressive delivery for character reads.",
+    values: {
+      stability: 0.4,
+      similarityBoost: 0.75,
+      style: 0.35,
+      speed: 1,
+    },
+  },
+]
 
 const SLIDERS: SliderConfig[] = [
   {
@@ -133,6 +167,7 @@ function App() {
   const [status, setStatus] = useState<RequestStatus>("idle")
   const [error, setError] = useState<string | null>(null)
   const [tuning, setTuning] = useState<VoiceTuning>(DEFAULT_TUNING)
+  const [selectedTuningPreset, setSelectedTuningPreset] = useState<TuningPresetId>("standard")
   const textRef = useRef<HTMLTextAreaElement | null>(null)
 
   const selectedVoice = voices.find((voice) => voice.id === selectedVoiceId) ?? null
@@ -303,9 +338,18 @@ function App() {
   }
 
   function updateTuningValue(key: SliderConfig["id"], value: string) {
+    setSelectedTuningPreset("custom")
     setTuning((current) => ({
       ...current,
       [key]: Number(value),
+    }))
+  }
+
+  function applyTuningPreset(preset: TuningPreset) {
+    setSelectedTuningPreset(preset.id)
+    setTuning((current) => ({
+      ...current,
+      ...preset.values,
     }))
   }
 
@@ -380,7 +424,40 @@ function App() {
                   <h2 className="text-base font-medium">Voice tuning</h2>
                   <p className="mt-1 text-sm text-muted-foreground">Adjust ElevenLabs voice settings before generating.</p>
                 </div>
-                <Badge>Per request</Badge>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  {selectedTuningPreset === "custom" ? <Badge>Custom</Badge> : null}
+                  <Badge>Per request</Badge>
+                </div>
+              </div>
+              <div className="mb-4 space-y-2">
+                <div className="text-sm font-medium">Preset</div>
+                <div
+                  aria-label="Voice tuning presets"
+                  className="grid gap-1 rounded-md border border-border bg-background/60 p-1 sm:grid-cols-2"
+                  role="group"
+                >
+                  {TUNING_PRESETS.map((preset) => {
+                    const isSelected = selectedTuningPreset === preset.id
+                    return (
+                      <button
+                        aria-pressed={isSelected}
+                        className={cn(
+                          "rounded px-3 py-2 text-left text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          isSelected
+                            ? "bg-secondary text-secondary-foreground shadow-sm"
+                            : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                        )}
+                        disabled={isGenerating}
+                        key={preset.id}
+                        onClick={() => applyTuningPreset(preset)}
+                        type="button"
+                      >
+                        <span className="block font-medium">{preset.label}</span>
+                        <span className="mt-1 block text-xs leading-5">{preset.description}</span>
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 {SLIDERS.map((slider) => (
