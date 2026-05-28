@@ -167,10 +167,14 @@ export function setGeneratedAudioStorageLimitBytes(limitBytes: number): number {
 }
 
 export function normalizeGeneratedAudioStorageLimitBytes(limitBytes: number): number {
-  if (!Number.isFinite(limitBytes) || limitBytes <= 0) {
+  if (!Number.isFinite(limitBytes)) {
     return DEFAULT_GENERATED_AUDIO_STORAGE_LIMIT_BYTES
   }
-  return Math.floor(limitBytes)
+  const normalizedLimitBytes = Math.floor(limitBytes)
+  if (normalizedLimitBytes <= 0) {
+    return DEFAULT_GENERATED_AUDIO_STORAGE_LIMIT_BYTES
+  }
+  return normalizedLimitBytes
 }
 
 function openGeneratedAudioDatabase(): Promise<IDBDatabase> {

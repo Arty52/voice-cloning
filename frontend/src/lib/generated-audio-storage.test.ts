@@ -59,6 +59,13 @@ describe("generated audio storage", () => {
     expect(getGeneratedAudioStorageLimitBytes()).toBe(12)
   })
 
+  it("normalizes sub-byte caps back to the default cap", () => {
+    setGeneratedAudioStorageLimitBytes(0.5)
+
+    expect(localStorage.getItem(GENERATED_AUDIO_STORAGE_LIMIT_KEY)).toBe(String(DEFAULT_GENERATED_AUDIO_STORAGE_LIMIT_BYTES))
+    expect(getGeneratedAudioStorageLimitBytes()).toBe(DEFAULT_GENERATED_AUDIO_STORAGE_LIMIT_BYTES)
+  })
+
   it("saves generated audio and lists newest first", async () => {
     await saveGeneratedAudio(audioInput({ createdAt: "2026-05-28T10:00:00.000Z", id: "first" }), 20)
     await saveGeneratedAudio(audioInput({ createdAt: "2026-05-28T10:01:00.000Z", id: "second" }), 20)
