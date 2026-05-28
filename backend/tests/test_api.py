@@ -14,7 +14,9 @@ from voice_cloning.elevenlabs_client import (
     _is_tts_model,
     _model_from_payload,
 )
+from voice_cloning.api.serializers import audio_response
 from voice_cloning.models import (
+    CachedVoice,
     ModelSummary,
     SpeechResult,
     SubscriptionSummary,
@@ -22,6 +24,7 @@ from voice_cloning.models import (
     VoiceSample,
     VoiceSettings,
 )
+from voice_cloning.services.speech import SpeechServiceError, generate_speech
 from voice_cloning.voice_library import VoiceLibrary
 
 
@@ -266,6 +269,77 @@ def test_model_payload_filtering_uses_tts_capability() -> None:
 
     assert [model.model_id for model in models] == ["eleven_flash_v2_5"]
     assert models[0].character_cost_multiplier == 0.5
+
+
+def test_audio_response_serializer_sets_public_headers() -> None:
+    sample = VoiceSample(
+        content=b"sample",
+        filename="sample.mp3",
+        content_type="audio/mpeg",
+        sha256="sample-hash",
+    )
+    cached_voice = CachedVoice(
+        voice_id="voice-123",
+        sample_name="sample.mp3",
+        created_at="2026-05-28T00:00:00+00:00",
+        requires_verification=False,
+    )
+
+    response = audio_response(
+        b"fake-mp3",
+        sample,
+        cached_voice,
+        "miss",
+        "default",
+        "eleven_multilingual_v2",
+        24,
+        "req_test_123",
+    )
+
+    assert response.body == b"fake-mp3"
+    assert response.media_type == "audio/mpeg"
+    assert response.headers["x-app-voice-id"] == "default"
+    assert response.headers["x-sample-sha256"] == "sample-hash"
+    assert response.headers["x-voice-cache"] == "miss"
+    assert response.headers["x-voice-id"] == "voice-123"
+    assert response.headers["x-model-id"] == "eleven_multilingual_v2"
+    assert response.headers["x-character-count"] == "24"
+    assert response.headers["x-request-id"] == "req_test_123"
+
+
+def test_speech_service_rejects_empty_text(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    fake_client = FakeElevenLabsClient()
+    voice_settings = VoiceSettings(
+        stability=0.5,
+        similarity_boost=0.75,
+        style=0,
+        speed=1,
+        use_speaker_boost=True,
+    )
+
+    async def is_disconnected() -> bool:
+        return False
+
+    async def run() -> None:
+        with pytest.raises(SpeechServiceError) as exc_info:
+            await generate_speech(
+                text="   ",
+                voice_id="default",
+                model_id=None,
+                voice_settings=voice_settings,
+                settings=settings,
+                elevenlabs_client=fake_client,  # type: ignore[arg-type]
+                voice_cache=VoiceCache(settings.storage_dir / "voice-cache.json"),
+                voice_library=VoiceLibrary(settings),
+                is_disconnected=is_disconnected,
+            )
+        assert exc_info.value.status_code == 422
+        assert exc_info.value.detail == "Text is required."
+
+    asyncio.run(run())
+    assert fake_client.created_samples == []
+    assert fake_client.speech_requests == []
 
 
 def test_default_voice_sample_endpoint_returns_audio(tmp_path: Path) -> None:
