@@ -21,6 +21,10 @@ updates:
       time: "05:00"
       timezone: "America/Los_Angeles"
     open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "@types/node"
+        update-types:
+          - "version-update:semver-major"
     groups:
       frontend-npm:
         patterns:
