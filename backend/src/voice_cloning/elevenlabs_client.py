@@ -5,7 +5,7 @@ from typing import Any
 import httpx
 
 from .config import Settings
-from .models import ModelSummary, SubscriptionSummary, VoiceClone, VoiceSample, VoiceSettings
+from .models import ModelSummary, SpeechResult, SubscriptionSummary, VoiceClone, VoiceSample, VoiceSettings
 
 
 class ElevenLabsError(Exception):
@@ -87,7 +87,13 @@ class ElevenLabsClient:
             requires_verification=bool(payload.get("requires_verification", False)),
         )
 
-    async def create_speech(self, voice_id: str, text: str, voice_settings: VoiceSettings | None = None) -> bytes:
+    async def create_speech(
+        self,
+        voice_id: str,
+        text: str,
+        voice_settings: VoiceSettings | None = None,
+        model_id: str | None = None,
+    ) -> SpeechResult:
         self.settings.require_api_key()
         url = f"{self.settings.elevenlabs_api_base_url}/text-to-speech/{voice_id}"
         headers = {
@@ -97,7 +103,7 @@ class ElevenLabsClient:
         params = {"output_format": "mp3_44100_128"}
         payload = {
             "text": text,
-            "model_id": self.settings.elevenlabs_model_id,
+            "model_id": model_id or self.settings.elevenlabs_model_id,
         }
         if voice_settings is not None:
             payload["voice_settings"] = {
@@ -115,7 +121,11 @@ class ElevenLabsClient:
                 raise ElevenLabsError(_public_error(exc.response), status_code=502) from exc
             except httpx.RequestError as exc:
                 raise ElevenLabsError("Unable to reach the ElevenLabs API.", status_code=503) from exc
-        return response.content
+        return SpeechResult(
+            audio=response.content,
+            character_count=_optional_int_payload(response.headers.get("x-character-count")),
+            request_id=_response_request_id(response),
+        )
 
 
 def _public_error(response: httpx.Response) -> str:
@@ -244,3 +254,11 @@ def _credit_limit_extension(value: Any) -> int | str | None:
     if value == "unlimited":
         return "unlimited"
     return _optional_int_payload(value)
+
+
+def _response_request_id(response: httpx.Response) -> str | None:
+    for header in ("x-request-id", "request-id"):
+        value = response.headers.get(header)
+        if value:
+            return value
+    return None

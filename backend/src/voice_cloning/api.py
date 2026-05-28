@@ -40,6 +40,8 @@ def create_app(
             "Content-Disposition",
             "X-App-Voice-Id",
             "X-Sample-Sha256",
+            "X-Character-Count",
+            "X-Request-Id",
             "X-Voice-Cache",
             "X-Voice-Id",
         ],
@@ -106,6 +108,7 @@ def create_app(
     async def create_speech(
         text: str = Form(...),
         voiceId: str | None = Form(None),
+        modelId: str | None = Form(None),
         stability: Annotated[float, Form(ge=0, le=1)] = 0.5,
         similarityBoost: Annotated[float, Form(ge=0, le=1)] = 0.75,
         style: Annotated[float, Form(ge=0, le=1)] = 0,
@@ -131,6 +134,7 @@ def create_app(
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
         sample = resolved_library.get_sample(app_voice_id)
+        selected_model_id = modelId.strip() if modelId and modelId.strip() else resolved_settings.elevenlabs_model_id
         voice_settings = VoiceSettings(
             stability=stability,
             similarity_boost=similarityBoost,
@@ -149,11 +153,24 @@ def create_app(
             cached_voice = resolved_cache.set(sample, clone)
 
         try:
-            audio = await resolved_client.create_speech(cached_voice.voice_id, normalized_text, voice_settings)
+            speech = await resolved_client.create_speech(
+                cached_voice.voice_id,
+                normalized_text,
+                voice_settings,
+                selected_model_id,
+            )
         except ElevenLabsError as exc:
             raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
-        return _audio_response(audio, sample, cached_voice, cache_state, app_voice_id)
+        return _audio_response(
+            speech.audio,
+            sample,
+            cached_voice,
+            cache_state,
+            app_voice_id,
+            speech.character_count,
+            speech.request_id,
+        )
 
     return app
 
@@ -164,17 +181,24 @@ def _audio_response(
     cached_voice: CachedVoice,
     cache_state: str,
     app_voice_id: str,
+    character_count: int | None,
+    request_id: str | None,
 ) -> Response:
+    headers = {
+        "Content-Disposition": 'attachment; filename="voice-clone.mp3"',
+        "X-App-Voice-Id": app_voice_id,
+        "X-Sample-Sha256": sample.sha256,
+        "X-Voice-Cache": cache_state,
+        "X-Voice-Id": cached_voice.voice_id,
+    }
+    if character_count is not None:
+        headers["X-Character-Count"] = str(character_count)
+    if request_id:
+        headers["X-Request-Id"] = request_id
     return Response(
         content=audio,
         media_type="audio/mpeg",
-        headers={
-            "Content-Disposition": 'attachment; filename="voice-clone.mp3"',
-            "X-App-Voice-Id": app_voice_id,
-            "X-Sample-Sha256": sample.sha256,
-            "X-Voice-Cache": cache_state,
-            "X-Voice-Id": cached_voice.voice_id,
-        },
+        headers=headers,
     )
 
 
