@@ -7,16 +7,75 @@ from fastapi.testclient import TestClient
 from voice_cloning.api import create_app
 from voice_cloning.cache import VoiceCache
 from voice_cloning.config import Settings
-from voice_cloning.elevenlabs_client import ElevenLabsError
-from voice_cloning.models import VoiceClone, VoiceSample, VoiceSettings
+from voice_cloning.elevenlabs_client import (
+    ElevenLabsError,
+    _is_tts_model,
+    _model_from_payload,
+)
+from voice_cloning.models import (
+    ModelSummary,
+    SpeechResult,
+    SubscriptionSummary,
+    VoiceClone,
+    VoiceSample,
+    VoiceSettings,
+)
 from voice_cloning.voice_library import VoiceLibrary
 
 
 class FakeElevenLabsClient:
     def __init__(self) -> None:
         self.created_samples: list[VoiceSample] = []
-        self.speech_requests: list[tuple[str, str, VoiceSettings | None]] = []
+        self.speech_requests: list[tuple[str, str, VoiceSettings | None, str | None]] = []
         self.create_voice_error: ElevenLabsError | None = None
+        self.subscription_error: ElevenLabsError | None = None
+        self.models_error: ElevenLabsError | None = None
+        self.speech_character_count: int | None = 24
+        self.speech_request_id: str | None = "req_test_123"
+        self.subscription = SubscriptionSummary(
+            tier="starter",
+            status="active",
+            character_count=1000,
+            character_limit=10000,
+            remaining_characters=9000,
+            can_extend_character_limit=True,
+            max_credit_limit_extension=10000,
+            next_character_count_reset_unix=1770000000,
+        )
+        self.models = [
+            ModelSummary(
+                model_id="eleven_multilingual_v2",
+                name="Eleven Multilingual v2",
+                description="Stable long-form speech.",
+                can_use_style=True,
+                can_use_speaker_boost=True,
+                character_cost_multiplier=1,
+                max_characters_request_free_user=2500,
+                max_characters_request_subscribed_user=10000,
+                maximum_text_length_per_request=10000,
+            ),
+            ModelSummary(
+                model_id="eleven_flash_v2_5",
+                name="Eleven Flash v2.5",
+                description="Fast speech.",
+                can_use_style=False,
+                can_use_speaker_boost=True,
+                character_cost_multiplier=0.5,
+                max_characters_request_free_user=2500,
+                max_characters_request_subscribed_user=40000,
+                maximum_text_length_per_request=40000,
+            ),
+        ]
+
+    async def get_subscription(self) -> SubscriptionSummary:
+        if self.subscription_error is not None:
+            raise self.subscription_error
+        return self.subscription
+
+    async def list_models(self) -> list[ModelSummary]:
+        if self.models_error is not None:
+            raise self.models_error
+        return self.models
 
     async def create_voice(self, sample: VoiceSample) -> VoiceClone:
         if self.create_voice_error is not None:
@@ -24,9 +83,19 @@ class FakeElevenLabsClient:
         self.created_samples.append(sample)
         return VoiceClone(voice_id=f"voice-{sample.sha256[:8]}", requires_verification=False)
 
-    async def create_speech(self, voice_id: str, text: str, voice_settings: VoiceSettings | None = None) -> bytes:
-        self.speech_requests.append((voice_id, text, voice_settings))
-        return b"fake-mp3"
+    async def create_speech(
+        self,
+        voice_id: str,
+        text: str,
+        voice_settings: VoiceSettings | None = None,
+        model_id: str | None = None,
+    ) -> SpeechResult:
+        self.speech_requests.append((voice_id, text, voice_settings, model_id))
+        return SpeechResult(
+            audio=b"fake-mp3",
+            character_count=self.speech_character_count,
+            request_id=self.speech_request_id,
+        )
 
 
 def make_settings(tmp_path: Path, api_key: str = "test-key", with_default_sample: bool = True) -> Settings:
@@ -102,6 +171,71 @@ def test_voice_manifest_bootstraps_default_voice(tmp_path: Path) -> None:
     assert response.json()["voices"][0]["filePath"] == "default/default-voice.mp3"
 
 
+def test_subscription_endpoint_returns_sanitized_quota(tmp_path: Path) -> None:
+    client, _ = make_client(tmp_path)
+
+    response = client.get("/api/subscription")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload == {
+        "tier": "starter",
+        "status": "active",
+        "characterCount": 1000,
+        "characterLimit": 10000,
+        "remainingCharacters": 9000,
+        "canExtendCharacterLimit": True,
+        "maxCreditLimitExtension": 10000,
+        "nextCharacterCountResetUnix": 1770000000,
+    }
+    assert "openInvoices" not in payload
+    assert "xiApiKey" not in payload
+
+
+def test_subscription_endpoint_sanitizes_errors(tmp_path: Path) -> None:
+    client, fake_client = make_client(tmp_path)
+    fake_client.subscription_error = ElevenLabsError("ElevenLabs API returned 401: Invalid API key.", 502)
+
+    response = client.get("/api/subscription")
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "ElevenLabs API returned 401: Invalid API key."
+    assert "test-key" not in response.text
+
+
+def test_models_endpoint_returns_default_and_tts_models(tmp_path: Path) -> None:
+    client, _ = make_client(tmp_path)
+
+    response = client.get("/api/models")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["defaultModelId"] == "eleven_multilingual_v2"
+    assert [model["modelId"] for model in payload["models"]] == [
+        "eleven_multilingual_v2",
+        "eleven_flash_v2_5",
+    ]
+    assert payload["models"][1]["characterCostMultiplier"] == 0.5
+    assert payload["models"][1]["canUseStyle"] is False
+
+
+def test_model_payload_filtering_uses_tts_capability() -> None:
+    raw_models = [
+        {"model_id": "scribe_v2", "name": "Scribe", "can_do_text_to_speech": False},
+        {
+            "model_id": "eleven_flash_v2_5",
+            "name": "Eleven Flash v2.5",
+            "can_do_text_to_speech": True,
+            "model_rates": {"character_cost_multiplier": 0.5},
+        },
+    ]
+
+    models = [_model_from_payload(item) for item in raw_models if _is_tts_model(item)]
+
+    assert [model.model_id for model in models] == ["eleven_flash_v2_5"]
+    assert models[0].character_cost_multiplier == 0.5
+
+
 def test_default_voice_sample_endpoint_returns_audio(tmp_path: Path) -> None:
     client, _ = make_client(tmp_path)
 
@@ -127,6 +261,31 @@ def test_create_speech_clones_once_then_uses_cache(tmp_path: Path) -> None:
     assert first.headers["x-app-voice-id"] == "default"
     assert len(fake_client.created_samples) == 1
     assert len(fake_client.speech_requests) == 2
+
+
+def test_create_speech_returns_usage_metadata(tmp_path: Path) -> None:
+    client, _ = make_client(tmp_path)
+
+    response = client.post("/api/speech", data={"text": "Hello from the local app.", "voiceId": "default"})
+
+    assert response.status_code == 200
+    assert response.headers["x-character-count"] == "24"
+    assert response.headers["x-request-id"] == "req_test_123"
+
+
+def test_create_speech_uses_model_fallback_and_override(tmp_path: Path) -> None:
+    client, fake_client = make_client(tmp_path)
+
+    fallback = client.post("/api/speech", data={"text": "Default model.", "voiceId": "default"})
+    override = client.post(
+        "/api/speech",
+        data={"text": "Override model.", "voiceId": "default", "modelId": "eleven_flash_v2_5"},
+    )
+
+    assert fallback.status_code == 200
+    assert override.status_code == 200
+    assert fake_client.speech_requests[0][3] == "eleven_multilingual_v2"
+    assert fake_client.speech_requests[1][3] == "eleven_flash_v2_5"
 
 
 def test_create_speech_uses_tuning_settings(tmp_path: Path) -> None:
