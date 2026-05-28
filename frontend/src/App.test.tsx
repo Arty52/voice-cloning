@@ -236,6 +236,19 @@ describe("App", () => {
     expect(screen.getByRole("slider", { name: /speed/i })).toHaveValue("1.1")
   })
 
+  it("marks tuning as custom when speaker boost changes", async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await screen.findByText("default/default-voice.mp3")
+    expect(screen.getByRole("button", { name: /standard narration/i })).toHaveAttribute("aria-pressed", "true")
+
+    await user.click(screen.getByLabelText(/Speaker boost/i))
+
+    expect(screen.getByText("Custom")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /standard narration/i })).toHaveAttribute("aria-pressed", "false")
+  })
+
   it("sends tuning values with speech generation", async () => {
     const user = userEvent.setup()
     render(<App />)

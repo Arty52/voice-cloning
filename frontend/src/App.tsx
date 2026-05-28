@@ -493,9 +493,10 @@ function App() {
                   checked={tuning.useSpeakerBoost}
                   className="size-5 accent-primary"
                   disabled={isGenerating}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    setSelectedTuningPreset("custom")
                     setTuning((current) => ({ ...current, useSpeakerBoost: event.target.checked }))
-                  }
+                  }}
                   type="checkbox"
                 />
               </label>
