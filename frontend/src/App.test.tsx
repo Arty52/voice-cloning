@@ -90,6 +90,11 @@ function okAudio(headers: Record<string, string> = {}) {
   )
 }
 
+function expectAbortSignal(signal: AbortSignal | null, aborted: boolean) {
+  expect(signal).not.toBeNull()
+  expect(signal?.aborted).toBe(aborted)
+}
+
 function mockFetch() {
   return vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
@@ -226,6 +231,7 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: /generate/i }))
 
     expect(screen.getByRole("button", { name: /generating/i })).toBeDisabled()
+    expect(screen.getByRole("button", { name: /cancel/i })).toBeInTheDocument()
     resolveSpeech(
       new Response(audioBlob, {
         status: 200,
@@ -240,6 +246,92 @@ describe("App", () => {
       })
     )
     expect(await screen.findByLabelText(/generated voice playback/i)).toBeInTheDocument()
+  })
+
+  it("cancels an in-flight speech request after confirmation", async () => {
+    let speechSignal: AbortSignal | null = null
+    vi.spyOn(window, "confirm").mockReturnValue(true)
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        if (url === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "default", voices: [defaultVoice] })
+        }
+        if (url === "/api/speech" && init?.method === "POST") {
+          speechSignal = init.signal ?? null
+          return new Promise<Response>((_resolve, reject) => {
+            speechSignal?.addEventListener("abort", () => {
+              reject(new DOMException("The operation was aborted.", "AbortError"))
+            })
+          })
+        }
+        return okJson({})
+      })
+    )
+    const user = userEvent.setup()
+    render(<App />)
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.click(screen.getByRole("button", { name: /generate/i }))
+    await user.click(screen.getByRole("button", { name: /cancel/i }))
+
+    expect(window.confirm).toHaveBeenCalledWith(
+      "Cancel this generation? ElevenLabs does not offer server-side cancellation for text-to-speech requests, so this may still consume credits."
+    )
+    expectAbortSignal(speechSignal, true)
+    expect(await screen.findByText(/Generation canceled in this browser/i)).toBeInTheDocument()
+    expect(screen.queryByLabelText(/generated voice playback/i)).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Generate" })).not.toBeDisabled()
+  })
+
+  it("keeps generating when cancel confirmation is declined", async () => {
+    let resolveSpeech: (value: Response) => void = () => undefined
+    let speechSignal: AbortSignal | null = null
+    vi.spyOn(window, "confirm").mockReturnValue(false)
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        if (url === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "default", voices: [defaultVoice] })
+        }
+        if (url === "/api/speech" && init?.method === "POST") {
+          speechSignal = init.signal ?? null
+          return new Promise<Response>((resolve) => {
+            resolveSpeech = resolve
+          })
+        }
+        return okJson({})
+      })
+    )
+    const user = userEvent.setup()
+    render(<App />)
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.click(screen.getByRole("button", { name: /generate/i }))
+    await user.click(screen.getByRole("button", { name: /cancel/i }))
+
+    expect(window.confirm).toHaveBeenCalled()
+    expectAbortSignal(speechSignal, false)
+    expect(screen.getByRole("button", { name: /generating/i })).toBeDisabled()
+
+    resolveSpeech(
+      new Response(audioBlob, {
+        status: 200,
+        headers: {
+          "Content-Type": "audio/mpeg",
+          "X-App-Voice-Id": "default",
+          "X-Character-Count": "54",
+          "X-Request-Id": "req_test_123",
+          "X-Voice-Cache": "miss",
+          "X-Voice-Id": "voice-123",
+        },
+      })
+    )
+
+    expect(await screen.findByLabelText(/generated voice playback/i)).toBeInTheDocument()
+    expect(screen.queryByText(/Generation canceled in this browser/i)).not.toBeInTheDocument()
   })
 
   it("saves a named upload and selects it", async () => {
