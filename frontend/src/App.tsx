@@ -919,89 +919,83 @@ function CostQuotaPanel({
         />
       </div>
 
-      {isExpanded ? (
-        <div className="mt-4 space-y-4" id={detailsId}>
-          <div className="flex items-center justify-between gap-3 border-b border-border pb-3">
-            <div className="text-sm font-medium">Details</div>
-            <Button
-              aria-label="Refresh cost and quota"
-              disabled={isLoading}
-              onClick={onRefresh}
-              size="icon"
-              type="button"
-              variant="secondary"
-            >
-              <RefreshCw aria-hidden="true" className={cn("size-4", isLoading && "animate-spin")} />
-            </Button>
-          </div>
+      <div aria-hidden={!isExpanded} className="mt-4 space-y-4" hidden={!isExpanded} id={detailsId}>
+        <div className="flex items-center justify-between gap-3 border-b border-border pb-3">
+          <div className="text-sm font-medium">Details</div>
+          <Button
+            aria-label="Refresh cost and quota"
+            disabled={isLoading}
+            onClick={onRefresh}
+            size="icon"
+            type="button"
+            variant="secondary"
+          >
+            <RefreshCw aria-hidden="true" className={cn("size-4", isLoading && "animate-spin")} />
+          </Button>
+        </div>
 
-          <label className="block space-y-2 text-sm font-medium" htmlFor="model-select">
-            <span>Model</span>
-            <select
-              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={isGenerating || modelStatus === "loading" || models.length === 0}
-              id="model-select"
-              onChange={(event) => onModelChange(event.target.value)}
-              value={selectedModelId}
-            >
-              {models.length > 0 ? (
-                models.map((model) => (
-                  <option key={model.modelId} value={model.modelId}>
-                    {model.name}
-                  </option>
-                ))
-              ) : (
-                <option value={selectedModelId}>Backend default model</option>
-              )}
-            </select>
-          </label>
+        <label className="block space-y-2 text-sm font-medium" htmlFor="model-select">
+          <span>Model</span>
+          <select
+            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={isGenerating || modelStatus === "loading" || models.length === 0}
+            id="model-select"
+            onChange={(event) => onModelChange(event.target.value)}
+            value={selectedModelId}
+          >
+            {models.length > 0 ? (
+              models.map((model) => (
+                <option key={model.modelId} value={model.modelId}>
+                  {model.name}
+                </option>
+              ))
+            ) : (
+              <option value={selectedModelId}>Backend default model</option>
+            )}
+          </select>
+        </label>
 
-          <div className="grid gap-3 border-b border-border pb-3 text-xs text-muted-foreground sm:grid-cols-2">
-            <div>
-              <div className="font-medium text-foreground">Estimate basis</div>
-              <div className="mt-1 font-mono tabular-nums">
-                {formatNumber(characterCount)} chars
-                {hasModelRate ? ` x ${selectedModel?.characterCostMultiplier}` : " x character count"}
-              </div>
-              <div className="mt-1">{hasModelRate ? "Uses model rate metadata." : "Rate unavailable; using character count."}</div>
+        <div className="grid gap-3 border-b border-border pb-3 text-xs text-muted-foreground sm:grid-cols-2">
+          <div>
+            <div className="font-medium text-foreground">Estimate basis</div>
+            <div className="mt-1 font-mono tabular-nums">
+              {formatNumber(characterCount)} chars
+              {hasModelRate ? ` x ${selectedModel?.characterCostMultiplier}` : " x character count"}
             </div>
-            <div>
-              <div className="font-medium text-foreground">Account period</div>
-              <div className="mt-1 font-mono tabular-nums">
-                {subscription ? `${formatNumber(subscription.characterCount)} / ${formatNumber(subscription.characterLimit)}` : "Unavailable"}
-              </div>
-              <div className="mt-1">
-                {subscription
-                  ? `${subscription.tier} - ${subscription.status}${usedPercent === null ? "" : ` - ${usedPercent}% used`}`
-                  : subscriptionError || "No quota loaded."}
-              </div>
-            </div>
+            <div className="mt-1">{hasModelRate ? "Uses model rate metadata." : "Rate unavailable; using character count."}</div>
           </div>
-
-          {modelError ? (
-            <div className="text-sm text-muted-foreground">Model metadata unavailable: {modelError}</div>
-          ) : null}
-
-          {result?.requestId ? (
-            <div className="font-mono text-xs text-muted-foreground">Request {result.requestId}</div>
-          ) : null}
-
-          <div className="flex flex-wrap gap-2">
-            {DOC_LINKS.map((link) => (
-              <a
-                className="inline-flex items-center gap-1 rounded-md border border-border bg-background/60 px-2.5 py-1.5 text-xs text-muted-foreground transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                href={link.href}
-                key={link.href}
-                rel="noreferrer"
-                target="_blank"
-              >
-                {link.label}
-                <ExternalLink aria-hidden="true" className="size-3" />
-              </a>
-            ))}
+          <div>
+            <div className="font-medium text-foreground">Account period</div>
+            <div className="mt-1 font-mono tabular-nums">
+              {subscription ? `${formatNumber(subscription.characterCount)} / ${formatNumber(subscription.characterLimit)}` : "Unavailable"}
+            </div>
+            <div className="mt-1">
+              {subscription
+                ? `${subscription.tier} - ${subscription.status}${usedPercent === null ? "" : ` - ${usedPercent}% used`}`
+                : subscriptionError || "No quota loaded."}
+            </div>
           </div>
         </div>
-      ) : null}
+
+        {modelError ? <div className="text-sm text-muted-foreground">Model metadata unavailable: {modelError}</div> : null}
+
+        {result?.requestId ? <div className="font-mono text-xs text-muted-foreground">Request {result.requestId}</div> : null}
+
+        <div className="flex flex-wrap gap-2">
+          {DOC_LINKS.map((link) => (
+            <a
+              className="inline-flex items-center gap-1 rounded-md border border-border bg-background/60 px-2.5 py-1.5 text-xs text-muted-foreground transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              href={link.href}
+              key={link.href}
+              rel="noreferrer"
+              target="_blank"
+            >
+              {link.label}
+              <ExternalLink aria-hidden="true" className="size-3" />
+            </a>
+          ))}
+        </div>
+      </div>
     </section>
   )
 }

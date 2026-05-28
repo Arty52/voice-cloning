@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import App from "./App"
 
 const audioBlob = new Blob(["fake audio"], { type: "audio/mpeg" })
+const formatTestNumber = (value: number) => new Intl.NumberFormat().format(value)
 
 const defaultVoice = {
   id: "default",
@@ -159,11 +160,14 @@ describe("App", () => {
     const costHeading = await screen.findByText("Cost & quota")
     const addVoiceHeading = screen.getByText("Add voice")
     expect(addVoiceHeading.compareDocumentPosition(costHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(await screen.findByText("9,000 remaining")).toBeInTheDocument()
-    expect(screen.getByText("~117")).toBeInTheDocument()
+    expect(await screen.findByText(`${formatTestNumber(9000)} remaining`)).toBeInTheDocument()
+    expect(screen.getByText(`~${formatTestNumber(117)}`)).toBeInTheDocument()
     expect(screen.getByText("No run")).toBeInTheDocument()
-    expect(screen.queryByLabelText(/model/i)).not.toBeInTheDocument()
-    expect(screen.queryByText(/1,000 \/ 10,000/)).not.toBeInTheDocument()
+    const costQuotaDetails = document.querySelector("#cost-quota-details")
+    expect(costQuotaDetails).toBeInTheDocument()
+    expect(costQuotaDetails).not.toBeVisible()
+    expect(screen.getByLabelText(/model/i)).not.toBeVisible()
+    expect(screen.getByText(`${formatTestNumber(1000)} / ${formatTestNumber(10000)}`)).not.toBeVisible()
 
     const expandButton = screen.getByRole("button", { name: /expand/i })
     expect(expandButton).toHaveAttribute("aria-expanded", "false")
@@ -171,7 +175,7 @@ describe("App", () => {
 
     expect(screen.getByRole("button", { name: /collapse/i })).toHaveAttribute("aria-expanded", "true")
     expect(screen.getByLabelText(/model/i)).toHaveValue("eleven_multilingual_v2")
-    expect(screen.getByText(/1,000 \/ 10,000/)).toBeInTheDocument()
+    expect(screen.getByText(`${formatTestNumber(1000)} / ${formatTestNumber(10000)}`)).toBeVisible()
     expect(screen.getByRole("link", { name: /api requests/i })).toHaveAttribute(
       "href",
       "https://elevenlabs.io/app/developers/analytics/api-requests"
@@ -186,15 +190,15 @@ describe("App", () => {
     const user = userEvent.setup()
     render(<App />)
 
-    await screen.findByText("9,000 remaining")
+    await screen.findByText(`${formatTestNumber(9000)} remaining`)
     await user.click(screen.getByRole("button", { name: /expand/i }))
-    expect(screen.getByLabelText(/model/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/model/i)).toBeVisible()
 
     await user.click(screen.getByRole("button", { name: /collapse/i }))
 
-    expect(screen.getByText("9,000 remaining")).toBeInTheDocument()
-    expect(screen.getByText("~117")).toBeInTheDocument()
-    expect(screen.queryByLabelText(/model/i)).not.toBeInTheDocument()
+    expect(screen.getByText(`${formatTestNumber(9000)} remaining`)).toBeInTheDocument()
+    expect(screen.getByText(`~${formatTestNumber(117)}`)).toBeInTheDocument()
+    expect(screen.getByLabelText(/model/i)).not.toBeVisible()
     expect(screen.queryByRole("link", { name: /api requests/i })).not.toBeInTheDocument()
   })
 
@@ -389,8 +393,9 @@ describe("App", () => {
     )
     const body = speechCall?.[1]?.body as FormData
     expect(body.get("modelId")).toBe("eleven_flash_v2_5")
-    expect(await screen.findAllByText("54")).toHaveLength(1)
-    expect(screen.getByText(/54 chars/)).toBeInTheDocument()
+    const formattedCharacterCount = formatTestNumber(54)
+    expect(await screen.findAllByText(formattedCharacterCount)).toHaveLength(1)
+    expect(screen.getByText(new RegExp(`${formattedCharacterCount} chars`))).toBeInTheDocument()
     expect(screen.getByText(/req_test_123/)).toBeInTheDocument()
   })
 
