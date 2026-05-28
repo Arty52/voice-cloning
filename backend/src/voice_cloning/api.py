@@ -23,6 +23,10 @@ class DefaultVoiceRequest(BaseModel):
     voiceId: str
 
 
+class RenameVoiceRequest(BaseModel):
+    name: str
+
+
 class SpeechGenerationCanceled(Exception):
     pass
 
@@ -43,7 +47,7 @@ def create_app(
         CORSMiddleware,
         allow_origins=resolved_settings.cors_allowed_origins,
         allow_credentials=False,
-        allow_methods=["GET", "POST", "PUT"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
         allow_headers=["*"],
         expose_headers=[
             "Content-Disposition",
@@ -111,6 +115,14 @@ def create_app(
     async def add_voice(name: str = Form(...), sampleFile: UploadFile = File(...)) -> dict[str, object]:
         asset = await resolved_library.add_upload(name, sampleFile)
         return {"voice": VoiceLibrary._asset_to_payload(asset)}
+
+    @app.patch("/api/voices/{voice_id}")
+    def rename_voice(voice_id: str, request: RenameVoiceRequest) -> dict[str, object]:
+        return resolved_library.rename_asset(voice_id, request.name)
+
+    @app.delete("/api/voices/{voice_id}")
+    def delete_voice(voice_id: str) -> dict[str, object]:
+        return resolved_library.delete_asset(voice_id)
 
     @app.put("/api/voices/default")
     def set_default_voice(request: DefaultVoiceRequest) -> dict[str, object]:

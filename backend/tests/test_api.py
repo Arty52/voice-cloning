@@ -485,6 +485,95 @@ def test_add_uploaded_voice_rejects_duplicate_slug(tmp_path: Path) -> None:
     assert "already exists" in second.json()["detail"]
 
 
+def test_uploaded_voice_becomes_default_when_no_default_exists(tmp_path: Path) -> None:
+    client, _ = make_client(tmp_path, with_default_sample=False)
+
+    response = client.post(
+        "/api/voices",
+        data={"name": "Voice_Clone_01"},
+        files={"sampleFile": ("voice.mp3", b"uploaded-sample", "audio/mpeg")},
+    )
+    voices = client.get("/api/voices")
+
+    assert response.status_code == 201
+    assert voices.json()["defaultVoiceId"] == "voice-clone-01"
+
+
+def test_rename_voice_updates_display_name_without_changing_asset_identity(tmp_path: Path) -> None:
+    client, _ = make_client(tmp_path)
+    upload = client.post(
+        "/api/voices",
+        data={"name": "Voice_Clone_01"},
+        files={"sampleFile": ("voice.mp3", b"uploaded-sample", "audio/mpeg")},
+    )
+    original_voice = upload.json()["voice"]
+
+    response = client.patch("/api/voices/voice-clone-01", json={"name": "Narration Take 01"})
+    renamed_voice = next(voice for voice in response.json()["voices"] if voice["id"] == "voice-clone-01")
+
+    assert response.status_code == 200
+    assert renamed_voice == {
+        **original_voice,
+        "name": "Narration Take 01",
+    }
+
+
+def test_rename_voice_rejects_duplicate_normalized_name(tmp_path: Path) -> None:
+    client, _ = make_client(tmp_path)
+    first = client.post(
+        "/api/voices",
+        data={"name": "Voice_Clone_01"},
+        files={"sampleFile": ("voice.mp3", b"uploaded-sample", "audio/mpeg")},
+    )
+    second = client.post(
+        "/api/voices",
+        data={"name": "Narration Take 01"},
+        files={"sampleFile": ("other.mp3", b"other-sample", "audio/mpeg")},
+    )
+
+    response = client.patch("/api/voices/narration-take-01", json={"name": "Voice Clone 01"})
+
+    assert first.status_code == 201
+    assert second.status_code == 201
+    assert response.status_code == 409
+    assert "already exists" in response.json()["detail"]
+
+
+def test_delete_voice_removes_asset_and_reassigns_default(tmp_path: Path) -> None:
+    client, _ = make_client(tmp_path)
+    upload = client.post(
+        "/api/voices",
+        data={"name": "Voice_Clone_01"},
+        files={"sampleFile": ("voice.mp3", b"uploaded-sample", "audio/mpeg")},
+    )
+    assert upload.status_code == 201
+
+    response = client.delete("/api/voices/default")
+    voices = client.get("/api/voices")
+
+    assert response.status_code == 200
+    assert response.json()["defaultVoiceId"] == "voice-clone-01"
+    assert voices.json()["defaultVoiceId"] == "voice-clone-01"
+    assert [voice["id"] for voice in voices.json()["voices"]] == ["voice-clone-01"]
+    assert not (tmp_path / "assets" / "voices" / "default" / "default-voice.mp3").exists()
+
+
+def test_delete_last_voice_leaves_empty_library(tmp_path: Path) -> None:
+    client, _ = make_client(tmp_path, with_default_sample=False)
+    upload = client.post(
+        "/api/voices",
+        data={"name": "Voice_Clone_01"},
+        files={"sampleFile": ("voice.mp3", b"uploaded-sample", "audio/mpeg")},
+    )
+    assert upload.status_code == 201
+
+    response = client.delete("/api/voices/voice-clone-01")
+
+    assert response.status_code == 200
+    assert response.json() == {"defaultVoiceId": "", "voices": []}
+    assert not (tmp_path / "assets" / "voices" / "voice-clone-01.mp3").exists()
+
+
 def test_set_default_voice_persists(tmp_path: Path) -> None:
     client, _ = make_client(tmp_path)
     upload = client.post(
