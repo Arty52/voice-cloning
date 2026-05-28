@@ -1,0 +1,12 @@
+.DS_Store
+.env
+.venv
+__pycache__
+.pytest_cache
+node_modules
+frontend/node_modules
+frontend/dist
+storage
+assets/voices/**/*
+!assets/voices/README.md
+!assets/voices/.gitkeep
