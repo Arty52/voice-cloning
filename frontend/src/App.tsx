@@ -786,7 +786,7 @@ function App() {
               <div className="mb-4 space-y-2">
                 <div className="text-sm font-medium">Preset</div>
                 <div
-                  aria-label="Voice Tuning Presets"
+                  aria-label="Voice tuning presets"
                   className="grid gap-1 rounded-md border border-border bg-background/60 p-1 sm:grid-cols-2"
                   role="group"
                 >
@@ -915,8 +915,8 @@ function App() {
                         <span className="block truncate font-mono text-xs text-muted-foreground">{voice.filePath}</span>
                       </span>
                       <span className="flex shrink-0 items-center gap-2">
-                        {isDefault ? <Star aria-label="Default Voice" className="size-4 text-primary" /> : null}
-                        {isSelected ? <Check aria-label="Selected Voice" className="size-4 text-primary" /> : null}
+                        {isDefault ? <Star aria-label="Default voice" className="size-4 text-primary" /> : null}
+                        {isSelected ? <Check aria-label="Selected voice" className="size-4 text-primary" /> : null}
                       </span>
                     </button>
                   )
@@ -927,7 +927,7 @@ function App() {
                 <div className="mb-2 text-sm font-medium">Selected Preview</div>
                 {selectedVoice ? (
                   <audio
-                    aria-label="Selected Voice Sample Preview"
+                    aria-label="Selected voice sample preview"
                     controls
                     key={selectedVoice.id}
                     src={`/api/voices/${selectedVoice.id}/sample`}
@@ -986,7 +986,7 @@ function App() {
                 <div className="rounded-md border border-border bg-background/60 p-3">
                   <div className="mb-2 text-sm font-medium">Upload Preview</div>
                   {uploadPreviewUrl ? (
-                    <audio aria-label="Uploaded Voice Sample Preview" controls src={uploadPreviewUrl} />
+                    <audio aria-label="Uploaded voice sample preview" controls src={uploadPreviewUrl} />
                   ) : (
                     <p className="text-sm text-muted-foreground">No upload selected.</p>
                   )}
@@ -1139,7 +1139,7 @@ function CostQuotaPanel({
           value={
             result?.characterCount !== null && result?.characterCount !== undefined
               ? formatNumber(result.characterCount)
-              : "No Run"
+              : "No run"
           }
         />
       </div>
@@ -1148,7 +1148,7 @@ function CostQuotaPanel({
         <div className="flex items-center justify-between gap-3 border-b border-border pb-3">
           <div className="text-sm font-medium">Details</div>
           <Button
-            aria-label="Refresh Cost and Quota"
+            aria-label="Refresh cost and quota"
             disabled={isLoading}
             onClick={onRefresh}
             size="icon"
@@ -1175,7 +1175,7 @@ function CostQuotaPanel({
                 </option>
               ))
             ) : (
-              <option value={selectedModelId}>Backend Default Model</option>
+              <option value={selectedModelId}>{BACKEND_DEFAULT_MODEL_LABEL}</option>
             )}
           </select>
         </label>
@@ -1354,7 +1354,7 @@ function GeneratedAudio({
                   <Badge>{item.cacheState === "hit" ? "Cache Hit" : "Cache Miss"}</Badge>
                 </div>
               </div>
-              <audio aria-label={`Generated Voice Playback for ${item.voiceName}`} controls src={item.url} />
+              <audio aria-label={`Generated voice playback for ${item.voiceName}`} controls src={item.url} />
               <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
                 <span className="truncate font-mono">Model {item.modelId}</span>
                 <span>
@@ -1374,7 +1374,7 @@ function GeneratedAudio({
                   Download
                 </a>
                 <Button
-                  aria-label={`Remove Generated Audio for ${item.voiceName}`}
+                  aria-label={`Remove generated audio for ${item.voiceName}`}
                   onClick={() => onDelete(item.id)}
                   size="sm"
                   type="button"
@@ -1577,10 +1577,10 @@ function formatGeneratedAudioTime(value: string) {
 function formatGeneratedAudioCountBadge(savedItemCount: number, temporaryItemCount: number) {
   const parts: string[] = []
   if (savedItemCount > 0) {
-    parts.push(savedItemCount === 1 ? "1 Saved" : `${savedItemCount} Saved`)
+    parts.push(savedItemCount === 1 ? "1 saved" : `${savedItemCount} saved`)
   }
   if (temporaryItemCount > 0) {
-    parts.push(temporaryItemCount === 1 ? "1 Unsaved" : `${temporaryItemCount} Unsaved`)
+    parts.push(temporaryItemCount === 1 ? "1 unsaved" : `${temporaryItemCount} unsaved`)
   }
   return parts.join(", ")
 }
