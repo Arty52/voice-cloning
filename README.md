@@ -165,6 +165,10 @@ make smoke-live
 
 This calls ElevenLabs with the real API key, may consume credits, and writes `storage/smoke-output.mp3`.
 
+## Architecture Standards
+
+Implementation work should follow the project standard in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). In short: keep FastAPI routes thin, put backend orchestration in services, keep third-party HTTP details in clients, keep React workflow state in containers/hooks, and keep UI components presentational.
+
 ## API Overview
 
 - `GET /api/health`
