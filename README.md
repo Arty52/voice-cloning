@@ -2,13 +2,13 @@
 
 Voice Clone Lab is a local, Dockerized web app for experimenting with ElevenLabs instant voice cloning from your own browser.
 
-It gives you a small voice library, text-to-speech generation, tuning controls, playback, and downloads while keeping your ElevenLabs API key on the local backend.
+It gives you a small voice library, text-to-speech generation, model selection, cost/quota visibility, tuning controls, playback, and downloads while keeping your ElevenLabs API key on the local backend.
 
 ## What This Is
 
 - A local development tool for testing ElevenLabs instant voice cloning.
 - A React + TypeScript frontend backed by a Python FastAPI service.
-- A browser UI for uploading named voice samples, choosing a default voice, tuning generation settings, and downloading generated MP3 output.
+- A browser UI for uploading named voice samples, choosing a default voice, selecting a TTS model, tuning generation settings, checking quota, and downloading generated MP3 output.
 - A Docker Compose app that runs on `localhost`.
 
 ## What This Is Not
@@ -24,6 +24,10 @@ It gives you a small voice library, text-to-speech generation, tuning controls, 
 - Select any saved voice and mark one as the local default.
 - Generate speech from text using ElevenLabs text-to-speech.
 - Reuse ElevenLabs cloned voices by sample hash through a local cache.
+- Estimate credits before generation from character count and model rate metadata when available.
+- Show ElevenLabs-reported quota remaining from the local backend.
+- Select a text-to-speech model for the next generation without rewriting `.env`.
+- Show actual `x-character-count` and request id metadata after generation when ElevenLabs returns it.
 - Adjust per-request ElevenLabs voice settings:
   - stability
   - similarity boost
@@ -40,7 +44,7 @@ Your ElevenLabs API key is read only by the FastAPI backend from `.env`. The fro
 
 Voice samples are local files under `assets/voices/` and are ignored by git. Generated output and cloned voice cache data are written under `storage/`, which is also ignored by git.
 
-Text, voice samples, and tuning settings are sent to ElevenLabs when you generate speech. Review ElevenLabs' policies and obtain consent before cloning or generating with any voice.
+Text, voice samples, selected model id, and tuning settings are sent to ElevenLabs when you generate speech. Subscription and model metadata are fetched through the backend when the configured key has the required read permissions. Review ElevenLabs' policies and obtain consent before cloning or generating with any voice.
 
 ## Cost Notes
 
@@ -49,6 +53,8 @@ ElevenLabs may charge credits for text-to-speech and voice cloning. The main usa
 - text length
 - selected ElevenLabs model
 - whether a voice sample has already been cloned and cached
+
+The Cost & quota panel shows a pre-run estimate and the remaining ElevenLabs-reported character quota. Estimates are approximate. After a generation, the app shows the actual `x-character-count` response header when ElevenLabs provides it.
 
 The optional live smoke test calls ElevenLabs and may consume credits.
 
@@ -100,9 +106,10 @@ Then:
 2. Give it a local name, such as `Gray`.
 3. Save the voice.
 4. Enter text.
-5. Adjust tuning sliders if needed.
-6. Generate speech.
-7. Play or download the MP3.
+5. Check the Cost & quota panel and choose a model if model metadata is available.
+6. Adjust tuning sliders if needed.
+7. Generate speech.
+8. Play or download the MP3.
 
 The API is available at:
 
@@ -146,9 +153,44 @@ This calls ElevenLabs with the real API key, may consume credits, and writes `st
 - `GET /api/health`
 - `GET /api/voices`
 - `GET /api/voices/{voiceId}/sample`
+- `GET /api/subscription`
+- `GET /api/models`
 - `POST /api/voices`
 - `PUT /api/voices/default`
 - `POST /api/speech`
+
+`GET /api/subscription` returns a sanitized quota summary for the Cost & quota panel:
+
+```json
+{
+  "available": true,
+  "tier": "starter",
+  "status": "active",
+  "characterCount": 1000,
+  "characterLimit": 10000,
+  "remainingCharacters": 9000
+}
+```
+
+If the configured key cannot read subscription metadata, the endpoint returns `available: false` with a sanitized `error` string instead of exposing raw ElevenLabs account data.
+
+`GET /api/models` returns text-to-speech-capable model metadata:
+
+```json
+{
+  "available": true,
+  "defaultModelId": "eleven_multilingual_v2",
+  "models": [
+    {
+      "modelId": "eleven_multilingual_v2",
+      "name": "Eleven Multilingual v2",
+      "characterCostMultiplier": 1
+    }
+  ]
+}
+```
+
+If model metadata is unavailable, generation still works by omitting `modelId` and letting the backend use `ELEVENLABS_MODEL_ID`.
 
 `POST /api/voices` accepts multipart form fields:
 
@@ -165,6 +207,7 @@ This calls ElevenLabs with the real API key, may consume credits, and writes `st
 
 - `text`: speech text
 - `voiceId`: saved local voice id; defaults to the configured local default
+- `modelId`: optional ElevenLabs TTS model id; defaults to `ELEVENLABS_MODEL_ID`
 - `stability`: `0..1`
 - `similarityBoost`: `0..1`
 - `style`: `0..1`
@@ -177,6 +220,8 @@ The response is `audio/mpeg` with these headers:
 - `X-Voice-Id`: ElevenLabs voice ID
 - `X-App-Voice-Id`: local voice asset ID
 - `X-Sample-Sha256`: sample hash
+- `X-Character-Count`: actual ElevenLabs character usage when returned
+- `X-Request-Id`: request id when returned by ElevenLabs
 
 ## Project Structure
 
@@ -216,7 +261,11 @@ WEB_PORT=4440 API_PORT=6520 make up
 
 ### ElevenLabs quota or billing errors
 
-Check your ElevenLabs account subscription and usage. Shorter text and lower-cost models can reduce credit usage.
+Check your ElevenLabs account subscription and usage. Shorter text and lower-cost models can reduce credit usage. The app links to ElevenLabs API request analytics from the Cost & quota panel for quick inspection.
+
+### Quota or model metadata unavailable
+
+Some ElevenLabs keys are scoped and may not include `user_read` or `models_read`. In that case, the Cost & quota panel shows quota or model metadata as unavailable, but generation can still proceed with the backend default model.
 
 ### Reset local runtime data
 
@@ -235,8 +284,12 @@ make destroy
 ## References
 
 - [ElevenLabs API Documentation](https://docs.elevenlabs.io/)
+- [ElevenLabs API Request Analytics](https://elevenlabs.io/app/developers/analytics/api-requests)
+- [Tracking generation costs](https://elevenlabs.io/docs/api-reference/introduction)
+- [Get User Subscription API](https://elevenlabs.io/docs/api-reference/user/subscription/get)
+- [List Models API](https://elevenlabs.io/docs/api-reference/get-models)
+- [Create Speech API](https://elevenlabs.io/docs/api-reference/text-to-speech/convert)
 - [Instant Voice Cloning Documentation](https://elevenlabs.io/docs/eleven-creative/voices/voice-cloning/instant-voice-cloning)
-- [Text-to-Speech API](https://elevenlabs.io/docs/api-reference/text-to-speech)
 
 ## License
 
