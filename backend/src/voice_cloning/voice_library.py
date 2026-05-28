@@ -58,7 +58,11 @@ class VoiceLibrary:
 
         manifest = self._read_manifest()
         voice_id = slugify_voice_name(display_name)
-        if any(item.get("id") == voice_id for item in manifest["voices"]):
+        if any(
+            isinstance(item, dict)
+            and (item.get("id") == voice_id or slugify_voice_name(str(item.get("name", ""))) == voice_id)
+            for item in manifest["voices"]
+        ):
             raise HTTPException(status_code=409, detail="A voice with that name already exists.")
 
         extension = Path(upload.filename or "").suffix.lower() or ".mp3"
@@ -117,8 +121,6 @@ class VoiceLibrary:
 
         del voices[voice_index]
         if manifest.get("defaultVoiceId") == voice_id:
-            manifest["defaultVoiceId"] = voices[0].get("id") if voices and isinstance(voices[0], dict) else ""
-        elif not any(item.get("id") == manifest.get("defaultVoiceId") for item in voices if isinstance(item, dict)):
             manifest["defaultVoiceId"] = voices[0].get("id") if voices and isinstance(voices[0], dict) else ""
 
         self._write_manifest(manifest)

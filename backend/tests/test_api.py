@@ -539,6 +539,27 @@ def test_rename_voice_rejects_duplicate_normalized_name(tmp_path: Path) -> None:
     assert "already exists" in response.json()["detail"]
 
 
+def test_add_uploaded_voice_rejects_renamed_display_name_duplicate(tmp_path: Path) -> None:
+    client, _ = make_client(tmp_path)
+    upload = client.post(
+        "/api/voices",
+        data={"name": "Voice_Clone_01"},
+        files={"sampleFile": ("voice.mp3", b"uploaded-sample", "audio/mpeg")},
+    )
+    rename = client.patch("/api/voices/voice-clone-01", json={"name": "Narration Take 01"})
+
+    response = client.post(
+        "/api/voices",
+        data={"name": "Narration Take 01"},
+        files={"sampleFile": ("other.mp3", b"other-sample", "audio/mpeg")},
+    )
+
+    assert upload.status_code == 201
+    assert rename.status_code == 200
+    assert response.status_code == 409
+    assert "already exists" in response.json()["detail"]
+
+
 def test_delete_voice_removes_asset_and_reassigns_default(tmp_path: Path) -> None:
     client, _ = make_client(tmp_path)
     upload = client.post(
