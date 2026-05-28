@@ -2,6 +2,7 @@ import {
   Check,
   Download,
   FileAudio,
+  Info,
   LoaderCircle,
   RefreshCw,
   Save,
@@ -63,6 +64,7 @@ type VoiceTuning = {
 type SliderConfig = {
   id: keyof Pick<VoiceTuning, "stability" | "similarityBoost" | "style" | "speed">
   label: string
+  help: string
   min: number
   max: number
   step: number
@@ -80,10 +82,38 @@ const DEFAULT_TUNING: VoiceTuning = {
 }
 
 const SLIDERS: SliderConfig[] = [
-  { id: "stability", label: "Stability", min: 0, max: 1, step: 0.01 },
-  { id: "similarityBoost", label: "Similarity", min: 0, max: 1, step: 0.01 },
-  { id: "style", label: "Style", min: 0, max: 1, step: 0.01 },
-  { id: "speed", label: "Speed", min: 0.7, max: 1.2, step: 0.01 },
+  {
+    id: "stability",
+    label: "Stability",
+    help: "Lower values allow more expressive, variable delivery. Higher values keep the voice consistent but can flatten emotion.",
+    min: 0,
+    max: 1,
+    step: 0.01,
+  },
+  {
+    id: "similarityBoost",
+    label: "Similarity",
+    help: "Higher values stay closer to the cloned voice. If the source has noise, clicks, or artifacts, very high similarity can preserve them.",
+    min: 0,
+    max: 1,
+    step: 0.01,
+  },
+  {
+    id: "style",
+    label: "Style",
+    help: "Zero is the most natural and consistent. Higher values exaggerate the speaker's style and may add latency or artifacts.",
+    min: 0,
+    max: 1,
+    step: 0.01,
+  },
+  {
+    id: "speed",
+    label: "Speed",
+    help: "One point zero is the baseline pace. Move toward 0.7 to slow down or 1.2 to speed up; extremes can reduce quality.",
+    min: 0.7,
+    max: 1.2,
+    step: 0.01,
+  },
 ]
 
 function App() {
@@ -354,9 +384,14 @@ function App() {
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 {SLIDERS.map((slider) => (
-                  <label className="space-y-2" htmlFor={slider.id} key={slider.id}>
+                  <div className="space-y-2" key={slider.id}>
                     <div className="flex items-center justify-between gap-3 text-sm">
-                      <span className="font-medium">{slider.label}</span>
+                      <div className="flex items-center gap-1.5">
+                        <label className="font-medium" htmlFor={slider.id}>
+                          {slider.label}
+                        </label>
+                        <TuningInfo description={slider.help} id={slider.id} label={slider.label} />
+                      </div>
                       <span className="font-mono text-xs text-muted-foreground">
                         {tuning[slider.id].toFixed(2)}
                       </span>
@@ -372,7 +407,7 @@ function App() {
                       type="range"
                       value={tuning[slider.id]}
                     />
-                  </label>
+                  </div>
                 ))}
               </div>
               <label className="mt-4 flex items-center justify-between gap-4 rounded-md border border-border bg-background/60 p-3 text-sm">
@@ -528,6 +563,30 @@ function App() {
         </div>
       </div>
     </main>
+  )
+}
+
+function TuningInfo({ description, id, label }: { description: string; id: string; label: string }) {
+  const tooltipId = `${id}-help`
+
+  return (
+    <span className="group relative inline-flex">
+      <button
+        aria-describedby={tooltipId}
+        aria-label={`${label} help`}
+        className="inline-flex size-5 items-center justify-center rounded-full text-muted-foreground transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        type="button"
+      >
+        <Info aria-hidden="true" className="size-3.5" />
+      </button>
+      <span
+        className="pointer-events-none absolute left-0 top-6 z-20 w-72 max-w-[min(18rem,calc(100vw-3rem))] rounded-md border border-border bg-background p-3 text-xs leading-5 text-muted-foreground opacity-0 shadow-lg transition group-focus-within:opacity-100 group-hover:opacity-100"
+        id={tooltipId}
+        role="tooltip"
+      >
+        {description}
+      </span>
+    </span>
   )
 }
 
