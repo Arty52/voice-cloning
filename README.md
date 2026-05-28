@@ -120,7 +120,7 @@ http://localhost:4340
 Then:
 
 1. Upload a voice sample.
-2. Give it a local name, such as `Gray`.
+2. Give it a local name, such as `Voice_Clone_01`.
 3. Save the voice.
 4. Enter text.
 5. Check the Cost & Quota panel and choose a model if model metadata is available.
@@ -217,7 +217,7 @@ If model metadata is unavailable, generation still works by omitting `modelId` a
 `PUT /api/voices/default` accepts JSON:
 
 ```json
-{ "voiceId": "gray" }
+{ "voiceId": "voice-clone-01" }
 ```
 
 `POST /api/speech` accepts multipart form fields:

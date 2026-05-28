@@ -18,12 +18,12 @@ const defaultVoice = {
   createdAt: "2026-05-28T00:00:00+00:00",
 }
 
-const grayVoice = {
-  id: "gray",
-  name: "Gray",
-  filePath: "gray.mp3",
+const voiceCloneVoice = {
+  id: "voice-clone-01",
+  name: "Voice_Clone_01",
+  filePath: "voice-clone-01.mp3",
   contentType: "audio/mpeg",
-  sha256: "gray-hash",
+  sha256: "voice-clone-01-hash",
   source: "upload" as const,
   createdAt: "2026-05-28T00:00:00+00:00",
 }
@@ -124,14 +124,14 @@ function mockFetch() {
     }
     if (url === "/api/voices" && init?.method === "POST") {
       return Promise.resolve(
-        new Response(JSON.stringify({ voice: grayVoice }), {
+        new Response(JSON.stringify({ voice: voiceCloneVoice }), {
           status: 201,
           headers: { "Content-Type": "application/json" },
         })
       )
     }
     if (url === "/api/voices/default" && init?.method === "PUT") {
-      return okJson({ defaultVoiceId: "gray", voices: [defaultVoice, grayVoice] })
+      return okJson({ defaultVoiceId: "voice-clone-01", voices: [defaultVoice, voiceCloneVoice] })
     }
     if (url === "/api/speech" && init?.method === "POST") {
       return okAudio()
@@ -351,8 +351,8 @@ describe("App", () => {
     render(<App />)
 
     await screen.findByText("default/default-voice.mp3")
-    await user.type(screen.getByLabelText(/voice name/i), "Gray")
-    const file = new File(["sample"], "gray.wav", { type: "audio/wav" })
+    await user.type(screen.getByLabelText(/voice name/i), "Voice_Clone_01")
+    const file = new File(["sample"], "voice-clone-01.wav", { type: "audio/wav" })
     await user.upload(screen.getByLabelText(/sample file/i), file)
     await user.click(screen.getByRole("button", { name: /save voice/i }))
 
@@ -361,9 +361,9 @@ describe("App", () => {
       ([url, init]) => String(url) === "/api/voices" && init?.method === "POST"
     )
     const body = uploadCall?.[1]?.body as FormData
-    expect(body.get("name")).toBe("Gray")
+    expect(body.get("name")).toBe("Voice_Clone_01")
     expect(body.get("sampleFile")).toBe(file)
-    expect(await screen.findByRole("button", { name: /Gray/i })).toBeInTheDocument()
+    expect(await screen.findByRole("button", { name: /Voice_Clone_01/i })).toBeInTheDocument()
   })
 
   it("sets the selected voice as the local default", async () => {
@@ -372,10 +372,10 @@ describe("App", () => {
       vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input)
         if (url === "/api/voices" && !init) {
-          return okJson({ defaultVoiceId: "default", voices: [defaultVoice, grayVoice] })
+          return okJson({ defaultVoiceId: "default", voices: [defaultVoice, voiceCloneVoice] })
         }
         if (url === "/api/voices/default" && init?.method === "PUT") {
-          return okJson({ defaultVoiceId: "gray", voices: [defaultVoice, grayVoice] })
+          return okJson({ defaultVoiceId: "voice-clone-01", voices: [defaultVoice, voiceCloneVoice] })
         }
         if (url === "/api/speech" && init?.method === "POST") {
           return okAudio()
@@ -386,14 +386,14 @@ describe("App", () => {
     const user = userEvent.setup()
     render(<App />)
 
-    await user.click(await screen.findByRole("button", { name: /Gray/i }))
+    await user.click(await screen.findByRole("button", { name: /Voice_Clone_01/i }))
     await user.click(screen.getByRole("button", { name: /set as default/i }))
 
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
         "/api/voices/default",
         expect.objectContaining({
-          body: JSON.stringify({ voiceId: "gray" }),
+          body: JSON.stringify({ voiceId: "voice-clone-01" }),
           method: "PUT",
         })
       )

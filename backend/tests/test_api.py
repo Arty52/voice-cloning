@@ -456,14 +456,14 @@ def test_add_uploaded_voice_stores_named_asset(tmp_path: Path) -> None:
 
     response = client.post(
         "/api/voices",
-        data={"name": "Gray"},
+        data={"name": "Voice_Clone_01"},
         files={"sampleFile": ("voice.mp3", b"uploaded-sample", "audio/mpeg")},
     )
 
     assert response.status_code == 201
-    assert response.json()["voice"]["id"] == "gray"
-    assert response.json()["voice"]["name"] == "Gray"
-    assert (tmp_path / "assets" / "voices" / "gray.mp3").read_bytes() == b"uploaded-sample"
+    assert response.json()["voice"]["id"] == "voice-clone-01"
+    assert response.json()["voice"]["name"] == "Voice_Clone_01"
+    assert (tmp_path / "assets" / "voices" / "voice-clone-01.mp3").read_bytes() == b"uploaded-sample"
 
 
 def test_add_uploaded_voice_rejects_duplicate_slug(tmp_path: Path) -> None:
@@ -471,12 +471,12 @@ def test_add_uploaded_voice_rejects_duplicate_slug(tmp_path: Path) -> None:
 
     first = client.post(
         "/api/voices",
-        data={"name": "Gray"},
+        data={"name": "Voice_Clone_01"},
         files={"sampleFile": ("voice.mp3", b"uploaded-sample", "audio/mpeg")},
     )
     second = client.post(
         "/api/voices",
-        data={"name": "Gray!"},
+        data={"name": "Voice Clone 01"},
         files={"sampleFile": ("other.mp3", b"other-sample", "audio/mpeg")},
     )
 
@@ -489,32 +489,32 @@ def test_set_default_voice_persists(tmp_path: Path) -> None:
     client, _ = make_client(tmp_path)
     upload = client.post(
         "/api/voices",
-        data={"name": "Gray"},
+        data={"name": "Voice_Clone_01"},
         files={"sampleFile": ("voice.mp3", b"uploaded-sample", "audio/mpeg")},
     )
     assert upload.status_code == 201
 
-    response = client.put("/api/voices/default", json={"voiceId": "gray"})
+    response = client.put("/api/voices/default", json={"voiceId": "voice-clone-01"})
     voices = client.get("/api/voices")
 
     assert response.status_code == 200
-    assert response.json()["defaultVoiceId"] == "gray"
-    assert voices.json()["defaultVoiceId"] == "gray"
+    assert response.json()["defaultVoiceId"] == "voice-clone-01"
+    assert voices.json()["defaultVoiceId"] == "voice-clone-01"
 
 
 def test_selected_voice_sample_is_used_for_speech(tmp_path: Path) -> None:
     client, fake_client = make_client(tmp_path)
     upload = client.post(
         "/api/voices",
-        data={"name": "Gray"},
-        files={"sampleFile": ("gray.wav", b"uploaded-wave", "audio/wav")},
+        data={"name": "Voice_Clone_01"},
+        files={"sampleFile": ("voice-clone-01.wav", b"uploaded-wave", "audio/wav")},
     )
     assert upload.status_code == 201
 
-    response = client.post("/api/speech", data={"text": "Use Gray.", "voiceId": "gray"})
+    response = client.post("/api/speech", data={"text": "Use Voice Clone 01.", "voiceId": "voice-clone-01"})
 
     assert response.status_code == 200
-    assert fake_client.created_samples[0].filename == "gray.wav"
+    assert fake_client.created_samples[0].filename == "voice-clone-01.wav"
     assert fake_client.created_samples[0].content == b"uploaded-wave"
 
 
