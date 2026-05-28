@@ -541,6 +541,34 @@ describe("App", () => {
     expect(screen.getByText("No generated speech yet.")).toBeInTheDocument()
   })
 
+  it("removes temporary generated audio when browser storage is unavailable", async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await screen.findByText("default/default-voice.mp3")
+    await screen.findByText((_, element) => element?.textContent === "0 B / 100 MB")
+    vi.spyOn(indexedDB, "open").mockImplementation(() => {
+      const request = {
+        error: new Error("storage unavailable"),
+        onerror: null,
+        onsuccess: null,
+        onupgradeneeded: null,
+      } as Partial<IDBOpenDBRequest> as IDBOpenDBRequest
+      queueMicrotask(() => request.onerror?.call(request, new Event("error")))
+      return request
+    })
+
+    await user.click(screen.getByRole("button", { name: /^Generate$/ }))
+
+    expect(await screen.findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
+    expect(screen.getByText(/browser storage could not save it/i)).toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: /remove generated audio for default voice/i }))
+
+    await waitFor(() => expect(screen.queryByLabelText(/generated voice playback for default voice/i)).not.toBeInTheDocument())
+    expect(screen.queryByText(/browser storage could not save it/i)).not.toBeInTheDocument()
+  })
+
   it("confirms before lowering the storage cap when saved audio would be pruned", async () => {
     const largeAudioBlob = new Blob(["fake audio"], { type: "audio/mpeg" })
     Object.defineProperty(largeAudioBlob, "size", { value: 30 * BYTES_PER_MEBIBYTE })

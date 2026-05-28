@@ -494,24 +494,34 @@ function App() {
   }
 
   async function handleDeleteGeneratedAudio(id: string) {
+    if (isTemporaryGeneratedAudioId(id)) {
+      removeGeneratedAudioItemFromState(id)
+      setGeneratedAudioStorageError(null)
+      return
+    }
+
     try {
       const usage = await deleteGeneratedAudio(id)
-      setGeneratedAudioItems((previous) => {
-        const nextItems: GeneratedResult[] = []
-        for (const item of previous) {
-          if (item.id === id) {
-            URL.revokeObjectURL(item.url)
-          } else {
-            nextItems.push(item)
-          }
-        }
-        return nextItems
-      })
+      removeGeneratedAudioItemFromState(id)
       setGeneratedAudioUsage(usage)
       setGeneratedAudioStorageError(null)
     } catch (caught) {
       setGeneratedAudioStorageError(caught instanceof Error ? caught.message : "Unable to remove generated audio.")
     }
+  }
+
+  function removeGeneratedAudioItemFromState(id: string) {
+    setGeneratedAudioItems((previous) => {
+      const nextItems: GeneratedResult[] = []
+      for (const item of previous) {
+        if (item.id === id) {
+          URL.revokeObjectURL(item.url)
+        } else {
+          nextItems.push(item)
+        }
+      }
+      return nextItems
+    })
   }
 
   function requestClearGeneratedAudio() {
@@ -1502,6 +1512,10 @@ function createTemporaryGeneratedAudioId() {
     return `unsaved-${window.crypto.randomUUID()}`
   }
   return `unsaved-${Date.now()}`
+}
+
+function isTemporaryGeneratedAudioId(id: string) {
+  return id.startsWith("unsaved-")
 }
 
 function formatGeneratedAudioStorageError(value: unknown) {
