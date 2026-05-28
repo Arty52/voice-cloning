@@ -1,0 +1,17 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "voice-cloning: up",
+      "type": "shell",
+      "command": "make up",
+      "problemMatcher": []
+    },
+    {
+      "label": "voice-cloning: check",
+      "type": "shell",
+      "command": "make check",
+      "problemMatcher": []
+    }
+  ]
+}

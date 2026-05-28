@@ -1,0 +1,40 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: uvicorn voice_cloning.api:app --host 0.0.0.0 --port 6420 --reload
+    env_file:
+      - .env
+    environment:
+      APP_ROOT: /app
+      CORS_ALLOWED_ORIGINS: http://localhost:4340,http://127.0.0.1:4340
+      DEFAULT_SAMPLE_PATH: /app/assets/voices/default/default-voice.mp3
+      STORAGE_DIR: /app/storage
+      VOICE_ASSETS_DIR: /app/assets/voices
+      VOICE_MANIFEST_PATH: /app/assets/voices/voices.json
+    ports:
+      - "${API_PORT:-6420}:6420"
+    volumes:
+      - ./backend/src:/app/backend/src
+      - ./assets/voices:/app/assets/voices
+      - ./scripts:/app/scripts:ro
+      - ./storage:/app/storage
+
+  web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    command: npm run dev
+    environment:
+      VITE_API_PROXY_TARGET: http://api:6420
+    ports:
+      - "${WEB_PORT:-4340}:4340"
+    volumes:
+      - ./frontend:/app/frontend
+      - frontend-node-modules:/app/frontend/node_modules
+    depends_on:
+      - api
+
+volumes:
+  frontend-node-modules:
