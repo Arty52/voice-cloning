@@ -63,7 +63,7 @@ import {
 
 type RequestStatus = "idle" | "generating" | "success" | "error" | "canceled"
 type AsyncStatus = "idle" | "loading" | "success" | "error"
-type RecorderStatus = "idle" | "recording" | "recorded" | "error"
+type RecorderStatus = "idle" | "starting" | "recording" | "recorded" | "error"
 type VoiceSampleInputMode = "upload" | "record"
 
 type VoiceAsset = {
@@ -319,8 +319,9 @@ function App() {
   const isSettingDefault = defaultStatus === "loading"
   const isUpdatingVoice = voiceActionStatus === "loading"
   const isRecording = recorderStatus === "recording"
+  const isRecorderBusy = recorderStatus === "starting" || recorderStatus === "recording"
   const canGenerate = text.trim().length > 0 && selectedVoice !== null && !isGenerating
-  const canUpload = uploadName.trim().length > 0 && uploadFile !== null && !isUploading && !isRecording
+  const canUpload = uploadName.trim().length > 0 && uploadFile !== null && !isUploading && !isRecorderBusy
   const canSetDefault = selectedVoice !== null && selectedVoice.id !== defaultVoiceId && !isSettingDefault
   const characterCount = useMemo(() => text.trim().length, [text])
   const modelMultiplier = selectedModel?.characterCostMultiplier ?? null
@@ -422,7 +423,7 @@ function App() {
   }
 
   function handleVoiceSampleInputModeChange(mode: VoiceSampleInputMode) {
-    if (isRecording) {
+    if (isRecorderBusy) {
       return
     }
     setVoiceSampleInputMode(mode)
@@ -437,12 +438,12 @@ function App() {
   }
 
   async function handleStartRecording() {
-    if (isUploading || isRecording) {
+    if (isUploading || isRecorderBusy) {
       return
     }
 
     setVoiceSampleInputMode("record")
-    setRecorderStatus("recording")
+    setRecorderStatus("starting")
     setRecorderError(null)
     setUploadError(null)
     setUploadFile(null)
@@ -452,6 +453,7 @@ function App() {
     try {
       const session = await startVoiceRecorder()
       recordingSessionRef.current = session
+      setRecorderStatus("recording")
       recordingTimerRef.current = window.setInterval(() => {
         setRecordingDurationSeconds(session.getElapsedSeconds())
       }, 250)
@@ -1206,7 +1208,7 @@ function App() {
                   <Button
                     aria-pressed={voiceSampleInputMode === "upload"}
                     className={cn(voiceSampleInputMode !== "upload" && "bg-transparent")}
-                    disabled={isUploading || isRecording}
+                    disabled={isUploading || isRecorderBusy}
                     onClick={() => handleVoiceSampleInputModeChange("upload")}
                     type="button"
                     variant={voiceSampleInputMode === "upload" ? "secondary" : "ghost"}
@@ -1217,7 +1219,7 @@ function App() {
                   <Button
                     aria-pressed={voiceSampleInputMode === "record"}
                     className={cn(voiceSampleInputMode !== "record" && "bg-transparent")}
-                    disabled={isUploading || isRecording}
+                    disabled={isUploading || isRecorderBusy}
                     onClick={() => handleVoiceSampleInputModeChange("record")}
                     type="button"
                     variant={voiceSampleInputMode === "record" ? "secondary" : "ghost"}
@@ -1252,9 +1254,9 @@ function App() {
                       </div>
                     ) : null}
                     <div className="flex flex-wrap gap-2">
-                      <Button disabled={isUploading || isRecording} onClick={() => void handleStartRecording()} size="sm" type="button">
+                      <Button disabled={isUploading || isRecorderBusy} onClick={() => void handleStartRecording()} size="sm" type="button">
                         <Mic aria-hidden="true" className="size-4" />
-                        Start Recording
+                        {recorderStatus === "starting" ? "Starting..." : "Start Recording"}
                       </Button>
                       <Button
                         disabled={!isRecording}
