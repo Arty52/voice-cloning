@@ -12,7 +12,7 @@ export function loadStoredProviderKeys(storage: Storage = window.localStorage): 
     if (!isStoredProviderKeys(parsed)) {
       return {}
     }
-    return parsed
+    return sanitizeProviderKeys(parsed)
   } catch {
     return {}
   }
@@ -49,7 +49,7 @@ export function setStoredProviderKey(
 
 export function clearStoredProviderKey(keys: StoredProviderKeys, providerId: string): StoredProviderKeys {
   const nextKeys = { ...keys }
-  delete nextKeys[providerId]
+  delete nextKeys[providerId.trim()]
   return sanitizeProviderKeys(nextKeys)
 }
 

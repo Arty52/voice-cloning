@@ -54,7 +54,8 @@ export function useProviderKeys() {
   )
   const activeProviderId = activeProvider?.id ?? defaultProviderId
   const activeProviderKey = providerKeys[activeProviderId]?.trim() || null
-  const keySource: ProviderKeySource = activeProviderKey ? "browser" : activeProvider?.serverKeyConfigured ? "server" : "missing"
+  const hasServerKey = activeProvider?.serverKeyConfigured === true
+  const keySource: ProviderKeySource = activeProviderKey ? "browser" : hasServerKey || providerStatus !== "success" ? "server" : "missing"
   const canUseProvider = keySource !== "missing"
 
   function saveProviderKey(providerId: string, apiKey: string) {

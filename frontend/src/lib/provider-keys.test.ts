@@ -45,12 +45,19 @@ describe("provider key storage", () => {
     expect(loadStoredProviderKeys(storage)).toEqual({ elevenlabs: "key" })
   })
 
+  it("normalizes provider keys loaded from storage", () => {
+    const storage = new MemoryStorage()
+    storage.setItem(PROVIDER_KEYS_STORAGE_KEY, JSON.stringify({ " elevenlabs ": " key ", empty: "   " }))
+
+    expect(loadStoredProviderKeys(storage)).toEqual({ elevenlabs: "key" })
+  })
+
   it("removes storage when the last provider key is cleared", () => {
     const storage = new MemoryStorage()
     const withKey = setStoredProviderKey({}, "elevenlabs", "browser-key")
     saveStoredProviderKeys(withKey, storage)
 
-    const withoutKey = clearStoredProviderKey(withKey, "elevenlabs")
+    const withoutKey = clearStoredProviderKey(withKey, " elevenlabs ")
     saveStoredProviderKeys(withoutKey, storage)
 
     expect(storage.getItem(PROVIDER_KEYS_STORAGE_KEY)).toBeNull()

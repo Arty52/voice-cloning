@@ -255,6 +255,56 @@ describe("App", () => {
     expect(speechCall?.[1]?.headers).toEqual({ [VOICE_PROVIDER_KEY_HEADER]: "browser-key" })
   })
 
+  it("keeps backend provider fallback available when provider settings fail to load", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        if (url === "/api/providers" && !init) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ detail: "Provider settings failed." }), {
+              status: 500,
+              headers: { "Content-Type": "application/json" },
+            })
+          )
+        }
+        if (url === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "default", voices: [defaultVoice] })
+        }
+        if (url === "/api/subscription" && !init) {
+          return okJson(subscription)
+        }
+        if (url === "/api/models" && !init) {
+          return okJson({
+            available: true,
+            error: null,
+            defaultModelId: "eleven_multilingual_v2",
+            models: [multilingualModel, flashModel],
+          })
+        }
+        if (url === "/api/speech" && init?.method === "POST") {
+          return okAudio()
+        }
+        return okJson({})
+      })
+    )
+    const user = userEvent.setup()
+    render(<App />)
+
+    expect(await screen.findByText("Provider Settings Unavailable")).toBeInTheDocument()
+    expect(await screen.findByText("default/default-voice.mp3")).toBeInTheDocument()
+    const generateButton = screen.getByRole("button", { name: /^Generate$/ })
+    await waitFor(() => expect(generateButton).toBeEnabled())
+
+    await user.click(generateButton)
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/speech", expect.objectContaining({ method: "POST" })))
+    const speechCall = vi.mocked(fetch).mock.calls.find(
+      ([url, init]) => String(url) === "/api/speech" && init?.method === "POST"
+    )
+    expect(speechCall?.[1]?.headers).toBeUndefined()
+  })
+
   it("loads a saved browser key securely with peek copy and clear controls", async () => {
     localStorage.setItem(PROVIDER_KEYS_STORAGE_KEY, JSON.stringify({ elevenlabs: "stored-key" }))
     const user = userEvent.setup()

@@ -9,6 +9,18 @@ import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui
 import { Input } from "@/components/ui/input"
 import type { AsyncStatus, ProviderKeySource, VoiceProvider } from "@/types"
 
+type DraftKeyState = {
+  providerId: string
+  savedKey: string
+  value: string
+}
+
+type CopyStatusState = {
+  providerId: string
+  savedKey: string
+  value: string
+}
+
 type ProviderKeysPanelProps = {
   activeProvider: VoiceProvider | null
   activeProviderKey: string | null
@@ -28,29 +40,33 @@ export function ProviderKeysPanel({
   providerError,
   providerStatus,
 }: ProviderKeysPanelProps) {
-  const [draftKey, setDraftKey] = useState(activeProviderKey ?? "")
-  const [isRevealed, setIsRevealed] = useState(false)
-  const [copyStatus, setCopyStatus] = useState<string | null>(null)
+  const [draftEdit, setDraftEdit] = useState<DraftKeyState | null>(null)
+  const [revealedProviderId, setRevealedProviderId] = useState<string | null>(null)
+  const [copyStatus, setCopyStatus] = useState<CopyStatusState | null>(null)
   const providerId = activeProvider?.id ?? "elevenlabs"
+  const savedKey = activeProviderKey ?? ""
+  const draftKey = draftEdit?.providerId === providerId && draftEdit.savedKey === savedKey ? draftEdit.value : savedKey
+  const isRevealed = revealedProviderId === providerId
+  const visibleCopyStatus = copyStatus?.providerId === providerId && copyStatus.savedKey === savedKey ? copyStatus.value : null
   const providerLabel = activeProvider?.label ?? "Provider"
   const hasBrowserKey = keySource === "browser"
   const isMissingKey = providerStatus === "success" && keySource === "missing"
   const canCopy = Boolean(activeProviderKey)
   const canClear = hasBrowserKey
-  const canSave = draftKey.trim() !== (activeProviderKey ?? "")
+  const canSave = draftKey.trim() !== savedKey
 
   function handleSave() {
     const nextKey = draftKey.trim()
     onSaveProviderKey(providerId, nextKey)
-    setDraftKey(nextKey)
-    setIsRevealed(false)
+    setDraftEdit({ providerId, savedKey: nextKey, value: nextKey })
+    setRevealedProviderId(null)
     setCopyStatus(null)
   }
 
   function handleClear() {
     onClearProviderKey(providerId)
-    setDraftKey("")
-    setIsRevealed(false)
+    setDraftEdit({ providerId, savedKey: "", value: "" })
+    setRevealedProviderId(null)
     setCopyStatus(null)
   }
 
@@ -60,9 +76,9 @@ export function ProviderKeysPanel({
     }
     try {
       await window.navigator.clipboard.writeText(activeProviderKey)
-      setCopyStatus("Copied")
+      setCopyStatus({ providerId, savedKey, value: "Copied" })
     } catch {
-      setCopyStatus("Copy failed")
+      setCopyStatus({ providerId, savedKey, value: "Copy failed" })
     }
   }
 
@@ -83,7 +99,7 @@ export function ProviderKeysPanel({
         {isMissingKey ? (
           <Alert>
             <AlertTitle>Missing Key</AlertTitle>
-            <AlertDescription>Add a browser key or set `ELEVENLABS_API_KEY` in `.env` before generating speech.</AlertDescription>
+            <AlertDescription>Add a browser key or configure a server-side provider key before generating speech.</AlertDescription>
           </Alert>
         ) : null}
 
@@ -103,7 +119,7 @@ export function ProviderKeysPanel({
                 autoComplete="off"
                 id="provider-api-key"
                 onChange={(event) => {
-                  setDraftKey(event.target.value)
+                  setDraftEdit({ providerId, savedKey, value: event.target.value })
                   setCopyStatus(null)
                 }}
                 placeholder={activeProvider?.serverKeyConfigured ? "Using .env fallback" : "Enter API key"}
@@ -113,7 +129,7 @@ export function ProviderKeysPanel({
               />
               <Button
                 aria-label={isRevealed ? "Hide Key" : "Peek Key"}
-                onClick={() => setIsRevealed((current) => !current)}
+                onClick={() => setRevealedProviderId((current) => (current === providerId ? null : providerId))}
                 size="icon"
                 type="button"
                 variant="secondary"
@@ -134,14 +150,16 @@ export function ProviderKeysPanel({
             <FieldDescription>
               {hasBrowserKey
                 ? "Browser key is active and overrides `.env` for provider requests."
-                : activeProvider?.serverKeyConfigured
+                : providerError
+                  ? "Provider settings are unavailable; provider requests can still use the backend fallback."
+                  : activeProvider?.serverKeyConfigured
                   ? "No browser key saved; provider requests use `.env`."
                   : "No provider key is available yet."}
             </FieldDescription>
           </Field>
         </FieldGroup>
 
-        {copyStatus ? <div className="text-xs text-muted-foreground">{copyStatus}</div> : null}
+        {visibleCopyStatus ? <div className="text-xs text-muted-foreground">{visibleCopyStatus}</div> : null}
       </CardContent>
 
       <CardFooter>
