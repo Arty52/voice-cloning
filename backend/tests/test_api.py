@@ -31,7 +31,10 @@ from voice_cloning.voice_library import VoiceLibrary
 class FakeElevenLabsClient:
     def __init__(self) -> None:
         self.created_samples: list[VoiceSample] = []
-        self.speech_requests: list[tuple[str, str, VoiceSettings | None, str | None]] = []
+        self.create_voice_api_keys: list[str | None] = []
+        self.speech_requests: list[tuple[str, str, VoiceSettings | None, str | None, str | None]] = []
+        self.subscription_api_keys: list[str | None] = []
+        self.model_api_keys: list[str | None] = []
         self.create_voice_error: ElevenLabsError | None = None
         self.subscription_error: ElevenLabsError | None = None
         self.models_error: ElevenLabsError | None = None
@@ -74,22 +77,25 @@ class FakeElevenLabsClient:
             ),
         ]
 
-    async def get_subscription(self) -> SubscriptionSummary:
+    async def get_subscription(self, api_key: str | None = None) -> SubscriptionSummary:
         if self.subscription_error is not None:
             raise self.subscription_error
+        self.subscription_api_keys.append(api_key)
         return self.subscription
 
-    async def list_models(self) -> list[ModelSummary]:
+    async def list_models(self, api_key: str | None = None) -> list[ModelSummary]:
         if self.models_error is not None:
             raise self.models_error
+        self.model_api_keys.append(api_key)
         return self.models
 
-    async def create_voice(self, sample: VoiceSample) -> VoiceClone:
+    async def create_voice(self, sample: VoiceSample, api_key: str | None = None) -> VoiceClone:
         if self.create_voice_error is not None:
             raise self.create_voice_error
         if self.create_voice_delay:
             await asyncio.sleep(self.create_voice_delay)
         self.created_samples.append(sample)
+        self.create_voice_api_keys.append(api_key)
         return VoiceClone(voice_id=f"voice-{sample.sha256[:8]}", requires_verification=False)
 
     async def create_speech(
@@ -98,10 +104,11 @@ class FakeElevenLabsClient:
         text: str,
         voice_settings: VoiceSettings | None = None,
         model_id: str | None = None,
+        api_key: str | None = None,
     ) -> SpeechResult:
         if self.create_speech_delay:
             await asyncio.sleep(self.create_speech_delay)
-        self.speech_requests.append((voice_id, text, voice_settings, model_id))
+        self.speech_requests.append((voice_id, text, voice_settings, model_id, api_key))
         return SpeechResult(
             audio=b"fake-mp3",
             character_count=self.speech_character_count,
@@ -154,6 +161,37 @@ def test_health_reports_default_sample(tmp_path: Path) -> None:
     assert response.json()["defaultVoiceId"] == "default"
 
 
+def test_providers_endpoint_returns_public_provider_descriptor(tmp_path: Path) -> None:
+    client, _ = make_client(tmp_path, api_key="server-secret")
+
+    response = client.get("/api/providers")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "defaultProviderId": "elevenlabs",
+        "providers": [
+            {
+                "id": "elevenlabs",
+                "label": "ElevenLabs",
+                "serverKeyConfigured": True,
+                "manageKeyUrl": "https://elevenlabs.io/app/subscription/api",
+                "docsUrl": "https://elevenlabs.io/docs/api-reference/authentication",
+            }
+        ],
+    }
+    assert "server-secret" not in response.text
+
+
+def test_providers_endpoint_reports_missing_server_key_without_secret_data(tmp_path: Path) -> None:
+    client, _ = make_client(tmp_path, api_key="")
+
+    response = client.get("/api/providers")
+
+    assert response.status_code == 200
+    assert response.json()["providers"][0]["serverKeyConfigured"] is False
+    assert "ELEVENLABS_API_KEY" not in response.text
+
+
 def test_fresh_clone_can_start_without_voice_assets(tmp_path: Path) -> None:
     client, fake_client = make_client(tmp_path, with_default_sample=False)
 
@@ -203,6 +241,27 @@ def test_subscription_endpoint_returns_sanitized_quota(tmp_path: Path) -> None:
     }
     assert "openInvoices" not in payload
     assert "xiApiKey" not in payload
+
+
+def test_subscription_and_models_use_provider_key_header_over_env(tmp_path: Path) -> None:
+    client, fake_client = make_client(tmp_path, api_key="env-key")
+
+    subscription_response = client.get("/api/subscription", headers={"X-Voice-Provider-Key": " browser-key "})
+    models_response = client.get("/api/models", headers={"X-Voice-Provider-Key": "browser-key"})
+
+    assert subscription_response.status_code == 200
+    assert models_response.status_code == 200
+    assert fake_client.subscription_api_keys == ["browser-key"]
+    assert fake_client.model_api_keys == ["browser-key"]
+
+
+def test_blank_provider_key_header_falls_back_to_env(tmp_path: Path) -> None:
+    client, fake_client = make_client(tmp_path, api_key="env-key")
+
+    response = client.get("/api/models", headers={"X-Voice-Provider-Key": "   "})
+
+    assert response.status_code == 200
+    assert fake_client.model_api_keys == ["env-key"]
 
 
 def test_subscription_endpoint_sanitizes_errors(tmp_path: Path) -> None:
@@ -367,6 +426,38 @@ def test_create_speech_clones_once_then_uses_cache(tmp_path: Path) -> None:
     assert first.headers["x-app-voice-id"] == "default"
     assert len(fake_client.created_samples) == 1
     assert len(fake_client.speech_requests) == 2
+
+
+def test_create_speech_uses_provider_key_header_when_env_is_missing(tmp_path: Path) -> None:
+    client, fake_client = make_client(tmp_path, api_key="")
+
+    response = client.post(
+        "/api/speech",
+        data={"text": "Hello from the local app.", "voiceId": "default"},
+        headers={"X-Voice-Provider-Key": "browser-key"},
+    )
+
+    assert response.status_code == 200
+    assert fake_client.create_voice_api_keys == ["browser-key"]
+    assert fake_client.speech_requests[0][4] == "browser-key"
+
+
+def test_create_speech_cache_is_scoped_by_provider_key(tmp_path: Path) -> None:
+    client, fake_client = make_client(tmp_path, api_key="env-key")
+    form = {"text": "Hello from the local app.", "voiceId": "default"}
+
+    first = client.post("/api/speech", data=form, headers={"X-Voice-Provider-Key": "browser-key-a"})
+    second = client.post("/api/speech", data=form, headers={"X-Voice-Provider-Key": "browser-key-a"})
+    third = client.post("/api/speech", data=form, headers={"X-Voice-Provider-Key": "browser-key-b"})
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert third.status_code == 200
+    assert first.headers["x-voice-cache"] == "miss"
+    assert second.headers["x-voice-cache"] == "hit"
+    assert third.headers["x-voice-cache"] == "miss"
+    assert len(fake_client.created_samples) == 2
+    assert fake_client.create_voice_api_keys == ["browser-key-a", "browser-key-b"]
 
 
 def test_disconnect_cancels_pending_speech_request(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

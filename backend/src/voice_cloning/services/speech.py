@@ -7,6 +7,7 @@ from ..cache import VoiceCache
 from ..config import Settings
 from ..elevenlabs_client import ElevenLabsClient, ElevenLabsError
 from ..models import CachedVoice, VoiceSample, VoiceSettings
+from ..providers import resolve_elevenlabs_key
 from ..voice_library import VoiceLibrary
 from .cancellation import await_or_cancel_on_disconnect
 
@@ -41,6 +42,7 @@ async def generate_speech(
     voice_cache: VoiceCache,
     voice_library: VoiceLibrary,
     is_disconnected: Callable[[], Awaitable[bool]],
+    provider_key: str | None = None,
 ) -> SpeechGeneration:
     normalized_text = text.strip()
     if not normalized_text:
@@ -53,21 +55,24 @@ async def generate_speech(
         raise SpeechServiceError("Add or select a voice before generating speech.", 422)
 
     try:
-        settings.require_api_key()
+        key_context = resolve_elevenlabs_key(settings, provider_key)
     except RuntimeError as exc:
         raise SpeechServiceError(str(exc), 500) from exc
 
     sample = voice_library.get_sample(app_voice_id)
     selected_model_id = model_id.strip() if model_id and model_id.strip() else settings.elevenlabs_model_id
-    cached_voice = voice_cache.get(sample.sha256)
+    cached_voice = voice_cache.get(sample.sha256, namespace=key_context.cache_namespace)
     cache_state = "hit"
     if cached_voice is None:
         cache_state = "miss"
         try:
-            clone = await await_or_cancel_on_disconnect(is_disconnected, lambda: elevenlabs_client.create_voice(sample))
+            clone = await await_or_cancel_on_disconnect(
+                is_disconnected,
+                lambda: elevenlabs_client.create_voice(sample, api_key=key_context.api_key),
+            )
         except ElevenLabsError as exc:
             raise SpeechServiceError(str(exc), exc.status_code) from exc
-        cached_voice = voice_cache.set(sample, clone)
+        cached_voice = voice_cache.set(sample, clone, namespace=key_context.cache_namespace)
 
     try:
         speech = await await_or_cancel_on_disconnect(
@@ -77,6 +82,7 @@ async def generate_speech(
                 normalized_text,
                 voice_settings,
                 selected_model_id,
+                api_key=key_context.api_key,
             ),
         )
     except ElevenLabsError as exc:

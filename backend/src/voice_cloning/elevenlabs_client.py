@@ -18,10 +18,10 @@ class ElevenLabsClient:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
 
-    async def get_subscription(self) -> SubscriptionSummary:
-        self.settings.require_api_key()
+    async def get_subscription(self, api_key: str | None = None) -> SubscriptionSummary:
+        resolved_api_key = self._resolve_api_key(api_key)
         url = f"{self.settings.elevenlabs_api_base_url}/user/subscription"
-        headers = {"xi-api-key": self.settings.elevenlabs_api_key}
+        headers = {"xi-api-key": resolved_api_key}
         async with httpx.AsyncClient(timeout=30) as client:
             try:
                 response = await client.get(url, headers=headers)
@@ -36,10 +36,10 @@ class ElevenLabsClient:
             raise ElevenLabsError("ElevenLabs returned an invalid subscription payload.")
         return _subscription_from_payload(payload)
 
-    async def list_models(self) -> list[ModelSummary]:
-        self.settings.require_api_key()
+    async def list_models(self, api_key: str | None = None) -> list[ModelSummary]:
+        resolved_api_key = self._resolve_api_key(api_key)
         url = f"{self.settings.elevenlabs_api_base_url}/models"
-        headers = {"xi-api-key": self.settings.elevenlabs_api_key}
+        headers = {"xi-api-key": resolved_api_key}
         async with httpx.AsyncClient(timeout=30) as client:
             try:
                 response = await client.get(url, headers=headers)
@@ -54,10 +54,10 @@ class ElevenLabsClient:
             raise ElevenLabsError("ElevenLabs returned an invalid models payload.")
         return [_model_from_payload(item) for item in payload if _is_tts_model(item)]
 
-    async def create_voice(self, sample: VoiceSample) -> VoiceClone:
-        self.settings.require_api_key()
+    async def create_voice(self, sample: VoiceSample, api_key: str | None = None) -> VoiceClone:
+        resolved_api_key = self._resolve_api_key(api_key)
         url = f"{self.settings.elevenlabs_api_base_url}/voices/add"
-        headers = {"xi-api-key": self.settings.elevenlabs_api_key}
+        headers = {"xi-api-key": resolved_api_key}
         data = {
             "name": f"Local clone {sample.sha256[:12]}",
             "description": "Created by the local voice-cloning app.",
@@ -93,11 +93,12 @@ class ElevenLabsClient:
         text: str,
         voice_settings: VoiceSettings | None = None,
         model_id: str | None = None,
+        api_key: str | None = None,
     ) -> SpeechResult:
-        self.settings.require_api_key()
+        resolved_api_key = self._resolve_api_key(api_key)
         url = f"{self.settings.elevenlabs_api_base_url}/text-to-speech/{voice_id}"
         headers = {
-            "xi-api-key": self.settings.elevenlabs_api_key,
+            "xi-api-key": resolved_api_key,
             "Content-Type": "application/json",
         }
         params = {"output_format": "mp3_44100_128"}
@@ -126,6 +127,13 @@ class ElevenLabsClient:
             character_count=_optional_int_payload(response.headers.get("x-character-count")),
             request_id=_response_request_id(response),
         )
+
+    def _resolve_api_key(self, api_key: str | None = None) -> str:
+        override_api_key = (api_key or "").strip()
+        resolved_api_key = override_api_key or self.settings.elevenlabs_api_key.strip()
+        if not resolved_api_key:
+            raise RuntimeError("ELEVENLABS_API_KEY is not configured.")
+        return resolved_api_key
 
 
 def _public_error(response: httpx.Response) -> str:
