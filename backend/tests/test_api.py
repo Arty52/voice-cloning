@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,7 @@ from voice_cloning.elevenlabs_client import (
     ElevenLabsError,
     _is_tts_model,
     _model_from_payload,
+    _normalize_control_value,
 )
 from voice_cloning.api.serializers import audio_response
 from voice_cloning.models import (
@@ -22,18 +24,26 @@ from voice_cloning.models import (
     SubscriptionSummary,
     VoiceClone,
     VoiceSample,
-    VoiceSettings,
 )
-from voice_cloning.providers import resolve_elevenlabs_key
+from voice_cloning.providers import (
+    ELEVENLABS_PROVIDER_DESCRIPTOR,
+    ProviderDescriptor,
+    ProviderKeyContext,
+    ProviderRegistry,
+    ProviderTuningControl,
+    ProviderTuningOption,
+    ProviderTuningValue,
+    resolve_elevenlabs_key,
+)
 from voice_cloning.services.speech import SpeechServiceError, generate_speech
 from voice_cloning.voice_library import VoiceLibrary
 
 
-class FakeElevenLabsClient:
+class FakeElevenLabsProvider:
     def __init__(self) -> None:
         self.created_samples: list[VoiceSample] = []
         self.create_voice_api_keys: list[str | None] = []
-        self.speech_requests: list[tuple[str, str, VoiceSettings | None, str | None, str | None]] = []
+        self.speech_requests: list[tuple[str, str, dict[str, ProviderTuningValue] | None, str | None, str | None]] = []
         self.subscription_api_keys: list[str | None] = []
         self.model_api_keys: list[str | None] = []
         self.create_voice_error: ElevenLabsError | None = None
@@ -77,6 +87,41 @@ class FakeElevenLabsClient:
                 maximum_text_length_per_request=40000,
             ),
         ]
+        self.settings: Settings | None = None
+
+    @property
+    def id(self) -> str:
+        return "elevenlabs"
+
+    @property
+    def descriptor(self):
+        return ELEVENLABS_PROVIDER_DESCRIPTOR
+
+    @property
+    def default_model_id(self) -> str:
+        return self.settings.elevenlabs_model_id if self.settings is not None else "eleven_multilingual_v2"
+
+    @property
+    def server_key_configured(self) -> bool:
+        return bool(self.settings and self.settings.elevenlabs_api_key.strip())
+
+    def bind_settings(self, settings: Settings) -> "FakeElevenLabsProvider":
+        self.settings = settings
+        return self
+
+    def resolve_key(self, api_key_override: str | None) -> ProviderKeyContext:
+        if self.settings is None:
+            raise RuntimeError("Test provider settings are not configured.")
+        return resolve_elevenlabs_key(self.settings, api_key_override)
+
+    def normalize_voice_settings(self, values: dict[str, object] | None) -> dict[str, ProviderTuningValue]:
+        defaults = ELEVENLABS_PROVIDER_DESCRIPTOR.tuning.resolved_default_values()
+        if values is None:
+            return defaults
+        unknown_ids = sorted(set(values) - set(defaults))
+        if unknown_ids:
+            raise ElevenLabsError(f"Unsupported ElevenLabs voice setting: {', '.join(unknown_ids)}.", 422)
+        return {**defaults, **values}  # type: ignore[return-value]
 
     async def get_subscription(self, api_key: str | None = None) -> SubscriptionSummary:
         if self.subscription_error is not None:
@@ -103,7 +148,7 @@ class FakeElevenLabsClient:
         self,
         voice_id: str,
         text: str,
-        voice_settings: VoiceSettings | None = None,
+        voice_settings: dict[str, ProviderTuningValue] | None = None,
         model_id: str | None = None,
         api_key: str | None = None,
     ) -> SpeechResult:
@@ -115,6 +160,26 @@ class FakeElevenLabsClient:
             character_count=self.speech_character_count,
             request_id=self.speech_request_id,
         )
+
+
+class FakeNoTuningProvider(FakeElevenLabsProvider):
+    @property
+    def id(self) -> str:
+        return "notuning"
+
+    @property
+    def descriptor(self) -> ProviderDescriptor:
+        return ProviderDescriptor(
+            id="notuning",
+            label="No Tuning",
+            manage_key_url="https://provider.example/key",
+            docs_url="https://provider.example/docs",
+        )
+
+    def normalize_voice_settings(self, values: dict[str, object] | None) -> dict[str, ProviderTuningValue]:
+        if values:
+            raise ElevenLabsError("No Tuning does not support voice settings.", 422)
+        return {}
 
 
 def make_settings(tmp_path: Path, api_key: str = "test-key", with_default_sample: bool = True) -> Settings:
@@ -140,12 +205,12 @@ def make_client(
     tmp_path: Path,
     api_key: str = "test-key",
     with_default_sample: bool = True,
-) -> tuple[TestClient, FakeElevenLabsClient]:
+) -> tuple[TestClient, FakeElevenLabsProvider]:
     settings = make_settings(tmp_path, api_key=api_key, with_default_sample=with_default_sample)
-    fake_client = FakeElevenLabsClient()
+    fake_client = FakeElevenLabsProvider().bind_settings(settings)
     app = create_app(
         settings=settings,
-        elevenlabs_client=fake_client,  # type: ignore[arg-type]
+        provider_registry=ProviderRegistry([fake_client]),
         voice_cache=VoiceCache(settings.storage_dir / "voice-cache.json"),
         voice_library=VoiceLibrary(settings),
     )
@@ -168,19 +233,34 @@ def test_providers_endpoint_returns_public_provider_descriptor(tmp_path: Path) -
     response = client.get("/api/providers")
 
     assert response.status_code == 200
-    assert response.json() == {
-        "defaultProviderId": "elevenlabs",
-        "providers": [
-            {
-                "id": "elevenlabs",
-                "label": "ElevenLabs",
-                "serverKeyConfigured": True,
-                "manageKeyUrl": "https://elevenlabs.io/app/subscription/api",
-                "docsUrl": "https://elevenlabs.io/docs/api-reference/authentication",
-            }
-        ],
-    }
+    payload = response.json()
+    provider = payload["providers"][0]
+    assert payload["defaultProviderId"] == "elevenlabs"
+    assert provider["id"] == "elevenlabs"
+    assert provider["label"] == "ElevenLabs"
+    assert provider["serverKeyConfigured"] is True
+    assert provider["manageKeyUrl"] == "https://elevenlabs.io/app/subscription/api"
+    assert provider["docsUrl"] == "https://elevenlabs.io/docs/api-reference/authentication"
+    assert [control["id"] for control in provider["tuning"]["controls"]] == [
+        "stability",
+        "similarityBoost",
+        "style",
+        "speed",
+        "useSpeakerBoost",
+    ]
+    assert provider["tuning"]["defaultValues"]["useSpeakerBoost"] is True
+    assert [preset["id"] for preset in provider["tuning"]["presets"]] == ["standard", "animated"]
+    assert provider["links"][0]["label"] == "API Requests"
     assert "server-secret" not in response.text
+
+
+def test_provider_registry_rejects_duplicate_provider_ids(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    first_provider = FakeElevenLabsProvider().bind_settings(settings)
+    duplicate_provider = FakeElevenLabsProvider().bind_settings(settings)
+
+    with pytest.raises(ValueError, match="Duplicate voice provider id: 'elevenlabs'"):
+        ProviderRegistry([first_provider, duplicate_provider])
 
 
 def test_providers_endpoint_reports_missing_server_key_without_secret_data(tmp_path: Path) -> None:
@@ -200,6 +280,29 @@ def test_providers_endpoint_treats_whitespace_server_key_as_missing(tmp_path: Pa
 
     assert response.status_code == 200
     assert response.json()["providers"][0]["serverKeyConfigured"] is False
+
+
+def test_provider_without_tuning_controls_reports_empty_tuning(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    provider = FakeNoTuningProvider().bind_settings(settings)
+    app = create_app(
+        settings=settings,
+        provider_registry=ProviderRegistry([provider], default_provider_id="notuning"),
+        voice_cache=VoiceCache(settings.storage_dir / "voice-cache.json"),
+        voice_library=VoiceLibrary(settings),
+    )
+    client = TestClient(app)
+
+    response = client.get("/api/providers")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["defaultProviderId"] == "notuning"
+    assert payload["providers"][0]["tuning"] == {
+        "controls": [],
+        "presets": [],
+        "defaultValues": {},
+    }
 
 
 def test_fresh_clone_can_start_without_voice_assets(tmp_path: Path) -> None:
@@ -274,6 +377,27 @@ def test_blank_provider_key_header_falls_back_to_env(tmp_path: Path) -> None:
     assert fake_client.model_api_keys == ["env-key"]
 
 
+def test_metadata_routes_accept_explicit_provider_id(tmp_path: Path) -> None:
+    client, fake_client = make_client(tmp_path, api_key="env-key")
+
+    subscription_response = client.get("/api/subscription?providerId=elevenlabs")
+    models_response = client.get("/api/models?providerId=elevenlabs")
+
+    assert subscription_response.status_code == 200
+    assert models_response.status_code == 200
+    assert fake_client.subscription_api_keys == ["env-key"]
+    assert fake_client.model_api_keys == ["env-key"]
+
+
+def test_metadata_routes_reject_unknown_provider(tmp_path: Path) -> None:
+    client, _ = make_client(tmp_path)
+
+    response = client.get("/api/models?providerId=missing")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Unknown provider: missing."
+
+
 def test_subscription_endpoint_sanitizes_errors(tmp_path: Path) -> None:
     client, fake_client = make_client(tmp_path)
     fake_client.subscription_error = ElevenLabsError("ElevenLabs API returned 401: Invalid API key.", 502)
@@ -340,6 +464,26 @@ def test_model_payload_filtering_uses_tts_capability() -> None:
     assert models[0].character_cost_multiplier == 0.5
 
 
+def test_select_tuning_rejects_non_scalar_values() -> None:
+    control = ProviderTuningControl(
+        id="renderMode",
+        label="Render Mode",
+        description="Selects the rendering mode.",
+        type="select",
+        default_value="standard",
+        options=(
+            ProviderTuningOption(label="Standard", value="standard"),
+            ProviderTuningOption(label="Enhanced", value="enhanced"),
+        ),
+    )
+
+    with pytest.raises(ElevenLabsError) as exc_info:
+        _normalize_control_value(control, {"mode": "standard"})
+
+    assert exc_info.value.status_code == 422
+    assert str(exc_info.value) == "Render Mode must be a JSON scalar."
+
+
 def test_audio_response_serializer_sets_public_headers() -> None:
     sample = VoiceSample(
         content=b"sample",
@@ -378,14 +522,14 @@ def test_audio_response_serializer_sets_public_headers() -> None:
 
 def test_speech_service_rejects_empty_text(tmp_path: Path) -> None:
     settings = make_settings(tmp_path)
-    fake_client = FakeElevenLabsClient()
-    voice_settings = VoiceSettings(
-        stability=0.5,
-        similarity_boost=0.75,
-        style=0,
-        speed=1,
-        use_speaker_boost=True,
-    )
+    fake_client = FakeElevenLabsProvider().bind_settings(settings)
+    voice_settings = {
+        "stability": 0.5,
+        "similarityBoost": 0.75,
+        "style": 0,
+        "speed": 1,
+        "useSpeakerBoost": True,
+    }
 
     async def is_disconnected() -> bool:
         return False
@@ -398,7 +542,7 @@ def test_speech_service_rejects_empty_text(tmp_path: Path) -> None:
                 model_id=None,
                 voice_settings=voice_settings,
                 settings=settings,
-                elevenlabs_client=fake_client,  # type: ignore[arg-type]
+                provider=fake_client,
                 voice_cache=VoiceCache(settings.storage_dir / "voice-cache.json"),
                 voice_library=VoiceLibrary(settings),
                 is_disconnected=is_disconnected,
@@ -472,7 +616,7 @@ def test_create_speech_cache_is_scoped_by_provider_key(tmp_path: Path) -> None:
 
 def test_create_speech_migrates_legacy_server_cache_entry(tmp_path: Path) -> None:
     settings = make_settings(tmp_path, api_key="env-key")
-    fake_client = FakeElevenLabsClient()
+    fake_client = FakeElevenLabsProvider().bind_settings(settings)
     voice_library = VoiceLibrary(settings)
     voice_cache = VoiceCache(settings.storage_dir / "voice-cache.json")
     sample = voice_library.get_sample("default")
@@ -480,7 +624,7 @@ def test_create_speech_migrates_legacy_server_cache_entry(tmp_path: Path) -> Non
 
     app = create_app(
         settings=settings,
-        elevenlabs_client=fake_client,  # type: ignore[arg-type]
+        provider_registry=ProviderRegistry([fake_client]),
         voice_cache=voice_cache,
         voice_library=voice_library,
     )
@@ -645,13 +789,91 @@ def test_create_speech_uses_tuning_settings(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     settings = fake_client.speech_requests[0][2]
-    assert settings == VoiceSettings(
-        stability=0.42,
-        similarity_boost=0.84,
-        style=0.2,
-        speed=1.1,
-        use_speaker_boost=False,
+    assert settings == {
+        "stability": 0.42,
+        "similarityBoost": 0.84,
+        "style": 0.2,
+        "speed": 1.1,
+        "useSpeakerBoost": False,
+    }
+
+
+def test_create_speech_filters_legacy_tuning_for_provider_without_controls(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    provider = FakeNoTuningProvider().bind_settings(settings)
+    app = create_app(
+        settings=settings,
+        provider_registry=ProviderRegistry([provider], default_provider_id="notuning"),
+        voice_cache=VoiceCache(settings.storage_dir / "voice-cache.json"),
+        voice_library=VoiceLibrary(settings),
     )
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/speech",
+        data={
+            "text": "Legacy clients can still post these.",
+            "voiceId": "default",
+            "providerId": "notuning",
+            "stability": "0.42",
+            "similarityBoost": "0.84",
+            "style": "0.2",
+            "speed": "1.1",
+            "useSpeakerBoost": "false",
+        },
+    )
+
+    assert response.status_code == 200
+    assert provider.speech_requests[0][2] == {}
+
+
+def test_create_speech_accepts_generic_voice_settings_and_provider_id(tmp_path: Path) -> None:
+    client, fake_client = make_client(tmp_path)
+
+    response = client.post(
+        "/api/speech",
+        data={
+            "text": "Use generic settings.",
+            "voiceId": "default",
+            "providerId": "elevenlabs",
+            "voiceSettings": json.dumps(
+                {
+                    "stability": 0.31,
+                    "similarityBoost": 0.82,
+                    "style": 0.14,
+                    "speed": 0.93,
+                    "useSpeakerBoost": False,
+                }
+            ),
+        },
+    )
+
+    assert response.status_code == 200
+    assert fake_client.speech_requests[0][2] == {
+        "stability": 0.31,
+        "similarityBoost": 0.82,
+        "style": 0.14,
+        "speed": 0.93,
+        "useSpeakerBoost": False,
+    }
+
+
+def test_create_speech_rejects_unknown_voice_setting(tmp_path: Path) -> None:
+    client, fake_client = make_client(tmp_path)
+
+    response = client.post(
+        "/api/speech",
+        data={
+            "text": "Reject this.",
+            "voiceId": "default",
+            "voiceSettings": json.dumps({"unsupported": 1}),
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Unsupported ElevenLabs voice setting: unsupported."
+    assert fake_client.created_samples == []
+    assert fake_client.speech_requests == []
 
 
 def test_add_uploaded_voice_stores_named_asset(tmp_path: Path) -> None:

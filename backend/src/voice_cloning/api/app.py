@@ -5,7 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ..cache import VoiceCache
 from ..config import Settings
-from ..elevenlabs_client import ElevenLabsClient
+from ..elevenlabs_client import ElevenLabsProvider
+from ..providers import ProviderRegistry
 from ..voice_library import VoiceLibrary
 from .routes.health import create_health_router
 from .routes.metadata import create_metadata_router
@@ -15,13 +16,13 @@ from .routes.voices import create_voices_router
 
 def create_app(
     settings: Settings | None = None,
-    elevenlabs_client: ElevenLabsClient | None = None,
+    provider_registry: ProviderRegistry | None = None,
     voice_cache: VoiceCache | None = None,
     voice_library: VoiceLibrary | None = None,
 ) -> FastAPI:
     resolved_settings = settings or Settings.from_env()
     resolved_cache = voice_cache or VoiceCache(resolved_settings.storage_dir / "voice-cache.json")
-    resolved_client = elevenlabs_client or ElevenLabsClient(resolved_settings)
+    resolved_provider_registry = provider_registry or ProviderRegistry([ElevenLabsProvider(resolved_settings)])
     resolved_library = voice_library or VoiceLibrary(resolved_settings)
 
     app = FastAPI(title="Local Voice Cloning API", version="0.1.0")
@@ -43,10 +44,10 @@ def create_app(
         ],
     )
 
-    app.include_router(create_health_router(resolved_settings, resolved_library))
+    app.include_router(create_health_router(resolved_settings, resolved_library, resolved_provider_registry))
     app.include_router(create_voices_router(resolved_library))
-    app.include_router(create_metadata_router(resolved_settings, resolved_client))
-    app.include_router(create_speech_router(resolved_settings, resolved_client, resolved_cache, resolved_library))
+    app.include_router(create_metadata_router(resolved_settings, resolved_provider_registry))
+    app.include_router(create_speech_router(resolved_settings, resolved_provider_registry, resolved_cache, resolved_library))
     return app
 
 

@@ -1,7 +1,7 @@
 [project]
 name = "voice-cloning-api"
 version = "0.1.0"
-description = "Local FastAPI proxy for ElevenLabs instant voice cloning."
+description = "Local FastAPI proxy for provider-backed voice cloning."
 requires-python = ">=3.14"
 dependencies = [
   "fastapi>=0.124.0",

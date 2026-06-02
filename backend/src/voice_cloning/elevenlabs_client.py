@@ -1,22 +1,71 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Mapping
 
 import httpx
 
 from .config import Settings
 from .models import ModelSummary, SpeechResult, SubscriptionSummary, VoiceClone, VoiceSample, VoiceSettings
+from .providers import (
+    DEFAULT_PROVIDER_ID,
+    ELEVENLABS_PROVIDER_DESCRIPTOR,
+    ELEVENLABS_TUNING_METADATA,
+    ProviderDescriptor,
+    ProviderError,
+    ProviderKeyContext,
+    ProviderTuningControl,
+    ProviderTuningValue,
+    resolve_elevenlabs_key,
+)
 
 
-class ElevenLabsError(Exception):
+class ElevenLabsError(ProviderError):
     def __init__(self, message: str, status_code: int = 502) -> None:
-        super().__init__(message)
-        self.status_code = status_code
+        super().__init__(message, status_code=status_code)
 
 
-class ElevenLabsClient:
+class ElevenLabsProvider:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
+
+    @property
+    def id(self) -> str:
+        return DEFAULT_PROVIDER_ID
+
+    @property
+    def descriptor(self) -> ProviderDescriptor:
+        return ELEVENLABS_PROVIDER_DESCRIPTOR
+
+    @property
+    def default_model_id(self) -> str:
+        return self.settings.elevenlabs_model_id
+
+    @property
+    def server_key_configured(self) -> bool:
+        return bool(self.settings.elevenlabs_api_key.strip())
+
+    def resolve_key(self, api_key_override: str | None) -> ProviderKeyContext:
+        return resolve_elevenlabs_key(self.settings, api_key_override)
+
+    def normalize_voice_settings(
+        self,
+        values: Mapping[str, Any] | None,
+    ) -> dict[str, ProviderTuningValue]:
+        defaults = ELEVENLABS_TUNING_METADATA.resolved_default_values()
+        controls = {control.id: control for control in ELEVENLABS_TUNING_METADATA.controls}
+        if values is None:
+            return defaults
+
+        unknown_ids = sorted(set(values) - set(controls))
+        if unknown_ids:
+            joined_ids = ", ".join(unknown_ids)
+            raise ElevenLabsError(f"Unsupported ElevenLabs voice setting: {joined_ids}.", status_code=422)
+
+        normalized: dict[str, ProviderTuningValue] = {}
+        for control in ELEVENLABS_TUNING_METADATA.controls:
+            raw_value = values.get(control.id, defaults[control.id])
+            normalized[control.id] = _normalize_control_value(control, raw_value)
+        return normalized
 
     async def get_subscription(self, api_key: str | None = None) -> SubscriptionSummary:
         resolved_api_key = self._resolve_api_key(api_key)
@@ -91,7 +140,7 @@ class ElevenLabsClient:
         self,
         voice_id: str,
         text: str,
-        voice_settings: VoiceSettings | None = None,
+        voice_settings: Mapping[str, ProviderTuningValue] | VoiceSettings | None = None,
         model_id: str | None = None,
         api_key: str | None = None,
     ) -> SpeechResult:
@@ -107,13 +156,7 @@ class ElevenLabsClient:
             "model_id": model_id or self.settings.elevenlabs_model_id,
         }
         if voice_settings is not None:
-            payload["voice_settings"] = {
-                "stability": voice_settings.stability,
-                "similarity_boost": voice_settings.similarity_boost,
-                "style": voice_settings.style,
-                "speed": voice_settings.speed,
-                "use_speaker_boost": voice_settings.use_speaker_boost,
-            }
+            payload["voice_settings"] = _elevenlabs_voice_settings_payload(voice_settings)
         async with httpx.AsyncClient(timeout=120) as client:
             try:
                 response = await client.post(url, headers=headers, params=params, json=payload)
@@ -129,11 +172,75 @@ class ElevenLabsClient:
         )
 
     def _resolve_api_key(self, api_key: str | None = None) -> str:
-        override_api_key = (api_key or "").strip()
-        resolved_api_key = override_api_key or self.settings.elevenlabs_api_key.strip()
-        if not resolved_api_key:
-            raise RuntimeError("ELEVENLABS_API_KEY is not configured.")
-        return resolved_api_key
+        return self.resolve_key(api_key).api_key
+
+
+ElevenLabsClient = ElevenLabsProvider
+
+
+def _normalize_control_value(control: ProviderTuningControl, raw_value: Any) -> ProviderTuningValue:
+    if control.type == "toggle":
+        parsed_bool = _optional_bool_payload(raw_value)
+        if parsed_bool is None:
+            raise ElevenLabsError(f"{control.label} must be true or false.", status_code=422)
+        return parsed_bool
+
+    if control.type == "slider":
+        parsed_float = _optional_float_payload(raw_value)
+        if parsed_float is None:
+            raise ElevenLabsError(f"{control.label} must be a number.", status_code=422)
+        if control.min_value is not None and parsed_float < control.min_value:
+            raise ElevenLabsError(f"{control.label} must be at least {control.min_value}.", status_code=422)
+        if control.max_value is not None and parsed_float > control.max_value:
+            raise ElevenLabsError(f"{control.label} must be at most {control.max_value}.", status_code=422)
+        return parsed_float
+
+    if control.type == "select":
+        if not isinstance(raw_value, bool | float | int | str):
+            raise ElevenLabsError(f"{control.label} must be a JSON scalar.", status_code=422)
+        option_values = {option.value for option in control.options}
+        if raw_value not in option_values:
+            raise ElevenLabsError(f"{control.label} must be one of the supported options.", status_code=422)
+        return raw_value
+
+    raise ElevenLabsError(f"{control.label} is not supported.", status_code=422)
+
+
+def _elevenlabs_voice_settings_payload(
+    voice_settings: Mapping[str, ProviderTuningValue] | VoiceSettings,
+) -> dict[str, object]:
+    if isinstance(voice_settings, VoiceSettings):
+        return {
+            "stability": voice_settings.stability,
+            "similarity_boost": voice_settings.similarity_boost,
+            "style": voice_settings.style,
+            "speed": voice_settings.speed,
+            "use_speaker_boost": voice_settings.use_speaker_boost,
+        }
+
+    normalized_settings = {
+        **ELEVENLABS_TUNING_METADATA.resolved_default_values(),
+        **voice_settings,
+    }
+    return {
+        "stability": normalized_settings["stability"],
+        "similarity_boost": normalized_settings["similarityBoost"],
+        "style": normalized_settings["style"],
+        "speed": normalized_settings["speed"],
+        "use_speaker_boost": normalized_settings["useSpeakerBoost"],
+    }
+
+
+def _optional_bool_payload(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized == "true":
+            return True
+        if normalized == "false":
+            return False
+    return None
 
 
 def _public_error(response: httpx.Response) -> str:
