@@ -3,7 +3,9 @@ import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import App from "./App"
+import { VOICE_PROVIDER_KEY_HEADER } from "./lib/api"
 import { BYTES_PER_MEBIBYTE, GENERATED_AUDIO_DB_NAME } from "./lib/generated-audio-storage"
+import { PROVIDER_KEYS_STORAGE_KEY } from "./lib/provider-keys"
 
 const audioBlob = new Blob(["fake audio"], { type: "audio/mpeg" })
 const formatTestNumber = (value: number) => new Intl.NumberFormat().format(value)
@@ -65,6 +67,19 @@ const flashModel = {
   maximumTextLengthPerRequest: 40000,
 }
 
+const providersResponse = {
+  defaultProviderId: "elevenlabs",
+  providers: [
+    {
+      id: "elevenlabs",
+      label: "ElevenLabs",
+      serverKeyConfigured: true,
+      manageKeyUrl: "https://elevenlabs.io/app/subscription/api",
+      docsUrl: "https://elevenlabs.io/docs/api-reference/authentication",
+    },
+  ],
+}
+
 function okJson(payload: unknown) {
   return Promise.resolve(
     new Response(JSON.stringify(payload), {
@@ -91,6 +106,14 @@ function okAudio(headers: Record<string, string> = {}, body: Blob = audioBlob) {
   )
 }
 
+function deferredResponse() {
+  let resolve: (value: Response) => void = () => undefined
+  const promise = new Promise<Response>((nextResolve) => {
+    resolve = nextResolve
+  })
+  return { promise, resolve }
+}
+
 function expectAbortSignal(signal: AbortSignal | null, aborted: boolean) {
   expect(signal).not.toBeNull()
   expect(signal?.aborted).toBe(aborted)
@@ -108,6 +131,9 @@ function deleteDatabase(name: string) {
 function mockFetch() {
   return vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
+    if (url === "/api/providers" && !init) {
+      return okJson(providersResponse)
+    }
     if (url === "/api/voices" && !init) {
       return okJson({ defaultVoiceId: "default", voices: [defaultVoice] })
     }
@@ -170,6 +196,238 @@ describe("App", () => {
     expect(await screen.findByText("default/default-voice.mp3")).toBeInTheDocument()
   })
 
+  it("shows missing key state and uses a saved browser key for provider requests", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        if (url === "/api/providers" && !init) {
+          return okJson({
+            ...providersResponse,
+            providers: [{ ...providersResponse.providers[0], serverKeyConfigured: false }],
+          })
+        }
+        if (url === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "default", voices: [defaultVoice] })
+        }
+        if (url === "/api/subscription") {
+          return okJson(subscription)
+        }
+        if (url === "/api/models") {
+          return okJson({
+            available: true,
+            error: null,
+            defaultModelId: "eleven_multilingual_v2",
+            models: [multilingualModel, flashModel],
+          })
+        }
+        if (url === "/api/speech" && init?.method === "POST") {
+          return okAudio()
+        }
+        return okJson({})
+      })
+    )
+    const user = userEvent.setup()
+    render(<App />)
+
+    const keyInput = await screen.findByLabelText(/ElevenLabs API Key/i)
+    expect(screen.getAllByText("Missing Key")).toHaveLength(2)
+    expect(screen.getByRole("button", { name: /^Generate$/ })).toBeDisabled()
+
+    await user.type(keyInput, "browser-key")
+    await user.click(screen.getByRole("button", { name: /save key/i }))
+
+    expect(JSON.parse(localStorage.getItem(PROVIDER_KEYS_STORAGE_KEY) || "{}")).toEqual({ elevenlabs: "browser-key" })
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/subscription",
+        expect.objectContaining({
+          headers: { [VOICE_PROVIDER_KEY_HEADER]: "browser-key" },
+        })
+      )
+    )
+
+    await user.click(screen.getByRole("button", { name: /^Generate$/ }))
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/speech", expect.objectContaining({ method: "POST" })))
+    const speechCall = vi.mocked(fetch).mock.calls.find(
+      ([url, init]) => String(url) === "/api/speech" && init?.method === "POST"
+    )
+    expect(speechCall?.[1]?.headers).toEqual({ [VOICE_PROVIDER_KEY_HEADER]: "browser-key" })
+  })
+
+  it("keeps backend provider fallback available when provider settings fail to load", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        if (url === "/api/providers" && !init) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ detail: "Provider settings failed." }), {
+              status: 500,
+              headers: { "Content-Type": "application/json" },
+            })
+          )
+        }
+        if (url === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "default", voices: [defaultVoice] })
+        }
+        if (url === "/api/subscription" && !init) {
+          return okJson(subscription)
+        }
+        if (url === "/api/models" && !init) {
+          return okJson({
+            available: true,
+            error: null,
+            defaultModelId: "eleven_multilingual_v2",
+            models: [multilingualModel, flashModel],
+          })
+        }
+        if (url === "/api/speech" && init?.method === "POST") {
+          return okAudio()
+        }
+        return okJson({})
+      })
+    )
+    const user = userEvent.setup()
+    render(<App />)
+
+    expect(await screen.findByText("Provider Settings Unavailable")).toBeInTheDocument()
+    expect(await screen.findByText("default/default-voice.mp3")).toBeInTheDocument()
+    const generateButton = screen.getByRole("button", { name: /^Generate$/ })
+    await waitFor(() => expect(generateButton).toBeEnabled())
+
+    await user.click(generateButton)
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/speech", expect.objectContaining({ method: "POST" })))
+    const speechCall = vi.mocked(fetch).mock.calls.find(
+      ([url, init]) => String(url) === "/api/speech" && init?.method === "POST"
+    )
+    expect(speechCall?.[1]?.headers).toBeUndefined()
+  })
+
+  it("loads a saved browser key securely with peek copy and clear controls", async () => {
+    localStorage.setItem(PROVIDER_KEYS_STORAGE_KEY, JSON.stringify({ elevenlabs: "stored-key" }))
+    const user = userEvent.setup()
+    if (!window.navigator.clipboard) {
+      Object.defineProperty(window.navigator, "clipboard", {
+        configurable: true,
+        value: { writeText: vi.fn() },
+      })
+    }
+    const clipboardWrite = vi.spyOn(window.navigator.clipboard, "writeText").mockResolvedValue(undefined)
+    render(<App />)
+
+    const keyInput = await screen.findByLabelText(/ElevenLabs API Key/i)
+    expect(keyInput).toHaveValue("stored-key")
+    expect(keyInput).toHaveAttribute("type", "password")
+
+    await user.click(screen.getByRole("button", { name: /peek key/i }))
+    expect(keyInput).toHaveAttribute("type", "text")
+
+    const copyButton = screen.getByRole("button", { name: /copy key/i })
+    expect(copyButton).toBeEnabled()
+    fireEvent.click(copyButton)
+    await waitFor(() => expect(clipboardWrite).toHaveBeenCalledWith("stored-key"))
+    expect(await screen.findByText("Copied")).toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: /clear key/i }))
+    expect(localStorage.getItem(PROVIDER_KEYS_STORAGE_KEY)).toBeNull()
+    expect(keyInput).toHaveValue("")
+    expect(screen.getByText(".env Fallback")).toBeInTheDocument()
+  })
+
+  it("ignores stale metadata responses after saving a browser key", async () => {
+    const staleSubscription = deferredResponse()
+    const staleModels = deferredResponse()
+    const browserSubscription = {
+      ...subscription,
+      characterCount: 8766,
+      remainingCharacters: 1234,
+    }
+    const browserModel = {
+      ...flashModel,
+      modelId: "browser_model",
+      name: "Browser Model",
+    }
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        if (url === "/api/providers" && !init) {
+          return okJson(providersResponse)
+        }
+        if (url === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "default", voices: [defaultVoice] })
+        }
+        if (url === "/api/subscription" && init?.headers) {
+          return okJson(browserSubscription)
+        }
+        if (url === "/api/subscription" && !init) {
+          return staleSubscription.promise
+        }
+        if (url === "/api/models" && init?.headers) {
+          return okJson({
+            available: true,
+            error: null,
+            defaultModelId: "browser_model",
+            models: [browserModel],
+          })
+        }
+        if (url === "/api/models" && !init) {
+          return staleModels.promise
+        }
+        return okJson({})
+      })
+    )
+    const user = userEvent.setup()
+    render(<App />)
+
+    await screen.findByLabelText(/ElevenLabs API Key/i)
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/subscription", undefined))
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/models", undefined))
+
+    await user.type(screen.getByLabelText(/ElevenLabs API Key/i), "browser-key")
+    await user.click(screen.getByRole("button", { name: /save key/i }))
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/subscription",
+        expect.objectContaining({
+          headers: { [VOICE_PROVIDER_KEY_HEADER]: "browser-key" },
+        })
+      )
+    )
+    expect(await screen.findByText(`${formatTestNumber(1234)} remaining`)).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: /expand/i }))
+    expect(screen.getByLabelText(/model/i)).toHaveValue("browser_model")
+
+    staleSubscription.resolve(
+      new Response(JSON.stringify(subscription), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    )
+    staleModels.resolve(
+      new Response(
+        JSON.stringify({
+          available: true,
+          error: null,
+          defaultModelId: "eleven_multilingual_v2",
+          models: [multilingualModel, flashModel],
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }
+      )
+    )
+    await new Promise((resolve) => window.setTimeout(resolve, 0))
+
+    expect(screen.getByText(`${formatTestNumber(1234)} remaining`)).toBeInTheDocument()
+    expect(screen.queryByText(`${formatTestNumber(9000)} remaining`)).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/model/i)).toHaveValue("browser_model")
+  })
+
   it("places cost quota under add voice and expands details", async () => {
     const user = userEvent.setup()
     render(<App />)
@@ -178,7 +436,7 @@ describe("App", () => {
     const addVoiceHeading = screen.getByText("Add Voice")
     expect(addVoiceHeading.compareDocumentPosition(costHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(await screen.findByText(`${formatTestNumber(9000)} remaining`)).toBeInTheDocument()
-    expect(screen.getByText(`~${formatTestNumber(117)}`)).toBeInTheDocument()
+    expect(screen.getByText(`~${formatTestNumber(97)}`)).toBeInTheDocument()
     expect(screen.getByText("No run")).toBeInTheDocument()
     const costQuotaDetails = document.querySelector("#cost-quota-details")
     expect(costQuotaDetails).toBeInTheDocument()
@@ -214,7 +472,7 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: /collapse/i }))
 
     expect(screen.getByText(`${formatTestNumber(9000)} remaining`)).toBeInTheDocument()
-    expect(screen.getByText(`~${formatTestNumber(117)}`)).toBeInTheDocument()
+    expect(screen.getByText(`~${formatTestNumber(97)}`)).toBeInTheDocument()
     expect(screen.getByLabelText(/model/i)).not.toBeVisible()
     expect(screen.queryByRole("link", { name: /api requests/i })).not.toBeInTheDocument()
   })
@@ -225,6 +483,9 @@ describe("App", () => {
       "fetch",
       vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input)
+        if (url === "/api/providers" && !init) {
+          return okJson(providersResponse)
+        }
         if (url === "/api/voices" && !init) {
           return okJson({ defaultVoiceId: "default", voices: [defaultVoice] })
         }
@@ -267,6 +528,9 @@ describe("App", () => {
       "fetch",
       vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input)
+        if (url === "/api/providers" && !init) {
+          return okJson(providersResponse)
+        }
         if (url === "/api/voices" && !init) {
           return okJson({ defaultVoiceId: "default", voices: [defaultVoice] })
         }
@@ -289,7 +553,7 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: /cancel/i }))
 
     expect(window.confirm).toHaveBeenCalledWith(
-      "Cancel this generation? ElevenLabs does not offer server-side cancellation for text-to-speech requests, so this may still consume credits."
+      "Cancel this generation? The provider may still process an in-flight text-to-speech request, so this may still consume credits."
     )
     expectAbortSignal(speechSignal, true)
     expect(await screen.findByText(/Generation canceled in this browser/i)).toBeInTheDocument()
@@ -305,6 +569,9 @@ describe("App", () => {
       "fetch",
       vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input)
+        if (url === "/api/providers" && !init) {
+          return okJson(providersResponse)
+        }
         if (url === "/api/voices" && !init) {
           return okJson({ defaultVoiceId: "default", voices: [defaultVoice] })
         }
@@ -371,6 +638,9 @@ describe("App", () => {
       "fetch",
       vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input)
+        if (url === "/api/providers" && !init) {
+          return okJson(providersResponse)
+        }
         if (url === "/api/voices" && !init) {
           return okJson({ defaultVoiceId: "default", voices: [defaultVoice, voiceCloneVoice] })
         }
@@ -411,6 +681,9 @@ describe("App", () => {
       "fetch",
       vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input)
+        if (url === "/api/providers" && !init) {
+          return okJson(providersResponse)
+        }
         if (url === "/api/voices" && !init) {
           return okJson({ defaultVoiceId: "default", voices: [defaultVoice, voiceCloneVoice] })
         }
@@ -433,6 +706,9 @@ describe("App", () => {
       "fetch",
       vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input)
+        if (url === "/api/providers" && !init) {
+          return okJson(providersResponse)
+        }
         if (url === "/api/voices" && !init) {
           return okJson({ defaultVoiceId: "default", voices: [defaultVoice, voiceCloneVoice] })
         }
@@ -472,6 +748,9 @@ describe("App", () => {
       "fetch",
       vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input)
+        if (url === "/api/providers" && !init) {
+          return okJson(providersResponse)
+        }
         if (url === "/api/voices" && !init) {
           return okJson({ defaultVoiceId: "voice-clone-01", voices: [voiceCloneVoice] })
         }
@@ -813,6 +1092,9 @@ describe("App", () => {
       "fetch",
       vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input)
+        if (url === "/api/providers" && !init) {
+          return okJson(providersResponse)
+        }
         if (url === "/api/voices" && !init) {
           return okJson({ defaultVoiceId: "default", voices: [defaultVoice] })
         }
@@ -866,6 +1148,9 @@ describe("App", () => {
       "fetch",
       vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input)
+        if (url === "/api/providers" && !init) {
+          return okJson(providersResponse)
+        }
         if (url === "/api/voices" && !init) {
           return okJson({ defaultVoiceId: "default", voices: [defaultVoice] })
         }

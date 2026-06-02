@@ -4,6 +4,20 @@ export type RequestStatus = "idle" | "generating" | "success" | "error" | "cance
 export type AsyncStatus = "idle" | "loading" | "success" | "error"
 export type RecorderStatus = "idle" | "starting" | "recording" | "stopping" | "recorded" | "error"
 export type VoiceSampleInputMode = "upload" | "record"
+export type ProviderKeySource = "browser" | "server" | "missing"
+
+export type VoiceProvider = {
+  id: string
+  label: string
+  serverKeyConfigured: boolean
+  manageKeyUrl: string
+  docsUrl: string
+}
+
+export type ProvidersResponse = {
+  defaultProviderId: string
+  providers: VoiceProvider[]
+}
 
 export type VoiceAsset = {
   id: string

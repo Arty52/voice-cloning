@@ -26,7 +26,7 @@ export function VoiceTuningPanel({
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-medium">Voice Tuning</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Adjust ElevenLabs voice settings before generating.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Adjust provider voice settings before generating.</p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
           {selectedTuningPreset === "custom" ? <Badge>Custom</Badge> : null}

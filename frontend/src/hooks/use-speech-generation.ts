@@ -11,7 +11,9 @@ import type { ModelOption, RequestStatus, VoiceAsset, VoiceTuning } from "@/type
 
 type GenerateSpeechInput = {
   backendDefaultModelId: string | null
+  canUseProvider: boolean
   models: ModelOption[]
+  providerKey: string | null
   selectedModelId: string
   selectedVoice: VoiceAsset | null
   storageLimitBytes: number
@@ -37,7 +39,9 @@ export function useSpeechGeneration({ persistGeneratedAudio }: UseSpeechGenerati
 
   async function generateSpeech({
     backendDefaultModelId,
+    canUseProvider,
     models,
+    providerKey,
     selectedModelId,
     selectedVoice,
     storageLimitBytes,
@@ -47,6 +51,11 @@ export function useSpeechGeneration({ persistGeneratedAudio }: UseSpeechGenerati
     if (text.trim().length === 0 || !selectedVoice) {
       setStatus("error")
       setError(selectedVoice ? "Enter text first." : "Select a voice first.")
+      return
+    }
+    if (!canUseProvider) {
+      setStatus("error")
+      setError("Add a provider API key before generating speech.")
       return
     }
 
@@ -59,6 +68,7 @@ export function useSpeechGeneration({ persistGeneratedAudio }: UseSpeechGenerati
     try {
       const response = await createSpeech({
         modelId: submittedModelId,
+        providerKey,
         signal: abortController.signal,
         text,
         tuning,

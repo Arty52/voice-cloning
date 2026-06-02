@@ -1,10 +1,18 @@
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 import { DEFAULT_MODEL_ID } from "@/constants"
 import { fetchModels, fetchSubscription } from "@/lib/api"
 import type { AsyncStatus, ModelOption, SubscriptionResponse } from "@/types"
 
-export function useVoiceMetadata() {
+type UseVoiceMetadataOptions = {
+  canUseProvider: boolean
+  providerKey: string | null
+  providerStatus: AsyncStatus
+}
+
+const MISSING_PROVIDER_KEY_MESSAGE = "Add a provider API key to load this data."
+
+export function useVoiceMetadata({ canUseProvider, providerKey, providerStatus }: UseVoiceMetadataOptions) {
   const [subscription, setSubscription] = useState<SubscriptionResponse | null>(null)
   const [subscriptionStatus, setSubscriptionStatus] = useState<AsyncStatus>("idle")
   const [subscriptionError, setSubscriptionError] = useState<string | null>(null)
@@ -13,12 +21,24 @@ export function useVoiceMetadata() {
   const [modelError, setModelError] = useState<string | null>(null)
   const [backendDefaultModelId, setBackendDefaultModelId] = useState<string | null>(null)
   const [selectedModelId, setSelectedModelId] = useState(DEFAULT_MODEL_ID)
+  const subscriptionRequestId = useRef(0)
+  const modelsRequestId = useRef(0)
 
-  async function loadSubscription() {
+  const loadSubscription = useCallback(async () => {
+    const requestId = (subscriptionRequestId.current += 1)
+    if (!canUseProvider) {
+      setSubscription(null)
+      setSubscriptionStatus("error")
+      setSubscriptionError(MISSING_PROVIDER_KEY_MESSAGE)
+      return
+    }
     setSubscriptionStatus("loading")
     setSubscriptionError(null)
     try {
-      const payload = await fetchSubscription()
+      const payload = await fetchSubscription({ providerKey })
+      if (requestId !== subscriptionRequestId.current) {
+        return
+      }
       if (payload.available) {
         setSubscription(payload)
         setSubscriptionStatus("success")
@@ -28,17 +48,32 @@ export function useVoiceMetadata() {
         setSubscriptionError(payload.error || "Quota unavailable.")
       }
     } catch (caught) {
+      if (requestId !== subscriptionRequestId.current) {
+        return
+      }
       setSubscription(null)
       setSubscriptionStatus("error")
       setSubscriptionError(caught instanceof Error ? caught.message : "Unable to load quota.")
     }
-  }
+  }, [canUseProvider, providerKey])
 
-  async function loadModels() {
+  const loadModels = useCallback(async () => {
+    const requestId = (modelsRequestId.current += 1)
+    if (!canUseProvider) {
+      setModels([])
+      setBackendDefaultModelId(null)
+      setModelStatus("error")
+      setModelError(MISSING_PROVIDER_KEY_MESSAGE)
+      setSelectedModelId((current) => current || DEFAULT_MODEL_ID)
+      return
+    }
     setModelStatus("loading")
     setModelError(null)
     try {
-      const payload = await fetchModels()
+      const payload = await fetchModels({ providerKey })
+      if (requestId !== modelsRequestId.current) {
+        return
+      }
       const loadedModels = Array.isArray(payload.models) ? payload.models : []
       setBackendDefaultModelId(payload.defaultModelId || null)
       setModels(payload.available ? loadedModels : [])
@@ -55,21 +90,27 @@ export function useVoiceMetadata() {
         setModelError(payload.error || "Model metadata unavailable.")
       }
     } catch (caught) {
+      if (requestId !== modelsRequestId.current) {
+        return
+      }
       setModels([])
       setBackendDefaultModelId(null)
       setSelectedModelId((current) => current || DEFAULT_MODEL_ID)
       setModelStatus("error")
       setModelError(caught instanceof Error ? caught.message : "Unable to load models.")
     }
-  }
+  }, [canUseProvider, providerKey])
 
   useEffect(() => {
+    if (providerStatus === "idle" || providerStatus === "loading") {
+      return undefined
+    }
     const timeoutId = window.setTimeout(() => {
       void loadSubscription()
       void loadModels()
     }, 0)
     return () => window.clearTimeout(timeoutId)
-  }, [])
+  }, [loadModels, loadSubscription, providerStatus])
 
   return {
     backendDefaultModelId,
