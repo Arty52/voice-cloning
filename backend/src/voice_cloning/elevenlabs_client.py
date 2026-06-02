@@ -196,11 +196,11 @@ def _normalize_control_value(control: ProviderTuningControl, raw_value: Any) -> 
         return parsed_float
 
     if control.type == "select":
+        if not isinstance(raw_value, bool | float | int | str):
+            raise ElevenLabsError(f"{control.label} must be a JSON scalar.", status_code=422)
         option_values = {option.value for option in control.options}
         if raw_value not in option_values:
             raise ElevenLabsError(f"{control.label} must be one of the supported options.", status_code=422)
-        if not isinstance(raw_value, bool | float | int | str):
-            raise ElevenLabsError(f"{control.label} must be a JSON scalar.", status_code=422)
         return raw_value
 
     raise ElevenLabsError(f"{control.label} is not supported.", status_code=422)

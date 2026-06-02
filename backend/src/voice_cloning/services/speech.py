@@ -60,10 +60,7 @@ async def generate_speech(
         status_code = exc.status_code if isinstance(exc, ProviderError) else 500
         raise SpeechServiceError(str(exc), status_code) from exc
 
-    try:
-        sample = voice_library.get_sample(app_voice_id)
-    except ValueError as exc:
-        raise SpeechServiceError(str(exc), 422) from exc
+    sample = voice_library.get_sample(app_voice_id)
 
     selected_model_id = model_id.strip() if model_id and model_id.strip() else provider.default_model_id
     cached_voice = voice_cache.get(sample.sha256, namespace=key_context.cache_namespace)

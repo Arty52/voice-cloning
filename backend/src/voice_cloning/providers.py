@@ -143,7 +143,13 @@ class ProviderRegistry:
         providers: list[VoiceProvider],
         default_provider_id: str = DEFAULT_PROVIDER_ID,
     ) -> None:
-        self._providers = {provider.id: provider for provider in providers}
+        providers_by_id: dict[str, VoiceProvider] = {}
+        for provider in providers:
+            if provider.id in providers_by_id:
+                raise ValueError(f"Duplicate voice provider id: {provider.id!r}.")
+            providers_by_id[provider.id] = provider
+
+        self._providers = providers_by_id
         if not self._providers:
             raise ValueError("At least one voice provider must be registered.")
         if default_provider_id not in self._providers:

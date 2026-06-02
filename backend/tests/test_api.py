@@ -14,6 +14,7 @@ from voice_cloning.elevenlabs_client import (
     ElevenLabsError,
     _is_tts_model,
     _model_from_payload,
+    _normalize_control_value,
 )
 from voice_cloning.api.serializers import audio_response
 from voice_cloning.models import (
@@ -29,6 +30,8 @@ from voice_cloning.providers import (
     ProviderDescriptor,
     ProviderKeyContext,
     ProviderRegistry,
+    ProviderTuningControl,
+    ProviderTuningOption,
     ProviderTuningValue,
     resolve_elevenlabs_key,
 )
@@ -251,6 +254,15 @@ def test_providers_endpoint_returns_public_provider_descriptor(tmp_path: Path) -
     assert "server-secret" not in response.text
 
 
+def test_provider_registry_rejects_duplicate_provider_ids(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    first_provider = FakeElevenLabsProvider().bind_settings(settings)
+    duplicate_provider = FakeElevenLabsProvider().bind_settings(settings)
+
+    with pytest.raises(ValueError, match="Duplicate voice provider id: 'elevenlabs'"):
+        ProviderRegistry([first_provider, duplicate_provider])
+
+
 def test_providers_endpoint_reports_missing_server_key_without_secret_data(tmp_path: Path) -> None:
     client, _ = make_client(tmp_path, api_key="")
 
@@ -450,6 +462,26 @@ def test_model_payload_filtering_uses_tts_capability() -> None:
 
     assert [model.model_id for model in models] == ["eleven_flash_v2_5"]
     assert models[0].character_cost_multiplier == 0.5
+
+
+def test_select_tuning_rejects_non_scalar_values() -> None:
+    control = ProviderTuningControl(
+        id="renderMode",
+        label="Render Mode",
+        description="Selects the rendering mode.",
+        type="select",
+        default_value="standard",
+        options=(
+            ProviderTuningOption(label="Standard", value="standard"),
+            ProviderTuningOption(label="Enhanced", value="enhanced"),
+        ),
+    )
+
+    with pytest.raises(ElevenLabsError) as exc_info:
+        _normalize_control_value(control, {"mode": "standard"})
+
+    assert exc_info.value.status_code == 422
+    assert str(exc_info.value) == "Render Mode must be a JSON scalar."
 
 
 def test_audio_response_serializer_sets_public_headers() -> None:
