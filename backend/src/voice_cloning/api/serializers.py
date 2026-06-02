@@ -3,7 +3,12 @@ from __future__ import annotations
 from fastapi.responses import Response
 
 from ..models import CachedVoice, ModelSummary, SubscriptionSummary, VoiceAsset, VoiceSample
-from ..providers import ProviderDescriptor
+from ..providers import (
+    ProviderDescriptor,
+    ProviderTuningControl,
+    ProviderTuningMetadata,
+    ProviderTuningPreset,
+)
 
 
 def audio_response(
@@ -88,6 +93,8 @@ def providers_payload(
                 "serverKeyConfigured": server_key_configured_by_provider.get(provider.id, False),
                 "manageKeyUrl": provider.manage_key_url,
                 "docsUrl": provider.docs_url,
+                "links": [{"label": link.label, "href": link.href} for link in provider.links],
+                "tuning": tuning_payload(provider.tuning),
             }
             for provider in providers
         ],
@@ -117,4 +124,42 @@ def voice_asset_payload(asset: VoiceAsset) -> dict[str, object]:
         "sha256": asset.sha256,
         "source": asset.source,
         "createdAt": asset.created_at,
+    }
+
+
+def tuning_payload(tuning: ProviderTuningMetadata) -> dict[str, object]:
+    return {
+        "controls": [tuning_control_payload(control) for control in tuning.controls],
+        "presets": [tuning_preset_payload(preset) for preset in tuning.presets],
+        "defaultValues": tuning.resolved_default_values(),
+    }
+
+
+def tuning_control_payload(control: ProviderTuningControl) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "id": control.id,
+        "label": control.label,
+        "description": control.description,
+        "type": control.type,
+        "defaultValue": control.default_value,
+    }
+    if control.min_value is not None:
+        payload["min"] = control.min_value
+    if control.max_value is not None:
+        payload["max"] = control.max_value
+    if control.step is not None:
+        payload["step"] = control.step
+    if control.options:
+        payload["options"] = [{"label": option.label, "value": option.value} for option in control.options]
+    if control.capability:
+        payload["capability"] = control.capability
+    return payload
+
+
+def tuning_preset_payload(preset: ProviderTuningPreset) -> dict[str, object]:
+    return {
+        "id": preset.id,
+        "label": preset.label,
+        "description": preset.description,
+        "values": dict(preset.values),
     }

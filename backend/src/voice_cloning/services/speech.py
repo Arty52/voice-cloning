@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Awaitable, Callable
+from typing import Any, Awaitable, Callable, Mapping
 
 from ..cache import VoiceCache
 from ..config import Settings
-from ..elevenlabs_client import ElevenLabsClient, ElevenLabsError
-from ..models import CachedVoice, VoiceSample, VoiceSettings
-from ..providers import ProviderKeyContext, resolve_elevenlabs_key
+from ..models import CachedVoice, VoiceSample
+from ..providers import ProviderError, ProviderKeyContext, VoiceProvider
 from ..voice_library import VoiceLibrary
 from .cancellation import await_or_cancel_on_disconnect
 
@@ -36,9 +35,9 @@ async def generate_speech(
     text: str,
     voice_id: str | None,
     model_id: str | None,
-    voice_settings: VoiceSettings,
+    voice_settings: Mapping[str, Any] | None,
     settings: Settings,
-    elevenlabs_client: ElevenLabsClient,
+    provider: VoiceProvider,
     voice_cache: VoiceCache,
     voice_library: VoiceLibrary,
     is_disconnected: Callable[[], Awaitable[bool]],
@@ -55,12 +54,18 @@ async def generate_speech(
         raise SpeechServiceError("Add or select a voice before generating speech.", 422)
 
     try:
-        key_context = resolve_elevenlabs_key(settings, provider_key)
-    except RuntimeError as exc:
-        raise SpeechServiceError(str(exc), 500) from exc
+        key_context = provider.resolve_key(provider_key)
+        normalized_voice_settings = provider.normalize_voice_settings(voice_settings)
+    except (RuntimeError, ProviderError) as exc:
+        status_code = exc.status_code if isinstance(exc, ProviderError) else 500
+        raise SpeechServiceError(str(exc), status_code) from exc
 
-    sample = voice_library.get_sample(app_voice_id)
-    selected_model_id = model_id.strip() if model_id and model_id.strip() else settings.elevenlabs_model_id
+    try:
+        sample = voice_library.get_sample(app_voice_id)
+    except ValueError as exc:
+        raise SpeechServiceError(str(exc), 422) from exc
+
+    selected_model_id = model_id.strip() if model_id and model_id.strip() else provider.default_model_id
     cached_voice = voice_cache.get(sample.sha256, namespace=key_context.cache_namespace)
     cache_state = "hit"
     if cached_voice is None:
@@ -70,24 +75,24 @@ async def generate_speech(
         try:
             clone = await await_or_cancel_on_disconnect(
                 is_disconnected,
-                lambda: elevenlabs_client.create_voice(sample, api_key=key_context.api_key),
+                lambda: provider.create_voice(sample, api_key=key_context.api_key),
             )
-        except ElevenLabsError as exc:
+        except ProviderError as exc:
             raise SpeechServiceError(str(exc), exc.status_code) from exc
         cached_voice = voice_cache.set(sample, clone, namespace=key_context.cache_namespace)
 
     try:
         speech = await await_or_cancel_on_disconnect(
             is_disconnected,
-            lambda: elevenlabs_client.create_speech(
+            lambda: provider.create_speech(
                 cached_voice.voice_id,
                 normalized_text,
-                voice_settings,
+                normalized_voice_settings,
                 selected_model_id,
                 api_key=key_context.api_key,
             ),
         )
-    except ElevenLabsError as exc:
+    except ProviderError as exc:
         raise SpeechServiceError(str(exc), exc.status_code) from exc
 
     return SpeechGeneration(

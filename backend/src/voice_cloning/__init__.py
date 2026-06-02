@@ -1,4 +1,4 @@
-"""Local ElevenLabs voice cloning API."""
+"""Local provider-backed voice cloning API."""
 
 __all__ = ["__version__"]
 
