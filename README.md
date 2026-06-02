@@ -43,7 +43,7 @@ It gives you a small voice library, text-to-speech generation, model selection, 
 
 ## Privacy Model
 
-Provider keys can come from either `.env` on the FastAPI backend or the browser UI. A browser-saved key is stored in `localStorage`, sent only to the local API through `X-Voice-Provider-Key`, and takes precedence over `.env` for provider-backed requests. Clearing the browser key falls back to `.env` when `ELEVENLABS_API_KEY` is configured.
+Provider keys can come from either `.env` on the FastAPI backend or the browser UI. A browser-saved key is stored in `localStorage`; browser code sends it only to the local API through `X-Voice-Provider-Key`, and the backend uses that active key to authenticate provider requests. A browser key takes precedence over `.env`; clearing it falls back to `.env` when `ELEVENLABS_API_KEY` is configured.
 
 The backend never returns key material from `.env` or browser headers. Browser `localStorage` is local developer-tool storage, not encrypted secret storage; clear the Provider Keys panel or browser site data to remove a saved GUI key.
 
