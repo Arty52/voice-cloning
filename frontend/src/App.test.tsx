@@ -1081,6 +1081,65 @@ describe("App", () => {
     expect(screen.getByRole("slider", { name: /warmth/i })).toHaveValue("0.2")
   })
 
+  it("preserves selected provider option value types", async () => {
+    vi.stubGlobal(
+      "fetch",
+      mockFetchWithProviders({
+        defaultProviderId: "select-provider",
+        providers: [
+          {
+            ...providersResponse.providers[0],
+            id: "select-provider",
+            label: "Select Provider",
+            tuning: {
+              controls: [
+                {
+                  id: "mode",
+                  label: "Mode",
+                  description: "Selects provider generation mode.",
+                  type: "select" as const,
+                  defaultValue: 1,
+                  options: [
+                    { label: "One", value: 1 },
+                    { label: "Two", value: 2 },
+                  ],
+                },
+                {
+                  id: "enhanced",
+                  label: "Enhanced",
+                  description: "Selects enhanced processing.",
+                  type: "select" as const,
+                  defaultValue: false,
+                  options: [
+                    { label: "Off", value: false },
+                    { label: "On", value: true },
+                  ],
+                },
+              ],
+              presets: [],
+              defaultValues: { mode: 1, enhanced: false },
+            },
+          },
+        ],
+      })
+    )
+    const user = userEvent.setup()
+    render(<App />)
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.selectOptions(screen.getByRole("combobox", { name: "Mode" }), "2")
+    await user.selectOptions(screen.getByRole("combobox", { name: "Enhanced" }), "true")
+    await user.click(screen.getByRole("button", { name: /^Generate$/ }))
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/speech", expect.objectContaining({ method: "POST" })))
+    const speechCall = vi.mocked(fetch).mock.calls.find(
+      ([url, init]) => String(url) === "/api/speech" && init?.method === "POST"
+    )
+    const body = speechCall?.[1]?.body as FormData
+    expect(body.get("providerId")).toBe("select-provider")
+    expect(JSON.parse(String(body.get("voiceSettings")))).toEqual({ mode: 2, enhanced: true })
+  })
+
   it("applies animated dialogue and marks manual tuning as custom", async () => {
     const user = userEvent.setup()
     render(<App />)

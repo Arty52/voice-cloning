@@ -129,16 +129,19 @@ function TuningControl({
 
   if (control.type === "select") {
     return (
-      <label className="block space-y-2 text-sm font-medium" htmlFor={controlId}>
-        <span className="flex items-center gap-1.5">
-          {control.label}
+      <div className="block space-y-2 text-sm font-medium">
+        <div className="flex items-center gap-1.5">
+          <label htmlFor={controlId} id={`${controlId}-label`}>
+            {control.label}
+          </label>
           <TuningInfo description={control.description} id={controlId} label={control.label} />
-        </span>
+        </div>
         <select
+          aria-labelledby={`${controlId}-label`}
           className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
           disabled={disabled}
           id={controlId}
-          onChange={(event) => onChange(control, event.target.value)}
+          onChange={(event) => onChange(control, selectedOptionValue(control, event.target.value))}
           value={String(value)}
         >
           {(control.options ?? []).map((option) => (
@@ -147,7 +150,7 @@ function TuningControl({
             </option>
           ))}
         </select>
-      </label>
+      </div>
     )
   }
 
@@ -177,4 +180,9 @@ function TuningControl({
       {control.capability ? <div className="text-xs text-muted-foreground">{control.capability}</div> : null}
     </div>
   )
+}
+
+function selectedOptionValue(control: ProviderTuningControl, selectedValue: string): ProviderTuningValue {
+  const option = (control.options ?? []).find((candidate) => String(candidate.value) === selectedValue)
+  return option ? option.value : selectedValue
 }
