@@ -1140,6 +1140,53 @@ describe("App", () => {
     expect(JSON.parse(String(body.get("voiceSettings")))).toEqual({ mode: 2, enhanced: true })
   })
 
+  it("keeps string toggle values unchecked and toggles from the label", async () => {
+    vi.stubGlobal(
+      "fetch",
+      mockFetchWithProviders({
+        defaultProviderId: "toggle-provider",
+        providers: [
+          {
+            ...providersResponse.providers[0],
+            id: "toggle-provider",
+            label: "Toggle Provider",
+            tuning: {
+              controls: [
+                {
+                  id: "expressive",
+                  label: "Expressive",
+                  description: "Enables expressive delivery.",
+                  type: "toggle" as const,
+                  defaultValue: "false",
+                },
+              ],
+              presets: [],
+              defaultValues: { expressive: "false" },
+            },
+          },
+        ],
+      })
+    )
+    const user = userEvent.setup()
+    render(<App />)
+
+    await screen.findByText("default/default-voice.mp3")
+    const checkbox = screen.getByRole("checkbox", { name: "Expressive" })
+    expect(checkbox).not.toBeChecked()
+
+    await user.click(screen.getByText("Expressive", { selector: "label" }))
+    expect(checkbox).toBeChecked()
+    await user.click(screen.getByRole("button", { name: /^Generate$/ }))
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/speech", expect.objectContaining({ method: "POST" })))
+    const speechCall = vi.mocked(fetch).mock.calls.find(
+      ([url, init]) => String(url) === "/api/speech" && init?.method === "POST"
+    )
+    const body = speechCall?.[1]?.body as FormData
+    expect(body.get("providerId")).toBe("toggle-provider")
+    expect(JSON.parse(String(body.get("voiceSettings")))).toEqual({ expressive: true })
+  })
+
   it("applies animated dialogue and marks manual tuning as custom", async () => {
     const user = userEvent.setup()
     render(<App />)

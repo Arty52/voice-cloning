@@ -130,6 +130,6 @@ export type ConfirmationState = {
   title: string
 }
 
-export type VoiceTuningValues = Record<string, ProviderTuningValue>
+export type VoiceTuningValues = Partial<Record<string, ProviderTuningValue>>
 
 export type RenameSubmitHandler = (event: FormEvent<HTMLFormElement>) => void

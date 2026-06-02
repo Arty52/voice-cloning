@@ -109,14 +109,14 @@ function TuningControl({
         className="flex items-center justify-between gap-4 rounded-md border border-border bg-background/60 p-3 text-sm"
       >
         <div className="flex items-center gap-1.5">
-          <span className="font-medium" id={`${controlId}-label`}>
+          <label className="font-medium" htmlFor={controlId} id={`${controlId}-label`}>
             {control.label}
-          </span>
+          </label>
           <TuningInfo description={control.description} id={controlId} label={control.label} />
         </div>
         <input
           aria-labelledby={`${controlId}-label`}
-          checked={Boolean(value)}
+          checked={value === true}
           className="size-5 accent-primary"
           disabled={disabled}
           id={controlId}
