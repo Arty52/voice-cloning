@@ -4,8 +4,8 @@ Voice Clone Lab is a small local app, but changes should still keep clear bounda
 
 ## Project Shape
 
-- `backend/src/voice_cloning/` contains the FastAPI app, domain services, ElevenLabs client, local voice library, cache, configuration, and API response shaping.
-- `frontend/src/` contains the Vite React app, feature hooks, API helpers, dumb UI components, browser storage helpers, and shared formatting utilities.
+- `backend/src/voice_cloning/` contains the FastAPI app, ElevenLabs client, local voice library, cache, and configuration. As backend workflows grow, route handlers should split toward service modules and serializer helpers instead of accumulating orchestration in one route file.
+- `frontend/src/` contains the Vite React app, UI components, recorder/storage helpers, and shared utilities. As frontend workflows grow, data loading and mutations should split toward feature hooks and API helpers instead of accumulating in `App.tsx`.
 - `assets/voices/` is local user-provided voice input. Track only documentation/placeholders.
 - `storage/` is runtime output/cache data. Do not commit generated audio or ElevenLabs cache files.
 
