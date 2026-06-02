@@ -193,6 +193,15 @@ def test_providers_endpoint_reports_missing_server_key_without_secret_data(tmp_p
     assert "ELEVENLABS_API_KEY" not in response.text
 
 
+def test_providers_endpoint_treats_whitespace_server_key_as_missing(tmp_path: Path) -> None:
+    client, _ = make_client(tmp_path, api_key="   ")
+
+    response = client.get("/api/providers")
+
+    assert response.status_code == 200
+    assert response.json()["providers"][0]["serverKeyConfigured"] is False
+
+
 def test_fresh_clone_can_start_without_voice_assets(tmp_path: Path) -> None:
     client, fake_client = make_client(tmp_path, with_default_sample=False)
 

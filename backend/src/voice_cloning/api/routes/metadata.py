@@ -22,7 +22,7 @@ def create_metadata_router(settings: Settings, elevenlabs_client: ElevenLabsClie
         return providers_payload(
             DEFAULT_PROVIDER_ID,
             provider_descriptors(),
-            {DEFAULT_PROVIDER_ID: bool(settings.elevenlabs_api_key)},
+            {DEFAULT_PROVIDER_ID: bool(settings.elevenlabs_api_key.strip())},
         )
 
     @router.get("/api/subscription")
