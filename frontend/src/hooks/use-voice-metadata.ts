@@ -6,13 +6,14 @@ import type { AsyncStatus, ModelOption, SubscriptionResponse } from "@/types"
 
 type UseVoiceMetadataOptions = {
   canUseProvider: boolean
+  providerId: string | null
   providerKey: string | null
   providerStatus: AsyncStatus
 }
 
 const MISSING_PROVIDER_KEY_MESSAGE = "Add a provider API key to load this data."
 
-export function useVoiceMetadata({ canUseProvider, providerKey, providerStatus }: UseVoiceMetadataOptions) {
+export function useVoiceMetadata({ canUseProvider, providerId, providerKey, providerStatus }: UseVoiceMetadataOptions) {
   const [subscription, setSubscription] = useState<SubscriptionResponse | null>(null)
   const [subscriptionStatus, setSubscriptionStatus] = useState<AsyncStatus>("idle")
   const [subscriptionError, setSubscriptionError] = useState<string | null>(null)
@@ -35,7 +36,7 @@ export function useVoiceMetadata({ canUseProvider, providerKey, providerStatus }
     setSubscriptionStatus("loading")
     setSubscriptionError(null)
     try {
-      const payload = await fetchSubscription({ providerKey })
+      const payload = await fetchSubscription({ providerId, providerKey })
       if (requestId !== subscriptionRequestId.current) {
         return
       }
@@ -55,7 +56,7 @@ export function useVoiceMetadata({ canUseProvider, providerKey, providerStatus }
       setSubscriptionStatus("error")
       setSubscriptionError(caught instanceof Error ? caught.message : "Unable to load quota.")
     }
-  }, [canUseProvider, providerKey])
+  }, [canUseProvider, providerId, providerKey])
 
   const loadModels = useCallback(async () => {
     const requestId = (modelsRequestId.current += 1)
@@ -70,7 +71,7 @@ export function useVoiceMetadata({ canUseProvider, providerKey, providerStatus }
     setModelStatus("loading")
     setModelError(null)
     try {
-      const payload = await fetchModels({ providerKey })
+      const payload = await fetchModels({ providerId, providerKey })
       if (requestId !== modelsRequestId.current) {
         return
       }
@@ -99,7 +100,7 @@ export function useVoiceMetadata({ canUseProvider, providerKey, providerStatus }
       setModelStatus("error")
       setModelError(caught instanceof Error ? caught.message : "Unable to load models.")
     }
-  }, [canUseProvider, providerKey])
+  }, [canUseProvider, providerId, providerKey])
 
   useEffect(() => {
     if (providerStatus === "idle" || providerStatus === "loading") {

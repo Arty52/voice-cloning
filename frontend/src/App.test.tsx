@@ -6,6 +6,7 @@ import App from "./App"
 import { VOICE_PROVIDER_KEY_HEADER } from "./lib/api"
 import { BYTES_PER_MEBIBYTE, GENERATED_AUDIO_DB_NAME } from "./lib/generated-audio-storage"
 import { PROVIDER_KEYS_STORAGE_KEY } from "./lib/provider-keys"
+import type { ProvidersResponse } from "./types"
 
 const audioBlob = new Blob(["fake audio"], { type: "audio/mpeg" })
 const formatTestNumber = (value: number) => new Intl.NumberFormat().format(value)
@@ -67,7 +68,78 @@ const flashModel = {
   maximumTextLengthPerRequest: 40000,
 }
 
-const providersResponse = {
+const elevenLabsTuning = {
+  controls: [
+    {
+      id: "stability",
+      label: "Stability",
+      description:
+        "Lower values allow more expressive, variable delivery. Higher values keep the voice consistent but can flatten emotion.",
+      type: "slider" as const,
+      defaultValue: 0.5,
+      min: 0,
+      max: 1,
+      step: 0.01,
+    },
+    {
+      id: "similarityBoost",
+      label: "Similarity",
+      description:
+        "Higher values stay closer to the cloned voice. If the source has noise, clicks, or artifacts, very high similarity can preserve them.",
+      type: "slider" as const,
+      defaultValue: 0.75,
+      min: 0,
+      max: 1,
+      step: 0.01,
+    },
+    {
+      id: "style",
+      label: "Style",
+      description:
+        "Zero is the most natural and consistent. Higher values exaggerate the speaker's style and may add latency or artifacts.",
+      type: "slider" as const,
+      defaultValue: 0,
+      min: 0,
+      max: 1,
+      step: 0.01,
+    },
+    {
+      id: "speed",
+      label: "Speed",
+      description:
+        "One point zero is the baseline pace. Move toward 0.7 to slow down or 1.2 to speed up; extremes can reduce quality.",
+      type: "slider" as const,
+      defaultValue: 1,
+      min: 0.7,
+      max: 1.2,
+      step: 0.01,
+    },
+    {
+      id: "useSpeakerBoost",
+      label: "Speaker Boost",
+      description: "Boosts similarity to the selected speaker when the selected model supports it.",
+      type: "toggle" as const,
+      defaultValue: true,
+    },
+  ],
+  presets: [
+    {
+      id: "standard",
+      label: "Standard Narration",
+      description: "Balanced clone similarity for steady narration.",
+      values: { stability: 0.5, similarityBoost: 0.75, style: 0, speed: 1, useSpeakerBoost: true },
+    },
+    {
+      id: "animated",
+      label: "Animated Dialogue",
+      description: "More expressive delivery for character reads.",
+      values: { stability: 0.4, similarityBoost: 0.75, style: 0.35, speed: 1, useSpeakerBoost: true },
+    },
+  ],
+  defaultValues: { stability: 0.5, similarityBoost: 0.75, style: 0, speed: 1, useSpeakerBoost: true },
+}
+
+const providersResponse: ProvidersResponse = {
   defaultProviderId: "elevenlabs",
   providers: [
     {
@@ -76,6 +148,17 @@ const providersResponse = {
       serverKeyConfigured: true,
       manageKeyUrl: "https://elevenlabs.io/app/subscription/api",
       docsUrl: "https://elevenlabs.io/docs/api-reference/authentication",
+      links: [
+        {
+          label: "API Requests",
+          href: "https://elevenlabs.io/app/developers/analytics/api-requests",
+        },
+        {
+          label: "Models",
+          href: "https://elevenlabs.io/docs/api-reference/models/list",
+        },
+      ],
+      tuning: elevenLabsTuning,
     },
   ],
 }
@@ -131,16 +214,17 @@ function deleteDatabase(name: string) {
 function mockFetch() {
   return vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
-    if (url === "/api/providers" && !init) {
+    const path = url.split("?")[0]
+    if (path === "/api/providers" && !init) {
       return okJson(providersResponse)
     }
-    if (url === "/api/voices" && !init) {
+    if (path === "/api/voices" && !init) {
       return okJson({ defaultVoiceId: "default", voices: [defaultVoice] })
     }
-    if (url === "/api/subscription" && !init) {
+    if (path === "/api/subscription" && !init) {
       return okJson(subscription)
     }
-    if (url === "/api/models" && !init) {
+    if (path === "/api/models" && !init) {
       return okJson({
         available: true,
         error: null,
@@ -148,7 +232,7 @@ function mockFetch() {
         models: [multilingualModel, flashModel],
       })
     }
-    if (url === "/api/voices" && init?.method === "POST") {
+    if (path === "/api/voices" && init?.method === "POST") {
       return Promise.resolve(
         new Response(JSON.stringify({ voice: voiceCloneVoice }), {
           status: 201,
@@ -156,10 +240,38 @@ function mockFetch() {
         })
       )
     }
-    if (url === "/api/voices/default" && init?.method === "PUT") {
+    if (path === "/api/voices/default" && init?.method === "PUT") {
       return okJson({ defaultVoiceId: "voice-clone-01", voices: [defaultVoice, voiceCloneVoice] })
     }
-    if (url === "/api/speech" && init?.method === "POST") {
+    if (path === "/api/speech" && init?.method === "POST") {
+      return okAudio()
+    }
+    return okJson({})
+  })
+}
+
+function mockFetchWithProviders(nextProvidersResponse: ProvidersResponse) {
+  return vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input)
+    const path = url.split("?")[0]
+    if (path === "/api/providers" && !init) {
+      return okJson(nextProvidersResponse)
+    }
+    if (path === "/api/voices" && !init) {
+      return okJson({ defaultVoiceId: "default", voices: [defaultVoice] })
+    }
+    if (path === "/api/subscription" && !init) {
+      return okJson(subscription)
+    }
+    if (path === "/api/models" && !init) {
+      return okJson({
+        available: true,
+        error: null,
+        defaultModelId: "eleven_multilingual_v2",
+        models: [multilingualModel, flashModel],
+      })
+    }
+    if (path === "/api/speech" && init?.method === "POST") {
       return okAudio()
     }
     return okJson({})
@@ -210,10 +322,10 @@ describe("App", () => {
         if (url === "/api/voices" && !init) {
           return okJson({ defaultVoiceId: "default", voices: [defaultVoice] })
         }
-        if (url === "/api/subscription") {
+        if (url.startsWith("/api/subscription")) {
           return okJson(subscription)
         }
-        if (url === "/api/models") {
+        if (url.startsWith("/api/models")) {
           return okJson({
             available: true,
             error: null,
@@ -240,7 +352,7 @@ describe("App", () => {
     expect(JSON.parse(localStorage.getItem(PROVIDER_KEYS_STORAGE_KEY) || "{}")).toEqual({ elevenlabs: "browser-key" })
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
-        "/api/subscription",
+        "/api/subscription?providerId=elevenlabs",
         expect.objectContaining({
           headers: { [VOICE_PROVIDER_KEY_HEADER]: "browser-key" },
         })
@@ -271,10 +383,10 @@ describe("App", () => {
         if (url === "/api/voices" && !init) {
           return okJson({ defaultVoiceId: "default", voices: [defaultVoice] })
         }
-        if (url === "/api/subscription" && !init) {
+        if (url.startsWith("/api/subscription") && !init) {
           return okJson(subscription)
         }
-        if (url === "/api/models" && !init) {
+        if (url.startsWith("/api/models") && !init) {
           return okJson({
             available: true,
             error: null,
@@ -359,13 +471,13 @@ describe("App", () => {
         if (url === "/api/voices" && !init) {
           return okJson({ defaultVoiceId: "default", voices: [defaultVoice] })
         }
-        if (url === "/api/subscription" && init?.headers) {
+        if (url.startsWith("/api/subscription") && init?.headers) {
           return okJson(browserSubscription)
         }
-        if (url === "/api/subscription" && !init) {
+        if (url.startsWith("/api/subscription") && !init) {
           return staleSubscription.promise
         }
-        if (url === "/api/models" && init?.headers) {
+        if (url.startsWith("/api/models") && init?.headers) {
           return okJson({
             available: true,
             error: null,
@@ -373,7 +485,7 @@ describe("App", () => {
             models: [browserModel],
           })
         }
-        if (url === "/api/models" && !init) {
+        if (url.startsWith("/api/models") && !init) {
           return staleModels.promise
         }
         return okJson({})
@@ -383,15 +495,15 @@ describe("App", () => {
     render(<App />)
 
     await screen.findByLabelText(/ElevenLabs API Key/i)
-    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/subscription", undefined))
-    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/models", undefined))
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/subscription?providerId=elevenlabs", undefined))
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/models?providerId=elevenlabs", undefined))
 
     await user.type(screen.getByLabelText(/ElevenLabs API Key/i), "browser-key")
     await user.click(screen.getByRole("button", { name: /save key/i }))
 
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
-        "/api/subscription",
+        "/api/subscription?providerId=elevenlabs",
         expect.objectContaining({
           headers: { [VOICE_PROVIDER_KEY_HEADER]: "browser-key" },
         })
@@ -907,6 +1019,174 @@ describe("App", () => {
     expect(screen.queryByText("Custom")).not.toBeInTheDocument()
   })
 
+  it("hides voice tuning when the active provider has no controls", async () => {
+    vi.stubGlobal(
+      "fetch",
+      mockFetchWithProviders({
+        defaultProviderId: "plain",
+        providers: [
+          {
+            ...providersResponse.providers[0],
+            id: "plain",
+            label: "Plain Provider",
+            links: [],
+            tuning: { controls: [], presets: [], defaultValues: {} },
+          },
+        ],
+      })
+    )
+
+    render(<App />)
+
+    await screen.findByText("default/default-voice.mp3")
+    expect(screen.queryByText("Voice Tuning")).not.toBeInTheDocument()
+  })
+
+  it("renders provider controls when presets are unavailable", async () => {
+    vi.stubGlobal(
+      "fetch",
+      mockFetchWithProviders({
+        defaultProviderId: "single-control",
+        providers: [
+          {
+            ...providersResponse.providers[0],
+            id: "single-control",
+            label: "Single Control",
+            tuning: {
+              controls: [
+                {
+                  id: "warmth",
+                  label: "Warmth",
+                  description: "Controls how warm the generated voice sounds.",
+                  type: "slider",
+                  defaultValue: 0.2,
+                  min: 0,
+                  max: 1,
+                  step: 0.01,
+                },
+              ],
+              presets: [],
+              defaultValues: { warmth: 0.2 },
+            },
+          },
+        ],
+      })
+    )
+
+    render(<App />)
+
+    await screen.findByText("default/default-voice.mp3")
+    expect(screen.getByText("Voice Tuning")).toBeInTheDocument()
+    expect(screen.queryByText("Preset")).not.toBeInTheDocument()
+    expect(screen.getByRole("slider", { name: /warmth/i })).toHaveValue("0.2")
+  })
+
+  it("preserves selected provider option value types", async () => {
+    vi.stubGlobal(
+      "fetch",
+      mockFetchWithProviders({
+        defaultProviderId: "select-provider",
+        providers: [
+          {
+            ...providersResponse.providers[0],
+            id: "select-provider",
+            label: "Select Provider",
+            tuning: {
+              controls: [
+                {
+                  id: "mode",
+                  label: "Mode",
+                  description: "Selects provider generation mode.",
+                  type: "select" as const,
+                  defaultValue: 1,
+                  options: [
+                    { label: "One", value: 1 },
+                    { label: "Two", value: 2 },
+                  ],
+                },
+                {
+                  id: "enhanced",
+                  label: "Enhanced",
+                  description: "Selects enhanced processing.",
+                  type: "select" as const,
+                  defaultValue: false,
+                  options: [
+                    { label: "Off", value: false },
+                    { label: "On", value: true },
+                  ],
+                },
+              ],
+              presets: [],
+              defaultValues: { mode: 1, enhanced: false },
+            },
+          },
+        ],
+      })
+    )
+    const user = userEvent.setup()
+    render(<App />)
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.selectOptions(screen.getByRole("combobox", { name: "Mode" }), "2")
+    await user.selectOptions(screen.getByRole("combobox", { name: "Enhanced" }), "true")
+    await user.click(screen.getByRole("button", { name: /^Generate$/ }))
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/speech", expect.objectContaining({ method: "POST" })))
+    const speechCall = vi.mocked(fetch).mock.calls.find(
+      ([url, init]) => String(url) === "/api/speech" && init?.method === "POST"
+    )
+    const body = speechCall?.[1]?.body as FormData
+    expect(body.get("providerId")).toBe("select-provider")
+    expect(JSON.parse(String(body.get("voiceSettings")))).toEqual({ mode: 2, enhanced: true })
+  })
+
+  it("keeps string toggle values unchecked and toggles from the label", async () => {
+    vi.stubGlobal(
+      "fetch",
+      mockFetchWithProviders({
+        defaultProviderId: "toggle-provider",
+        providers: [
+          {
+            ...providersResponse.providers[0],
+            id: "toggle-provider",
+            label: "Toggle Provider",
+            tuning: {
+              controls: [
+                {
+                  id: "expressive",
+                  label: "Expressive",
+                  description: "Enables expressive delivery.",
+                  type: "toggle" as const,
+                  defaultValue: "false",
+                },
+              ],
+              presets: [],
+              defaultValues: { expressive: "false" },
+            },
+          },
+        ],
+      })
+    )
+    const user = userEvent.setup()
+    render(<App />)
+
+    await screen.findByText("default/default-voice.mp3")
+    const checkbox = screen.getByRole("checkbox", { name: "Expressive" })
+    expect(checkbox).not.toBeChecked()
+
+    await user.click(screen.getByText("Expressive", { selector: "label" }))
+    expect(checkbox).toBeChecked()
+    await user.click(screen.getByRole("button", { name: /^Generate$/ }))
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/speech", expect.objectContaining({ method: "POST" })))
+    const speechCall = vi.mocked(fetch).mock.calls.find(
+      ([url, init]) => String(url) === "/api/speech" && init?.method === "POST"
+    )
+    const body = speechCall?.[1]?.body as FormData
+    expect(body.get("providerId")).toBe("toggle-provider")
+    expect(JSON.parse(String(body.get("voiceSettings")))).toEqual({ expressive: true })
+  })
+
   it("applies animated dialogue and marks manual tuning as custom", async () => {
     const user = userEvent.setup()
     render(<App />)
@@ -935,7 +1215,7 @@ describe("App", () => {
     await screen.findByText("default/default-voice.mp3")
     expect(screen.getByRole("button", { name: /standard narration/i })).toHaveAttribute("aria-pressed", "true")
 
-    await user.click(screen.getByLabelText(/Speaker boost/i))
+    await user.click(screen.getByRole("checkbox", { name: /Speaker boost/i }))
 
     expect(screen.getByText("Custom")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /standard narration/i })).toHaveAttribute("aria-pressed", "false")
@@ -950,7 +1230,7 @@ describe("App", () => {
     fireEvent.change(screen.getByRole("slider", { name: /similarity/i }), { target: { value: "0.84" } })
     fireEvent.change(screen.getByRole("slider", { name: /style/i }), { target: { value: "0.2" } })
     fireEvent.change(screen.getByRole("slider", { name: /speed/i }), { target: { value: "1.1" } })
-    await user.click(screen.getByLabelText(/Speaker boost/i))
+    await user.click(screen.getByRole("checkbox", { name: /Speaker boost/i }))
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
 
     await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/speech", expect.objectContaining({ method: "POST" })))
@@ -959,12 +1239,15 @@ describe("App", () => {
     )
     const body = speechCall?.[1]?.body as FormData
     expect(body.get("voiceId")).toBe("default")
+    expect(body.get("providerId")).toBe("elevenlabs")
     expect(body.get("modelId")).toBe("eleven_multilingual_v2")
-    expect(body.get("stability")).toBe("0.42")
-    expect(body.get("similarityBoost")).toBe("0.84")
-    expect(body.get("style")).toBe("0.2")
-    expect(body.get("speed")).toBe("1.1")
-    expect(body.get("useSpeakerBoost")).toBe("false")
+    expect(JSON.parse(String(body.get("voiceSettings")))).toEqual({
+      stability: 0.42,
+      similarityBoost: 0.84,
+      style: 0.2,
+      speed: 1.1,
+      useSpeakerBoost: false,
+    })
   })
 
   it("sends selected model and shows actual usage metadata", async () => {
@@ -981,6 +1264,7 @@ describe("App", () => {
       ([url, init]) => String(url) === "/api/speech" && init?.method === "POST"
     )
     const body = speechCall?.[1]?.body as FormData
+    expect(body.get("providerId")).toBe("elevenlabs")
     expect(body.get("modelId")).toBe("eleven_flash_v2_5")
     const formattedCharacterCount = formatTestNumber(54)
     expect(await screen.findAllByText(formattedCharacterCount)).toHaveLength(1)
@@ -1154,10 +1438,10 @@ describe("App", () => {
         if (url === "/api/voices" && !init) {
           return okJson({ defaultVoiceId: "default", voices: [defaultVoice] })
         }
-        if (url === "/api/subscription" && !init) {
+        if (url.startsWith("/api/subscription") && !init) {
           return okJson(subscription)
         }
-        if (url === "/api/models" && !init) {
+        if (url.startsWith("/api/models") && !init) {
           return new Promise<Response>((resolve) => {
             resolveModels = resolve
           })

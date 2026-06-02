@@ -5,21 +5,23 @@ import type {
   SubscriptionResponse,
   VoiceAsset,
   VoicesResponse,
-  VoiceTuning,
+  VoiceTuningValues,
 } from "@/types"
 
 export const VOICE_PROVIDER_KEY_HEADER = "X-Voice-Provider-Key"
 
 export type ProviderRequestOptions = {
+  providerId?: string | null
   providerKey: string | null
 }
 
 export type SpeechApiRequest = {
   modelId: string | null
+  providerId: string | null
   providerKey: string | null
   signal: AbortSignal
   text: string
-  tuning: VoiceTuning
+  tuning: VoiceTuningValues
   voiceId: string
 }
 
@@ -78,15 +80,16 @@ export async function fetchProviders() {
 }
 
 export async function fetchSubscription(options?: ProviderRequestOptions) {
-  return fetchJson<SubscriptionResponse>("/api/subscription", providerRequestInit(options))
+  return fetchJson<SubscriptionResponse>(providerUrl("/api/subscription", options), providerRequestInit(options))
 }
 
 export async function fetchModels(options?: ProviderRequestOptions) {
-  return fetchJson<ModelsResponse>("/api/models", providerRequestInit(options))
+  return fetchJson<ModelsResponse>(providerUrl("/api/models", options), providerRequestInit(options))
 }
 
 export async function createSpeech({
   modelId,
+  providerId,
   providerKey,
   signal,
   text,
@@ -96,14 +99,13 @@ export async function createSpeech({
   const formData = new FormData()
   formData.append("text", text.trim())
   formData.append("voiceId", voiceId)
+  if (providerId) {
+    formData.append("providerId", providerId)
+  }
   if (modelId) {
     formData.append("modelId", modelId)
   }
-  formData.append("stability", String(tuning.stability))
-  formData.append("similarityBoost", String(tuning.similarityBoost))
-  formData.append("style", String(tuning.style))
-  formData.append("speed", String(tuning.speed))
-  formData.append("useSpeakerBoost", String(tuning.useSpeakerBoost))
+  formData.append("voiceSettings", JSON.stringify(tuning))
 
   const response = await fetch("/api/speech", {
     method: "POST",
@@ -144,6 +146,15 @@ export function providerHeaders(options?: ProviderRequestOptions) {
 function providerRequestInit(options?: ProviderRequestOptions): RequestInit | undefined {
   const headers = providerHeaders(options)
   return headers ? { headers } : undefined
+}
+
+function providerUrl(url: string, options?: ProviderRequestOptions) {
+  const providerId = options?.providerId?.trim()
+  if (!providerId) {
+    return url
+  }
+  const params = new URLSearchParams({ providerId })
+  return `${url}?${params.toString()}`
 }
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {

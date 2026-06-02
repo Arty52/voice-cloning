@@ -12,6 +12,46 @@ export type VoiceProvider = {
   serverKeyConfigured: boolean
   manageKeyUrl: string
   docsUrl: string
+  links: ProviderLink[]
+  tuning: ProviderTuningMetadata
+}
+
+export type ProviderLink = {
+  label: string
+  href: string
+}
+
+export type ProviderTuningValue = string | number | boolean
+
+export type ProviderTuningOption = {
+  label: string
+  value: ProviderTuningValue
+}
+
+export type ProviderTuningControl = {
+  id: string
+  label: string
+  description: string
+  type: "slider" | "toggle" | "select"
+  defaultValue: ProviderTuningValue
+  min?: number
+  max?: number
+  step?: number
+  options?: ProviderTuningOption[]
+  capability?: string
+}
+
+export type ProviderTuningPreset = {
+  id: string
+  label: string
+  description: string
+  values: VoiceTuningValues
+}
+
+export type ProviderTuningMetadata = {
+  controls: ProviderTuningControl[]
+  presets: ProviderTuningPreset[]
+  defaultValues: VoiceTuningValues
 }
 
 export type ProvidersResponse = {
@@ -90,30 +130,6 @@ export type ConfirmationState = {
   title: string
 }
 
-export type VoiceTuning = {
-  stability: number
-  similarityBoost: number
-  style: number
-  speed: number
-  useSpeakerBoost: boolean
-}
-
-export type TuningPresetId = "standard" | "animated" | "custom"
-
-export type TuningPreset = {
-  id: Exclude<TuningPresetId, "custom">
-  label: string
-  description: string
-  values: Pick<VoiceTuning, "stability" | "similarityBoost" | "style" | "speed">
-}
-
-export type SliderConfig = {
-  id: keyof Pick<VoiceTuning, "stability" | "similarityBoost" | "style" | "speed">
-  label: string
-  help: string
-  min: number
-  max: number
-  step: number
-}
+export type VoiceTuningValues = Partial<Record<string, ProviderTuningValue>>
 
 export type RenameSubmitHandler = (event: FormEvent<HTMLFormElement>) => void
