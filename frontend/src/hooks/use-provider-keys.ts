@@ -28,7 +28,7 @@ export function useProviderKeys() {
         if (!isMounted) {
           return
         }
-        const loadedProviders = Array.isArray(payload.providers) ? payload.providers : []
+        const loadedProviders = Array.isArray(payload.providers) ? payload.providers.map(normalizeVoiceProvider) : []
         setProviders(loadedProviders)
         setDefaultProviderId(payload.defaultProviderId || loadedProviders[0]?.id || "elevenlabs")
         setProviderStatus("success")
@@ -85,5 +85,20 @@ export function useProviderKeys() {
     providers,
     providerStatus,
     saveProviderKey,
+  }
+}
+
+function normalizeVoiceProvider(provider: VoiceProvider): VoiceProvider {
+  return {
+    ...provider,
+    links: Array.isArray(provider.links) ? provider.links : [],
+    tuning: {
+      controls: Array.isArray(provider.tuning?.controls) ? provider.tuning.controls : [],
+      presets: Array.isArray(provider.tuning?.presets) ? provider.tuning.presets : [],
+      defaultValues:
+        provider.tuning?.defaultValues && typeof provider.tuning.defaultValues === "object"
+          ? provider.tuning.defaultValues
+          : {},
+    },
   }
 }

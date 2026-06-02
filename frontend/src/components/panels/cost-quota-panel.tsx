@@ -2,10 +2,10 @@ import { BarChart3, Check, ChevronDown, ExternalLink, Gauge, RefreshCw } from "l
 import type { ReactNode } from "react"
 
 import { Button } from "@/components/ui/button"
-import { BACKEND_DEFAULT_MODEL_LABEL, DOC_LINKS } from "@/constants"
+import { BACKEND_DEFAULT_MODEL_LABEL } from "@/constants"
 import { formatNumber } from "@/lib/formatters"
 import { cn } from "@/lib/utils"
-import type { AsyncStatus, GeneratedResult, ModelOption, SubscriptionResponse } from "@/types"
+import type { AsyncStatus, GeneratedResult, ModelOption, ProviderLink, SubscriptionResponse } from "@/types"
 
 type CostQuotaPanelProps = {
   characterCount: number
@@ -19,6 +19,7 @@ type CostQuotaPanelProps = {
   onModelChange: (modelId: string) => void
   onRefresh: () => void
   onToggleExpanded: () => void
+  providerLinks: ProviderLink[]
   result: GeneratedResult | null
   selectedModel: ModelOption | null
   selectedModelId: string
@@ -39,6 +40,7 @@ export function CostQuotaPanel({
   onModelChange,
   onRefresh,
   onToggleExpanded,
+  providerLinks,
   result,
   selectedModel,
   selectedModelId,
@@ -159,20 +161,22 @@ export function CostQuotaPanel({
 
         {result?.requestId ? <div className="font-mono text-xs text-muted-foreground">Request {result.requestId}</div> : null}
 
-        <div className="flex flex-wrap gap-2">
-          {DOC_LINKS.map((link) => (
-            <a
-              className="inline-flex items-center gap-1 rounded-md border border-border bg-background/60 px-2.5 py-1.5 text-xs text-muted-foreground transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              href={link.href}
-              key={link.href}
-              rel="noreferrer"
-              target="_blank"
-            >
-              {link.label}
-              <ExternalLink aria-hidden="true" className="size-3" />
-            </a>
-          ))}
-        </div>
+        {providerLinks.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {providerLinks.map((link) => (
+              <a
+                className="inline-flex items-center gap-1 rounded-md border border-border bg-background/60 px-2.5 py-1.5 text-xs text-muted-foreground transition hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                href={link.href}
+                key={link.href}
+                rel="noreferrer"
+                target="_blank"
+              >
+                {link.label}
+                <ExternalLink aria-hidden="true" className="size-3" />
+              </a>
+            ))}
+          </div>
+        ) : null}
       </div>
     </section>
   )

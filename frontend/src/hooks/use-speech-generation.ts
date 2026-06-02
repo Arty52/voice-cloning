@@ -7,18 +7,19 @@ import {
 } from "@/constants"
 import { createSpeech, hasModel } from "@/lib/api"
 import type { SaveGeneratedAudioInput } from "@/lib/generated-audio-storage"
-import type { ModelOption, RequestStatus, VoiceAsset, VoiceTuning } from "@/types"
+import type { ModelOption, RequestStatus, VoiceAsset, VoiceTuningValues } from "@/types"
 
 type GenerateSpeechInput = {
   backendDefaultModelId: string | null
   canUseProvider: boolean
   models: ModelOption[]
+  providerId: string | null
   providerKey: string | null
   selectedModelId: string
   selectedVoice: VoiceAsset | null
   storageLimitBytes: number
   text: string
-  tuning: VoiceTuning
+  tuning: VoiceTuningValues
 }
 
 type UseSpeechGenerationOptions = {
@@ -41,6 +42,7 @@ export function useSpeechGeneration({ persistGeneratedAudio }: UseSpeechGenerati
     backendDefaultModelId,
     canUseProvider,
     models,
+    providerId,
     providerKey,
     selectedModelId,
     selectedVoice,
@@ -68,6 +70,7 @@ export function useSpeechGeneration({ persistGeneratedAudio }: UseSpeechGenerati
     try {
       const response = await createSpeech({
         modelId: submittedModelId,
+        providerId,
         providerKey,
         signal: abortController.signal,
         text,

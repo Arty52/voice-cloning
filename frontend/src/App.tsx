@@ -10,7 +10,7 @@ import { ProviderKeysPanel } from "@/components/panels/provider-keys-panel"
 import { SpeechInputPanel } from "@/components/panels/speech-input-panel"
 import { VoiceLibraryPanel } from "@/components/panels/voice-library-panel"
 import { VoiceTuningPanel } from "@/components/panels/voice-tuning-panel"
-import { DEFAULT_TEXT, DEFAULT_TUNING } from "@/constants"
+import { DEFAULT_TEXT } from "@/constants"
 import { useConfirmation } from "@/hooks/use-confirmation"
 import { useGeneratedAudioLibrary } from "@/hooks/use-generated-audio-library"
 import { useProviderKeys } from "@/hooks/use-provider-keys"
@@ -19,12 +19,34 @@ import { useVoiceLibrary } from "@/hooks/use-voice-library"
 import { useVoiceMetadata } from "@/hooks/use-voice-metadata"
 import { useVoiceSampleInput } from "@/hooks/use-voice-sample-input"
 import { formatBytes } from "@/lib/formatters"
-import type { SliderConfig, TuningPreset, TuningPresetId, VoiceAsset, VoiceTuning } from "@/types"
+import type {
+  ProviderTuningControl,
+  ProviderTuningMetadata,
+  ProviderTuningPreset,
+  ProviderTuningValue,
+  VoiceAsset,
+  VoiceTuningValues,
+} from "@/types"
+
+const EMPTY_TUNING_METADATA: ProviderTuningMetadata = {
+  controls: [],
+  presets: [],
+  defaultValues: {},
+}
+
+type TuningState = {
+  providerId: string | null
+  selectedPresetId: string
+  values: VoiceTuningValues
+}
 
 function App() {
   const [text, setText] = useState(DEFAULT_TEXT)
-  const [tuning, setTuning] = useState<VoiceTuning>(DEFAULT_TUNING)
-  const [selectedTuningPreset, setSelectedTuningPreset] = useState<TuningPresetId>("standard")
+  const [tuningState, setTuningState] = useState<TuningState>({
+    providerId: null,
+    selectedPresetId: "custom",
+    values: {},
+  })
   const [isCostQuotaExpanded, setIsCostQuotaExpanded] = useState(false)
   const textRef = useRef<HTMLTextAreaElement | null>(null)
   const confirmation = useConfirmation()
@@ -32,6 +54,7 @@ function App() {
   const voiceLibrary = useVoiceLibrary()
   const metadata = useVoiceMetadata({
     canUseProvider: providerKeys.canUseProvider,
+    providerId: providerKeys.activeProviderId,
     providerKey: providerKeys.activeProviderKey,
     providerStatus: providerKeys.providerStatus,
   })
@@ -44,6 +67,19 @@ function App() {
   })
 
   const selectedModel = metadata.models.find((model) => model.modelId === metadata.selectedModelId) ?? null
+  const providerTuning = providerKeys.activeProvider?.tuning ?? EMPTY_TUNING_METADATA
+  const activeProviderId = providerKeys.activeProviderId || null
+  const defaultTuningState = useMemo<TuningState>(() => {
+    const defaultValues = providerTuning.defaultValues ?? {}
+    return {
+      providerId: activeProviderId,
+      selectedPresetId: findMatchingPresetId(providerTuning.presets, defaultValues) ?? "custom",
+      values: defaultValues,
+    }
+  }, [activeProviderId, providerTuning])
+  const activeTuningState = tuningState.providerId === activeProviderId ? tuningState : defaultTuningState
+  const tuning = activeTuningState.values
+  const selectedTuningPresetId = activeTuningState.selectedPresetId
   const result = generatedAudio.generatedAudioItems[0] ?? null
   const characterCount = useMemo(() => text.trim().length, [text])
   const modelMultiplier = selectedModel?.characterCostMultiplier ?? null
@@ -68,6 +104,7 @@ function App() {
       canUseProvider: providerKeys.canUseProvider,
       models: metadata.models,
       providerKey: providerKeys.activeProviderKey,
+      providerId: providerKeys.activeProviderId,
       selectedModelId: metadata.selectedModelId,
       selectedVoice: voiceLibrary.selectedVoice,
       storageLimitBytes: generatedAudio.storageLimitBytes,
@@ -76,25 +113,29 @@ function App() {
     })
   }
 
-  function handleTuningValueChange(key: SliderConfig["id"], value: string) {
-    setSelectedTuningPreset("custom")
-    setTuning((current) => ({
-      ...current,
-      [key]: Number(value),
-    }))
+  function handleTuningValueChange(control: ProviderTuningControl, value: ProviderTuningValue) {
+    setTuningState((current) => {
+      const currentValues = current.providerId === activeProviderId ? current.values : defaultTuningState.values
+      return {
+        providerId: activeProviderId,
+        selectedPresetId: "custom",
+        values: {
+          ...currentValues,
+          [control.id]: value,
+        },
+      }
+    })
   }
 
-  function handlePresetApply(preset: TuningPreset) {
-    setSelectedTuningPreset(preset.id)
-    setTuning((current) => ({
-      ...current,
-      ...preset.values,
-    }))
-  }
-
-  function handleSpeakerBoostChange(checked: boolean) {
-    setSelectedTuningPreset("custom")
-    setTuning((current) => ({ ...current, useSpeakerBoost: checked }))
+  function handlePresetApply(preset: ProviderTuningPreset) {
+    setTuningState({
+      providerId: activeProviderId,
+      selectedPresetId: preset.id,
+      values: {
+        ...(providerTuning.defaultValues ?? {}),
+        ...preset.values,
+      },
+    })
   }
 
   function requestDeleteVoice(voice: VoiceAsset) {
@@ -160,11 +201,12 @@ function App() {
             />
 
             <VoiceTuningPanel
+              controls={providerTuning.controls}
               isGenerating={speech.isGenerating}
               onPresetApply={handlePresetApply}
-              onSpeakerBoostChange={handleSpeakerBoostChange}
               onTuningValueChange={handleTuningValueChange}
-              selectedTuningPreset={selectedTuningPreset}
+              presets={providerTuning.presets}
+              selectedTuningPresetId={selectedTuningPresetId}
               tuning={tuning}
             />
 
@@ -247,6 +289,7 @@ function App() {
                 void metadata.loadModels()
               }}
               onToggleExpanded={() => setIsCostQuotaExpanded((current) => !current)}
+              providerLinks={providerKeys.activeProvider?.links ?? []}
               result={result}
               selectedModel={selectedModel}
               selectedModelId={metadata.selectedModelId}
@@ -269,6 +312,20 @@ function App() {
       <ConfirmationDialog confirmation={confirmation.confirmation} onCancel={confirmation.clearConfirmation} />
     </main>
   )
+}
+
+function findMatchingPresetId(presets: ProviderTuningPreset[], values: VoiceTuningValues) {
+  return presets.find((preset) => tuningValuesMatch(preset.values, values))?.id ?? null
+}
+
+function tuningValuesMatch(left: VoiceTuningValues, right: VoiceTuningValues) {
+  const keys = new Set([...Object.keys(left), ...Object.keys(right)])
+  for (const key of keys) {
+    if (left[key] !== right[key]) {
+      return false
+    }
+  }
+  return true
 }
 
 export default App

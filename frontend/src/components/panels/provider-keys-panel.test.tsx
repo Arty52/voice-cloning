@@ -9,6 +9,8 @@ const elevenLabsProvider = {
   serverKeyConfigured: false,
   manageKeyUrl: "https://elevenlabs.io/app/subscription/api",
   docsUrl: "https://elevenlabs.io/docs/api-reference/authentication",
+  links: [],
+  tuning: { controls: [], presets: [], defaultValues: {} },
 }
 
 const zonosProvider = {
@@ -17,6 +19,8 @@ const zonosProvider = {
   serverKeyConfigured: false,
   manageKeyUrl: "https://example.test/zonos/key",
   docsUrl: "https://example.test/zonos/docs",
+  links: [],
+  tuning: { controls: [], presets: [], defaultValues: {} },
 }
 
 describe("ProviderKeysPanel", () => {
