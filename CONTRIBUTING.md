@@ -2,6 +2,18 @@
 
 This project is a local-first, public-safe ElevenLabs voice cloning lab. Keep changes small, reviewable, and safe to publish.
 
+## Architecture Standards
+
+Follow the project architecture standard in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for new implementation work.
+
+Architecture checklist for non-trivial changes:
+
+- Keep FastAPI routes thin; move orchestration into services and public response shaping into serializers.
+- Keep React components presentational unless they are explicit containers; move data loading, mutations, browser APIs, and derived workflow state into hooks.
+- Centralize frontend `/api/*` calls in shared helpers as new workflows are added; avoid adding direct `fetch` calls inside UI components.
+- Split files by responsibility before they become monolithic workflow files.
+- Preserve public API routes, payloads, headers, ports, and public-repo safety rules unless the change explicitly updates those contracts.
+
 ## UI Copy Style
 
 Use Title Case for short interface text that names a control, area, or state:
