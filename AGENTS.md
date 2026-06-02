@@ -1,8 +1,8 @@
 # Voice Clone Lab
 
 ## Project Rules
-- This project is public-repo safe by default. Do not commit API keys, real voice samples, generated audio, or ElevenLabs runtime cache data.
-- Keep `ELEVENLABS_API_KEY` server-side. Frontend code must call the local API and must not read or expose the key.
+- This project is public-repo safe by default. Do not commit API keys, real voice samples, generated audio, or provider runtime cache data.
+- Keep `ELEVENLABS_API_KEY` server-side. Browser-entered developer keys may be stored only in browser-local storage and sent only to the local API through the provider key request header; never expose `.env` key material to frontend responses.
 - Keep the local ports at `4340` for the Vite frontend and `6420` for the FastAPI backend unless the user asks to change them.
 - Treat `storage/` as runtime data. Do not commit generated audio or `voice-cache.json` if this later becomes a repository.
 - Treat `assets/voices/` as local user-provided voice assets. Only documentation/placeholders in that directory should be tracked.

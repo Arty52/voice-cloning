@@ -2,7 +2,7 @@
 
 Voice Clone Lab is a local, Dockerized web app for experimenting with ElevenLabs instant voice cloning from your own browser.
 
-It gives you a small voice library, text-to-speech generation, model selection, cost/quota visibility, tuning controls, playback, and downloads while keeping your ElevenLabs API key on the local backend.
+It gives you a small voice library, text-to-speech generation, model selection, cost/quota visibility, tuning controls, playback, downloads, and a browser-local provider key manager.
 
 ## What This Is
 
@@ -27,6 +27,7 @@ It gives you a small voice library, text-to-speech generation, model selection, 
 - Estimate credits before generation from character count and model rate metadata when available.
 - Show ElevenLabs-reported quota remaining from the local backend.
 - Select a text-to-speech model for the next generation without rewriting `.env`.
+- Save a browser-local provider API key that overrides `.env` for provider requests.
 - Show actual `x-character-count` and request id metadata after generation when ElevenLabs returns it.
 - Cancel an in-flight generation from the browser with a clear ElevenLabs cost caveat.
 - Persist generated MP3 audio in browser-local storage with an adjustable size cap.
@@ -42,9 +43,11 @@ It gives you a small voice library, text-to-speech generation, model selection, 
 
 ## Privacy Model
 
-Your ElevenLabs API key is read only by the FastAPI backend from `.env`. The frontend never receives the key.
+Provider keys can come from either `.env` on the FastAPI backend or the browser UI. A browser-saved key is stored in `localStorage`, sent only to the local API through `X-Voice-Provider-Key`, and takes precedence over `.env` for provider-backed requests. Clearing the browser key falls back to `.env` when `ELEVENLABS_API_KEY` is configured.
 
-Voice samples are local files under `assets/voices/` and are ignored by git. Cloned voice cache data is written under `storage/`, which is also ignored by git. Generated MP3 output is saved in your browser's IndexedDB by default, not on the backend; use the Generated Audio panel to remove one item or clear all saved browser audio.
+The backend never returns key material from `.env` or browser headers. Browser `localStorage` is local developer-tool storage, not encrypted secret storage; clear the Provider Keys panel or browser site data to remove a saved GUI key.
+
+Voice samples are local files under `assets/voices/` and are ignored by git. Cloned voice cache data is written under `storage/`, scoped by provider and key fingerprint, and ignored by git. Generated MP3 output is saved in your browser's IndexedDB by default, not on the backend; use the Generated Audio panel to remove one item or clear all saved browser audio.
 
 Text, voice samples, selected model id, and tuning settings are sent to ElevenLabs when you generate speech. Subscription and model metadata are fetched through the backend when the configured key has the required read permissions. Review ElevenLabs' policies and obtain consent before cloning or generating with any voice.
 
@@ -98,10 +101,10 @@ Create your local environment file:
 cp .env.example .env
 ```
 
-Edit `.env` and add your ElevenLabs key:
+Optionally edit `.env` and add your ElevenLabs key as the backend fallback:
 
 ```sh
-ELEVENLABS_API_KEY=your_key_here
+ELEVENLABS_API_KEY=your_key_here  # optional when you use the Provider Keys panel
 ELEVENLABS_MODEL_ID=eleven_multilingual_v2
 ```
 
@@ -119,14 +122,15 @@ http://localhost:4340
 
 Then:
 
-1. Upload or record a voice sample.
-2. Give it a local name, such as `Voice_Clone_01`.
-3. Save the voice.
-4. Enter text.
-5. Check the Cost & Quota panel and choose a model if model metadata is available.
-6. Adjust tuning sliders if needed.
-7. Generate speech.
-8. Play, download, or remove saved generated MP3s from the Generated Audio panel.
+1. Add an ElevenLabs key in the Provider Keys panel if `.env` does not provide one.
+2. Upload or record a voice sample.
+3. Give it a local name, such as `Voice_Clone_01`.
+4. Save the voice.
+5. Enter text.
+6. Check the Cost & Quota panel and choose a model if model metadata is available.
+7. Adjust tuning sliders if needed.
+8. Generate speech.
+9. Play, download, or remove saved generated MP3s from the Generated Audio panel.
 
 The API is available at:
 
@@ -172,6 +176,7 @@ Implementation work should follow the project standard in [docs/ARCHITECTURE.md]
 ## API Overview
 
 - `GET /api/health`
+- `GET /api/providers`
 - `GET /api/voices`
 - `GET /api/voices/{voiceId}/sample`
 - `GET /api/subscription`
@@ -181,6 +186,25 @@ Implementation work should follow the project standard in [docs/ARCHITECTURE.md]
 - `DELETE /api/voices/{voiceId}`
 - `PUT /api/voices/default`
 - `POST /api/speech`
+
+`GET /api/providers` returns public provider metadata for the key manager:
+
+```json
+{
+  "defaultProviderId": "elevenlabs",
+  "providers": [
+    {
+      "id": "elevenlabs",
+      "label": "ElevenLabs",
+      "serverKeyConfigured": true,
+      "manageKeyUrl": "https://elevenlabs.io/app/subscription/api",
+      "docsUrl": "https://elevenlabs.io/docs/api-reference/authentication"
+    }
+  ]
+}
+```
+
+Provider-backed routes accept an optional `X-Voice-Provider-Key` header. When present and non-empty, that browser-provided key overrides `ELEVENLABS_API_KEY`; otherwise the backend falls back to `.env`. The API never returns either key.
 
 `GET /api/subscription` returns a sanitized quota summary for the Cost & Quota panel:
 
@@ -195,7 +219,7 @@ Implementation work should follow the project standard in [docs/ARCHITECTURE.md]
 }
 ```
 
-If the configured key cannot read subscription metadata, the endpoint returns `available: false` with a sanitized `error` string instead of exposing raw ElevenLabs account data.
+If the active key cannot read subscription metadata, the endpoint returns `available: false` with a sanitized `error` string instead of exposing raw ElevenLabs account data.
 
 `GET /api/models` returns text-to-speech-capable model metadata:
 
@@ -254,6 +278,8 @@ The response is `audio/mpeg` with these headers:
 - `X-Character-Count`: actual ElevenLabs character usage when returned
 - `X-Request-Id`: request id when returned by ElevenLabs
 
+Voice clone cache entries are separated by provider and active key fingerprint, so switching browser keys does not reuse another account's cached voice ID.
+
 ## Project Structure
 
 ```text
@@ -271,7 +297,7 @@ The response is `audio/mpeg` with these headers:
 
 ### Missing API key
 
-If generation fails with `ELEVENLABS_API_KEY is not configured`, create `.env` from `.env.example` and set `ELEVENLABS_API_KEY`.
+If the UI shows Missing Key, add a key in the Provider Keys panel or create `.env` from `.env.example` and set `ELEVENLABS_API_KEY`. A saved browser key takes precedence immediately; clearing it falls back to `.env`.
 
 ### No voices appear
 
@@ -328,6 +354,7 @@ make destroy
 ## References
 
 - [ElevenLabs API Documentation](https://docs.elevenlabs.io/)
+- [Manage ElevenLabs API Key](https://elevenlabs.io/app/subscription/api)
 - [ElevenLabs API Authentication and Scoped Keys](https://elevenlabs.io/docs/api-reference/authentication)
 - [ElevenLabs API Request Analytics](https://elevenlabs.io/app/developers/analytics/api-requests)
 - [Tracking generation costs](https://elevenlabs.io/docs/api-reference/introduction)
