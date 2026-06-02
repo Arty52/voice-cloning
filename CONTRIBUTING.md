@@ -11,6 +11,7 @@ Architecture checklist for non-trivial changes:
 - Keep FastAPI routes thin; move orchestration into services and public response shaping into serializers.
 - Keep React components presentational unless they are explicit containers; move data loading, mutations, browser APIs, and derived workflow state into hooks.
 - Centralize frontend `/api/*` calls in shared helpers as new workflows are added; avoid adding direct `fetch` calls inside UI components.
+- Keep provider keys out of git and API responses. `.env` keys stay on the backend; browser-entered developer keys may live in localStorage, browser code should send them only to the local API through explicit request helpers, and the backend may use them per request to authenticate provider calls.
 - Split files by responsibility before they become monolithic workflow files.
 - Preserve public API routes, payloads, headers, ports, and public-repo safety rules unless the change explicitly updates those contracts.
 
