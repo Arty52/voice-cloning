@@ -4,7 +4,7 @@ Voice Clone Lab is a small local app, but changes should still keep clear bounda
 
 ## Project Shape
 
-- `backend/src/voice_cloning/` contains the FastAPI app, ElevenLabs client, local voice library, cache, and configuration. As backend workflows grow, route handlers should split toward service modules and serializer helpers instead of accumulating orchestration in one route file.
+- `backend/src/voice_cloning/` contains the FastAPI app, provider adapters, provider registry, local voice library, cache, and configuration. As backend workflows grow, route handlers should split toward service modules and serializer helpers instead of accumulating orchestration in one route file.
 - `frontend/src/` contains the Vite React app, UI components, recorder/storage helpers, and shared utilities. As frontend workflows grow, data loading and mutations should split toward feature hooks and API helpers instead of accumulating in `App.tsx`.
 - `assets/voices/` is local user-provided voice input. Track only documentation/placeholders.
 - `storage/` is runtime output/cache data. Do not commit generated audio or provider cache files.
@@ -12,8 +12,9 @@ Voice Clone Lab is a small local app, but changes should still keep clear bounda
 ## Backend Boundaries
 
 - API route modules should stay thin. They parse HTTP inputs, call services, and map domain/client failures to HTTP responses.
-- Service modules own orchestration, such as selecting a local voice, using the clone cache, calling ElevenLabs, and assembling domain results.
-- Client modules own third-party HTTP details and convert provider payloads into internal dataclasses.
+- Service modules own orchestration, such as selecting a local voice, using the clone cache, calling the active provider contract, and assembling domain results.
+- Provider adapter modules own third-party HTTP details, provider key resolution, provider-specific tuning metadata, setting normalization, error sanitization, and conversion from provider payloads into internal dataclasses.
+- `ProviderRegistry` owns provider lookup and default-provider selection. Routes should resolve providers through the registry instead of importing concrete provider adapters.
 - Serializer modules own public API response shapes and headers. Preserve route paths, request fields, response fields, and headers unless a change explicitly updates the API contract.
 - Provider key material must never appear in serialized responses. Browser-provided keys may be accepted through explicit request headers, resolved in routes/services, and passed to clients for that request only.
 - Domain helpers should not import FastAPI unless they are specifically route or request/file-upload adapters.
@@ -24,6 +25,7 @@ Voice Clone Lab is a small local app, but changes should still keep clear bounda
 - Dumb UI components receive props, render markup, and emit callbacks. They should not call `fetch`, read local storage directly, access IndexedDB directly, or contain business workflow branching.
 - API helpers own `/api/*` request construction, error parsing, and response/header parsing.
 - Hooks should be feature scoped: provider keys, voice library, metadata, generated audio storage, speech generation, recording/upload flow, and dialogs are separate responsibilities.
+- Provider-specific tuning controls, presets, defaults, and source links come from `/api/providers`. Frontend UI should render those descriptors generically instead of hardcoding provider-specific tuning constants.
 - Shared constants, types, and formatters belong outside feature components so tests and future features can reuse them without importing a giant app file.
 
 ## Split Before Monolith
@@ -36,6 +38,11 @@ Voice Clone Lab is a small local app, but changes should still keep clear bounda
 ## Testing Expectations
 
 - Backend changes must keep API contract coverage for routes and add focused tests for service or serializer behavior when logic moves out of routes.
+- Provider changes must include tests for lookup, key fallback, clone cache namespace, unavailable metadata, setting validation, and sanitized provider errors.
 - Frontend changes must keep user-behavior coverage with Testing Library and add focused tests for hooks/utilities when logic moves out of `App.tsx`.
 - Run `make check` before publishing a branch. `make smoke-live` remains optional because it calls ElevenLabs and can consume credits.
 - When visible UI text changes, update tests that query by accessible names and keep the project casing rules from `CONTRIBUTING.md`.
+
+## Provider Extensions
+
+Use [ADDING_PROVIDER.md](ADDING_PROVIDER.md) for the contributor checklist. A provider addition should generally be an adapter, registry wiring, tests, and docs. Do not spread provider-specific request payloads, tuning semantics, or secret handling into route handlers or frontend components.

@@ -1,12 +1,12 @@
 # Voice Clone Lab
 
-Voice Clone Lab is a local, Dockerized web app for experimenting with ElevenLabs instant voice cloning from your own browser.
+Voice Clone Lab is a local, Dockerized web app for experimenting with provider-backed voice cloning from your own browser. ElevenLabs is the built-in provider.
 
 It gives you a small voice library, text-to-speech generation, model selection, cost/quota visibility, tuning controls, playback, downloads, and a browser-local provider key manager.
 
 ## What This Is
 
-- A local development tool for testing ElevenLabs instant voice cloning.
+- A local development tool for testing provider-backed voice cloning with built-in ElevenLabs support.
 - A React + TypeScript frontend backed by a Python FastAPI service.
 - A browser UI for uploading or recording named voice samples, choosing a default voice, selecting a TTS model, tuning generation settings, checking quota, and downloading generated MP3 output.
 - A Docker Compose app that runs on `localhost`.
@@ -16,50 +16,45 @@ It gives you a small voice library, text-to-speech generation, model selection, 
 - Not a hosted service.
 - Not a production authentication, billing, or user-management system.
 - Not bundled with any voice sample or API key.
-- Not a way to avoid ElevenLabs usage, billing, consent, or content policies.
+- Not a way to avoid provider usage, billing, consent, or content policies.
 
 ## Features
 
 - Save named local voice samples into `assets/voices/` from upload or browser microphone recording.
 - Select any saved voice and mark one as the local default.
-- Generate speech from text using ElevenLabs text-to-speech.
-- Reuse ElevenLabs cloned voices by sample hash through a local cache.
+- Generate speech from text using the active voice provider.
+- Reuse provider cloned voices by sample hash through a local cache.
 - Estimate credits before generation from character count and model rate metadata when available.
-- Show ElevenLabs-reported quota remaining from the local backend.
+- Show provider-reported quota remaining from the local backend when available.
 - Select a text-to-speech model for the next generation without rewriting `.env`.
 - Save a browser-local provider API key that overrides `.env` for provider requests.
-- Show actual `x-character-count` and request id metadata after generation when ElevenLabs returns it.
-- Cancel an in-flight generation from the browser with a clear ElevenLabs cost caveat.
+- Show actual `x-character-count` and request id metadata after generation when the provider returns it.
+- Cancel an in-flight generation from the browser with a clear provider cost caveat.
 - Persist generated MP3 audio in browser-local storage with an adjustable size cap.
-- Adjust per-request ElevenLabs voice settings:
-  - stability
-  - similarity boost
-  - style
-  - speed
-  - speaker boost
+- Adjust per-request provider voice settings from provider-supplied metadata.
 - Preview source voice samples.
 - Play, download, and remove saved generated MP3 audio.
 - Run automated backend and frontend checks with one command.
 
 ## Privacy Model
 
-Provider keys can come from either `.env` on the FastAPI backend or the browser UI. A browser-saved key is stored in `localStorage`; browser code sends it only to the local API through `X-Voice-Provider-Key`, and the backend uses that active key to authenticate provider requests. A browser key takes precedence over `.env`; clearing it falls back to `.env` when `ELEVENLABS_API_KEY` is configured.
+Provider keys can come from either `.env` on the FastAPI backend or the browser UI. A browser-saved key is stored in `localStorage`; browser code sends it only to the local API through `X-Voice-Provider-Key`, and the backend uses that active key to authenticate provider requests for the selected `providerId`. A browser key takes precedence over `.env`; clearing it falls back to `.env` when the built-in ElevenLabs `ELEVENLABS_API_KEY` is configured.
 
 The backend never returns key material from `.env` or browser headers. Browser `localStorage` is local developer-tool storage, not encrypted secret storage; clear the Provider Keys panel or browser site data to remove a saved GUI key.
 
 Voice samples are local files under `assets/voices/` and are ignored by git. Cloned voice cache data is written under `storage/`, scoped by provider and key fingerprint, and ignored by git. Generated MP3 output is saved in your browser's IndexedDB by default, not on the backend; use the Generated Audio panel to remove one item or clear all saved browser audio.
 
-Text, voice samples, selected model id, and tuning settings are sent to ElevenLabs when you generate speech. Subscription and model metadata are fetched through the backend when the configured key has the required read permissions. Review ElevenLabs' policies and obtain consent before cloning or generating with any voice.
+Text, voice samples, selected model id, and provider-specific tuning settings are sent to the active provider when you generate speech. Subscription and model metadata are fetched through the backend when the configured key has the required read permissions. Review the active provider's policies and obtain consent before cloning or generating with any voice.
 
 ## Cost Notes
 
-ElevenLabs may charge credits for text-to-speech and voice cloning. The main usage levers are:
+Providers may charge credits for text-to-speech and voice cloning. For the built-in ElevenLabs provider, the main usage levers are:
 
 - text length
 - selected ElevenLabs model
 - whether a voice sample has already been cloned and cached
 
-The Cost & Quota panel shows a pre-run estimate and the remaining ElevenLabs-reported character quota. Estimates are approximate. After a generation, the app shows the actual `x-character-count` response header when ElevenLabs provides it.
+The Cost & Quota panel shows a pre-run estimate and the remaining provider-reported character quota when available. Estimates are approximate. After a generation, the app shows the actual `x-character-count` response header when the provider supplies it.
 
 The optional live smoke test calls ElevenLabs and may consume credits.
 
@@ -68,7 +63,7 @@ Canceling a generation aborts the browser request and lets the local API stop wa
 ## Prerequisites
 
 - Docker and Docker Compose
-- An ElevenLabs API key
+- An ElevenLabs API key for the built-in provider
 - Optional for host development:
   - Python 3.14+
   - Node.js 24+
@@ -171,7 +166,9 @@ This calls ElevenLabs with the real API key, may consume credits, and writes `st
 
 ## Architecture Standards
 
-Implementation work should follow the project standard in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). In short: keep FastAPI routes thin, put backend orchestration in services, keep third-party HTTP details in clients, keep React workflow state in containers/hooks, and keep UI components presentational.
+Implementation work should follow the project standard in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). In short: keep FastAPI routes thin, put backend orchestration in services, keep third-party HTTP details in provider adapters, keep React workflow state in containers/hooks, and keep UI components presentational.
+
+To add another provider, follow [docs/ADDING_PROVIDER.md](docs/ADDING_PROVIDER.md). It covers provider options, adapter responsibilities, tuning metadata, public-safety checks, and validation.
 
 ## API Overview
 
@@ -198,13 +195,46 @@ Implementation work should follow the project standard in [docs/ARCHITECTURE.md]
       "label": "ElevenLabs",
       "serverKeyConfigured": true,
       "manageKeyUrl": "https://elevenlabs.io/app/subscription/api",
-      "docsUrl": "https://elevenlabs.io/docs/api-reference/authentication"
+      "docsUrl": "https://elevenlabs.io/docs/api-reference/authentication",
+      "links": [
+        {
+          "label": "API Requests",
+          "href": "https://elevenlabs.io/app/developers/analytics/api-requests"
+        }
+      ],
+      "tuning": {
+        "controls": [
+          {
+            "id": "stability",
+            "label": "Stability",
+            "description": "Lower values allow more expressive, variable delivery.",
+            "type": "slider",
+            "defaultValue": 0.5,
+            "min": 0,
+            "max": 1,
+            "step": 0.01
+          }
+        ],
+        "presets": [
+          {
+            "id": "standard",
+            "label": "Standard Narration",
+            "description": "Balanced clone similarity for steady narration.",
+            "values": {
+              "stability": 0.5
+            }
+          }
+        ],
+        "defaultValues": {
+          "stability": 0.5
+        }
+      }
     }
   ]
 }
 ```
 
-Provider-backed routes accept an optional `X-Voice-Provider-Key` header. When present and non-empty, that browser-provided key overrides `ELEVENLABS_API_KEY`; otherwise the backend falls back to `.env`. The API never returns either key.
+Provider-backed routes accept an optional `providerId` request value and an optional `X-Voice-Provider-Key` header. When `providerId` is omitted, the backend uses `defaultProviderId`. When the header is present and non-empty, that browser-provided key overrides the selected provider's backend fallback key; otherwise the backend falls back to `.env`. The API never returns either key.
 
 `GET /api/subscription` returns a sanitized quota summary for the Cost & Quota panel:
 
@@ -237,7 +267,7 @@ If the active key cannot read subscription metadata, the endpoint returns `avail
 }
 ```
 
-If model metadata is unavailable, generation still works by omitting `modelId` and letting the backend use `ELEVENLABS_MODEL_ID`.
+If model metadata is unavailable, generation still works by omitting `modelId` and letting the provider use its default model id. For the built-in ElevenLabs provider, that default is `ELEVENLABS_MODEL_ID`.
 
 `POST /api/voices` accepts multipart form fields:
 
@@ -262,21 +292,20 @@ If model metadata is unavailable, generation still works by omitting `modelId` a
 
 - `text`: speech text
 - `voiceId`: saved local voice id; defaults to the configured local default
-- `modelId`: optional ElevenLabs TTS model id; defaults to `ELEVENLABS_MODEL_ID`
-- `stability`: `0..1`
-- `similarityBoost`: `0..1`
-- `style`: `0..1`
-- `speed`: `0.7..1.2`
-- `useSpeakerBoost`: `true` or `false`
+- `providerId`: optional provider id; defaults to `defaultProviderId`
+- `modelId`: optional provider TTS model id; defaults to the selected provider's default model
+- `voiceSettings`: optional JSON object keyed by provider tuning control id
+
+The legacy ElevenLabs form fields `stability`, `similarityBoost`, `style`, `speed`, and `useSpeakerBoost` are still accepted for compatibility. New integrations should use `voiceSettings`.
 
 The response is `audio/mpeg` with these headers:
 
 - `X-Voice-Cache`: `hit` or `miss`
-- `X-Voice-Id`: ElevenLabs voice ID
+- `X-Voice-Id`: provider voice ID
 - `X-App-Voice-Id`: local voice asset ID
 - `X-Sample-Sha256`: sample hash
-- `X-Character-Count`: actual ElevenLabs character usage when returned
-- `X-Request-Id`: request id when returned by ElevenLabs
+- `X-Character-Count`: actual provider character usage when returned
+- `X-Request-Id`: request id when returned by the provider
 
 Voice clone cache entries are separated by provider and active key fingerprint, so switching browser keys does not reuse another account's cached voice ID.
 
@@ -286,6 +315,7 @@ Voice clone cache entries are separated by provider and active key fingerprint, 
 .
 ├── assets/voices/        # local voice assets; real samples ignored by git
 ├── backend/              # FastAPI service and tests
+├── docs/                 # architecture and provider extension guides
 ├── frontend/             # Vite React app and tests
 ├── scripts/              # local smoke helpers
 ├── storage/              # runtime cache/output; ignored by git
@@ -353,6 +383,7 @@ make destroy
 
 ## References
 
+- [How To Add A Provider](docs/ADDING_PROVIDER.md)
 - [ElevenLabs API Documentation](https://docs.elevenlabs.io/)
 - [Manage ElevenLabs API Key](https://elevenlabs.io/app/subscription/api)
 - [ElevenLabs API Authentication and Scoped Keys](https://elevenlabs.io/docs/api-reference/authentication)

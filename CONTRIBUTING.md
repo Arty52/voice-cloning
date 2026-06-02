@@ -1,10 +1,10 @@
 # Contributing
 
-This project is a local-first, public-safe ElevenLabs voice cloning lab. Keep changes small, reviewable, and safe to publish.
+This project is a local-first, public-safe voice cloning lab with built-in ElevenLabs support. Keep changes small, reviewable, and safe to publish.
 
 ## Architecture Standards
 
-Follow the project architecture standard in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for new implementation work.
+Follow the project architecture standard in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for new implementation work. Provider additions should also follow [docs/ADDING_PROVIDER.md](docs/ADDING_PROVIDER.md).
 
 Architecture checklist for non-trivial changes:
 
@@ -12,6 +12,8 @@ Architecture checklist for non-trivial changes:
 - Keep React components presentational unless they are explicit containers; move data loading, mutations, browser APIs, and derived workflow state into hooks.
 - Centralize frontend `/api/*` calls in shared helpers as new workflows are added; avoid adding direct `fetch` calls inside UI components.
 - Keep provider keys out of git and API responses. `.env` keys stay on the backend; browser-entered developer keys may live in localStorage, browser code should send them only to the local API through explicit request helpers, and the backend may use them per request to authenticate provider calls.
+- Keep provider-specific HTTP payloads, error parsing, key resolution, and tuning semantics inside provider adapters.
+- Expose provider-specific tuning controls, presets, defaults, and links through provider metadata instead of hardcoding them in frontend constants.
 - Split files by responsibility before they become monolithic workflow files.
 - Preserve public API routes, payloads, headers, ports, and public-repo safety rules unless the change explicitly updates those contracts.
 

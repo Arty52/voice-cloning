@@ -10,8 +10,8 @@ def main() -> None:
     body = multipart_body(
         boundary,
         {
-            "text": "This is a live smoke test from the local ElevenLabs voice clone app.",
-            "sampleMode": "default",
+            "text": "This is a live smoke test from the local voice clone app using the built-in ElevenLabs provider.",
+            "providerId": "elevenlabs",
         },
     )
     connection = HTTPConnection("127.0.0.1", 6420, timeout=180)
