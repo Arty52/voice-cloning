@@ -11,7 +11,7 @@ def main() -> None:
         boundary,
         {
             "text": "This is a live smoke test from the local voice clone app using the built-in ElevenLabs provider.",
-            "sampleMode": "default",
+            "providerId": "elevenlabs",
         },
     )
     connection = HTTPConnection("127.0.0.1", 6420, timeout=180)
