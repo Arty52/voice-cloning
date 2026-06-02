@@ -10,7 +10,7 @@ def main() -> None:
     body = multipart_body(
         boundary,
         {
-            "text": "This is a live smoke test from the local ElevenLabs voice clone app.",
+            "text": "This is a live smoke test from the local voice clone app using the built-in ElevenLabs provider.",
             "sampleMode": "default",
         },
     )
