@@ -182,16 +182,6 @@ function App() {
           </section>
 
           <aside className="flex flex-col gap-4">
-            <ProviderKeysPanel
-              activeProvider={providerKeys.activeProvider}
-              activeProviderKey={providerKeys.activeProviderKey}
-              keySource={providerKeys.keySource}
-              onClearProviderKey={providerKeys.clearProviderKey}
-              onSaveProviderKey={providerKeys.saveProviderKey}
-              providerError={providerKeys.providerError}
-              providerStatus={providerKeys.providerStatus}
-            />
-
             <VoiceLibraryPanel
               canSetDefault={voiceLibrary.canSetDefault}
               defaultVoiceId={voiceLibrary.defaultVoiceId}
@@ -230,6 +220,16 @@ function App() {
               uploadName={voiceInput.uploadName}
               uploadPreviewUrl={voiceInput.uploadPreviewUrl}
               voiceSampleInputMode={voiceInput.voiceSampleInputMode}
+            />
+
+            <ProviderKeysPanel
+              activeProvider={providerKeys.activeProvider}
+              activeProviderKey={providerKeys.activeProviderKey}
+              keySource={providerKeys.keySource}
+              onClearProviderKey={providerKeys.clearProviderKey}
+              onSaveProviderKey={providerKeys.saveProviderKey}
+              providerError={providerKeys.providerError}
+              providerStatus={providerKeys.providerStatus}
             />
 
             <CostQuotaPanel
