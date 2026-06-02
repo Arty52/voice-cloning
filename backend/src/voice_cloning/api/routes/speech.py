@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi import APIRouter, Form, Header, HTTPException, Request
 from fastapi.responses import Response
 
 from ...cache import VoiceCache
 from ...config import Settings
 from ...elevenlabs_client import ElevenLabsClient
 from ...models import VoiceSettings
+from ...providers import VOICE_PROVIDER_KEY_HEADER
 from ...services.cancellation import SpeechGenerationCanceled
 from ...services.speech import SpeechServiceError, generate_speech
 from ...voice_library import VoiceLibrary
@@ -34,6 +35,7 @@ def create_speech_router(
         style: Annotated[float, Form(ge=0, le=1)] = 0,
         speed: Annotated[float, Form(ge=0.7, le=1.2)] = 1,
         useSpeakerBoost: bool = Form(True),
+        provider_key: str | None = Header(default=None, alias=VOICE_PROVIDER_KEY_HEADER),
     ) -> Response:
         voice_settings = VoiceSettings(
             stability=stability,
@@ -47,6 +49,7 @@ def create_speech_router(
                 text=text,
                 voice_id=voiceId,
                 model_id=modelId,
+                provider_key=provider_key,
                 voice_settings=voice_settings,
                 settings=settings,
                 elevenlabs_client=elevenlabs_client,

@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi.responses import Response
 
 from ..models import CachedVoice, ModelSummary, SubscriptionSummary, VoiceAsset, VoiceSample
+from ..providers import ProviderDescriptor
 
 
 def audio_response(
@@ -70,6 +71,26 @@ def models_error_payload(default_model_id: str, error: str) -> dict[str, object]
         "error": error,
         "defaultModelId": default_model_id,
         "models": [],
+    }
+
+
+def providers_payload(
+    default_provider_id: str,
+    providers: list[ProviderDescriptor],
+    server_key_configured_by_provider: dict[str, bool],
+) -> dict[str, object]:
+    return {
+        "defaultProviderId": default_provider_id,
+        "providers": [
+            {
+                "id": provider.id,
+                "label": provider.label,
+                "serverKeyConfigured": server_key_configured_by_provider.get(provider.id, False),
+                "manageKeyUrl": provider.manage_key_url,
+                "docsUrl": provider.docs_url,
+            }
+            for provider in providers
+        ],
     }
 
 
