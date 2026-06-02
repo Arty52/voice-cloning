@@ -6,12 +6,14 @@ import { RenameVoiceDialog } from "@/components/dialogs/rename-voice-dialog"
 import { AddVoicePanel } from "@/components/panels/add-voice-panel"
 import { CostQuotaPanel } from "@/components/panels/cost-quota-panel"
 import { GeneratedAudioPanel } from "@/components/panels/generated-audio-panel"
+import { ProviderKeysPanel } from "@/components/panels/provider-keys-panel"
 import { SpeechInputPanel } from "@/components/panels/speech-input-panel"
 import { VoiceLibraryPanel } from "@/components/panels/voice-library-panel"
 import { VoiceTuningPanel } from "@/components/panels/voice-tuning-panel"
 import { DEFAULT_TEXT, DEFAULT_TUNING } from "@/constants"
 import { useConfirmation } from "@/hooks/use-confirmation"
 import { useGeneratedAudioLibrary } from "@/hooks/use-generated-audio-library"
+import { useProviderKeys } from "@/hooks/use-provider-keys"
 import { useSpeechGeneration } from "@/hooks/use-speech-generation"
 import { useVoiceLibrary } from "@/hooks/use-voice-library"
 import { useVoiceMetadata } from "@/hooks/use-voice-metadata"
@@ -26,8 +28,13 @@ function App() {
   const [isCostQuotaExpanded, setIsCostQuotaExpanded] = useState(false)
   const textRef = useRef<HTMLTextAreaElement | null>(null)
   const confirmation = useConfirmation()
+  const providerKeys = useProviderKeys()
   const voiceLibrary = useVoiceLibrary()
-  const metadata = useVoiceMetadata()
+  const metadata = useVoiceMetadata({
+    canUseProvider: providerKeys.canUseProvider,
+    providerKey: providerKeys.activeProviderKey,
+    providerStatus: providerKeys.providerStatus,
+  })
   const generatedAudio = useGeneratedAudioLibrary()
   const speech = useSpeechGeneration({
     persistGeneratedAudio: generatedAudio.persistGeneratedAudio,
@@ -42,7 +49,8 @@ function App() {
   const modelMultiplier = selectedModel?.characterCostMultiplier ?? null
   const estimatedCredits = modelMultiplier === null ? characterCount : Math.ceil(characterCount * modelMultiplier)
   const hasModelRate = modelMultiplier !== null
-  const canGenerate = text.trim().length > 0 && voiceLibrary.selectedVoice !== null && !speech.isGenerating
+  const canGenerate =
+    text.trim().length > 0 && voiceLibrary.selectedVoice !== null && providerKeys.canUseProvider && !speech.isGenerating
 
   useLayoutEffect(() => {
     const textarea = textRef.current
@@ -57,7 +65,9 @@ function App() {
     event?.preventDefault()
     void speech.generateSpeech({
       backendDefaultModelId: metadata.backendDefaultModelId,
+      canUseProvider: providerKeys.canUseProvider,
       models: metadata.models,
+      providerKey: providerKeys.activeProviderKey,
       selectedModelId: metadata.selectedModelId,
       selectedVoice: voiceLibrary.selectedVoice,
       storageLimitBytes: generatedAudio.storageLimitBytes,
@@ -172,6 +182,16 @@ function App() {
           </section>
 
           <aside className="flex flex-col gap-4">
+            <ProviderKeysPanel
+              activeProvider={providerKeys.activeProvider}
+              activeProviderKey={providerKeys.activeProviderKey}
+              keySource={providerKeys.keySource}
+              onClearProviderKey={providerKeys.clearProviderKey}
+              onSaveProviderKey={providerKeys.saveProviderKey}
+              providerError={providerKeys.providerError}
+              providerStatus={providerKeys.providerStatus}
+            />
+
             <VoiceLibraryPanel
               canSetDefault={voiceLibrary.canSetDefault}
               defaultVoiceId={voiceLibrary.defaultVoiceId}

@@ -1,14 +1,22 @@
 import type {
   ModelOption,
   ModelsResponse,
+  ProvidersResponse,
   SubscriptionResponse,
   VoiceAsset,
   VoicesResponse,
   VoiceTuning,
 } from "@/types"
 
+export const VOICE_PROVIDER_KEY_HEADER = "X-Voice-Provider-Key"
+
+export type ProviderRequestOptions = {
+  providerKey: string | null
+}
+
 export type SpeechApiRequest = {
   modelId: string | null
+  providerKey: string | null
   signal: AbortSignal
   text: string
   tuning: VoiceTuning
@@ -65,15 +73,26 @@ export async function setDefaultVoice(voiceId: string) {
   })
 }
 
-export async function fetchSubscription() {
-  return fetchJson<SubscriptionResponse>("/api/subscription")
+export async function fetchProviders() {
+  return fetchJson<ProvidersResponse>("/api/providers")
 }
 
-export async function fetchModels() {
-  return fetchJson<ModelsResponse>("/api/models")
+export async function fetchSubscription(options?: ProviderRequestOptions) {
+  return fetchJson<SubscriptionResponse>("/api/subscription", providerRequestInit(options))
 }
 
-export async function createSpeech({ modelId, signal, text, tuning, voiceId }: SpeechApiRequest): Promise<SpeechApiResult> {
+export async function fetchModels(options?: ProviderRequestOptions) {
+  return fetchJson<ModelsResponse>("/api/models", providerRequestInit(options))
+}
+
+export async function createSpeech({
+  modelId,
+  providerKey,
+  signal,
+  text,
+  tuning,
+  voiceId,
+}: SpeechApiRequest): Promise<SpeechApiResult> {
   const formData = new FormData()
   formData.append("text", text.trim())
   formData.append("voiceId", voiceId)
@@ -89,6 +108,7 @@ export async function createSpeech({ modelId, signal, text, tuning, voiceId }: S
   const response = await fetch("/api/speech", {
     method: "POST",
     body: formData,
+    headers: providerHeaders({ providerKey }),
     signal,
   })
   if (response.status === 499) {
@@ -114,6 +134,16 @@ export async function createSpeech({ modelId, signal, text, tuning, voiceId }: S
 
 export function hasModel(models: ModelOption[], modelId: string) {
   return models.some((model) => model.modelId === modelId)
+}
+
+export function providerHeaders(options?: ProviderRequestOptions) {
+  const providerKey = options?.providerKey?.trim()
+  return providerKey ? { [VOICE_PROVIDER_KEY_HEADER]: providerKey } : undefined
+}
+
+function providerRequestInit(options?: ProviderRequestOptions): RequestInit | undefined {
+  const headers = providerHeaders(options)
+  return headers ? { headers } : undefined
 }
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {

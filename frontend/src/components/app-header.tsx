@@ -8,11 +8,11 @@ export function AppHeader() {
       <div className="space-y-2">
         <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
           <Volume2 aria-hidden="true" className="size-4 text-primary" />
-          Local ElevenLabs Workspace
+          Local Workspace
         </div>
         <h1 className="text-3xl font-semibold tracking-normal sm:text-4xl">Voice Clone Lab</h1>
         <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-          Generate speech from saved voice samples while keeping the ElevenLabs key on the local API.
+          Generate speech from saved voice samples while keeping provider keys local to this workspace.
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
