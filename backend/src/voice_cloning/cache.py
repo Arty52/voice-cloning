@@ -31,15 +31,19 @@ class VoiceCache:
         )
 
     def set(self, sample: VoiceSample, clone: VoiceClone, namespace: str = "default") -> CachedVoice:
-        payload = self._read()
-        voices = self._voices_for_namespace(payload, namespace)
         cached = CachedVoice(
             voice_id=clone.voice_id,
             sample_name=sample.filename,
             created_at=datetime.now(UTC).isoformat(),
             requires_verification=clone.requires_verification,
         )
-        voices[sample.sha256] = {
+        self.set_cached(sample.sha256, cached, namespace=namespace)
+        return cached
+
+    def set_cached(self, sample_hash: str, cached: CachedVoice, namespace: str = "default") -> CachedVoice:
+        payload = self._read()
+        voices = self._voices_for_namespace(payload, namespace)
+        voices[sample_hash] = {
             "voice_id": cached.voice_id,
             "sample_name": cached.sample_name,
             "created_at": cached.created_at,

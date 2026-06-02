@@ -7,7 +7,7 @@ from ..cache import VoiceCache
 from ..config import Settings
 from ..elevenlabs_client import ElevenLabsClient, ElevenLabsError
 from ..models import CachedVoice, VoiceSample, VoiceSettings
-from ..providers import resolve_elevenlabs_key
+from ..providers import ProviderKeyContext, resolve_elevenlabs_key
 from ..voice_library import VoiceLibrary
 from .cancellation import await_or_cancel_on_disconnect
 
@@ -64,6 +64,8 @@ async def generate_speech(
     cached_voice = voice_cache.get(sample.sha256, namespace=key_context.cache_namespace)
     cache_state = "hit"
     if cached_voice is None:
+        cached_voice = _migrate_legacy_server_cache_entry(voice_cache, sample, key_context)
+    if cached_voice is None:
         cache_state = "miss"
         try:
             clone = await await_or_cancel_on_disconnect(
@@ -98,3 +100,16 @@ async def generate_speech(
         character_count=speech.character_count,
         request_id=speech.request_id,
     )
+
+
+def _migrate_legacy_server_cache_entry(
+    voice_cache: VoiceCache,
+    sample: VoiceSample,
+    key_context: ProviderKeyContext,
+) -> CachedVoice | None:
+    if key_context.source != "server":
+        return None
+    legacy_voice = voice_cache.get(sample.sha256)
+    if legacy_voice is None:
+        return None
+    return voice_cache.set_cached(sample.sha256, legacy_voice, namespace=key_context.cache_namespace)

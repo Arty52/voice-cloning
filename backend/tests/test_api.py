@@ -24,6 +24,7 @@ from voice_cloning.models import (
     VoiceSample,
     VoiceSettings,
 )
+from voice_cloning.providers import resolve_elevenlabs_key
 from voice_cloning.services.speech import SpeechServiceError, generate_speech
 from voice_cloning.voice_library import VoiceLibrary
 
@@ -458,6 +459,34 @@ def test_create_speech_cache_is_scoped_by_provider_key(tmp_path: Path) -> None:
     assert third.headers["x-voice-cache"] == "miss"
     assert len(fake_client.created_samples) == 2
     assert fake_client.create_voice_api_keys == ["browser-key-a", "browser-key-b"]
+
+
+def test_create_speech_migrates_legacy_server_cache_entry(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path, api_key="env-key")
+    fake_client = FakeElevenLabsClient()
+    voice_library = VoiceLibrary(settings)
+    voice_cache = VoiceCache(settings.storage_dir / "voice-cache.json")
+    sample = voice_library.get_sample("default")
+    voice_cache.set(sample, VoiceClone(voice_id="legacy-voice-id", requires_verification=False))
+
+    app = create_app(
+        settings=settings,
+        elevenlabs_client=fake_client,  # type: ignore[arg-type]
+        voice_cache=voice_cache,
+        voice_library=voice_library,
+    )
+    client = TestClient(app)
+
+    response = client.post("/api/speech", data={"text": "Hello from the local app.", "voiceId": "default"})
+
+    key_context = resolve_elevenlabs_key(settings, None)
+    migrated_voice = voice_cache.get(sample.sha256, namespace=key_context.cache_namespace)
+    assert response.status_code == 200
+    assert response.headers["x-voice-cache"] == "hit"
+    assert fake_client.created_samples == []
+    assert fake_client.speech_requests[0][0] == "legacy-voice-id"
+    assert migrated_voice is not None
+    assert migrated_voice.voice_id == "legacy-voice-id"
 
 
 def test_disconnect_cancels_pending_speech_request(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
