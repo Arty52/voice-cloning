@@ -766,6 +766,35 @@ def test_create_speech_uses_tuning_settings(tmp_path: Path) -> None:
     }
 
 
+def test_create_speech_filters_legacy_tuning_for_provider_without_controls(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    provider = FakeNoTuningProvider().bind_settings(settings)
+    app = create_app(
+        settings=settings,
+        provider_registry=ProviderRegistry([provider], default_provider_id="notuning"),
+        voice_cache=VoiceCache(settings.storage_dir / "voice-cache.json"),
+        voice_library=VoiceLibrary(settings),
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/speech",
+        data={
+            "text": "Legacy clients can still post these.",
+            "voiceId": "default",
+            "providerId": "notuning",
+            "stability": "0.42",
+            "similarityBoost": "0.84",
+            "style": "0.2",
+            "speed": "1.1",
+            "useSpeakerBoost": "false",
+        },
+    )
+
+    assert response.status_code == 200
+    assert provider.speech_requests[0][2] == {}
+
+
 def test_create_speech_accepts_generic_voice_settings_and_provider_id(tmp_path: Path) -> None:
     client, fake_client = make_client(tmp_path)
 

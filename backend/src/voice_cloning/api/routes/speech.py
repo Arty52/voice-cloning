@@ -9,7 +9,7 @@ from fastapi.responses import Response
 
 from ...cache import VoiceCache
 from ...config import Settings
-from ...providers import ProviderError, ProviderRegistry, VOICE_PROVIDER_KEY_HEADER
+from ...providers import ProviderError, ProviderRegistry, VoiceProvider, VOICE_PROVIDER_KEY_HEADER
 from ...services.cancellation import SpeechGenerationCanceled
 from ...services.speech import SpeechServiceError, generate_speech
 from ...voice_library import VoiceLibrary
@@ -42,6 +42,7 @@ def create_speech_router(
         try:
             provider = provider_registry.get(providerId)
             voice_settings = _parse_voice_settings(
+                provider=provider,
                 voiceSettings=voiceSettings,
                 stability=stability,
                 similarityBoost=similarityBoost,
@@ -88,6 +89,7 @@ def create_speech_router(
 
 def _parse_voice_settings(
     *,
+    provider: VoiceProvider,
     voiceSettings: str | None,
     stability: float | None,
     similarityBoost: float | None,
@@ -115,4 +117,12 @@ def _parse_voice_settings(
         legacy_settings["speed"] = speed
     if useSpeakerBoost is not None:
         legacy_settings["useSpeakerBoost"] = useSpeakerBoost
-    return legacy_settings or None
+
+    if not legacy_settings:
+        return None
+
+    supported_control_ids = {control.id for control in provider.descriptor.tuning.controls}
+    filtered_settings = {
+        setting_id: value for setting_id, value in legacy_settings.items() if setting_id in supported_control_ids
+    }
+    return filtered_settings or None
