@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 import { DEFAULT_MODEL_ID } from "@/constants"
 import { fetchModels, fetchSubscription } from "@/lib/api"
@@ -21,8 +21,11 @@ export function useVoiceMetadata({ canUseProvider, providerKey, providerStatus }
   const [modelError, setModelError] = useState<string | null>(null)
   const [backendDefaultModelId, setBackendDefaultModelId] = useState<string | null>(null)
   const [selectedModelId, setSelectedModelId] = useState(DEFAULT_MODEL_ID)
+  const subscriptionRequestId = useRef(0)
+  const modelsRequestId = useRef(0)
 
   const loadSubscription = useCallback(async () => {
+    const requestId = (subscriptionRequestId.current += 1)
     if (!canUseProvider) {
       setSubscription(null)
       setSubscriptionStatus("error")
@@ -33,6 +36,9 @@ export function useVoiceMetadata({ canUseProvider, providerKey, providerStatus }
     setSubscriptionError(null)
     try {
       const payload = await fetchSubscription({ providerKey })
+      if (requestId !== subscriptionRequestId.current) {
+        return
+      }
       if (payload.available) {
         setSubscription(payload)
         setSubscriptionStatus("success")
@@ -42,6 +48,9 @@ export function useVoiceMetadata({ canUseProvider, providerKey, providerStatus }
         setSubscriptionError(payload.error || "Quota unavailable.")
       }
     } catch (caught) {
+      if (requestId !== subscriptionRequestId.current) {
+        return
+      }
       setSubscription(null)
       setSubscriptionStatus("error")
       setSubscriptionError(caught instanceof Error ? caught.message : "Unable to load quota.")
@@ -49,6 +58,7 @@ export function useVoiceMetadata({ canUseProvider, providerKey, providerStatus }
   }, [canUseProvider, providerKey])
 
   const loadModels = useCallback(async () => {
+    const requestId = (modelsRequestId.current += 1)
     if (!canUseProvider) {
       setModels([])
       setBackendDefaultModelId(null)
@@ -61,6 +71,9 @@ export function useVoiceMetadata({ canUseProvider, providerKey, providerStatus }
     setModelError(null)
     try {
       const payload = await fetchModels({ providerKey })
+      if (requestId !== modelsRequestId.current) {
+        return
+      }
       const loadedModels = Array.isArray(payload.models) ? payload.models : []
       setBackendDefaultModelId(payload.defaultModelId || null)
       setModels(payload.available ? loadedModels : [])
@@ -77,6 +90,9 @@ export function useVoiceMetadata({ canUseProvider, providerKey, providerStatus }
         setModelError(payload.error || "Model metadata unavailable.")
       }
     } catch (caught) {
+      if (requestId !== modelsRequestId.current) {
+        return
+      }
       setModels([])
       setBackendDefaultModelId(null)
       setSelectedModelId((current) => current || DEFAULT_MODEL_ID)

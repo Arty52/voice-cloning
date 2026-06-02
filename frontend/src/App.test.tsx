@@ -106,6 +106,14 @@ function okAudio(headers: Record<string, string> = {}, body: Blob = audioBlob) {
   )
 }
 
+function deferredResponse() {
+  let resolve: (value: Response) => void = () => undefined
+  const promise = new Promise<Response>((nextResolve) => {
+    resolve = nextResolve
+  })
+  return { promise, resolve }
+}
+
 function expectAbortSignal(signal: AbortSignal | null, aborted: boolean) {
   expect(signal).not.toBeNull()
   expect(signal?.aborted).toBe(aborted)
@@ -276,6 +284,98 @@ describe("App", () => {
     expect(localStorage.getItem(PROVIDER_KEYS_STORAGE_KEY)).toBeNull()
     expect(keyInput).toHaveValue("")
     expect(screen.getByText(".env Fallback")).toBeInTheDocument()
+  })
+
+  it("ignores stale metadata responses after saving a browser key", async () => {
+    const staleSubscription = deferredResponse()
+    const staleModels = deferredResponse()
+    const browserSubscription = {
+      ...subscription,
+      characterCount: 8766,
+      remainingCharacters: 1234,
+    }
+    const browserModel = {
+      ...flashModel,
+      modelId: "browser_model",
+      name: "Browser Model",
+    }
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        if (url === "/api/providers" && !init) {
+          return okJson(providersResponse)
+        }
+        if (url === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "default", voices: [defaultVoice] })
+        }
+        if (url === "/api/subscription" && init?.headers) {
+          return okJson(browserSubscription)
+        }
+        if (url === "/api/subscription" && !init) {
+          return staleSubscription.promise
+        }
+        if (url === "/api/models" && init?.headers) {
+          return okJson({
+            available: true,
+            error: null,
+            defaultModelId: "browser_model",
+            models: [browserModel],
+          })
+        }
+        if (url === "/api/models" && !init) {
+          return staleModels.promise
+        }
+        return okJson({})
+      })
+    )
+    const user = userEvent.setup()
+    render(<App />)
+
+    await screen.findByLabelText(/ElevenLabs API Key/i)
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/subscription", undefined))
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/models", undefined))
+
+    await user.type(screen.getByLabelText(/ElevenLabs API Key/i), "browser-key")
+    await user.click(screen.getByRole("button", { name: /save key/i }))
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/subscription",
+        expect.objectContaining({
+          headers: { [VOICE_PROVIDER_KEY_HEADER]: "browser-key" },
+        })
+      )
+    )
+    expect(await screen.findByText(`${formatTestNumber(1234)} remaining`)).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: /expand/i }))
+    expect(screen.getByLabelText(/model/i)).toHaveValue("browser_model")
+
+    staleSubscription.resolve(
+      new Response(JSON.stringify(subscription), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    )
+    staleModels.resolve(
+      new Response(
+        JSON.stringify({
+          available: true,
+          error: null,
+          defaultModelId: "eleven_multilingual_v2",
+          models: [multilingualModel, flashModel],
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }
+      )
+    )
+    await new Promise((resolve) => window.setTimeout(resolve, 0))
+
+    expect(screen.getByText(`${formatTestNumber(1234)} remaining`)).toBeInTheDocument()
+    expect(screen.queryByText(`${formatTestNumber(9000)} remaining`)).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/model/i)).toHaveValue("browser_model")
   })
 
   it("places cost quota under add voice and expands details", async () => {
