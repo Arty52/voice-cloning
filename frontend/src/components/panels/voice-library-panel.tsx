@@ -127,7 +127,7 @@ export function VoiceLibraryPanel({
             aria-label="Selected voice sample preview"
             controls
             key={selectedVoice.id}
-            src={`/api/voices/${selectedVoice.id}/sample`}
+            src={`/api/voices/${encodeURIComponent(selectedVoice.id)}/sample`}
           />
         ) : (
           <p className="text-sm text-muted-foreground">No voice selected.</p>
