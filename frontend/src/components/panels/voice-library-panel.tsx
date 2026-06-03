@@ -1,5 +1,6 @@
 import { Check, FileAudio, Pencil, Star, Trash2, Volume2 } from "lucide-react"
 
+import { AudioPlayer } from "@/components/audio-player"
 import { ActionMenu } from "@/components/ui/action-menu"
 import { Button } from "@/components/ui/button"
 import { Loading } from "@/components/ui/loading"
@@ -123,9 +124,8 @@ export function VoiceLibraryPanel({
       <div className="mt-4 rounded-md border border-border bg-background/60 p-3">
         <div className="mb-2 text-sm font-medium">Selected Preview</div>
         {selectedVoice ? (
-          <audio
-            aria-label="Selected voice sample preview"
-            controls
+          <AudioPlayer
+            ariaLabel="Selected voice sample preview"
             key={selectedVoice.id}
             src={`/api/voices/${encodeURIComponent(selectedVoice.id)}/sample`}
           />
