@@ -1,7 +1,8 @@
-import { LoaderCircle, RefreshCw, Sparkles, X } from "lucide-react"
+import { RefreshCw, Sparkles, X } from "lucide-react"
 import type { FormEvent, RefObject } from "react"
 
 import { Button } from "@/components/ui/button"
+import { Loading } from "@/components/ui/loading"
 import { Textarea } from "@/components/ui/textarea"
 import type { VoiceAsset } from "@/types"
 
@@ -58,7 +59,7 @@ export function SpeechInputPanel({
         <div className="flex flex-wrap gap-2">
           <Button disabled={!canGenerate} type="submit">
             {isGenerating ? (
-              <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />
+              <Loading aria-hidden="true" size="sm" />
             ) : (
               <Sparkles aria-hidden="true" className="size-4" />
             )}
