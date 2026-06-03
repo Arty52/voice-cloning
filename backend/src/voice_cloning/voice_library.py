@@ -9,7 +9,14 @@ from fastapi import HTTPException, UploadFile
 
 from .config import Settings
 from .models import VoiceAsset, VoiceSample, VoiceSampleMode
-from .samples import load_default_sample, load_sample_file, save_uploaded_sample, slugify_voice_name
+from .samples import (
+    load_default_sample,
+    load_sample_file,
+    load_uploaded_sample,
+    save_sample_file,
+    save_uploaded_sample,
+    slugify_voice_name,
+)
 
 
 class VoiceLibrary:
@@ -51,10 +58,26 @@ class VoiceLibrary:
             raise HTTPException(status_code=500, detail="Voice asset path is invalid.") from exc
         return path
 
-    async def add_upload(self, name: str, upload: UploadFile) -> VoiceAsset:
+    async def add_upload(
+        self,
+        name: str,
+        upload: UploadFile,
+        sample_mode: str | None = None,
+        source_upload: UploadFile | None = None,
+        window_start_seconds: float | None = None,
+        window_duration_seconds: float | None = None,
+    ) -> VoiceAsset:
         display_name = name.strip()
         if not display_name:
             raise HTTPException(status_code=422, detail="Voice name is required.")
+
+        resolved_sample_mode = _normalize_sample_mode(sample_mode)
+        resolved_window_start, resolved_window_duration = _normalize_window_metadata(
+            resolved_sample_mode,
+            source_upload,
+            window_start_seconds,
+            window_duration_seconds,
+        )
 
         manifest = self._read_manifest()
         voice_id = slugify_voice_name(display_name)
@@ -70,7 +93,20 @@ class VoiceLibrary:
         if destination.exists():
             raise HTTPException(status_code=409, detail="A voice asset file with that name already exists.")
 
+        source_destination: Path | None = None
+        source_sample: VoiceSample | None = None
+        if resolved_sample_mode == "sourceWindow":
+            assert source_upload is not None
+            source_extension = Path(source_upload.filename or "").suffix.lower() or ".mp3"
+            source_destination = self.assets_dir / "sources" / f"{voice_id}{source_extension}"
+            if source_destination.exists():
+                raise HTTPException(status_code=409, detail="A source audio file with that name already exists.")
+            source_sample = await load_uploaded_sample(source_upload, self.settings)
+
         saved = await save_uploaded_sample(upload, destination, self.settings)
+        saved_source: VoiceSample | None = None
+        if source_destination is not None and source_sample is not None:
+            saved_source = save_sample_file(source_sample, source_destination)
         asset = VoiceAsset(
             id=voice_id,
             name=display_name,
@@ -79,6 +115,14 @@ class VoiceLibrary:
             sha256=saved.sha256,
             source="upload",
             created_at=datetime.now(UTC).isoformat(),
+            sample_mode=resolved_sample_mode,
+            window_start_seconds=resolved_window_start,
+            window_duration_seconds=resolved_window_duration,
+            source_file_path=source_destination.relative_to(self.assets_dir).as_posix()
+            if source_destination is not None
+            else None,
+            source_content_type=saved_source.content_type if saved_source is not None else None,
+            source_sha256=saved_source.sha256 if saved_source is not None else None,
         )
         manifest["voices"].append(self._asset_to_payload(asset))
         if not manifest.get("defaultVoiceId"):
@@ -282,3 +326,37 @@ def _optional_str(value: Any) -> str | None:
     if isinstance(value, str) and value.strip():
         return value
     return None
+
+
+def _normalize_sample_mode(value: str | None) -> VoiceSampleMode:
+    normalized = (value or "excerpt").strip()
+    if normalized in {"excerpt", "sourceWindow"}:
+        return "sourceWindow" if normalized == "sourceWindow" else "excerpt"
+    raise HTTPException(status_code=422, detail="Sample mode must be excerpt or sourceWindow.")
+
+
+def _normalize_window_metadata(
+    sample_mode: VoiceSampleMode,
+    source_upload: UploadFile | None,
+    window_start_seconds: float | None,
+    window_duration_seconds: float | None,
+) -> tuple[float | None, float | None]:
+    has_window_start = window_start_seconds is not None
+    has_window_duration = window_duration_seconds is not None
+    if has_window_start != has_window_duration:
+        raise HTTPException(status_code=422, detail="Window start and duration must be provided together.")
+
+    if sample_mode == "sourceWindow":
+        if source_upload is None:
+            raise HTTPException(status_code=422, detail="Source file is required for sourceWindow samples.")
+        if window_start_seconds is None or window_duration_seconds is None:
+            raise HTTPException(status_code=422, detail="Window start and duration are required for sourceWindow samples.")
+
+    if window_start_seconds is None or window_duration_seconds is None:
+        return None, None
+
+    if window_start_seconds < 0:
+        raise HTTPException(status_code=422, detail="Window start must be zero or greater.")
+    if window_duration_seconds <= 0:
+        raise HTTPException(status_code=422, detail="Window duration must be greater than zero.")
+    return window_start_seconds, window_duration_seconds
