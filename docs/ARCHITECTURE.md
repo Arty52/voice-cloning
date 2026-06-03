@@ -6,7 +6,7 @@ Voice Clone Lab is a small local app, but changes should still keep clear bounda
 
 - `backend/src/voice_cloning/` contains the FastAPI app, provider adapters, provider registry, local voice library, cache, and configuration. As backend workflows grow, route handlers should split toward service modules and serializer helpers instead of accumulating orchestration in one route file.
 - `frontend/src/` contains the Vite React app, UI components, recorder/storage helpers, and shared utilities. As frontend workflows grow, data loading and mutations should split toward feature hooks and API helpers instead of accumulating in `App.tsx`.
-- `assets/voices/` is local user-provided voice input. Track only documentation/placeholders.
+- `assets/voices/` is local user-provided voice input. Track only documentation/placeholders. Active sample files are the provider-facing clone inputs; optional originals under `assets/voices/sources/` are local-only traceability files.
 - `storage/` is runtime output/cache data. Do not commit generated audio or provider cache files.
 
 ## Backend Boundaries
@@ -18,6 +18,7 @@ Voice Clone Lab is a small local app, but changes should still keep clear bounda
 - Serializer modules own public API response shapes and headers. Preserve route paths, request fields, response fields, and headers unless a change explicitly updates the API contract.
 - Provider key material must never appear in serialized responses. Browser-provided keys may be accepted through explicit request headers, resolved in routes/services, and passed to clients for that request only.
 - Domain helpers should not import FastAPI unless they are specifically route or request/file-upload adapters.
+- Voice asset APIs must keep `filePath`, `contentType`, and `sha256` pointed at the active provider sample. Any retained original source file is metadata only and must not be used for provider cloning unless a later explicit workflow promotes a new excerpt.
 
 ## Frontend Boundaries
 
@@ -26,6 +27,7 @@ Voice Clone Lab is a small local app, but changes should still keep clear bounda
 - API helpers own `/api/*` request construction, error parsing, and response/header parsing.
 - Hooks should be feature scoped: provider keys, voice library, metadata, generated audio storage, speech generation, recording/upload flow, and dialogs are separate responsibilities.
 - Provider-specific tuning controls, presets, defaults, and source links come from `/api/providers`. Frontend UI should render those descriptors generically instead of hardcoding provider-specific tuning constants.
+- Provider-specific sample limits come from `/api/providers`. Frontend upload/crop flows should use those limits to prepare active samples before calling `/api/voices`.
 - Shared constants, types, and formatters belong outside feature components so tests and future features can reuse them without importing a giant app file.
 
 ## Split Before Monolith
