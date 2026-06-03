@@ -27,7 +27,7 @@ const textClasses: Record<LoadingSize, string> = {
 }
 
 const variantClasses: Record<LoadingVariant, string> = {
-  default: "text-primary",
+  default: "",
   secondary: "text-muted-foreground",
   destructive: "text-destructive",
 }
