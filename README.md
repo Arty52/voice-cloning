@@ -28,7 +28,7 @@ It gives you a small voice library, text-to-speech generation, model selection, 
 - Show provider-reported quota remaining from the local backend when available.
 - Select a text-to-speech model for the next generation without rewriting `.env`.
 - Save a browser-local provider API key that overrides `.env` for provider requests.
-- Show actual `x-character-count` and request id metadata after generation when the provider returns it.
+- Show actual `x-character-count`, request id, browser-measured generation time, and settings metadata after generation when available.
 - Cancel an in-flight generation from the browser with a clear provider cost caveat.
 - Persist generated MP3 audio in browser-local storage with an adjustable size cap.
 - Adjust per-request provider voice settings from provider-supplied metadata.
@@ -54,7 +54,7 @@ Providers may charge credits for text-to-speech and voice cloning. For the built
 - selected ElevenLabs model
 - whether a voice sample has already been cloned and cached
 
-The Cost & Quota panel shows a pre-run estimate and the remaining provider-reported character quota when available. Estimates are approximate. After a generation, the app shows the actual `x-character-count` response header when the provider supplies it.
+The Cost & Quota panel shows a pre-run estimate and the remaining provider-reported character quota when available. Estimates are approximate. After a generation, the app shows the actual `x-character-count` response header when the provider supplies it. Generated Audio entries also show browser-measured generation time; this is the local request duration from starting generation until the browser receives the audio blob, not provider-reported compute time.
 
 The optional live smoke test calls ElevenLabs and may consume credits.
 
@@ -318,6 +318,8 @@ The response is `audio/mpeg` with these headers:
 - `X-Character-Count`: actual provider character usage when returned
 - `X-Request-Id`: request id when returned by the provider
 
+Generation elapsed time is not part of the backend/provider response contract. The frontend measures `generationElapsedMs` around the `/api/speech` request and stores it with browser-local generated audio metadata.
+
 Voice clone cache entries are separated by provider and active key fingerprint, so switching browser keys does not reuse another account's cached voice ID.
 
 ## Project Structure
@@ -378,7 +380,7 @@ Remove backend cache data:
 make clean-cache
 ```
 
-Generated audio saved in the browser can be removed from the Generated Audio panel with Remove or Clear All. The panel also lets you choose a browser storage cap of 25 MB, 50 MB, 100 MB, or 250 MB. Lowering the cap prompts before pruning older saved audio.
+Generated audio saved in the browser can be removed from the Generated Audio panel with Remove or Clear All. The panel also lets you choose a browser storage cap of 25 MB, 50 MB, 100 MB, or 250 MB. Lowering the cap prompts before pruning older saved audio. Saved generated audio metadata includes model, provider request metadata when returned, tuning snapshot metadata when available, and browser-measured generation elapsed time for new generations.
 
 ### Browser voice recording
 
