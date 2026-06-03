@@ -10,6 +10,12 @@ import {
 } from "@/lib/provider-keys"
 import type { AsyncStatus, ProviderKeySource, VoiceProvider } from "@/types"
 
+const DEFAULT_PROVIDER_SAMPLE = {
+  maxWindowSeconds: 120,
+  recommendedMinSeconds: 60,
+  recommendedMaxSeconds: 120,
+}
+
 export function useProviderKeys() {
   const [providers, setProviders] = useState<VoiceProvider[]>([])
   const [defaultProviderId, setDefaultProviderId] = useState("elevenlabs")
@@ -92,6 +98,7 @@ function normalizeVoiceProvider(provider: VoiceProvider): VoiceProvider {
   return {
     ...provider,
     links: Array.isArray(provider.links) ? provider.links : [],
+    sample: normalizeProviderSample(provider.sample),
     tuning: {
       controls: Array.isArray(provider.tuning?.controls) ? provider.tuning.controls : [],
       presets: Array.isArray(provider.tuning?.presets) ? provider.tuning.presets : [],
@@ -101,4 +108,22 @@ function normalizeVoiceProvider(provider: VoiceProvider): VoiceProvider {
           : {},
     },
   }
+}
+
+function normalizeProviderSample(sample: VoiceProvider["sample"]): VoiceProvider["sample"] {
+  return {
+    maxWindowSeconds: positiveNumberOrDefault(sample?.maxWindowSeconds, DEFAULT_PROVIDER_SAMPLE.maxWindowSeconds),
+    recommendedMinSeconds: positiveNumberOrDefault(
+      sample?.recommendedMinSeconds,
+      DEFAULT_PROVIDER_SAMPLE.recommendedMinSeconds
+    ),
+    recommendedMaxSeconds: positiveNumberOrDefault(
+      sample?.recommendedMaxSeconds,
+      DEFAULT_PROVIDER_SAMPLE.recommendedMaxSeconds
+    ),
+  }
+}
+
+function positiveNumberOrDefault(value: number | undefined, fallback: number) {
+  return Number.isFinite(value) && value > 0 ? value : fallback
 }

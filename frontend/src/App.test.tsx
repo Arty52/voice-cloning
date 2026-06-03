@@ -19,6 +19,12 @@ const defaultVoice = {
   sha256: "default-hash",
   source: "default" as const,
   createdAt: "2026-05-28T00:00:00+00:00",
+  sampleMode: "excerpt" as const,
+  windowStartSeconds: null,
+  windowDurationSeconds: null,
+  sourceFilePath: null,
+  sourceContentType: null,
+  sourceSha256: null,
 }
 
 const voiceCloneVoice = {
@@ -29,6 +35,12 @@ const voiceCloneVoice = {
   sha256: "voice-clone-01-hash",
   source: "upload" as const,
   createdAt: "2026-05-28T00:00:00+00:00",
+  sampleMode: "excerpt" as const,
+  windowStartSeconds: null,
+  windowDurationSeconds: null,
+  sourceFilePath: null,
+  sourceContentType: null,
+  sourceSha256: null,
 }
 
 const subscription = {
@@ -158,6 +170,11 @@ const providersResponse: ProvidersResponse = {
           href: "https://elevenlabs.io/docs/api-reference/models/list",
         },
       ],
+      sample: {
+        maxWindowSeconds: 120,
+        recommendedMinSeconds: 60,
+        recommendedMaxSeconds: 120,
+      },
       tuning: elevenLabsTuning,
     },
   ],
