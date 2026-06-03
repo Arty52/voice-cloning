@@ -136,6 +136,26 @@ export type GeneratedResult = {
   generatedAt: string
 }
 
+export type GeneratedAudioTuningMode = "custom" | "default" | "preset"
+
+export type GeneratedAudioAdjustedSetting = {
+  id: string
+  label: string
+  nominalValue: ProviderTuningValue
+  nominalValueLabel: string
+  value: ProviderTuningValue
+  valueLabel: string
+}
+
+export type GeneratedAudioTuningMetadata = {
+  adjustedSettings: GeneratedAudioAdjustedSetting[]
+  mode: GeneratedAudioTuningMode
+  presetId: string | null
+  presetLabel: string | null
+  providerId: string
+  providerLabel: string
+}
+
 export type ConfirmationState = {
   body: string
   confirmLabel: string
