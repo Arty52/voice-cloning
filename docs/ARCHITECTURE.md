@@ -28,6 +28,7 @@ Voice Clone Lab is a small local app, but changes should still keep clear bounda
 - Hooks should be feature scoped: provider keys, voice library, metadata, generated audio storage, speech generation, recording/upload flow, and dialogs are separate responsibilities.
 - Provider-specific tuning controls, presets, defaults, and source links come from `/api/providers`. Frontend UI should render those descriptors generically instead of hardcoding provider-specific tuning constants.
 - Provider-specific sample limits come from `/api/providers`. Frontend upload/crop flows should use those limits to prepare active samples before calling `/api/voices`.
+- Browser audio-window utilities own decode, clamping, and active excerpt generation. They should produce provider-facing excerpts without server-side ffmpeg, while upload hooks decide whether to include the local-only original source file.
 - Shared constants, types, and formatters belong outside feature components so tests and future features can reuse them without importing a giant app file.
 
 ## Split Before Monolith
