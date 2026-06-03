@@ -20,29 +20,53 @@ import {
   revokeGeneratedAudioUrls,
   storedAudioToResult,
 } from "@/lib/generated-audio-view-model"
-import type { GeneratedResult } from "@/types"
+import type { AsyncStatus, GeneratedResult } from "@/types"
+
+export type GeneratedAudioMutation = "clear" | "delete" | "storage-limit"
+
+type GeneratedAudioMutationState = {
+  id: number
+  type: GeneratedAudioMutation
+}
 
 export function useGeneratedAudioLibrary() {
   const [generatedAudioItems, setGeneratedAudioItems] = useState<GeneratedResult[]>([])
   const [generatedAudioUsage, setGeneratedAudioUsage] = useState<GeneratedAudioUsage | null>(null)
   const [generatedAudioStorageError, setGeneratedAudioStorageError] = useState<string | null>(null)
+  const [generatedAudioStatus, setGeneratedAudioStatus] = useState<AsyncStatus>("idle")
+  const [generatedAudioMutationState, setGeneratedAudioMutationState] = useState<GeneratedAudioMutationState | null>(null)
   const [storageLimitBytes, setStorageLimitBytes] = useState(() => getGeneratedAudioStorageLimitBytes())
   const generatedAudioItemsRef = useRef<GeneratedResult[]>([])
+  const generatedAudioMutationIdRef = useRef(0)
 
   useEffect(() => {
+    let isMounted = true
+
     async function loadGeneratedAudioLibrary() {
+      setGeneratedAudioStatus("loading")
       try {
         const limitBytes = getGeneratedAudioStorageLimitBytes()
         const [records, usage] = await Promise.all([listGeneratedAudio(), getGeneratedAudioUsage(limitBytes)])
+        if (!isMounted) {
+          return
+        }
         replaceGeneratedAudioItems(records)
         setGeneratedAudioUsage(usage)
         setGeneratedAudioStorageError(null)
+        setGeneratedAudioStatus("success")
       } catch (caught) {
+        if (!isMounted) {
+          return
+        }
         setGeneratedAudioStorageError(caught instanceof Error ? caught.message : "Unable to load generated audio.")
+        setGeneratedAudioStatus("error")
       }
     }
 
     void loadGeneratedAudioLibrary()
+    return () => {
+      isMounted = false
+    }
   }, [])
 
   useEffect(() => {
@@ -66,6 +90,17 @@ export function useGeneratedAudioLibrary() {
   function showTemporaryGeneratedAudio(record: StoredGeneratedAudio) {
     const temporaryItem = storedAudioToResult(record)
     setGeneratedAudioItems((previous) => [temporaryItem, ...previous])
+  }
+
+  function startGeneratedAudioMutation(type: GeneratedAudioMutation) {
+    const id = generatedAudioMutationIdRef.current + 1
+    generatedAudioMutationIdRef.current = id
+    setGeneratedAudioMutationState({ id, type })
+    return id
+  }
+
+  function clearGeneratedAudioMutation(id: number) {
+    setGeneratedAudioMutationState((current) => (current?.id === id ? null : current))
   }
 
   async function persistGeneratedAudio(input: SaveGeneratedAudioInput, limitBytes: number) {
@@ -94,6 +129,7 @@ export function useGeneratedAudioLibrary() {
       return
     }
 
+    const mutationId = startGeneratedAudioMutation("delete")
     try {
       const usage = await deleteGeneratedAudio(id)
       removeGeneratedAudioItemFromState(id)
@@ -101,6 +137,8 @@ export function useGeneratedAudioLibrary() {
       setGeneratedAudioStorageError(null)
     } catch (caught) {
       setGeneratedAudioStorageError(caught instanceof Error ? caught.message : "Unable to remove generated audio.")
+    } finally {
+      clearGeneratedAudioMutation(mutationId)
     }
   }
 
@@ -119,6 +157,7 @@ export function useGeneratedAudioLibrary() {
   }
 
   async function clearAllGeneratedAudio() {
+    const mutationId = startGeneratedAudioMutation("clear")
     try {
       const usage = await clearGeneratedAudio()
       setGeneratedAudioItems((previous) => {
@@ -129,10 +168,13 @@ export function useGeneratedAudioLibrary() {
       setGeneratedAudioStorageError(null)
     } catch (caught) {
       setGeneratedAudioStorageError(caught instanceof Error ? caught.message : "Unable to clear generated audio.")
+    } finally {
+      clearGeneratedAudioMutation(mutationId)
     }
   }
 
   async function applyGeneratedAudioStorageLimit(nextLimitBytes: number) {
+    const mutationId = startGeneratedAudioMutation("storage-limit")
     try {
       const result = await updateGeneratedAudioStorageLimitBytes(nextLimitBytes)
       const records = await listGeneratedAudio()
@@ -142,6 +184,8 @@ export function useGeneratedAudioLibrary() {
       setGeneratedAudioStorageError(null)
     } catch (caught) {
       setGeneratedAudioStorageError(caught instanceof Error ? caught.message : "Unable to update generated audio storage.")
+    } finally {
+      clearGeneratedAudioMutation(mutationId)
     }
   }
 
@@ -156,7 +200,9 @@ export function useGeneratedAudioLibrary() {
     applyGeneratedAudioStorageLimit,
     clearAllGeneratedAudio,
     generatedAudioItems,
+    generatedAudioMutation: generatedAudioMutationState?.type ?? null,
     generatedAudioStorageError,
+    generatedAudioStatus,
     generatedAudioUsage,
     handleDeleteGeneratedAudio,
     persistGeneratedAudio,

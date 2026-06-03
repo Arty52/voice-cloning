@@ -11,11 +11,14 @@ import {
 import { isTemporaryGeneratedAudioId } from "@/lib/generated-audio-view-model"
 import { formatBytes, formatGeneratedAudioCountBadge, formatNumber } from "@/lib/formatters"
 import { cn } from "@/lib/utils"
-import type { GeneratedResult, RequestStatus } from "@/types"
+import type { GeneratedAudioMutation } from "@/hooks/use-generated-audio-library"
+import type { AsyncStatus, GeneratedResult, RequestStatus } from "@/types"
 
 type GeneratedAudioPanelProps = {
   error: string | null
   items: GeneratedResult[]
+  libraryStatus: AsyncStatus
+  mutationStatus: GeneratedAudioMutation | null
   onClear: () => void
   onDelete: (id: string) => void
   onStorageLimitChange: (limitBytes: number) => void
@@ -28,6 +31,8 @@ type GeneratedAudioPanelProps = {
 export function GeneratedAudioPanel({
   error,
   items,
+  libraryStatus,
+  mutationStatus,
   onClear,
   onDelete,
   onStorageLimitChange,
@@ -49,9 +54,10 @@ export function GeneratedAudioPanel({
     usage?.itemCount ?? items.filter((item) => !isTemporaryGeneratedAudioId(item.id)).length
   const temporaryItemCount = Math.max(0, items.length - savedItemCount)
   const itemCountBadge = formatGeneratedAudioCountBadge(savedItemCount, temporaryItemCount)
+  const isBusy = libraryStatus === "idle" || libraryStatus === "loading" || mutationStatus !== null
 
   return (
-    <section className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5">
+    <section aria-busy={isBusy} className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-medium">Generated Audio</h2>
