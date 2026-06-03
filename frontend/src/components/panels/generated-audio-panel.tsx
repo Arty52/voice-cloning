@@ -144,7 +144,7 @@ export function GeneratedAudioPanel({
 
 function GeneratedAudioSkeletonList() {
   return (
-    <div aria-label="Loading Generated Audio" className="flex flex-col gap-3" role="status">
+    <div aria-label="Loading Generated Audio Archive" className="flex flex-col gap-3" role="status">
       {[0, 1].map((item) => (
         <div aria-hidden="true" className="rounded-md border border-border bg-background/60 p-3" key={item}>
           <div className="mb-3 flex items-start justify-between gap-3">
