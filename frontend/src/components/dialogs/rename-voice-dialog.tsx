@@ -100,7 +100,7 @@ export function RenameVoiceDialog({
             </Button>
             <Button disabled={isSaving || name.trim().length === 0} type="submit">
               {isSaving ? <Loading aria-hidden="true" size="sm" /> : null}
-              Rename
+              {isSaving ? "Renaming Voice" : "Rename"}
             </Button>
           </div>
         </form>

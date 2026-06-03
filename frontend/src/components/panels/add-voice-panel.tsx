@@ -51,6 +51,9 @@ export function AddVoicePanel({
   uploadPreviewUrl,
   voiceSampleInputMode,
 }: AddVoicePanelProps) {
+  const recorderLoadingLabel =
+    recorderStatus === "starting" ? "Starting Recorder" : recorderStatus === "stopping" ? "Finalizing Recording" : null
+
   return (
     <form className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5" onSubmit={handleUpload}>
       <div className="mb-4 flex items-center justify-between gap-3">
@@ -132,10 +135,15 @@ export function AddVoicePanel({
                 {recorderError}
               </div>
             ) : null}
+            {recorderLoadingLabel ? (
+              <div className="mb-3 rounded-md border border-border bg-background/60 p-3">
+                <Loading text={recorderLoadingLabel} variant="secondary" />
+              </div>
+            ) : null}
             <div className="flex flex-wrap gap-2">
               <Button disabled={isUploading || isRecorderBusy} onClick={handleStartRecording} size="sm" type="button">
                 <Mic aria-hidden="true" className="size-4" />
-                {recorderStatus === "starting" ? "Starting..." : "Start Recording"}
+                {recorderStatus === "starting" ? "Starting Recorder" : "Start Recording"}
               </Button>
               <Button disabled={!isRecording} onClick={handleStopRecording} size="sm" type="button" variant="secondary">
                 <Square aria-hidden="true" className="size-4" />
@@ -176,7 +184,7 @@ export function AddVoicePanel({
           ) : (
             <Save aria-hidden="true" className="size-4" />
           )}
-          {isUploading ? "Saving..." : "Save Voice"}
+          {isUploading ? "Saving Voice" : "Save Voice"}
         </Button>
       </div>
     </form>

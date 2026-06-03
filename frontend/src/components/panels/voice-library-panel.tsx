@@ -140,7 +140,7 @@ export function VoiceLibraryPanel({
         ) : (
           <Star aria-hidden="true" className="size-4" />
         )}
-        {selectedVoice?.id === defaultVoiceId ? "Default Voice" : "Set as Default"}
+        {isSettingDefault ? "Setting Default Voice" : selectedVoice?.id === defaultVoiceId ? "Default Voice" : "Set as Default"}
       </Button>
     </section>
   )
