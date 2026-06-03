@@ -1,4 +1,4 @@
-import { type ChangeEvent, type FormEvent, useEffect, useRef, useState } from "react"
+import { type ChangeEvent, type FormEvent, useEffect, useMemo, useRef, useState } from "react"
 
 import { clampAudioWindow, createWindowedAudioFile, decodeAudioFile, type AudioWindow } from "@/lib/audio-window"
 import { addVoice } from "@/lib/api"
@@ -36,6 +36,17 @@ export function useVoiceSampleInput({ onVoiceSaved, providerSample }: UseVoiceSa
   const uploadPreparationIdRef = useRef(0)
 
   const sampleLimits = providerSample ?? DEFAULT_PROVIDER_SAMPLE
+  const clampedUploadWindow = useMemo(() => {
+    if (voiceSampleInputMode !== "upload" || uploadDurationSeconds === null || uploadWindow === null) {
+      return uploadWindow
+    }
+    return clampAudioWindow(
+      uploadDurationSeconds,
+      sampleLimits.maxWindowSeconds,
+      uploadWindow.startSeconds,
+      uploadWindow.durationSeconds
+    )
+  }, [sampleLimits.maxWindowSeconds, uploadDurationSeconds, uploadWindow, voiceSampleInputMode])
   const isUploading = uploadStatus === "loading"
   const isPreparingSample = uploadPreparationStatus === "loading"
   const isRecording = recorderStatus === "recording"
@@ -43,7 +54,7 @@ export function useVoiceSampleInput({ onVoiceSaved, providerSample }: UseVoiceSa
   const canUpload =
     uploadName.trim().length > 0 &&
     uploadFile !== null &&
-    (voiceSampleInputMode === "record" || uploadWindow !== null) &&
+    (voiceSampleInputMode === "record" || clampedUploadWindow !== null) &&
     !isUploading &&
     !isPreparingSample &&
     !isRecorderBusy
@@ -175,15 +186,16 @@ export function useVoiceSampleInput({ onVoiceSaved, providerSample }: UseVoiceSa
     setUploadStatus("loading")
     setUploadError(null)
     try {
+      const selectedUploadWindow = clampedUploadWindow
       const activeSampleFile =
-        voiceSampleInputMode === "upload" && uploadWindow
-          ? await createWindowedAudioFile({ file: uploadFile, window: uploadWindow })
+        voiceSampleInputMode === "upload" && selectedUploadWindow
+          ? await createWindowedAudioFile({ file: uploadFile, window: selectedUploadWindow })
           : uploadFile
       const payload = await addVoice(uploadName.trim(), activeSampleFile, {
         sampleMode: voiceSampleInputMode === "upload" ? sampleMode : "excerpt",
         sourceFile: voiceSampleInputMode === "upload" && sampleMode === "sourceWindow" ? uploadFile : null,
-        windowDurationSeconds: voiceSampleInputMode === "upload" ? uploadWindow?.durationSeconds : null,
-        windowStartSeconds: voiceSampleInputMode === "upload" ? uploadWindow?.startSeconds : null,
+        windowDurationSeconds: voiceSampleInputMode === "upload" ? selectedUploadWindow?.durationSeconds : null,
+        windowStartSeconds: voiceSampleInputMode === "upload" ? selectedUploadWindow?.startSeconds : null,
       })
       onVoiceSaved(payload.voice)
       setUploadName("")
@@ -233,7 +245,7 @@ export function useVoiceSampleInput({ onVoiceSaved, providerSample }: UseVoiceSa
     uploadName,
     uploadPreviewUrl,
     uploadStatus,
-    uploadWindow,
+    uploadWindow: clampedUploadWindow,
     voiceSampleInputMode,
   }
 
