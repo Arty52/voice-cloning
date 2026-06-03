@@ -2,6 +2,7 @@ import { BarChart3, Check, ChevronDown, ExternalLink, Gauge, RefreshCw } from "l
 import type { ReactNode } from "react"
 
 import { Button } from "@/components/ui/button"
+import { Loading } from "@/components/ui/loading"
 import { BACKEND_DEFAULT_MODEL_LABEL } from "@/constants"
 import { formatNumber } from "@/lib/formatters"
 import { cn } from "@/lib/utils"
@@ -49,10 +50,11 @@ export function CostQuotaPanel({
   subscriptionStatus,
 }: CostQuotaPanelProps) {
   const isLoading = subscriptionStatus === "loading" || modelStatus === "loading"
+  const isSubscriptionLoading = subscriptionStatus === "loading"
   const detailsId = "cost-quota-details"
   const quotaStatus =
-    subscriptionStatus === "loading"
-      ? "Loading quota..."
+    isSubscriptionLoading
+      ? <Loading text="Loading Quota" size="sm" variant="secondary" />
       : subscription
         ? `${formatNumber(subscription.remainingCharacters)} remaining`
         : "Quota unavailable"
@@ -101,7 +103,10 @@ export function CostQuotaPanel({
 
       <div aria-hidden={!isExpanded} className="mt-4 space-y-4" hidden={!isExpanded} id={detailsId}>
         <div className="flex items-center justify-between gap-3 border-b border-border pb-3">
-          <div className="text-sm font-medium">Details</div>
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <span>Details</span>
+            {isLoading ? <Loading text="Refreshing Metadata" size="sm" variant="secondary" /> : null}
+          </div>
           <Button
             aria-label="Refresh cost and quota"
             disabled={isLoading}
@@ -182,14 +187,16 @@ export function CostQuotaPanel({
   )
 }
 
-function MetricTile({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
+function MetricTile({ icon, label, value }: { icon: ReactNode; label: string; value: ReactNode }) {
   return (
     <div className="min-w-0 sm:px-3 first:sm:pl-0">
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         {icon}
         <span>{label}</span>
       </div>
-      <div className="mt-2 truncate font-mono text-sm tabular-nums text-foreground">{value}</div>
+      <div className="mt-2 min-h-5 truncate text-sm text-foreground">
+        {typeof value === "string" ? <span className="font-mono tabular-nums">{value}</span> : value}
+      </div>
     </div>
   )
 }
