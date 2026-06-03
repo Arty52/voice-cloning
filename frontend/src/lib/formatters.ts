@@ -19,6 +19,30 @@ export function formatRecordingDuration(durationSeconds: number) {
   return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`
 }
 
+export function formatGenerationElapsedTime(elapsedMs: number) {
+  if (!Number.isFinite(elapsedMs)) {
+    return "unknown time"
+  }
+  const normalizedMs = Math.max(0, Math.round(elapsedMs))
+  if (normalizedMs === 0) {
+    return "0s"
+  }
+  if (normalizedMs < 100) {
+    return "< 0.1s"
+  }
+  if (normalizedMs < 10_000) {
+    const tenths = Math.round(normalizedMs / 100) / 10
+    return `${tenths.toFixed(1)}s`
+  }
+  const roundedSeconds = Math.round(normalizedMs / 1000)
+  if (roundedSeconds < 60) {
+    return `${roundedSeconds}s`
+  }
+  const minutes = Math.floor(roundedSeconds / 60)
+  const remainingSeconds = roundedSeconds % 60
+  return `${minutes}m ${remainingSeconds}s`
+}
+
 export function formatGeneratedAudioTime(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) {
