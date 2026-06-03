@@ -3,6 +3,10 @@ import { describe, expect, it } from "vitest"
 import { buildGeneratedAudioTuningMetadata } from "./generated-audio-metadata"
 import type { VoiceProvider } from "@/types"
 
+const NUMBER_FORMATTER = new Intl.NumberFormat(undefined, {
+  maximumFractionDigits: 2,
+})
+
 const provider = {
   id: "test-provider",
   label: "Test Provider",
@@ -133,9 +137,9 @@ describe("buildGeneratedAudioTuningMetadata", () => {
           id: "stability",
           label: "Stability",
           nominalValue: 0.5,
-          nominalValueLabel: "0.5",
+          nominalValueLabel: formatNumberLabel(0.5),
           value: 0.425,
-          valueLabel: "0.43",
+          valueLabel: formatNumberLabel(0.425),
         },
         {
           id: "mode",
@@ -176,8 +180,8 @@ describe("buildGeneratedAudioTuningMetadata", () => {
         {
           id: "stability",
           label: "Stability",
-          nominalValueLabel: "0.5",
-          valueLabel: "0.4",
+          nominalValueLabel: formatNumberLabel(0.5),
+          valueLabel: formatNumberLabel(0.4),
         },
       ],
       mode: "custom",
@@ -204,4 +208,64 @@ describe("buildGeneratedAudioTuningMetadata", () => {
       presetLabel: null,
     })
   })
+
+  it("does not mark stringly typed defaults as adjusted when submitted values are equivalent", () => {
+    const stringlyProvider: VoiceProvider = {
+      ...provider,
+      tuning: {
+        controls: [
+          {
+            defaultValue: "0.5",
+            description: "Controls how stable the generated voice sounds.",
+            id: "stability",
+            label: "Stability",
+            type: "slider",
+          },
+          {
+            defaultValue: "false",
+            description: "Enhances speaker similarity.",
+            id: "enhanced",
+            label: "Enhanced",
+            type: "toggle",
+          },
+          {
+            defaultValue: 2,
+            description: "Selects the generation mode.",
+            id: "mode",
+            label: "Mode",
+            options: [
+              { label: "One", value: 1 },
+              { label: "Two", value: 2 },
+            ],
+            type: "select",
+          },
+        ],
+        defaultValues: {
+          enhanced: "false",
+          mode: 2,
+          stability: "0.5",
+        },
+        presets: [],
+      },
+    }
+
+    expect(
+      buildGeneratedAudioTuningMetadata({
+        provider: stringlyProvider,
+        selectedPresetId: "custom",
+        tuning: {
+          enhanced: false,
+          mode: "2",
+          stability: 0.5,
+        },
+      })
+    ).toMatchObject({
+      adjustedSettings: [],
+      mode: "default",
+    })
+  })
 })
+
+function formatNumberLabel(value: number) {
+  return NUMBER_FORMATTER.format(value)
+}

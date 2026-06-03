@@ -52,7 +52,7 @@ function adjustedSettingForControl(
   const nominalValue = defaultValues[control.id] ?? control.defaultValue
   const submittedValue = tuning[control.id] ?? nominalValue
 
-  if (submittedValue === nominalValue) {
+  if (tuningValuesEquivalent(control, submittedValue, nominalValue)) {
     return null
   }
 
@@ -64,6 +64,27 @@ function adjustedSettingForControl(
     value: submittedValue,
     valueLabel: formatTuningValue(control, submittedValue),
   }
+}
+
+function tuningValuesEquivalent(
+  control: ProviderTuningControl,
+  left: ProviderTuningValue,
+  right: ProviderTuningValue
+) {
+  return comparisonValue(control, left) === comparisonValue(control, right)
+}
+
+function comparisonValue(control: ProviderTuningControl, value: ProviderTuningValue) {
+  if (control.type === "toggle") {
+    return value === true || value === "true"
+  }
+
+  if (control.type === "slider") {
+    const numericValue = Number(value)
+    return Number.isFinite(numericValue) ? numericValue : String(value)
+  }
+
+  return String(value)
 }
 
 function formatTuningValue(control: ProviderTuningControl, value: ProviderTuningValue) {
