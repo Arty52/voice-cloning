@@ -6,16 +6,19 @@ import {
   CANCEL_GENERATION_CONFIRMATION,
 } from "@/constants"
 import { createSpeech, hasModel } from "@/lib/api"
+import { buildGeneratedAudioTuningMetadata } from "@/lib/generated-audio-metadata"
 import type { SaveGeneratedAudioInput } from "@/lib/generated-audio-storage"
-import type { GeneratedResult, ModelOption, RequestStatus, VoiceAsset, VoiceTuningValues } from "@/types"
+import type { GeneratedResult, ModelOption, RequestStatus, VoiceAsset, VoiceProvider, VoiceTuningValues } from "@/types"
 
 type GenerateSpeechInput = {
   backendDefaultModelId: string | null
   canUseProvider: boolean
   models: ModelOption[]
+  provider: VoiceProvider | null
   providerId: string | null
   providerKey: string | null
   selectedModelId: string
+  selectedTuningPresetId: string
   selectedVoice: VoiceAsset | null
   storageLimitBytes: number
   text: string
@@ -42,9 +45,11 @@ export function useSpeechGeneration({ persistGeneratedAudio }: UseSpeechGenerati
     backendDefaultModelId,
     canUseProvider,
     models,
+    provider,
     providerId,
     providerKey,
     selectedModelId,
+    selectedTuningPresetId,
     selectedVoice,
     storageLimitBytes,
     text,
@@ -93,6 +98,11 @@ export function useSpeechGeneration({ persistGeneratedAudio }: UseSpeechGenerati
         createdAt,
         modelId: response.modelId || submittedModelId || backendDefaultModelId || BACKEND_DEFAULT_MODEL_LABEL,
         requestId: response.requestId,
+        tuningMetadata: buildGeneratedAudioTuningMetadata({
+          provider,
+          selectedPresetId: selectedTuningPresetId,
+          tuning,
+        }),
         voiceId: response.voiceId || "unknown",
         voiceName: selectedVoice.name,
       }

@@ -17,6 +17,7 @@ export function storedAudioToResult(record: StoredGeneratedAudio): GeneratedResu
     modelId: record.modelId,
     requestId: record.requestId,
     sizeBytes: record.sizeBytes,
+    tuningMetadata: record.tuningMetadata ?? null,
     url: URL.createObjectURL(record.blob),
     voiceId: record.voiceId,
     voiceName: record.voiceName,

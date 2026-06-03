@@ -1,3 +1,5 @@
+import type { GeneratedAudioTuningMetadata } from "@/types"
+
 export const GENERATED_AUDIO_DB_NAME = "voice-clone-generated-audio"
 export const GENERATED_AUDIO_STORE_NAME = "generated-audio"
 export const GENERATED_AUDIO_STORAGE_LIMIT_KEY = "voice-clone-generated-audio-limit-bytes"
@@ -22,6 +24,7 @@ export type StoredGeneratedAudio = {
   modelId: string
   characterCount: number | null
   requestId: string | null
+  tuningMetadata?: GeneratedAudioTuningMetadata | null
 }
 
 export type SaveGeneratedAudioInput = {
@@ -36,6 +39,7 @@ export type SaveGeneratedAudioInput = {
   modelId: string
   characterCount: number | null
   requestId: string | null
+  tuningMetadata?: GeneratedAudioTuningMetadata | null
 }
 
 export type GeneratedAudioUsage = {
@@ -77,6 +81,7 @@ export async function saveGeneratedAudio(
     contentType: input.contentType || input.blob.type || "audio/mpeg",
     createdAt: input.createdAt ?? new Date().toISOString(),
     sizeBytes: input.blob.size,
+    tuningMetadata: input.tuningMetadata ?? null,
   }
 
   if (item.sizeBytes > resolvedLimitBytes) {

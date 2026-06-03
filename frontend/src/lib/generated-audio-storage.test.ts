@@ -16,6 +16,25 @@ import {
   updateGeneratedAudioStorageLimitBytes,
   type SaveGeneratedAudioInput,
 } from "./generated-audio-storage"
+import type { GeneratedAudioTuningMetadata } from "@/types"
+
+const tuningMetadata: GeneratedAudioTuningMetadata = {
+  adjustedSettings: [
+    {
+      id: "style",
+      label: "Style",
+      nominalValue: 0,
+      nominalValueLabel: "0",
+      value: 0.35,
+      valueLabel: "0.35",
+    },
+  ],
+  mode: "preset",
+  presetId: "animated",
+  presetLabel: "Animated Dialogue",
+  providerId: "elevenlabs",
+  providerLabel: "ElevenLabs",
+}
 
 function deleteDatabase(name: string) {
   return new Promise<void>((resolve, reject) => {
@@ -68,7 +87,10 @@ describe("generated audio storage", () => {
 
   it("saves generated audio and lists newest first", async () => {
     await saveGeneratedAudio(audioInput({ createdAt: "2026-05-28T10:00:00.000Z", id: "first" }), 20)
-    await saveGeneratedAudio(audioInput({ createdAt: "2026-05-28T10:01:00.000Z", id: "second" }), 20)
+    await saveGeneratedAudio(
+      audioInput({ createdAt: "2026-05-28T10:01:00.000Z", id: "second", tuningMetadata }),
+      20
+    )
 
     const records = await listGeneratedAudio()
 
@@ -81,6 +103,7 @@ describe("generated audio storage", () => {
       modelId: "eleven_multilingual_v2",
       requestId: "req_test_123",
       sizeBytes: 4,
+      tuningMetadata,
       voiceId: "voice-123",
       voiceName: "Default voice",
     })
@@ -90,6 +113,12 @@ describe("generated audio storage", () => {
       remainingBytes: 12,
       usedBytes: 8,
     })
+  })
+
+  it("stores null tuning metadata when no metadata is supplied", async () => {
+    await saveGeneratedAudio(audioInput({ id: "without-metadata" }), 20)
+
+    expect((await listGeneratedAudio())[0].tuningMetadata).toBeNull()
   })
 
   it("deletes one record and clears all records", async () => {
