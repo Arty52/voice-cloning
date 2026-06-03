@@ -6,6 +6,7 @@ import { RenameVoiceDialog } from "@/components/dialogs/rename-voice-dialog"
 import { AddVoicePanel } from "@/components/panels/add-voice-panel"
 import { CostQuotaPanel } from "@/components/panels/cost-quota-panel"
 import { GeneratedAudioPanel } from "@/components/panels/generated-audio-panel"
+import { LatestGeneratedAudioPanel } from "@/components/panels/latest-generated-audio-panel"
 import { ProviderKeysPanel } from "@/components/panels/provider-keys-panel"
 import { SpeechInputPanel } from "@/components/panels/speech-input-panel"
 import { VoiceLibraryPanel } from "@/components/panels/voice-library-panel"
@@ -18,6 +19,7 @@ import { useSpeechGeneration } from "@/hooks/use-speech-generation"
 import { useVoiceLibrary } from "@/hooks/use-voice-library"
 import { useVoiceMetadata } from "@/hooks/use-voice-metadata"
 import { useVoiceSampleInput } from "@/hooks/use-voice-sample-input"
+import { isTemporaryGeneratedAudioId } from "@/lib/generated-audio-view-model"
 import { formatBytes } from "@/lib/formatters"
 import type {
   ProviderTuningControl,
@@ -48,6 +50,7 @@ function App() {
     values: {},
   })
   const [isCostQuotaExpanded, setIsCostQuotaExpanded] = useState(false)
+  const [latestGeneratedAudioId, setLatestGeneratedAudioId] = useState<string | null>(null)
   const textRef = useRef<HTMLTextAreaElement | null>(null)
   const confirmation = useConfirmation()
   const providerKeys = useProviderKeys()
@@ -80,7 +83,17 @@ function App() {
   const activeTuningState = tuningState.providerId === activeProviderId ? tuningState : defaultTuningState
   const tuning = activeTuningState.values
   const selectedTuningPresetId = activeTuningState.selectedPresetId
-  const result = generatedAudio.generatedAudioItems[0] ?? null
+  const latestGeneratedAudioItem = useMemo(() => {
+    if (!latestGeneratedAudioId) {
+      return null
+    }
+    return generatedAudio.generatedAudioItems.find((item) => item.id === latestGeneratedAudioId) ?? null
+  }, [generatedAudio.generatedAudioItems, latestGeneratedAudioId])
+  const latestStorageError =
+    latestGeneratedAudioItem && isTemporaryGeneratedAudioId(latestGeneratedAudioItem.id)
+      ? generatedAudio.generatedAudioStorageError
+      : null
+  const result = latestGeneratedAudioItem ?? generatedAudio.generatedAudioItems[0] ?? null
   const characterCount = useMemo(() => text.trim().length, [text])
   const modelMultiplier = selectedModel?.characterCostMultiplier ?? null
   const estimatedCredits = modelMultiplier === null ? characterCount : Math.ceil(characterCount * modelMultiplier)
@@ -99,7 +112,11 @@ function App() {
 
   function handleGenerate(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault()
-    void speech.generateSpeech({
+    void generateSpeech()
+  }
+
+  async function generateSpeech() {
+    const generatedResult = await speech.generateSpeech({
       backendDefaultModelId: metadata.backendDefaultModelId,
       canUseProvider: providerKeys.canUseProvider,
       models: metadata.models,
@@ -111,6 +128,9 @@ function App() {
       text,
       tuning,
     })
+    if (generatedResult) {
+      setLatestGeneratedAudioId(generatedResult.id)
+    }
   }
 
   function handleTuningValueChange(control: ProviderTuningControl, value: ProviderTuningValue) {
@@ -198,6 +218,15 @@ function App() {
               selectedVoice={voiceLibrary.selectedVoice}
               text={text}
               textRef={textRef}
+            />
+
+            <LatestGeneratedAudioPanel
+              error={speech.error}
+              isDeleteDisabled={generatedAudio.generatedAudioMutation === "delete"}
+              item={latestGeneratedAudioItem}
+              onDelete={(id) => void generatedAudio.handleDeleteGeneratedAudio(id)}
+              status={speech.status}
+              storageError={latestStorageError}
             />
 
             <VoiceTuningPanel
