@@ -1,7 +1,8 @@
-import { Check, FileAudio, LoaderCircle, Pencil, Star, Trash2, Volume2 } from "lucide-react"
+import { Check, FileAudio, Pencil, Star, Trash2, Volume2 } from "lucide-react"
 
 import { ActionMenu } from "@/components/ui/action-menu"
 import { Button } from "@/components/ui/button"
+import { Loading } from "@/components/ui/loading"
 import { cn } from "@/lib/utils"
 import type { AsyncStatus, VoiceAsset } from "@/types"
 
@@ -136,7 +137,7 @@ export function VoiceLibraryPanel({
 
       <Button className="mt-4 w-full" disabled={!canSetDefault} onClick={onSetDefault} variant="secondary">
         {isSettingDefault ? (
-          <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />
+          <Loading aria-hidden="true" size="sm" />
         ) : (
           <Star aria-hidden="true" className="size-4" />
         )}

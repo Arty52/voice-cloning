@@ -1,8 +1,8 @@
-import { LoaderCircle } from "lucide-react"
 import { type FormEvent, useEffect, useRef } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Loading } from "@/components/ui/loading"
 import type { VoiceAsset } from "@/types"
 
 type RenameVoiceDialogProps = {
@@ -99,7 +99,7 @@ export function RenameVoiceDialog({
               Cancel
             </Button>
             <Button disabled={isSaving || name.trim().length === 0} type="submit">
-              {isSaving ? <LoaderCircle aria-hidden="true" className="size-4 animate-spin" /> : null}
+              {isSaving ? <Loading aria-hidden="true" size="sm" /> : null}
               Rename
             </Button>
           </div>

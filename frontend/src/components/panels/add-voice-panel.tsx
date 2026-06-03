@@ -1,8 +1,9 @@
-import { LoaderCircle, Mic, RotateCcw, Save, Square, Upload } from "lucide-react"
+import { Mic, RotateCcw, Save, Square, Upload } from "lucide-react"
 import type { ChangeEvent, FormEvent } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Loading } from "@/components/ui/loading"
 import { formatRecordingDuration } from "@/lib/formatters"
 import { cn } from "@/lib/utils"
 import type { RecorderStatus, VoiceSampleInputMode } from "@/types"
@@ -171,7 +172,7 @@ export function AddVoicePanel({
         </div>
         <Button className="w-full" disabled={!canUpload} type="submit">
           {isUploading ? (
-            <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />
+            <Loading aria-hidden="true" size="sm" />
           ) : (
             <Save aria-hidden="true" className="size-4" />
           )}
