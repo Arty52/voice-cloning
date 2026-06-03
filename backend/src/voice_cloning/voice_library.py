@@ -8,7 +8,7 @@ from typing import Any
 from fastapi import HTTPException, UploadFile
 
 from .config import Settings
-from .models import VoiceAsset, VoiceSample
+from .models import VoiceAsset, VoiceSample, VoiceSampleMode
 from .samples import load_default_sample, load_sample_file, save_uploaded_sample, slugify_voice_name
 
 
@@ -158,8 +158,15 @@ class VoiceLibrary:
 
         default_voice_id = payload.get("defaultVoiceId")
         voices = payload["voices"]
+        migrated = False
+        for item in voices:
+            if isinstance(item, dict) and self._normalize_voice_payload(item):
+                migrated = True
         if not isinstance(default_voice_id, str) or not any(item.get("id") == default_voice_id for item in voices if isinstance(item, dict)):
             payload["defaultVoiceId"] = voices[0].get("id") if voices and isinstance(voices[0], dict) else ""
+            migrated = True
+        if migrated:
+            self._write_manifest(payload)
         return payload
 
     def _bootstrap_manifest(self) -> dict[str, Any]:
@@ -201,6 +208,8 @@ class VoiceLibrary:
 
     @staticmethod
     def _asset_from_payload(payload: dict[str, Any]) -> VoiceAsset:
+        sample_mode = payload.get("sampleMode")
+        resolved_sample_mode: VoiceSampleMode = "sourceWindow" if sample_mode == "sourceWindow" else "excerpt"
         return VoiceAsset(
             id=str(payload["id"]),
             name=str(payload["name"]),
@@ -209,6 +218,12 @@ class VoiceLibrary:
             sha256=str(payload["sha256"]),
             source="default" if payload.get("source") == "default" else "upload",
             created_at=str(payload["createdAt"]),
+            sample_mode=resolved_sample_mode,
+            window_start_seconds=_optional_float(payload.get("windowStartSeconds")),
+            window_duration_seconds=_optional_float(payload.get("windowDurationSeconds")),
+            source_file_path=_optional_str(payload.get("sourceFilePath")),
+            source_content_type=_optional_str(payload.get("sourceContentType")),
+            source_sha256=_optional_str(payload.get("sourceSha256")),
         )
 
     @staticmethod
@@ -221,4 +236,49 @@ class VoiceLibrary:
             "sha256": asset.sha256,
             "source": asset.source,
             "createdAt": asset.created_at,
+            "sampleMode": asset.sample_mode,
+            "windowStartSeconds": asset.window_start_seconds,
+            "windowDurationSeconds": asset.window_duration_seconds,
+            "sourceFilePath": asset.source_file_path,
+            "sourceContentType": asset.source_content_type,
+            "sourceSha256": asset.source_sha256,
         }
+
+    @staticmethod
+    def _normalize_voice_payload(payload: dict[str, Any]) -> bool:
+        migrated = False
+        defaults: dict[str, object | None] = {
+            "sampleMode": "excerpt",
+            "windowStartSeconds": None,
+            "windowDurationSeconds": None,
+            "sourceFilePath": None,
+            "sourceContentType": None,
+            "sourceSha256": None,
+        }
+        for key, value in defaults.items():
+            if key not in payload:
+                payload[key] = value
+                migrated = True
+        if payload.get("sampleMode") not in {"excerpt", "sourceWindow"}:
+            payload["sampleMode"] = "excerpt"
+            migrated = True
+        return migrated
+
+
+def _optional_float(value: Any) -> float | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _optional_str(value: Any) -> str | None:
+    if isinstance(value, str) and value.strip():
+        return value
+    return None

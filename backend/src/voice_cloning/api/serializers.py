@@ -129,6 +129,12 @@ def voice_asset_payload(asset: VoiceAsset) -> dict[str, object]:
         "sha256": asset.sha256,
         "source": asset.source,
         "createdAt": asset.created_at,
+        "sampleMode": asset.sample_mode,
+        "windowStartSeconds": asset.window_start_seconds,
+        "windowDurationSeconds": asset.window_duration_seconds,
+        "sourceFilePath": asset.source_file_path,
+        "sourceContentType": asset.source_content_type,
+        "sourceSha256": asset.source_sha256,
     }
 
 

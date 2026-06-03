@@ -338,6 +338,42 @@ def test_voice_manifest_bootstraps_default_voice(tmp_path: Path) -> None:
     assert response.json()["voices"][0]["filePath"] == "default/default-voice.mp3"
 
 
+def test_voice_manifest_migrates_legacy_assets_with_excerpt_defaults(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path, with_default_sample=False)
+    sample_path = settings.voice_assets_dir / "legacy.mp3"
+    sample_path.parent.mkdir(parents=True)
+    sample_path.write_bytes(b"legacy-sample")
+    settings.voice_manifest_path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "defaultVoiceId": "legacy",
+                "voices": [
+                    {
+                        "id": "legacy",
+                        "name": "Legacy Voice",
+                        "filePath": "legacy.mp3",
+                        "contentType": "audio/mpeg",
+                        "sha256": "legacy-hash",
+                        "source": "upload",
+                        "createdAt": "2026-05-28T00:00:00+00:00",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    payload = VoiceLibrary(settings).list_payload()
+
+    voice = payload["voices"][0]
+    assert voice["sampleMode"] == "excerpt"
+    assert voice["windowStartSeconds"] is None
+    assert voice["windowDurationSeconds"] is None
+    assert voice["sourceFilePath"] is None
+    assert json.loads(settings.voice_manifest_path.read_text(encoding="utf-8"))["voices"][0]["sampleMode"] == "excerpt"
+
+
 def test_subscription_endpoint_returns_sanitized_quota(tmp_path: Path) -> None:
     client, _ = make_client(tmp_path)
 
