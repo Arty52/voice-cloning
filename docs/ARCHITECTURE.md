@@ -26,6 +26,7 @@ Voice Clone Lab is a small local app, but changes should still keep clear bounda
 - Dumb UI components receive props, render markup, and emit callbacks. They should not call `fetch`, read local storage directly, access IndexedDB directly, or contain business workflow branching.
 - API helpers own `/api/*` request construction, error parsing, and response/header parsing.
 - Hooks should be feature scoped: provider keys, voice library, metadata, generated audio storage, speech generation, recording/upload flow, and dialogs are separate responsibilities.
+- Speech-generation hooks own browser-observed operational metadata such as `generationElapsedMs`. Treat this as user-perceived request duration, measured from the browser before the local API request until the generated audio blob is received; do not require providers to return equivalent timing metadata.
 - Provider-specific tuning controls, presets, defaults, and source links come from `/api/providers`. Frontend UI should render those descriptors generically instead of hardcoding provider-specific tuning constants.
 - Provider-specific sample limits come from `/api/providers`. Frontend upload/crop flows should use those limits to prepare active samples before calling `/api/voices`.
 - Browser audio-window utilities own decode, clamping, and active excerpt generation. They should produce provider-facing excerpts without server-side ffmpeg, while upload hooks decide whether to include the local-only original source file.
