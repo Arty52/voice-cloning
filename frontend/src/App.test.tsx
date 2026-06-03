@@ -4,7 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import App from "./App"
 import { VOICE_PROVIDER_KEY_HEADER } from "./lib/api"
-import { BYTES_PER_MEBIBYTE, GENERATED_AUDIO_DB_NAME, saveGeneratedAudio } from "./lib/generated-audio-storage"
+import {
+  BYTES_PER_MEBIBYTE,
+  GENERATED_AUDIO_DB_NAME,
+  listGeneratedAudio,
+  saveGeneratedAudio,
+} from "./lib/generated-audio-storage"
 import { PROVIDER_KEYS_STORAGE_KEY } from "./lib/provider-keys"
 import type { ProvidersResponse } from "./types"
 
@@ -1573,6 +1578,32 @@ describe("App", () => {
     expect(within(latestPanel as HTMLElement).getByText("ElevenLabs")).toBeInTheDocument()
     expect(within(latestPanel as HTMLElement).getByText("Preset: Standard Narration")).toBeInTheDocument()
     expect(within(latestPanel as HTMLElement).getByText("Default Settings")).toBeInTheDocument()
+  })
+
+  it("persists browser-observed generation elapsed time", async () => {
+    let currentTime = 1_000
+    const baseFetch = mockFetch()
+    vi.spyOn(performance, "now").mockImplementation(() => currentTime)
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input) === "/api/speech" && init?.method === "POST") {
+          currentTime = 2_234
+        }
+        return baseFetch(input, init)
+      })
+    )
+    const user = userEvent.setup()
+    render(<App />)
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.click(screen.getByRole("button", { name: /^Generate$/ }))
+
+    expect(await screen.findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
+    expect((await listGeneratedAudio())[0]).toMatchObject({
+      generationElapsedMs: 1234,
+      requestId: "req_test_123",
+    })
   })
 
   it("keeps persisted generated audio in the archive before a new generation", async () => {

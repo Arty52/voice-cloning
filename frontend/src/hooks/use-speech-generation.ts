@@ -73,6 +73,7 @@ export function useSpeechGeneration({ persistGeneratedAudio }: UseSpeechGenerati
     const submittedModelId = hasModel(models, selectedModelId) ? selectedModelId : null
 
     try {
+      const generationStartedAt = performance.now()
       const response = await createSpeech({
         modelId: submittedModelId,
         providerId,
@@ -87,6 +88,7 @@ export function useSpeechGeneration({ persistGeneratedAudio }: UseSpeechGenerati
         setError(CANCELED_GENERATION_MESSAGE)
         return null
       }
+      const generationElapsedMs = Math.max(0, Math.round(performance.now() - generationStartedAt))
 
       const createdAt = new Date().toISOString()
       const generatedAudioInput = {
@@ -96,6 +98,7 @@ export function useSpeechGeneration({ persistGeneratedAudio }: UseSpeechGenerati
         characterCount: response.characterCount,
         contentType: response.contentType,
         createdAt,
+        generationElapsedMs,
         modelId: response.modelId || submittedModelId || backendDefaultModelId || BACKEND_DEFAULT_MODEL_LABEL,
         requestId: response.requestId,
         tuningMetadata: buildGeneratedAudioTuningMetadata({
