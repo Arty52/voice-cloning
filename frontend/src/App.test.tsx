@@ -1413,6 +1413,13 @@ describe("App", () => {
     const body = speechCall?.[1]?.body as FormData
     expect(body.get("providerId")).toBe("select-provider")
     expect(JSON.parse(String(body.get("voiceSettings")))).toEqual({ mode: 2, enhanced: true })
+    const latestPanel = screen.getByRole("heading", { name: "Latest Generated Audio" }).closest("section")
+    expect(latestPanel).not.toBeNull()
+    expect(within(latestPanel as HTMLElement).getByLabelText("Generated Audio Settings")).toBeInTheDocument()
+    expect(within(latestPanel as HTMLElement).getByText("Select Provider")).toBeInTheDocument()
+    expect(within(latestPanel as HTMLElement).getByText("Custom Settings")).toBeInTheDocument()
+    expect(within(latestPanel as HTMLElement).getByText("Mode Two")).toBeInTheDocument()
+    expect(within(latestPanel as HTMLElement).getByText("Enhanced On")).toBeInTheDocument()
   })
 
   it("keeps string toggle values unchecked and toggles from the label", async () => {
@@ -1460,6 +1467,11 @@ describe("App", () => {
     const body = speechCall?.[1]?.body as FormData
     expect(body.get("providerId")).toBe("toggle-provider")
     expect(JSON.parse(String(body.get("voiceSettings")))).toEqual({ expressive: true })
+    const latestPanel = screen.getByRole("heading", { name: "Latest Generated Audio" }).closest("section")
+    expect(latestPanel).not.toBeNull()
+    expect(within(latestPanel as HTMLElement).getByText("Toggle Provider")).toBeInTheDocument()
+    expect(within(latestPanel as HTMLElement).getByText("Custom Settings")).toBeInTheDocument()
+    expect(within(latestPanel as HTMLElement).getByText("Expressive On")).toBeInTheDocument()
   })
 
   it("applies animated dialogue and marks manual tuning as custom", async () => {
@@ -1523,6 +1535,16 @@ describe("App", () => {
       speed: 1.1,
       useSpeakerBoost: false,
     })
+    const latestPanel = screen.getByRole("heading", { name: "Latest Generated Audio" }).closest("section")
+    expect(latestPanel).not.toBeNull()
+    expect(within(latestPanel as HTMLElement).getByLabelText("Generated Audio Settings")).toBeInTheDocument()
+    expect(within(latestPanel as HTMLElement).getByText("ElevenLabs")).toBeInTheDocument()
+    expect(within(latestPanel as HTMLElement).getByText("Custom Settings")).toBeInTheDocument()
+    expect(within(latestPanel as HTMLElement).getByText("Stability 0.42")).toBeInTheDocument()
+    expect(within(latestPanel as HTMLElement).getByText("Similarity 0.84")).toBeInTheDocument()
+    expect(within(latestPanel as HTMLElement).getByText("Style 0.2")).toBeInTheDocument()
+    expect(within(latestPanel as HTMLElement).getByText("Speed 1.1")).toBeInTheDocument()
+    expect(within(latestPanel as HTMLElement).getByText("Speaker Boost Off")).toBeInTheDocument()
   })
 
   it("sends selected model and shows actual usage metadata", async () => {
@@ -1545,6 +1567,12 @@ describe("App", () => {
     expect(await screen.findAllByText(formattedCharacterCount)).toHaveLength(1)
     expect(screen.getByText(new RegExp(`${formattedCharacterCount} chars`))).toBeInTheDocument()
     expect(screen.getAllByText(/req_test_123/)).toHaveLength(2)
+    const latestPanel = screen.getByRole("heading", { name: "Latest Generated Audio" }).closest("section")
+    expect(latestPanel).not.toBeNull()
+    expect(within(latestPanel as HTMLElement).getByLabelText("Generated Audio Settings")).toBeInTheDocument()
+    expect(within(latestPanel as HTMLElement).getByText("ElevenLabs")).toBeInTheDocument()
+    expect(within(latestPanel as HTMLElement).getByText("Preset: Standard Narration")).toBeInTheDocument()
+    expect(within(latestPanel as HTMLElement).getByText("Default Settings")).toBeInTheDocument()
   })
 
   it("keeps persisted generated audio in the archive before a new generation", async () => {
@@ -1557,6 +1585,7 @@ describe("App", () => {
     const archivePanel = archiveHeading.closest("section")
     expect(archivePanel).not.toBeNull()
     expect(await within(archivePanel as HTMLElement).findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
+    expect(within(archivePanel as HTMLElement).queryByLabelText("Generated Audio Settings")).not.toBeInTheDocument()
   })
 
   it("persists generated audio across remounts", async () => {
@@ -1573,8 +1602,14 @@ describe("App", () => {
     render(<App />)
 
     expect(screen.queryByRole("heading", { name: "Latest Generated Audio" })).not.toBeInTheDocument()
-    expect(await screen.findByRole("heading", { name: "Generated Audio Archive" })).toBeInTheDocument()
-    expect(await screen.findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
+    const archiveHeading = await screen.findByRole("heading", { name: "Generated Audio Archive" })
+    expect(archiveHeading).toBeInTheDocument()
+    const archivePanel = archiveHeading.closest("section")
+    expect(archivePanel).not.toBeNull()
+    expect(await within(archivePanel as HTMLElement).findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
+    expect(within(archivePanel as HTMLElement).getByLabelText("Generated Audio Settings")).toBeInTheDocument()
+    expect(within(archivePanel as HTMLElement).getByText("Preset: Standard Narration")).toBeInTheDocument()
+    expect(within(archivePanel as HTMLElement).getByText("Default Settings")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: /download/i })).toHaveAttribute("download", expect.stringMatching(/^voice-clone-default-/))
   })
 
