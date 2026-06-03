@@ -7,7 +7,7 @@ import {
 } from "@/constants"
 import { createSpeech, hasModel } from "@/lib/api"
 import type { SaveGeneratedAudioInput } from "@/lib/generated-audio-storage"
-import type { ModelOption, RequestStatus, VoiceAsset, VoiceTuningValues } from "@/types"
+import type { GeneratedResult, ModelOption, RequestStatus, VoiceAsset, VoiceTuningValues } from "@/types"
 
 type GenerateSpeechInput = {
   backendDefaultModelId: string | null
@@ -23,7 +23,7 @@ type GenerateSpeechInput = {
 }
 
 type UseSpeechGenerationOptions = {
-  persistGeneratedAudio: (input: SaveGeneratedAudioInput, limitBytes: number) => Promise<void>
+  persistGeneratedAudio: (input: SaveGeneratedAudioInput, limitBytes: number) => Promise<GeneratedResult>
 }
 
 export function useSpeechGeneration({ persistGeneratedAudio }: UseSpeechGenerationOptions) {
@@ -53,12 +53,12 @@ export function useSpeechGeneration({ persistGeneratedAudio }: UseSpeechGenerati
     if (text.trim().length === 0 || !selectedVoice) {
       setStatus("error")
       setError(selectedVoice ? "Enter text first." : "Select a voice first.")
-      return
+      return null
     }
     if (!canUseProvider) {
       setStatus("error")
       setError("Add a provider API key before generating speech.")
-      return
+      return null
     }
 
     setStatus("generating")
@@ -80,7 +80,7 @@ export function useSpeechGeneration({ persistGeneratedAudio }: UseSpeechGenerati
       if (response.status === "canceled") {
         setStatus("canceled")
         setError(CANCELED_GENERATION_MESSAGE)
-        return
+        return null
       }
 
       const createdAt = new Date().toISOString()
@@ -97,16 +97,18 @@ export function useSpeechGeneration({ persistGeneratedAudio }: UseSpeechGenerati
         voiceName: selectedVoice.name,
       }
 
-      await persistGeneratedAudio(generatedAudioInput, storageLimitBytes)
+      const generatedResult = await persistGeneratedAudio(generatedAudioInput, storageLimitBytes)
       setStatus("success")
+      return generatedResult
     } catch (caught) {
       if (isAbortError(caught)) {
         setStatus("canceled")
         setError(CANCELED_GENERATION_MESSAGE)
-        return
+        return null
       }
       setStatus("error")
       setError(caught instanceof Error ? caught.message : "Unable to generate speech.")
+      return null
     } finally {
       if (generationAbortController.current === abortController) {
         generationAbortController.current = null

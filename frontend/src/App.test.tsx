@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import App from "./App"
 import { VOICE_PROVIDER_KEY_HEADER } from "./lib/api"
-import { BYTES_PER_MEBIBYTE, GENERATED_AUDIO_DB_NAME } from "./lib/generated-audio-storage"
+import { BYTES_PER_MEBIBYTE, GENERATED_AUDIO_DB_NAME, saveGeneratedAudio } from "./lib/generated-audio-storage"
 import { PROVIDER_KEYS_STORAGE_KEY } from "./lib/provider-keys"
 import type { ProvidersResponse } from "./types"
 
@@ -209,6 +209,20 @@ function deleteDatabase(name: string) {
     request.onsuccess = () => resolve()
     request.onblocked = () => reject(new Error(`Unable to delete ${name}; database is blocked.`))
   })
+}
+
+function generatedAudioInput(overrides: Partial<Parameters<typeof saveGeneratedAudio>[0]> = {}) {
+  return {
+    appVoiceId: "default",
+    blob: audioBlob,
+    cacheState: "miss",
+    characterCount: 54,
+    modelId: "eleven_multilingual_v2",
+    requestId: "req_test_123",
+    voiceId: "voice-123",
+    voiceName: "Default voice",
+    ...overrides,
+  }
 }
 
 function mockFetch() {
@@ -617,6 +631,12 @@ describe("App", () => {
 
     expect(screen.getByRole("button", { name: /generating/i })).toBeDisabled()
     expect(screen.getByRole("button", { name: /cancel/i })).toBeInTheDocument()
+    const latestHeading = screen.getByRole("heading", { name: "Latest Generated Audio" })
+    const textLabel = screen.getByText("Text to Speak")
+    const tuningHeading = screen.getByRole("heading", { name: "Voice Tuning" })
+    expect(textLabel.compareDocumentPosition(latestHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(latestHeading.compareDocumentPosition(tuningHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getByText("Generating Speech")).toBeInTheDocument()
     resolveSpeech(
       new Response(audioBlob, {
         status: 200,
@@ -630,7 +650,9 @@ describe("App", () => {
         },
       })
     )
-    expect(await screen.findByLabelText(/generated voice playback/i)).toBeInTheDocument()
+    const latestPanel = latestHeading.closest("section")
+    expect(latestPanel).not.toBeNull()
+    expect(await within(latestPanel as HTMLElement).findByLabelText(/generated voice playback/i)).toBeInTheDocument()
   })
 
   it("cancels an in-flight speech request after confirmation", async () => {
@@ -1272,6 +1294,18 @@ describe("App", () => {
     expect(screen.getAllByText(/req_test_123/)).toHaveLength(2)
   })
 
+  it("keeps persisted generated audio in the archive before a new generation", async () => {
+    await saveGeneratedAudio(generatedAudioInput({ id: "persisted-audio" }), 100 * BYTES_PER_MEBIBYTE)
+
+    render(<App />)
+
+    const archiveHeading = await screen.findByRole("heading", { name: "Generated Audio Archive" })
+    expect(screen.queryByRole("heading", { name: "Latest Generated Audio" })).not.toBeInTheDocument()
+    const archivePanel = archiveHeading.closest("section")
+    expect(archivePanel).not.toBeNull()
+    expect(await within(archivePanel as HTMLElement).findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
+  })
+
   it("persists generated audio across remounts", async () => {
     const user = userEvent.setup()
     const { unmount } = render(<App />)
@@ -1285,6 +1319,8 @@ describe("App", () => {
 
     render(<App />)
 
+    expect(screen.queryByRole("heading", { name: "Latest Generated Audio" })).not.toBeInTheDocument()
+    expect(await screen.findByRole("heading", { name: "Generated Audio Archive" })).toBeInTheDocument()
     expect(await screen.findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
     expect(screen.getByRole("link", { name: /download/i })).toHaveAttribute("download", expect.stringMatching(/^voice-clone-default-/))
   })
@@ -1298,6 +1334,12 @@ describe("App", () => {
     expect(await screen.findAllByLabelText(/generated voice playback for default voice/i)).toHaveLength(1)
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
     await waitFor(() => expect(screen.getAllByLabelText(/generated voice playback for default voice/i)).toHaveLength(2))
+    const latestPanel = screen.getByRole("heading", { name: "Latest Generated Audio" }).closest("section")
+    const archivePanel = screen.getByRole("heading", { name: "Generated Audio Archive" }).closest("section")
+    expect(latestPanel).not.toBeNull()
+    expect(archivePanel).not.toBeNull()
+    expect(within(latestPanel as HTMLElement).getAllByLabelText(/generated voice playback for default voice/i)).toHaveLength(1)
+    expect(within(archivePanel as HTMLElement).getAllByLabelText(/generated voice playback for default voice/i)).toHaveLength(1)
 
     await user.click(screen.getAllByRole("button", { name: /remove generated audio for default voice/i })[0])
     await waitFor(() => expect(screen.getAllByLabelText(/generated voice playback for default voice/i)).toHaveLength(1))
@@ -1307,6 +1349,25 @@ describe("App", () => {
     await user.click(within(dialog).getByRole("button", { name: /clear all/i }))
 
     await waitFor(() => expect(screen.queryByLabelText(/generated voice playback for default voice/i)).not.toBeInTheDocument())
+    expect(screen.queryByRole("heading", { name: "Latest Generated Audio" })).not.toBeInTheDocument()
+    expect(screen.getByText("No generated speech yet.")).toBeInTheDocument()
+  })
+
+  it("clears the current latest generated audio from the archive controls", async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.click(screen.getByRole("button", { name: /^Generate$/ }))
+    expect(await screen.findByRole("heading", { name: "Latest Generated Audio" })).toBeInTheDocument()
+    expect(await screen.findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: /clear all/i }))
+    const dialog = screen.getByRole("dialog", { name: /clear generated audio/i })
+    await user.click(within(dialog).getByRole("button", { name: /clear all/i }))
+
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "Latest Generated Audio" })).not.toBeInTheDocument())
+    expect(screen.queryByLabelText(/generated voice playback for default voice/i)).not.toBeInTheDocument()
     expect(screen.getByText("No generated speech yet.")).toBeInTheDocument()
   })
 
@@ -1330,13 +1391,19 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
 
     expect(await screen.findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
+    const latestPanel = screen.getByRole("heading", { name: "Latest Generated Audio" }).closest("section")
+    const archivePanel = screen.getByRole("heading", { name: "Generated Audio Archive" }).closest("section")
+    expect(latestPanel).not.toBeNull()
+    expect(archivePanel).not.toBeNull()
     expect(screen.getByText("1 unsaved")).toBeInTheDocument()
     expect(screen.queryByText("1 saved")).not.toBeInTheDocument()
-    expect(screen.getByText(/browser storage could not save it/i)).toBeInTheDocument()
+    expect(within(latestPanel as HTMLElement).getByText(/browser storage could not save it/i)).toBeInTheDocument()
+    expect(within(archivePanel as HTMLElement).queryByText(/browser storage could not save it/i)).not.toBeInTheDocument()
 
     await user.click(screen.getByRole("button", { name: /remove generated audio for default voice/i }))
 
     await waitFor(() => expect(screen.queryByLabelText(/generated voice playback for default voice/i)).not.toBeInTheDocument())
+    expect(screen.queryByRole("heading", { name: "Latest Generated Audio" })).not.toBeInTheDocument()
     expect(screen.queryByText(/browser storage could not save it/i)).not.toBeInTheDocument()
   })
 

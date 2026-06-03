@@ -85,11 +85,13 @@ export function useGeneratedAudioLibrary() {
       revokeGeneratedAudioUrls(previous)
       return nextItems
     })
+    return nextItems
   }
 
   function showTemporaryGeneratedAudio(record: StoredGeneratedAudio) {
     const temporaryItem = storedAudioToResult(record)
     setGeneratedAudioItems((previous) => [temporaryItem, ...previous])
+    return temporaryItem
   }
 
   function startGeneratedAudioMutation(type: GeneratedAudioMutation) {
@@ -107,11 +109,12 @@ export function useGeneratedAudioLibrary() {
     try {
       const saved = await saveGeneratedAudio(input, limitBytes)
       const records = await listGeneratedAudio()
-      replaceGeneratedAudioItems(records)
+      const nextItems = replaceGeneratedAudioItems(records)
       setGeneratedAudioUsage(saved.usage)
       setGeneratedAudioStorageError(null)
+      return nextItems.find((item) => item.id === saved.item.id) ?? storedAudioToResult(saved.item)
     } catch (storageError) {
-      showTemporaryGeneratedAudio({
+      const temporaryItem = showTemporaryGeneratedAudio({
         ...input,
         contentType: input.contentType || input.blob.type || "audio/mpeg",
         createdAt: input.createdAt ?? new Date().toISOString(),
@@ -119,6 +122,7 @@ export function useGeneratedAudioLibrary() {
         sizeBytes: input.blob.size,
       })
       setGeneratedAudioStorageError(formatGeneratedAudioStorageError(storageError))
+      return temporaryItem
     }
   }
 
