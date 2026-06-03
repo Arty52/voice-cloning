@@ -51,8 +51,8 @@ export function Loading({
     >
       <span className="inline-flex items-center gap-0.5" aria-hidden="true">
         <span className={cn("rounded-full bg-current animate-pulse", dotSizeClasses[size])} />
-        <span className={cn("rounded-full bg-current animate-pulse delay-150", dotSizeClasses[size])} />
-        <span className={cn("rounded-full bg-current animate-pulse delay-300", dotSizeClasses[size])} />
+        <span className={cn("rounded-full bg-current animate-pulse [animation-delay:150ms]", dotSizeClasses[size])} />
+        <span className={cn("rounded-full bg-current animate-pulse [animation-delay:300ms]", dotSizeClasses[size])} />
       </span>
       {text ? <span>{text}</span> : null}
     </div>
