@@ -54,7 +54,7 @@ export function GeneratedAudioPanel({
     usage?.itemCount ?? items.filter((item) => !isTemporaryGeneratedAudioId(item.id)).length
   const temporaryItemCount = Math.max(0, items.length - savedItemCount)
   const itemCountBadge = formatGeneratedAudioCountBadge(savedItemCount, temporaryItemCount)
-  const isBusy = libraryStatus === "loading" || mutationStatus !== null
+  const isBusy = libraryStatus === "idle" || libraryStatus === "loading" || mutationStatus !== null
 
   return (
     <section aria-busy={isBusy} className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5">
