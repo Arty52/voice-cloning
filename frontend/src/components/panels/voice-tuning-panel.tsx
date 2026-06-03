@@ -11,6 +11,7 @@ import type {
 type VoiceTuningPanelProps = {
   controls: ProviderTuningControl[]
   isGenerating: boolean
+  isLoading: boolean
   onPresetApply: (preset: ProviderTuningPreset) => void
   onTuningValueChange: (control: ProviderTuningControl, value: ProviderTuningValue) => void
   presets: ProviderTuningPreset[]
@@ -21,6 +22,7 @@ type VoiceTuningPanelProps = {
 export function VoiceTuningPanel({
   controls,
   isGenerating,
+  isLoading,
   onPresetApply,
   onTuningValueChange,
   presets,
@@ -32,7 +34,7 @@ export function VoiceTuningPanel({
   }
 
   return (
-    <section className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5">
+    <section aria-busy={isLoading} className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-medium">Voice Tuning</h2>

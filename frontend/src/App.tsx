@@ -203,6 +203,7 @@ function App() {
             <VoiceTuningPanel
               controls={providerTuning.controls}
               isGenerating={speech.isGenerating}
+              isLoading={providerKeys.providerStatus === "idle" || providerKeys.providerStatus === "loading"}
               onPresetApply={handlePresetApply}
               onTuningValueChange={handleTuningValueChange}
               presets={providerTuning.presets}
@@ -213,6 +214,8 @@ function App() {
             <GeneratedAudioPanel
               error={speech.error}
               items={generatedAudio.generatedAudioItems}
+              libraryStatus={generatedAudio.generatedAudioStatus}
+              mutationStatus={generatedAudio.generatedAudioMutation}
               onClear={requestClearGeneratedAudio}
               onDelete={(id) => void generatedAudio.handleDeleteGeneratedAudio(id)}
               onStorageLimitChange={handleStorageLimitChange}
