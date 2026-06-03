@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { storedAudioToResult } from "./generated-audio-view-model"
+import { buildGeneratedAudioSizeDisplay, storedAudioToResult } from "./generated-audio-view-model"
 import type { StoredGeneratedAudio } from "./generated-audio-storage"
 
 const baseRecord: StoredGeneratedAudio = {
@@ -65,5 +65,24 @@ describe("storedAudioToResult", () => {
 
     expect(result.generationElapsedMs).toBeNull()
     expect(result.tuningMetadata).toBeNull()
+  })
+})
+
+describe("buildGeneratedAudioSizeDisplay", () => {
+  it("builds generated audio size labels from byte counts", () => {
+    expect(buildGeneratedAudioSizeDisplay(898_656)).toEqual({
+      ariaLabel: "Generated Audio Size 878 KB; Exact Size 898,656 bytes",
+      detailLabel: "Exact Size",
+      exactLabel: "898,656 bytes",
+      visibleLabel: "878 KB",
+    })
+  })
+
+  it("handles singular exact bytes", () => {
+    expect(buildGeneratedAudioSizeDisplay(1)).toMatchObject({
+      ariaLabel: "Generated Audio Size 1 B; Exact Size 1 byte",
+      exactLabel: "1 byte",
+      visibleLabel: "1 B",
+    })
   })
 })

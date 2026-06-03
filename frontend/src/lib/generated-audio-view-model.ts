@@ -2,8 +2,15 @@ import {
   GeneratedAudioStorageQuotaError,
   type StoredGeneratedAudio,
 } from "@/lib/generated-audio-storage"
-import { formatGeneratedAudioTime } from "@/lib/formatters"
+import { formatCompactBytes, formatExactBytes, formatGeneratedAudioTime } from "@/lib/formatters"
 import type { GeneratedResult } from "@/types"
+
+export type GeneratedAudioSizeDisplay = {
+  ariaLabel: string
+  detailLabel: string
+  exactLabel: string
+  visibleLabel: string
+}
 
 export function storedAudioToResult(record: StoredGeneratedAudio): GeneratedResult {
   return {
@@ -40,6 +47,18 @@ export function createTemporaryGeneratedAudioId() {
 
 export function isTemporaryGeneratedAudioId(id: string) {
   return id.startsWith("unsaved-")
+}
+
+export function buildGeneratedAudioSizeDisplay(sizeBytes: number): GeneratedAudioSizeDisplay {
+  const visibleLabel = formatCompactBytes(sizeBytes)
+  const exactLabel = formatExactBytes(sizeBytes)
+  const detailLabel = "Exact Size"
+  return {
+    ariaLabel: `Generated Audio Size ${visibleLabel}; ${detailLabel} ${exactLabel}`,
+    detailLabel,
+    exactLabel,
+    visibleLabel,
+  }
 }
 
 export function formatGeneratedAudioStorageError(value: unknown) {
