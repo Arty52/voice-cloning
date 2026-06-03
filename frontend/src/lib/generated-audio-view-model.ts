@@ -13,6 +13,7 @@ export function storedAudioToResult(record: StoredGeneratedAudio): GeneratedResu
     contentType: record.contentType,
     createdAt: record.createdAt,
     generatedAt: formatGeneratedAudioTime(record.createdAt),
+    generationElapsedMs: record.generationElapsedMs ?? null,
     id: record.id,
     modelId: record.modelId,
     requestId: record.requestId,

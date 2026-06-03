@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest"
 import {
   DEFAULT_GENERATED_AUDIO_STORAGE_LIMIT_BYTES,
   GENERATED_AUDIO_DB_NAME,
+  GENERATED_AUDIO_STORE_NAME,
   GENERATED_AUDIO_STORAGE_LIMIT_KEY,
   GeneratedAudioStorageQuotaError,
   clearGeneratedAudio,
@@ -55,11 +56,37 @@ function audioInput(overrides: Partial<SaveGeneratedAudioInput> = {}): SaveGener
     blob: audioBlob(4),
     cacheState: "miss",
     characterCount: 54,
+    generationElapsedMs: 1234,
     modelId: "eleven_multilingual_v2",
     requestId: "req_test_123",
     voiceId: "voice-123",
     voiceName: "Default voice",
     ...overrides,
+  }
+}
+
+async function putRawGeneratedAudioRecord(record: Record<string, unknown>) {
+  const database = await new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open(GENERATED_AUDIO_DB_NAME, 1)
+    request.onerror = () => reject(request.error)
+    request.onsuccess = () => resolve(request.result)
+    request.onupgradeneeded = () => {
+      const database = request.result
+      if (!database.objectStoreNames.contains(GENERATED_AUDIO_STORE_NAME)) {
+        database.createObjectStore(GENERATED_AUDIO_STORE_NAME, { keyPath: "id" })
+      }
+    }
+  })
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction(GENERATED_AUDIO_STORE_NAME, "readwrite")
+      transaction.objectStore(GENERATED_AUDIO_STORE_NAME).put(record)
+      transaction.onerror = () => reject(transaction.error)
+      transaction.onabort = () => reject(transaction.error)
+      transaction.oncomplete = () => resolve()
+    })
+  } finally {
+    database.close()
   }
 }
 
@@ -100,6 +127,7 @@ describe("generated audio storage", () => {
       cacheState: "miss",
       characterCount: 54,
       contentType: "audio/mpeg",
+      generationElapsedMs: 1234,
       modelId: "eleven_multilingual_v2",
       requestId: "req_test_123",
       sizeBytes: 4,
@@ -115,10 +143,30 @@ describe("generated audio storage", () => {
     })
   })
 
-  it("stores null tuning metadata when no metadata is supplied", async () => {
+  it("stores null optional metadata when no metadata is supplied", async () => {
     await saveGeneratedAudio(audioInput({ id: "without-metadata" }), 20)
 
-    expect((await listGeneratedAudio())[0].tuningMetadata).toBeNull()
+    const record = (await listGeneratedAudio())[0]
+    expect(record.generationElapsedMs).toBe(1234)
+    expect(record.tuningMetadata).toBeNull()
+  })
+
+  it("normalizes legacy records without generation timing", async () => {
+    const legacyInput = audioInput({ id: "legacy", generationElapsedMs: null })
+    const legacyRecord: Record<string, unknown> = {
+      ...legacyInput,
+      contentType: legacyInput.blob.type,
+      createdAt: "2026-05-28T10:00:00.000Z",
+      sizeBytes: legacyInput.blob.size,
+      tuningMetadata: null,
+    }
+    delete legacyRecord.generationElapsedMs
+    await putRawGeneratedAudioRecord(legacyRecord)
+
+    expect((await listGeneratedAudio())[0]).toMatchObject({
+      generationElapsedMs: null,
+      id: "legacy",
+    })
   })
 
   it("deletes one record and clears all records", async () => {

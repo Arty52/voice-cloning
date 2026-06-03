@@ -118,6 +118,7 @@ export function useGeneratedAudioLibrary() {
         ...input,
         contentType: input.contentType || input.blob.type || "audio/mpeg",
         createdAt: input.createdAt ?? new Date().toISOString(),
+        generationElapsedMs: input.generationElapsedMs ?? null,
         id: createTemporaryGeneratedAudioId(),
         sizeBytes: input.blob.size,
       })

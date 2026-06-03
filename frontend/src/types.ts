@@ -134,6 +134,7 @@ export type GeneratedResult = {
   requestId: string | null
   createdAt: string
   generatedAt: string
+  generationElapsedMs: number | null
   tuningMetadata: GeneratedAudioTuningMetadata | null
 }
 
