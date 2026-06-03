@@ -73,7 +73,8 @@ async function putRawGeneratedAudioRecord(record: Record<string, unknown>) {
     request.onupgradeneeded = () => {
       const database = request.result
       if (!database.objectStoreNames.contains(GENERATED_AUDIO_STORE_NAME)) {
-        database.createObjectStore(GENERATED_AUDIO_STORE_NAME, { keyPath: "id" })
+        const store = database.createObjectStore(GENERATED_AUDIO_STORE_NAME, { keyPath: "id" })
+        store.createIndex("createdAt", "createdAt")
       }
     }
   })
