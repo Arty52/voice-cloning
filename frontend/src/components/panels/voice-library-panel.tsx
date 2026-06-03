@@ -3,6 +3,7 @@ import { Check, FileAudio, Pencil, Star, Trash2, Volume2 } from "lucide-react"
 import { ActionMenu } from "@/components/ui/action-menu"
 import { Button } from "@/components/ui/button"
 import { Loading } from "@/components/ui/loading"
+import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import type { AsyncStatus, VoiceAsset } from "@/types"
 
@@ -42,7 +43,7 @@ export function VoiceLibraryPanel({
   voiceStatus,
 }: VoiceLibraryPanelProps) {
   return (
-    <section className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5">
+    <section aria-busy={voiceStatus === "loading"} className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-medium">Voice Library</h2>
@@ -59,9 +60,7 @@ export function VoiceLibraryPanel({
 
       <div className="space-y-2">
         {voiceStatus === "loading" ? (
-          <div className="rounded-md border border-border bg-background/50 p-4 text-sm text-muted-foreground">
-            Loading voices...
-          </div>
+          <VoiceLibrarySkeletonRows />
         ) : null}
         {voiceStatus !== "loading" && voices.length === 0 ? (
           <div className="rounded-md border border-dashed border-border bg-background/50 p-4 text-sm text-muted-foreground">
@@ -141,8 +140,28 @@ export function VoiceLibraryPanel({
         ) : (
           <Star aria-hidden="true" className="size-4" />
         )}
-        {selectedVoice?.id === defaultVoiceId ? "Default Voice" : "Set as Default"}
+        {isSettingDefault ? "Setting Default Voice" : selectedVoice?.id === defaultVoiceId ? "Default Voice" : "Set as Default"}
       </Button>
     </section>
+  )
+}
+
+function VoiceLibrarySkeletonRows() {
+  return (
+    <div aria-label="Loading Voices" className="flex flex-col gap-2" role="status">
+      {[0, 1, 2].map((item) => (
+        <div
+          aria-hidden="true"
+          className="flex w-full items-center gap-2 rounded-md border border-border bg-background/60 p-3"
+          key={item}
+        >
+          <div className="flex min-w-0 flex-1 flex-col gap-2">
+            <Skeleton className="h-4 w-32 max-w-full" />
+            <Skeleton className="h-3 w-48 max-w-full" />
+          </div>
+          <Skeleton className="size-8 shrink-0" />
+        </div>
+      ))}
+    </div>
   )
 }

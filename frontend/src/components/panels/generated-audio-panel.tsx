@@ -2,7 +2,9 @@ import { Download, HardDrive, Trash2 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Loading } from "@/components/ui/loading"
 import { MenuSelect } from "@/components/ui/menu-select"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   DEFAULT_GENERATED_AUDIO_STORAGE_LIMIT_BYTES,
   GENERATED_AUDIO_STORAGE_LIMIT_PRESETS_BYTES,
@@ -54,7 +56,10 @@ export function GeneratedAudioPanel({
     usage?.itemCount ?? items.filter((item) => !isTemporaryGeneratedAudioId(item.id)).length
   const temporaryItemCount = Math.max(0, items.length - savedItemCount)
   const itemCountBadge = formatGeneratedAudioCountBadge(savedItemCount, temporaryItemCount)
-  const isBusy = libraryStatus === "idle" || libraryStatus === "loading" || mutationStatus !== null
+  const isLibraryLoading = libraryStatus === "idle" || libraryStatus === "loading"
+  const isGenerating = status === "generating"
+  const isBusy = isLibraryLoading || isGenerating || mutationStatus !== null
+  const mutationLabel = mutationStatus ? generatedAudioMutationLabel(mutationStatus) : null
 
   return (
     <section aria-busy={isBusy} className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5">
@@ -86,6 +91,13 @@ export function GeneratedAudioPanel({
         </div>
       ) : null}
 
+      {isGenerating || mutationLabel ? (
+        <div className="mb-4 flex flex-col gap-2 rounded-md border border-border bg-background/60 p-3">
+          {isGenerating ? <Loading text="Generating Speech" variant="secondary" /> : null}
+          {mutationLabel ? <Loading text={mutationLabel} variant="secondary" /> : null}
+        </div>
+      ) : null}
+
       <div className="mb-4 rounded-md border border-border bg-background/60 p-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
@@ -101,6 +113,7 @@ export function GeneratedAudioPanel({
             <span>Cap</span>
             <MenuSelect
               ariaLabel="Cap"
+              disabled={mutationStatus === "storage-limit"}
               onChange={(value) => onStorageLimitChange(Number(value))}
               options={GENERATED_AUDIO_STORAGE_LIMIT_PRESETS_BYTES.map((limitBytes) => ({
                 label: formatBytes(limitBytes),
@@ -115,10 +128,12 @@ export function GeneratedAudioPanel({
         </div>
       </div>
 
-      {items.length > 0 ? (
+      {isLibraryLoading ? (
+        <GeneratedAudioSkeletonList />
+      ) : items.length > 0 ? (
         <div className="space-y-3">
           <div className="flex justify-end">
-            <Button onClick={onClear} size="sm" type="button" variant="secondary">
+            <Button disabled={mutationStatus === "clear"} onClick={onClear} size="sm" type="button" variant="secondary">
               <Trash2 aria-hidden="true" className="size-4" />
               Clear All
             </Button>
@@ -156,6 +171,7 @@ export function GeneratedAudioPanel({
                 </a>
                 <Button
                   aria-label={`Remove generated audio for ${item.voiceName}`}
+                  disabled={mutationStatus === "delete"}
                   onClick={() => onDelete(item.id)}
                   size="sm"
                   type="button"
@@ -175,4 +191,38 @@ export function GeneratedAudioPanel({
       )}
     </section>
   )
+}
+
+function GeneratedAudioSkeletonList() {
+  return (
+    <div aria-label="Loading Generated Audio" className="space-y-3" role="status">
+      {[0, 1].map((item) => (
+        <div aria-hidden="true" className="rounded-md border border-border bg-background/60 p-3" key={item}>
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div className="flex min-w-0 flex-1 flex-col gap-2">
+              <Skeleton className="h-4 w-36 max-w-full" />
+              <Skeleton className="h-3 w-56 max-w-full" />
+            </div>
+            <Skeleton className="h-6 w-16 shrink-0" />
+          </div>
+          <Skeleton className="h-11 w-full" />
+          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            <Skeleton className="h-3 w-full" />
+            <Skeleton className="h-3 w-full" />
+            <Skeleton className="h-3 w-full" />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function generatedAudioMutationLabel(mutationStatus: GeneratedAudioMutation) {
+  if (mutationStatus === "clear") {
+    return "Clearing Audio"
+  }
+  if (mutationStatus === "delete") {
+    return "Removing Audio"
+  }
+  return "Updating Storage"
 }
