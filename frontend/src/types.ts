@@ -134,6 +134,7 @@ export type GeneratedResult = {
   requestId: string | null
   createdAt: string
   generatedAt: string
+  tuningMetadata: GeneratedAudioTuningMetadata | null
 }
 
 export type GeneratedAudioTuningMode = "custom" | "default" | "preset"
