@@ -67,6 +67,7 @@ function App() {
   })
   const voiceInput = useVoiceSampleInput({
     onVoiceSaved: voiceLibrary.addSavedVoice,
+    providerSample: providerKeys.activeProvider?.sample,
   })
 
   const selectedModel = metadata.models.find((model) => model.modelId === metadata.selectedModelId) ?? null
@@ -285,20 +286,27 @@ function App() {
               handleDiscardRecording={() => void voiceInput.handleDiscardRecording()}
               handleStartRecording={() => void voiceInput.handleStartRecording()}
               handleStopRecording={() => void voiceInput.handleStopRecording()}
+              handleSampleModeChange={voiceInput.handleSampleModeChange}
+              handleSampleWindowChange={voiceInput.handleSampleWindowChange}
               handleUpload={voiceInput.handleUpload}
               handleUploadFileChange={voiceInput.handleUploadFileChange}
               handleVoiceSampleInputModeChange={voiceInput.handleVoiceSampleInputModeChange}
               isRecorderBusy={voiceInput.isRecorderBusy}
               isRecording={voiceInput.isRecording}
+              isPreparingSample={voiceInput.isPreparingSample}
               isUploading={voiceInput.isUploading}
               recorderError={voiceInput.recorderError}
               recorderStatus={voiceInput.recorderStatus}
               recordingDurationSeconds={voiceInput.recordingDurationSeconds}
+              sampleLimits={voiceInput.sampleLimits}
+              sampleMode={voiceInput.sampleMode}
               setUploadName={voiceInput.setUploadName}
+              uploadDurationSeconds={voiceInput.uploadDurationSeconds}
               uploadError={voiceInput.uploadError}
               uploadFile={voiceInput.uploadFile}
               uploadName={voiceInput.uploadName}
               uploadPreviewUrl={voiceInput.uploadPreviewUrl}
+              uploadWindow={voiceInput.uploadWindow}
               voiceSampleInputMode={voiceInput.voiceSampleInputMode}
             />
 

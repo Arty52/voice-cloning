@@ -1,16 +1,20 @@
 import { Mic, RotateCcw, Save, Square, Upload } from "lucide-react"
 import type { ChangeEvent, FormEvent } from "react"
 
+import { AudioWindowCropper } from "@/components/audio-window-cropper"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Loading } from "@/components/ui/loading"
+import type { AudioWindow } from "@/lib/audio-window"
 import { formatRecordingDuration } from "@/lib/formatters"
 import { cn } from "@/lib/utils"
-import type { RecorderStatus, VoiceSampleInputMode } from "@/types"
+import type { ProviderSampleMetadata, RecorderStatus, VoiceSampleInputMode, VoiceSampleMode } from "@/types"
 
 type AddVoicePanelProps = {
   canUpload: boolean
   handleDiscardRecording: () => void
+  handleSampleModeChange: (mode: VoiceSampleMode) => void
+  handleSampleWindowChange: (window: AudioWindow) => void
   handleStartRecording: () => void
   handleStopRecording: () => void
   handleUpload: (event: FormEvent<HTMLFormElement>) => void
@@ -18,21 +22,28 @@ type AddVoicePanelProps = {
   handleVoiceSampleInputModeChange: (mode: VoiceSampleInputMode) => void
   isRecorderBusy: boolean
   isRecording: boolean
+  isPreparingSample: boolean
   isUploading: boolean
   recorderError: string | null
   recorderStatus: RecorderStatus
   recordingDurationSeconds: number
+  sampleLimits: ProviderSampleMetadata
+  sampleMode: VoiceSampleMode
   setUploadName: (name: string) => void
+  uploadDurationSeconds: number | null
   uploadError: string | null
   uploadFile: File | null
   uploadName: string
   uploadPreviewUrl: string | null
+  uploadWindow: AudioWindow | null
   voiceSampleInputMode: VoiceSampleInputMode
 }
 
 export function AddVoicePanel({
   canUpload,
   handleDiscardRecording,
+  handleSampleModeChange,
+  handleSampleWindowChange,
   handleStartRecording,
   handleStopRecording,
   handleUpload,
@@ -40,15 +51,20 @@ export function AddVoicePanel({
   handleVoiceSampleInputModeChange,
   isRecorderBusy,
   isRecording,
+  isPreparingSample,
   isUploading,
   recorderError,
   recorderStatus,
   recordingDurationSeconds,
+  sampleLimits,
+  sampleMode,
   setUploadName,
+  uploadDurationSeconds,
   uploadError,
   uploadFile,
   uploadName,
   uploadPreviewUrl,
+  uploadWindow,
   voiceSampleInputMode,
 }: AddVoicePanelProps) {
   const recorderLoadingLabel =
@@ -112,16 +128,37 @@ export function AddVoicePanel({
         </div>
 
         {voiceSampleInputMode === "upload" ? (
-          <label className="block space-y-2 text-sm font-medium" htmlFor="sample-upload">
-            <span>Sample File</span>
-            <Input
-              accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac"
-              disabled={isUploading}
-              id="sample-upload"
-              onChange={handleUploadFileChange}
-              type="file"
-            />
-          </label>
+          <div className="flex flex-col gap-3">
+            <label className="block space-y-2 text-sm font-medium" htmlFor="sample-upload">
+              <span>Sample File</span>
+              <Input
+                accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac"
+                disabled={isUploading || isPreparingSample}
+                id="sample-upload"
+                onChange={handleUploadFileChange}
+                type="file"
+              />
+            </label>
+            {isPreparingSample ? (
+              <div className="rounded-md border border-border bg-background/60 p-3">
+                <Loading text="Preparing Sample" variant="secondary" />
+              </div>
+            ) : null}
+            {uploadPreviewUrl && uploadWindow && uploadDurationSeconds !== null ? (
+              <AudioWindowCropper
+                disabled={isUploading}
+                durationSeconds={uploadDurationSeconds}
+                maxWindowSeconds={sampleLimits.maxWindowSeconds}
+                onSampleModeChange={handleSampleModeChange}
+                onWindowChange={handleSampleWindowChange}
+                recommendedMaxSeconds={sampleLimits.recommendedMaxSeconds}
+                recommendedMinSeconds={sampleLimits.recommendedMinSeconds}
+                sampleMode={sampleMode}
+                sourceUrl={uploadPreviewUrl}
+                window={uploadWindow}
+              />
+            ) : null}
+          </div>
         ) : (
           <div className="rounded-md border border-border bg-background/60 p-3">
             <div className="mb-3 flex items-center justify-between gap-3">
@@ -179,12 +216,12 @@ export function AddVoicePanel({
           )}
         </div>
         <Button className="w-full" disabled={!canUpload} type="submit">
-          {isUploading ? (
+          {isUploading || isPreparingSample ? (
             <Loading aria-hidden="true" size="sm" />
           ) : (
             <Save aria-hidden="true" className="size-4" />
           )}
-          {isUploading ? "Saving Voice" : "Save Voice"}
+          {isUploading ? "Saving Voice" : isPreparingSample ? "Preparing Sample" : "Save Voice"}
         </Button>
       </div>
     </form>

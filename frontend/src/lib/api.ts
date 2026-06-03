@@ -4,6 +4,7 @@ import type {
   ProvidersResponse,
   SubscriptionResponse,
   VoiceAsset,
+  VoiceSampleMode,
   VoicesResponse,
   VoiceTuningValues,
 } from "@/types"
@@ -13,6 +14,13 @@ export const VOICE_PROVIDER_KEY_HEADER = "X-Voice-Provider-Key"
 export type ProviderRequestOptions = {
   providerId?: string | null
   providerKey: string | null
+}
+
+export type AddVoiceOptions = {
+  sampleMode?: VoiceSampleMode
+  sourceFile?: File | null
+  windowDurationSeconds?: number | null
+  windowStartSeconds?: number | null
 }
 
 export type SpeechApiRequest = {
@@ -43,10 +51,22 @@ export async function fetchVoices() {
   return fetchJson<VoicesResponse>("/api/voices")
 }
 
-export async function addVoice(name: string, sampleFile: File) {
+export async function addVoice(name: string, sampleFile: File, options: AddVoiceOptions = {}) {
   const formData = new FormData()
   formData.append("name", name)
   formData.append("sampleFile", sampleFile)
+  if (options.sampleMode) {
+    formData.append("sampleMode", options.sampleMode)
+  }
+  if (options.sourceFile) {
+    formData.append("sourceFile", options.sourceFile)
+  }
+  if (options.windowStartSeconds !== undefined && options.windowStartSeconds !== null) {
+    formData.append("windowStartSeconds", String(options.windowStartSeconds))
+  }
+  if (options.windowDurationSeconds !== undefined && options.windowDurationSeconds !== null) {
+    formData.append("windowDurationSeconds", String(options.windowDurationSeconds))
+  }
   return fetchJson<{ voice: VoiceAsset }>("/api/voices", {
     method: "POST",
     body: formData,

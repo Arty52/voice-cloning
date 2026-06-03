@@ -1,19 +1,31 @@
-import { type ChangeEvent, type FormEvent, useEffect, useRef, useState } from "react"
+import { type ChangeEvent, type FormEvent, useEffect, useMemo, useRef, useState } from "react"
 
+import { clampAudioWindow, createWindowedAudioFile, decodeAudioFile, type AudioWindow } from "@/lib/audio-window"
 import { addVoice } from "@/lib/api"
 import { startVoiceRecorder, type VoiceRecorderSession } from "@/lib/voice-recorder"
-import type { AsyncStatus, RecorderStatus, VoiceAsset, VoiceSampleInputMode } from "@/types"
+import type { AsyncStatus, ProviderSampleMetadata, RecorderStatus, VoiceAsset, VoiceSampleInputMode, VoiceSampleMode } from "@/types"
+
+const DEFAULT_PROVIDER_SAMPLE: ProviderSampleMetadata = {
+  maxWindowSeconds: 120,
+  recommendedMinSeconds: 60,
+  recommendedMaxSeconds: 120,
+}
 
 type UseVoiceSampleInputOptions = {
   onVoiceSaved: (voice: VoiceAsset) => void
+  providerSample?: ProviderSampleMetadata | null
 }
 
-export function useVoiceSampleInput({ onVoiceSaved }: UseVoiceSampleInputOptions) {
+export function useVoiceSampleInput({ onVoiceSaved, providerSample }: UseVoiceSampleInputOptions) {
   const [uploadName, setUploadName] = useState("")
   const [uploadFile, setUploadFile] = useState<File | null>(null)
   const [uploadPreviewUrl, setUploadPreviewUrl] = useState<string | null>(null)
   const [uploadStatus, setUploadStatus] = useState<AsyncStatus>("idle")
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const [uploadPreparationStatus, setUploadPreparationStatus] = useState<AsyncStatus>("idle")
+  const [uploadDurationSeconds, setUploadDurationSeconds] = useState<number | null>(null)
+  const [uploadWindow, setUploadWindow] = useState<AudioWindow | null>(null)
+  const [sampleMode, setSampleMode] = useState<VoiceSampleMode>("excerpt")
   const [voiceSampleInputMode, setVoiceSampleInputMode] = useState<VoiceSampleInputMode>("upload")
   const [recorderStatus, setRecorderStatus] = useState<RecorderStatus>("idle")
   const [recorderError, setRecorderError] = useState<string | null>(null)
@@ -21,11 +33,31 @@ export function useVoiceSampleInput({ onVoiceSaved }: UseVoiceSampleInputOptions
   const recordingSessionRef = useRef<VoiceRecorderSession | null>(null)
   const recordingTimerRef = useRef<number | null>(null)
   const recordingAutoStopTimerRef = useRef<number | null>(null)
+  const uploadPreparationIdRef = useRef(0)
 
+  const sampleLimits = providerSample ?? DEFAULT_PROVIDER_SAMPLE
+  const clampedUploadWindow = useMemo(() => {
+    if (voiceSampleInputMode !== "upload" || uploadDurationSeconds === null || uploadWindow === null) {
+      return uploadWindow
+    }
+    return clampAudioWindow(
+      uploadDurationSeconds,
+      sampleLimits.maxWindowSeconds,
+      uploadWindow.startSeconds,
+      uploadWindow.durationSeconds
+    )
+  }, [sampleLimits.maxWindowSeconds, uploadDurationSeconds, uploadWindow, voiceSampleInputMode])
   const isUploading = uploadStatus === "loading"
+  const isPreparingSample = uploadPreparationStatus === "loading"
   const isRecording = recorderStatus === "recording"
   const isRecorderBusy = recorderStatus === "starting" || recorderStatus === "recording" || recorderStatus === "stopping"
-  const canUpload = uploadName.trim().length > 0 && uploadFile !== null && !isUploading && !isRecorderBusy
+  const canUpload =
+    uploadName.trim().length > 0 &&
+    uploadFile !== null &&
+    (voiceSampleInputMode === "record" || clampedUploadWindow !== null) &&
+    !isUploading &&
+    !isPreparingSample &&
+    !isRecorderBusy
 
   useEffect(() => {
     return () => {
@@ -48,6 +80,14 @@ export function useVoiceSampleInput({ onVoiceSaved }: UseVoiceSampleInputOptions
     setUploadFile(nextFile)
     setUploadPreviewUrl(nextFile ? URL.createObjectURL(nextFile) : null)
     setUploadError(null)
+    setSampleMode("excerpt")
+    setUploadDurationSeconds(null)
+    setUploadWindow(null)
+    if (nextFile) {
+      void prepareUploadWindow(nextFile)
+    } else {
+      setUploadPreparationStatus("idle")
+    }
   }
 
   function handleVoiceSampleInputModeChange(mode: VoiceSampleInputMode) {
@@ -58,6 +98,10 @@ export function useVoiceSampleInput({ onVoiceSaved }: UseVoiceSampleInputOptions
     setUploadError(null)
     setUploadFile(null)
     setUploadPreviewUrl(null)
+    setUploadDurationSeconds(null)
+    setUploadWindow(null)
+    setSampleMode("excerpt")
+    setUploadPreparationStatus("idle")
     setRecorderStatus("idle")
     setRecorderError(null)
     setRecordingDurationSeconds(0)
@@ -74,6 +118,10 @@ export function useVoiceSampleInput({ onVoiceSaved }: UseVoiceSampleInputOptions
     setUploadError(null)
     setUploadFile(null)
     setUploadPreviewUrl(null)
+    setUploadDurationSeconds(null)
+    setUploadWindow(null)
+    setSampleMode("excerpt")
+    setUploadPreparationStatus("idle")
     setRecordingDurationSeconds(0)
 
     try {
@@ -104,6 +152,10 @@ export function useVoiceSampleInput({ onVoiceSaved }: UseVoiceSampleInputOptions
       const recording = await session.stop()
       setUploadFile(recording.file)
       setUploadPreviewUrl(URL.createObjectURL(recording.file))
+      setUploadDurationSeconds(null)
+      setUploadWindow(null)
+      setSampleMode("excerpt")
+      setUploadPreparationStatus("idle")
       setRecordingDurationSeconds(recording.durationSeconds)
       setRecorderStatus("recorded")
       setRecorderError(null)
@@ -134,7 +186,17 @@ export function useVoiceSampleInput({ onVoiceSaved }: UseVoiceSampleInputOptions
     setUploadStatus("loading")
     setUploadError(null)
     try {
-      const payload = await addVoice(uploadName.trim(), uploadFile)
+      const selectedUploadWindow = clampedUploadWindow
+      const activeSampleFile =
+        voiceSampleInputMode === "upload" && selectedUploadWindow
+          ? await createWindowedAudioFile({ file: uploadFile, window: selectedUploadWindow })
+          : uploadFile
+      const payload = await addVoice(uploadName.trim(), activeSampleFile, {
+        sampleMode: voiceSampleInputMode === "upload" ? sampleMode : "excerpt",
+        sourceFile: voiceSampleInputMode === "upload" && sampleMode === "sourceWindow" ? uploadFile : null,
+        windowDurationSeconds: voiceSampleInputMode === "upload" ? selectedUploadWindow?.durationSeconds : null,
+        windowStartSeconds: voiceSampleInputMode === "upload" ? selectedUploadWindow?.startSeconds : null,
+      })
       onVoiceSaved(payload.voice)
       setUploadName("")
       resetSampleInput()
@@ -148,6 +210,10 @@ export function useVoiceSampleInput({ onVoiceSaved }: UseVoiceSampleInputOptions
   function resetSampleInput() {
     setUploadFile(null)
     setUploadPreviewUrl(null)
+    setUploadDurationSeconds(null)
+    setUploadWindow(null)
+    setSampleMode("excerpt")
+    setUploadPreparationStatus("idle")
     setRecorderStatus("idle")
     setRecorderError(null)
     setRecordingDurationSeconds(0)
@@ -158,22 +224,53 @@ export function useVoiceSampleInput({ onVoiceSaved }: UseVoiceSampleInputOptions
     handleDiscardRecording,
     handleStartRecording,
     handleStopRecording,
+    handleSampleModeChange: setSampleMode,
+    handleSampleWindowChange: setUploadWindow,
     handleUpload,
     handleUploadFileChange,
     handleVoiceSampleInputModeChange,
     isRecorderBusy,
     isRecording,
+    isPreparingSample,
     isUploading,
     recorderError,
     recorderStatus,
     recordingDurationSeconds,
+    sampleLimits,
+    sampleMode,
     setUploadName,
+    uploadDurationSeconds,
     uploadError,
     uploadFile,
     uploadName,
     uploadPreviewUrl,
     uploadStatus,
+    uploadWindow: clampedUploadWindow,
     voiceSampleInputMode,
+  }
+
+  async function prepareUploadWindow(file: File) {
+    const preparationId = uploadPreparationIdRef.current + 1
+    uploadPreparationIdRef.current = preparationId
+    setUploadPreparationStatus("loading")
+    try {
+      const audioBuffer = await decodeAudioFile(file)
+      if (uploadPreparationIdRef.current !== preparationId) {
+        return
+      }
+      const nextWindow = clampAudioWindow(audioBuffer.duration, sampleLimits.maxWindowSeconds)
+      setUploadDurationSeconds(audioBuffer.duration)
+      setUploadWindow(nextWindow)
+      setUploadPreparationStatus("success")
+    } catch (caught) {
+      if (uploadPreparationIdRef.current !== preparationId) {
+        return
+      }
+      setUploadDurationSeconds(null)
+      setUploadWindow(null)
+      setUploadPreparationStatus("error")
+      setUploadError(caught instanceof Error ? caught.message : "Unable to prepare this audio file.")
+    }
   }
 }
 

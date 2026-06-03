@@ -118,7 +118,7 @@ http://localhost:4340
 Then:
 
 1. Add an ElevenLabs key in the Provider Keys panel if `.env` does not provide one.
-2. Upload or record a voice sample.
+2. Upload or record a voice sample. For long uploads, choose the sample window and whether to keep the original local source.
 3. Give it a local name, such as `Voice_Clone_01`.
 4. Save the voice.
 5. Enter text.
@@ -388,7 +388,16 @@ Recording requires a browser that supports microphone access on `localhost` and 
 
 ### Long uploaded samples
 
-The backend voice API supports provider-sized windows from longer local uploads. The frontend prepares the active excerpt before upload, and the backend stores that excerpt as `sampleFile`. When the UI sends `sampleMode=sourceWindow`, the original `sourceFile` is retained locally for traceability under `assets/voices/sources/`; it remains ignored by git and is not sent to the provider.
+The Add Voice panel can prepare a provider-sized window from a longer local upload. The browser decodes the selected file, defaults short files to their full duration, and defaults long files to the first provider-sized window. For the built-in ElevenLabs provider, the window maximum is 120 seconds and the recommended range is 60-120 seconds.
+
+The cropper has two save modes:
+
+- `Save Excerpt`: send only the selected excerpt as the active `sampleFile`.
+- `Keep Original`: send the selected excerpt as the active `sampleFile` and retain the original upload locally as `sourceFile` for traceability or future recropping.
+
+Cropped excerpts are encoded in the browser as mono 32 kHz WAV files so a two-minute active sample stays below the default 10 MB active upload cap. The backend stores that excerpt under `assets/voices/` and sends only that active sample to the provider for cloning. When the UI sends `sampleMode=sourceWindow`, the original `sourceFile` is retained locally under `assets/voices/sources/`; it remains ignored by git and is not sent to the provider.
+
+If the browser cannot decode the selected file type, choose a shorter browser-decodable file such as WAV, MP3, M4A, or WebM. This rollout intentionally avoids server-side audio transcoding so local source files and generated excerpts remain easy to reason about in a public repository.
 
 Remove containers and volumes:
 

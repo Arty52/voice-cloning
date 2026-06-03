@@ -4,6 +4,7 @@ export type RequestStatus = "idle" | "generating" | "success" | "error" | "cance
 export type AsyncStatus = "idle" | "loading" | "success" | "error"
 export type RecorderStatus = "idle" | "starting" | "recording" | "stopping" | "recorded" | "error"
 export type VoiceSampleInputMode = "upload" | "record"
+export type VoiceSampleMode = "excerpt" | "sourceWindow"
 export type ProviderKeySource = "browser" | "server" | "missing"
 
 export type VoiceProvider = {
@@ -13,6 +14,7 @@ export type VoiceProvider = {
   manageKeyUrl: string
   docsUrl: string
   links: ProviderLink[]
+  sample: ProviderSampleMetadata
   tuning: ProviderTuningMetadata
 }
 
@@ -22,6 +24,12 @@ export type ProviderLink = {
 }
 
 export type ProviderTuningValue = string | number | boolean
+
+export type ProviderSampleMetadata = {
+  maxWindowSeconds: number
+  recommendedMinSeconds: number
+  recommendedMaxSeconds: number
+}
 
 export type ProviderTuningOption = {
   label: string
@@ -67,6 +75,12 @@ export type VoiceAsset = {
   sha256: string
   source: "default" | "upload"
   createdAt: string
+  sampleMode: VoiceSampleMode
+  windowStartSeconds: number | null
+  windowDurationSeconds: number | null
+  sourceFilePath: string | null
+  sourceContentType: string | null
+  sourceSha256: string | null
 }
 
 export type VoicesResponse = {

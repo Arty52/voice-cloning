@@ -19,6 +19,12 @@ const defaultVoice = {
   sha256: "default-hash",
   source: "default" as const,
   createdAt: "2026-05-28T00:00:00+00:00",
+  sampleMode: "excerpt" as const,
+  windowStartSeconds: null,
+  windowDurationSeconds: null,
+  sourceFilePath: null,
+  sourceContentType: null,
+  sourceSha256: null,
 }
 
 const voiceCloneVoice = {
@@ -29,6 +35,12 @@ const voiceCloneVoice = {
   sha256: "voice-clone-01-hash",
   source: "upload" as const,
   createdAt: "2026-05-28T00:00:00+00:00",
+  sampleMode: "excerpt" as const,
+  windowStartSeconds: null,
+  windowDurationSeconds: null,
+  sourceFilePath: null,
+  sourceContentType: null,
+  sourceSha256: null,
 }
 
 const subscription = {
@@ -158,6 +170,11 @@ const providersResponse: ProvidersResponse = {
           href: "https://elevenlabs.io/docs/api-reference/models/list",
         },
       ],
+      sample: {
+        maxWindowSeconds: 120,
+        recommendedMinSeconds: 60,
+        recommendedMaxSeconds: 120,
+      },
       tuning: elevenLabsTuning,
     },
   ],
@@ -225,6 +242,40 @@ function generatedAudioInput(overrides: Partial<Parameters<typeof saveGeneratedA
   }
 }
 
+function stubDecodedAudio(durationSeconds = 3, sampleRate = 48000) {
+  const channelData = new Float32Array(Math.ceil(durationSeconds * sampleRate)).fill(0.25)
+  class FakeAudioContext {
+    state = "running"
+
+    close = vi.fn(async () => {
+      this.state = "closed"
+    })
+
+    decodeAudioData = vi.fn(async () => ({
+      duration: durationSeconds,
+      getChannelData: () => channelData,
+      numberOfChannels: 1,
+      sampleRate,
+    }))
+  }
+  vi.stubGlobal("AudioContext", FakeAudioContext)
+}
+
+function stubAudioDecodeFailure() {
+  class FakeAudioContext {
+    state = "running"
+
+    close = vi.fn(async () => {
+      this.state = "closed"
+    })
+
+    decodeAudioData = vi.fn(async () => {
+      throw new Error("decode failed")
+    })
+  }
+  vi.stubGlobal("AudioContext", FakeAudioContext)
+}
+
 function mockFetch() {
   return vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
@@ -284,6 +335,14 @@ function mockFetchWithProviders(nextProvidersResponse: ProvidersResponse) {
         defaultModelId: "eleven_multilingual_v2",
         models: [multilingualModel, flashModel],
       })
+    }
+    if (path === "/api/voices" && init?.method === "POST") {
+      return Promise.resolve(
+        new Response(JSON.stringify({ voice: voiceCloneVoice }), {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        })
+      )
     }
     if (path === "/api/speech" && init?.method === "POST") {
       return okAudio()
@@ -748,6 +807,7 @@ describe("App", () => {
   })
 
   it("saves a named upload and selects it", async () => {
+    stubDecodedAudio(3)
     const user = userEvent.setup()
     render(<App />)
 
@@ -755,6 +815,7 @@ describe("App", () => {
     await user.type(screen.getByLabelText(/voice name/i), "Voice_Clone_01")
     const file = new File(["sample"], "voice-clone-01.wav", { type: "audio/wav" })
     await user.upload(screen.getByLabelText(/sample file/i), file)
+    await screen.findByRole("group", { name: /saved sample mode/i })
     await user.click(screen.getByRole("button", { name: /save voice/i }))
 
     await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/voices", expect.objectContaining({ method: "POST" })))
@@ -762,9 +823,201 @@ describe("App", () => {
       ([url, init]) => String(url) === "/api/voices" && init?.method === "POST"
     )
     const body = uploadCall?.[1]?.body as FormData
+    const sampleFile = body.get("sampleFile") as File
     expect(body.get("name")).toBe("Voice_Clone_01")
-    expect(body.get("sampleFile")).toBe(file)
+    expect(sampleFile).toBeInstanceOf(File)
+    expect(sampleFile.name).toBe("voice-clone-01-window.wav")
+    expect(sampleFile.type).toBe("audio/wav")
+    expect(body.get("sampleMode")).toBe("excerpt")
+    expect(body.get("windowStartSeconds")).toBe("0")
+    expect(body.get("windowDurationSeconds")).toBe("3")
+    expect(body.get("sourceFile")).toBeNull()
     expect(await screen.findByRole("button", { name: /^Voice_Clone_01/i })).toBeInTheDocument()
+  })
+
+  it("defaults long uploads to the provider maximum window", async () => {
+    vi.stubGlobal(
+      "fetch",
+      mockFetchWithProviders({
+        ...providersResponse,
+        providers: [
+          {
+            ...providersResponse.providers[0],
+            sample: {
+              maxWindowSeconds: 2,
+              recommendedMinSeconds: 1,
+              recommendedMaxSeconds: 2,
+            },
+          },
+        ],
+      })
+    )
+    stubDecodedAudio(3)
+    const user = userEvent.setup()
+    render(<App />)
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.upload(screen.getByLabelText(/sample file/i), new File(["sample"], "long.wav", { type: "audio/wav" }))
+
+    expect(await screen.findByText("0:02 Selected")).toBeInTheDocument()
+    expect(screen.getByText("0:02 Max")).toBeInTheDocument()
+    expect(screen.getByText("0:01-0:02 Recommended")).toBeInTheDocument()
+  })
+
+  it("re-clamps a prepared upload when provider sample limits load", async () => {
+    const providers = deferredResponse()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        const path = url.split("?")[0]
+        if (path === "/api/providers" && !init) {
+          return providers.promise
+        }
+        if (path === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "default", voices: [defaultVoice] })
+        }
+        if (path === "/api/subscription" && !init) {
+          return okJson(subscription)
+        }
+        if (path === "/api/models" && !init) {
+          return okJson({
+            available: true,
+            error: null,
+            defaultModelId: "eleven_multilingual_v2",
+            models: [multilingualModel, flashModel],
+          })
+        }
+        if (path === "/api/voices" && init?.method === "POST") {
+          return Promise.resolve(
+            new Response(JSON.stringify({ voice: voiceCloneVoice }), {
+              status: 201,
+              headers: { "Content-Type": "application/json" },
+            })
+          )
+        }
+        if (path === "/api/speech" && init?.method === "POST") {
+          return okAudio()
+        }
+        return okJson({})
+      })
+    )
+    stubDecodedAudio(3)
+    const user = userEvent.setup()
+    render(<App />)
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.type(screen.getByLabelText(/voice name/i), "Voice_Clone_01")
+    await user.upload(screen.getByLabelText(/sample file/i), new File(["sample"], "long.wav", { type: "audio/wav" }))
+    expect(await screen.findByText("0:03 Selected")).toBeInTheDocument()
+
+    providers.resolve(
+      new Response(
+        JSON.stringify({
+          ...providersResponse,
+          providers: [
+            {
+              ...providersResponse.providers[0],
+              sample: {
+                maxWindowSeconds: 2,
+                recommendedMinSeconds: 1,
+                recommendedMaxSeconds: 2,
+              },
+            },
+          ],
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }
+      )
+    )
+
+    expect(await screen.findByText("0:02 Selected")).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: /save voice/i }))
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/voices", expect.objectContaining({ method: "POST" })))
+    const uploadCall = vi.mocked(fetch).mock.calls.find(
+      ([url, init]) => String(url) === "/api/voices" && init?.method === "POST"
+    )
+    const body = uploadCall?.[1]?.body as FormData
+    expect(body.get("windowStartSeconds")).toBe("0")
+    expect(body.get("windowDurationSeconds")).toBe("2")
+  })
+
+  it("sends the original file when keeping a source window", async () => {
+    vi.stubGlobal(
+      "fetch",
+      mockFetchWithProviders({
+        ...providersResponse,
+        providers: [
+          {
+            ...providersResponse.providers[0],
+            sample: {
+              maxWindowSeconds: 2,
+              recommendedMinSeconds: 1,
+              recommendedMaxSeconds: 2,
+            },
+          },
+        ],
+      })
+    )
+    stubDecodedAudio(3)
+    const user = userEvent.setup()
+    const file = new File(["sample"], "voice-source.mp3", { type: "audio/mpeg" })
+    render(<App />)
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.type(screen.getByLabelText(/voice name/i), "Voice_Clone_01")
+    await user.upload(screen.getByLabelText(/sample file/i), file)
+    await user.click(await screen.findByRole("button", { name: /keep original/i }))
+    await user.click(screen.getByRole("button", { name: /save voice/i }))
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/voices", expect.objectContaining({ method: "POST" })))
+    const uploadCall = vi.mocked(fetch).mock.calls.find(
+      ([url, init]) => String(url) === "/api/voices" && init?.method === "POST"
+    )
+    const body = uploadCall?.[1]?.body as FormData
+    const sampleFile = body.get("sampleFile") as File
+    expect(sampleFile.name).toBe("voice-source-window.wav")
+    expect(body.get("sampleMode")).toBe("sourceWindow")
+    expect(body.get("sourceFile")).toBe(file)
+    expect(body.get("windowStartSeconds")).toBe("0")
+    expect(body.get("windowDurationSeconds")).toBe("2")
+  })
+
+  it("reports decode failures before saving uploaded audio", async () => {
+    stubAudioDecodeFailure()
+    const user = userEvent.setup()
+    render(<App />)
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.type(screen.getByLabelText(/voice name/i), "Voice_Clone_01")
+    await user.upload(screen.getByLabelText(/sample file/i), new File(["sample"], "broken.wav", { type: "audio/wav" }))
+
+    expect(await screen.findByText(/unable to decode this audio file/i)).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /save voice/i })).toBeDisabled()
+  })
+
+  it("falls back to default sample limits when provider metadata is missing", async () => {
+    const providerWithoutSample = { ...providersResponse.providers[0] } as Partial<(typeof providersResponse.providers)[number]>
+    delete providerWithoutSample.sample
+    vi.stubGlobal(
+      "fetch",
+      mockFetchWithProviders({
+        ...providersResponse,
+        providers: [providerWithoutSample as (typeof providersResponse.providers)[number]],
+      })
+    )
+    stubDecodedAudio(3)
+    const user = userEvent.setup()
+    render(<App />)
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.upload(screen.getByLabelText(/sample file/i), new File(["sample"], "voice.wav", { type: "audio/wav" }))
+
+    expect(await screen.findByText("0:03 Selected")).toBeInTheDocument()
+    expect(screen.getByText("2:00 Max")).toBeInTheDocument()
   })
 
   it("sets the selected voice as the local default", async () => {
