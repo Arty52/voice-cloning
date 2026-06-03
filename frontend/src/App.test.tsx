@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import App from "./App"
+import { TooltipProvider } from "./components/ui/tooltip"
 import { VOICE_PROVIDER_KEY_HEADER } from "./lib/api"
 import {
   BYTES_PER_MEBIBYTE,
@@ -247,6 +248,14 @@ function generatedAudioInput(overrides: Partial<Parameters<typeof saveGeneratedA
   }
 }
 
+function renderApp() {
+  return render(
+    <TooltipProvider>
+      <App />
+    </TooltipProvider>
+  )
+}
+
 function stubDecodedAudio(durationSeconds = 3, sampleRate = 48000) {
   const channelData = new Float32Array(Math.ceil(durationSeconds * sampleRate)).fill(0.25)
   class FakeAudioContext {
@@ -376,7 +385,7 @@ describe("App", () => {
 
   it("loads voices and auto-expands long text", async () => {
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
 
     const textarea = await screen.findByLabelText(/text to speak/i)
     await user.clear(textarea)
@@ -418,7 +427,7 @@ describe("App", () => {
       })
     )
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
 
     const keyInput = await screen.findByLabelText(/ElevenLabs API Key/i)
     expect(screen.getAllByText("Missing Key")).toHaveLength(2)
@@ -479,7 +488,7 @@ describe("App", () => {
       })
     )
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
 
     expect(await screen.findByText("Provider Settings Unavailable")).toBeInTheDocument()
     expect(await screen.findByText("default/default-voice.mp3")).toBeInTheDocument()
@@ -505,7 +514,7 @@ describe("App", () => {
       })
     }
     const clipboardWrite = vi.spyOn(window.navigator.clipboard, "writeText").mockResolvedValue(undefined)
-    render(<App />)
+    renderApp()
 
     const keyInput = await screen.findByLabelText(/ElevenLabs API Key/i)
     expect(keyInput).toHaveValue("stored-key")
@@ -570,7 +579,7 @@ describe("App", () => {
       })
     )
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
 
     await screen.findByLabelText(/ElevenLabs API Key/i)
     await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/subscription?providerId=elevenlabs", undefined))
@@ -620,7 +629,7 @@ describe("App", () => {
 
   it("places cost quota under add voice and expands details", async () => {
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
 
     const costHeading = await screen.findByText("Cost & Quota")
     const addVoiceHeading = screen.getByText("Add Voice")
@@ -653,7 +662,7 @@ describe("App", () => {
 
   it("collapses cost quota details while keeping the overview", async () => {
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
 
     await screen.findByText(`${formatTestNumber(9000)} remaining`)
     await user.click(screen.getByRole("button", { name: /expand/i }))
@@ -688,7 +697,7 @@ describe("App", () => {
       })
     )
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
 
     await screen.findByText("default/default-voice.mp3")
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
@@ -744,7 +753,7 @@ describe("App", () => {
       })
     )
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
 
     await screen.findByText("default/default-voice.mp3")
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
@@ -783,7 +792,7 @@ describe("App", () => {
       })
     )
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
 
     await screen.findByText("default/default-voice.mp3")
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
@@ -814,7 +823,7 @@ describe("App", () => {
   it("saves a named upload and selects it", async () => {
     stubDecodedAudio(3)
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
 
     await screen.findByText("default/default-voice.mp3")
     await user.type(screen.getByLabelText(/voice name/i), "Voice_Clone_01")
@@ -859,7 +868,7 @@ describe("App", () => {
     )
     stubDecodedAudio(3)
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
 
     await screen.findByText("default/default-voice.mp3")
     await user.upload(screen.getByLabelText(/sample file/i), new File(["sample"], "long.wav", { type: "audio/wav" }))
@@ -909,7 +918,7 @@ describe("App", () => {
     )
     stubDecodedAudio(3)
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
 
     await screen.findByText("default/default-voice.mp3")
     await user.type(screen.getByLabelText(/voice name/i), "Voice_Clone_01")
@@ -970,7 +979,7 @@ describe("App", () => {
     stubDecodedAudio(3)
     const user = userEvent.setup()
     const file = new File(["sample"], "voice-source.mp3", { type: "audio/mpeg" })
-    render(<App />)
+    renderApp()
 
     await screen.findByText("default/default-voice.mp3")
     await user.type(screen.getByLabelText(/voice name/i), "Voice_Clone_01")
@@ -994,7 +1003,7 @@ describe("App", () => {
   it("reports decode failures before saving uploaded audio", async () => {
     stubAudioDecodeFailure()
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
 
     await screen.findByText("default/default-voice.mp3")
     await user.type(screen.getByLabelText(/voice name/i), "Voice_Clone_01")
@@ -1016,7 +1025,7 @@ describe("App", () => {
     )
     stubDecodedAudio(3)
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
 
     await screen.findByText("default/default-voice.mp3")
     await user.upload(screen.getByLabelText(/sample file/i), new File(["sample"], "voice.wav", { type: "audio/wav" }))
@@ -1046,7 +1055,7 @@ describe("App", () => {
       })
     )
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
 
     await user.click(await screen.findByRole("button", { name: /^Voice_Clone_01/i }))
     await user.click(screen.getByRole("button", { name: /set as default/i }))
@@ -1083,7 +1092,7 @@ describe("App", () => {
       })
     )
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
 
     await user.click(await screen.findByRole("button", { name: /open actions for voice_clone_01/i }))
     await user.click(screen.getByRole("menuitem", { name: /play/i }))
@@ -1114,7 +1123,7 @@ describe("App", () => {
       })
     )
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
 
     await user.click(await screen.findByRole("button", { name: /open actions for voice_clone_01/i }))
     await user.click(screen.getByRole("menuitem", { name: /rename/i }))
@@ -1153,7 +1162,7 @@ describe("App", () => {
       })
     )
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
 
     await user.click(await screen.findByRole("button", { name: /open actions for voice_clone_01/i }))
     await user.click(screen.getByRole("menuitem", { name: /delete/i }))
@@ -1192,7 +1201,7 @@ describe("App", () => {
     vi.stubGlobal("navigator", { ...navigator, mediaDevices: { getUserMedia } })
     vi.stubGlobal("AudioContext", FakeAudioContext)
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
 
     await user.type(await screen.findByLabelText(/voice name/i), "Voice_Clone_01")
     await user.click(screen.getByRole("button", { name: /^Record$/ }))
@@ -1243,7 +1252,7 @@ describe("App", () => {
     vi.stubGlobal("navigator", { ...navigator, mediaDevices: { getUserMedia } })
     vi.stubGlobal("AudioContext", FakeAudioContext)
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
 
     await user.type(await screen.findByLabelText(/voice name/i), "Voice_Clone_01")
     await user.click(screen.getByRole("button", { name: /^Record$/ }))
@@ -1266,7 +1275,7 @@ describe("App", () => {
   it("reports unsupported recording and keeps upload available", async () => {
     vi.stubGlobal("navigator", { ...navigator, mediaDevices: undefined })
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
 
     await screen.findByText("default/default-voice.mp3")
     await user.click(screen.getByRole("button", { name: /^Record$/ }))
@@ -1278,7 +1287,7 @@ describe("App", () => {
   })
 
   it("shows tuning help and selects standard narration by default", async () => {
-    render(<App />)
+    renderApp()
 
     await screen.findByText("default/default-voice.mp3")
 
@@ -1316,7 +1325,7 @@ describe("App", () => {
       })
     )
 
-    render(<App />)
+    renderApp()
 
     await screen.findByText("default/default-voice.mp3")
     expect(screen.queryByText("Voice Tuning")).not.toBeInTheDocument()
@@ -1353,7 +1362,7 @@ describe("App", () => {
       })
     )
 
-    render(<App />)
+    renderApp()
 
     await screen.findByText("default/default-voice.mp3")
     expect(screen.getByText("Voice Tuning")).toBeInTheDocument()
@@ -1404,7 +1413,7 @@ describe("App", () => {
       })
     )
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
 
     await screen.findByText("default/default-voice.mp3")
     await user.selectOptions(screen.getByRole("combobox", { name: "Mode" }), "2")
@@ -1455,7 +1464,7 @@ describe("App", () => {
       })
     )
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
 
     await screen.findByText("default/default-voice.mp3")
     const checkbox = screen.getByRole("checkbox", { name: "Expressive" })
@@ -1481,7 +1490,7 @@ describe("App", () => {
 
   it("applies animated dialogue and marks manual tuning as custom", async () => {
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
 
     await screen.findByText("default/default-voice.mp3")
     await user.click(screen.getByRole("button", { name: /animated dialogue/i }))
@@ -1502,7 +1511,7 @@ describe("App", () => {
 
   it("marks tuning as custom when speaker boost changes", async () => {
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
 
     await screen.findByText("default/default-voice.mp3")
     expect(screen.getByRole("button", { name: /standard narration/i })).toHaveAttribute("aria-pressed", "true")
@@ -1515,7 +1524,7 @@ describe("App", () => {
 
   it("sends tuning values with speech generation", async () => {
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
 
     await screen.findByText("default/default-voice.mp3")
     fireEvent.change(screen.getByRole("slider", { name: /stability/i }), { target: { value: "0.42" } })
@@ -1554,7 +1563,7 @@ describe("App", () => {
 
   it("sends selected model and shows actual usage metadata", async () => {
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
 
     await screen.findByText("default/default-voice.mp3")
     await user.click(screen.getByRole("button", { name: /expand/i }))
@@ -1594,7 +1603,7 @@ describe("App", () => {
       })
     )
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
 
     await screen.findByText("default/default-voice.mp3")
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
@@ -1608,12 +1617,15 @@ describe("App", () => {
     expect(latestPanel).not.toBeNull()
     expect(within(latestPanel as HTMLElement).getByLabelText("Generated Audio Metadata")).toBeInTheDocument()
     expect(within(latestPanel as HTMLElement).getByText("Generated In 1.2s")).toBeInTheDocument()
+    expect(
+      within(latestPanel as HTMLElement).getByLabelText("Generated Audio Size 13 B; Exact Size 13 bytes")
+    ).toBeInTheDocument()
   })
 
   it("keeps persisted generated audio in the archive before a new generation", async () => {
     await saveGeneratedAudio(generatedAudioInput({ id: "persisted-audio" }), 100 * BYTES_PER_MEBIBYTE)
 
-    render(<App />)
+    renderApp()
 
     const archiveHeading = await screen.findByRole("heading", { name: "Generated Audio Archive" })
     expect(screen.queryByRole("heading", { name: "Latest Generated Audio" })).not.toBeInTheDocument()
@@ -1629,7 +1641,7 @@ describe("App", () => {
       100 * BYTES_PER_MEBIBYTE
     )
 
-    render(<App />)
+    renderApp()
 
     const archiveHeading = await screen.findByRole("heading", { name: "Generated Audio Archive" })
     const archivePanel = archiveHeading.closest("section")
@@ -1640,7 +1652,7 @@ describe("App", () => {
 
   it("persists generated audio across remounts", async () => {
     const user = userEvent.setup()
-    const { unmount } = render(<App />)
+    const { unmount } = renderApp()
 
     await screen.findByText("default/default-voice.mp3")
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
@@ -1649,7 +1661,7 @@ describe("App", () => {
     expect(screen.getByText("1 saved")).toBeInTheDocument()
     unmount()
 
-    render(<App />)
+    renderApp()
 
     expect(screen.queryByRole("heading", { name: "Latest Generated Audio" })).not.toBeInTheDocument()
     const archiveHeading = await screen.findByRole("heading", { name: "Generated Audio Archive" })
@@ -1666,7 +1678,7 @@ describe("App", () => {
 
   it("removes one generated audio item and clears all saved audio", async () => {
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
 
     await screen.findByText("default/default-voice.mp3")
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
@@ -1694,7 +1706,7 @@ describe("App", () => {
 
   it("clears the current latest generated audio from the archive controls", async () => {
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
 
     await screen.findByText("default/default-voice.mp3")
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
@@ -1712,7 +1724,7 @@ describe("App", () => {
 
   it("removes temporary generated audio when browser storage is unavailable", async () => {
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
 
     await screen.findByText("default/default-voice.mp3")
     await screen.findByText((_, element) => element?.textContent === "0 B / 100 MB")
@@ -1748,7 +1760,7 @@ describe("App", () => {
 
   it("keeps confirmation dialog focus contained and closes with Escape", async () => {
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
 
     await screen.findByText("default/default-voice.mp3")
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
@@ -1807,7 +1819,7 @@ describe("App", () => {
       })
     )
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
 
     await screen.findByText("default/default-voice.mp3")
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
@@ -1859,7 +1871,7 @@ describe("App", () => {
       })
     )
     const user = userEvent.setup()
-    render(<App />)
+    renderApp()
 
     await screen.findByText("default/default-voice.mp3")
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))

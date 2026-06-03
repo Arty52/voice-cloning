@@ -2,9 +2,10 @@ import { Download, Trash2 } from "lucide-react"
 
 import { AudioPlayer } from "@/components/audio-player"
 import { GeneratedAudioMetadata } from "@/components/generated-audio-metadata"
+import { GeneratedAudioSizeBadge } from "@/components/generated-audio-size-badge"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { formatBytes, formatNumber } from "@/lib/formatters"
+import { formatNumber } from "@/lib/formatters"
 import { cn } from "@/lib/utils"
 import type { GeneratedResult } from "@/types"
 
@@ -43,7 +44,7 @@ export function GeneratedAudioItem({
           {item.characterCount === null ? "Generated" : `${formatNumber(item.characterCount)} chars`}{" "}
           {item.generatedAt}
         </span>
-        <span className="font-mono">{formatBytes(item.sizeBytes)}</span>
+        <GeneratedAudioSizeBadge sizeBytes={item.sizeBytes} />
       </div>
       {item.requestId ? (
         <div className="mt-2 truncate font-mono text-xs text-muted-foreground">Request {item.requestId}</div>
