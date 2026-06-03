@@ -1420,7 +1420,7 @@ describe("App", () => {
     expect(JSON.parse(String(body.get("voiceSettings")))).toEqual({ mode: 2, enhanced: true })
     const latestPanel = screen.getByRole("heading", { name: "Latest Generated Audio" }).closest("section")
     expect(latestPanel).not.toBeNull()
-    expect(within(latestPanel as HTMLElement).getByLabelText("Generated Audio Settings")).toBeInTheDocument()
+    expect(within(latestPanel as HTMLElement).getByLabelText("Generated Audio Metadata")).toBeInTheDocument()
     expect(within(latestPanel as HTMLElement).getByText("Select Provider")).toBeInTheDocument()
     expect(within(latestPanel as HTMLElement).getByText("Custom Settings")).toBeInTheDocument()
     expect(within(latestPanel as HTMLElement).getByText("Mode Two")).toBeInTheDocument()
@@ -1542,7 +1542,7 @@ describe("App", () => {
     })
     const latestPanel = screen.getByRole("heading", { name: "Latest Generated Audio" }).closest("section")
     expect(latestPanel).not.toBeNull()
-    expect(within(latestPanel as HTMLElement).getByLabelText("Generated Audio Settings")).toBeInTheDocument()
+    expect(within(latestPanel as HTMLElement).getByLabelText("Generated Audio Metadata")).toBeInTheDocument()
     expect(within(latestPanel as HTMLElement).getByText("ElevenLabs")).toBeInTheDocument()
     expect(within(latestPanel as HTMLElement).getByText("Custom Settings")).toBeInTheDocument()
     expect(within(latestPanel as HTMLElement).getByText("Stability 0.42")).toBeInTheDocument()
@@ -1574,7 +1574,7 @@ describe("App", () => {
     expect(screen.getAllByText(/req_test_123/)).toHaveLength(2)
     const latestPanel = screen.getByRole("heading", { name: "Latest Generated Audio" }).closest("section")
     expect(latestPanel).not.toBeNull()
-    expect(within(latestPanel as HTMLElement).getByLabelText("Generated Audio Settings")).toBeInTheDocument()
+    expect(within(latestPanel as HTMLElement).getByLabelText("Generated Audio Metadata")).toBeInTheDocument()
     expect(within(latestPanel as HTMLElement).getByText("ElevenLabs")).toBeInTheDocument()
     expect(within(latestPanel as HTMLElement).getByText("Preset: Standard Narration")).toBeInTheDocument()
     expect(within(latestPanel as HTMLElement).getByText("Default Settings")).toBeInTheDocument()
@@ -1604,6 +1604,10 @@ describe("App", () => {
       generationElapsedMs: 1234,
       requestId: "req_test_123",
     })
+    const latestPanel = screen.getByRole("heading", { name: "Latest Generated Audio" }).closest("section")
+    expect(latestPanel).not.toBeNull()
+    expect(within(latestPanel as HTMLElement).getByLabelText("Generated Audio Metadata")).toBeInTheDocument()
+    expect(within(latestPanel as HTMLElement).getByText("Generated In 1.2s")).toBeInTheDocument()
   })
 
   it("keeps persisted generated audio in the archive before a new generation", async () => {
@@ -1616,7 +1620,22 @@ describe("App", () => {
     const archivePanel = archiveHeading.closest("section")
     expect(archivePanel).not.toBeNull()
     expect(await within(archivePanel as HTMLElement).findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
-    expect(within(archivePanel as HTMLElement).queryByLabelText("Generated Audio Settings")).not.toBeInTheDocument()
+    expect(within(archivePanel as HTMLElement).queryByLabelText("Generated Audio Metadata")).not.toBeInTheDocument()
+  })
+
+  it("shows timing metadata for archived audio without tuning metadata", async () => {
+    await saveGeneratedAudio(
+      generatedAudioInput({ generationElapsedMs: 1234, id: "timed-audio", tuningMetadata: null }),
+      100 * BYTES_PER_MEBIBYTE
+    )
+
+    render(<App />)
+
+    const archiveHeading = await screen.findByRole("heading", { name: "Generated Audio Archive" })
+    const archivePanel = archiveHeading.closest("section")
+    expect(archivePanel).not.toBeNull()
+    expect(await within(archivePanel as HTMLElement).findByLabelText("Generated Audio Metadata")).toBeInTheDocument()
+    expect(await within(archivePanel as HTMLElement).findByText("Generated In 1.2s")).toBeInTheDocument()
   })
 
   it("persists generated audio across remounts", async () => {
@@ -1638,7 +1657,8 @@ describe("App", () => {
     const archivePanel = archiveHeading.closest("section")
     expect(archivePanel).not.toBeNull()
     expect(await within(archivePanel as HTMLElement).findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
-    expect(within(archivePanel as HTMLElement).getByLabelText("Generated Audio Settings")).toBeInTheDocument()
+    expect(within(archivePanel as HTMLElement).getByLabelText("Generated Audio Metadata")).toBeInTheDocument()
+    expect(within(archivePanel as HTMLElement).getByText(/Generated In/)).toBeInTheDocument()
     expect(within(archivePanel as HTMLElement).getByText("Preset: Standard Narration")).toBeInTheDocument()
     expect(within(archivePanel as HTMLElement).getByText("Default Settings")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: /download/i })).toHaveAttribute("download", expect.stringMatching(/^voice-clone-default-/))
