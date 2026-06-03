@@ -12,6 +12,23 @@ export function formatBytes(value: number) {
   return `${Number.isInteger(mebibytes) ? formatNumber(mebibytes) : mebibytes.toFixed(1)} MB`
 }
 
+export function formatCompactBytes(value: number) {
+  const normalizedBytes = normalizeByteCount(value)
+  if (normalizedBytes < 1024) {
+    return `${formatNumber(normalizedBytes)} B`
+  }
+  if (normalizedBytes < BYTES_PER_MEBIBYTE) {
+    return `${formatNumber(Math.round(normalizedBytes / 1024))} KB`
+  }
+  const mebibytes = normalizedBytes / BYTES_PER_MEBIBYTE
+  return `${Number.isInteger(mebibytes) ? formatNumber(mebibytes) : mebibytes.toFixed(1)} MB`
+}
+
+export function formatExactBytes(value: number) {
+  const normalizedBytes = normalizeByteCount(value)
+  return `${formatNumber(normalizedBytes)} ${normalizedBytes === 1 ? "byte" : "bytes"}`
+}
+
 export function formatRecordingDuration(durationSeconds: number) {
   const seconds = Math.max(0, Math.floor(durationSeconds))
   const minutes = Math.floor(seconds / 60)
@@ -67,4 +84,11 @@ export function formatGeneratedAudioCountBadge(savedItemCount: number, temporary
     parts.push(temporaryItemCount === 1 ? "1 unsaved" : `${temporaryItemCount} unsaved`)
   }
   return parts.join(", ")
+}
+
+function normalizeByteCount(value: number) {
+  if (!Number.isFinite(value)) {
+    return 0
+  }
+  return Math.max(0, Math.round(value))
 }
