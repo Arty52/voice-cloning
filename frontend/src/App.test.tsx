@@ -242,6 +242,25 @@ function generatedAudioInput(overrides: Partial<Parameters<typeof saveGeneratedA
   }
 }
 
+function stubDecodedAudio(durationSeconds = 3, sampleRate = 48000) {
+  const channelData = new Float32Array(Math.ceil(durationSeconds * sampleRate)).fill(0.25)
+  class FakeAudioContext {
+    state = "running"
+
+    close = vi.fn(async () => {
+      this.state = "closed"
+    })
+
+    decodeAudioData = vi.fn(async () => ({
+      duration: durationSeconds,
+      getChannelData: () => channelData,
+      numberOfChannels: 1,
+      sampleRate,
+    }))
+  }
+  vi.stubGlobal("AudioContext", FakeAudioContext)
+}
+
 function mockFetch() {
   return vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
@@ -765,6 +784,7 @@ describe("App", () => {
   })
 
   it("saves a named upload and selects it", async () => {
+    stubDecodedAudio(3)
     const user = userEvent.setup()
     render(<App />)
 
@@ -772,6 +792,7 @@ describe("App", () => {
     await user.type(screen.getByLabelText(/voice name/i), "Voice_Clone_01")
     const file = new File(["sample"], "voice-clone-01.wav", { type: "audio/wav" })
     await user.upload(screen.getByLabelText(/sample file/i), file)
+    await screen.findByRole("group", { name: /saved sample mode/i })
     await user.click(screen.getByRole("button", { name: /save voice/i }))
 
     await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/voices", expect.objectContaining({ method: "POST" })))
@@ -779,8 +800,15 @@ describe("App", () => {
       ([url, init]) => String(url) === "/api/voices" && init?.method === "POST"
     )
     const body = uploadCall?.[1]?.body as FormData
+    const sampleFile = body.get("sampleFile") as File
     expect(body.get("name")).toBe("Voice_Clone_01")
-    expect(body.get("sampleFile")).toBe(file)
+    expect(sampleFile).toBeInstanceOf(File)
+    expect(sampleFile.name).toBe("voice-clone-01-window.wav")
+    expect(sampleFile.type).toBe("audio/wav")
+    expect(body.get("sampleMode")).toBe("excerpt")
+    expect(body.get("windowStartSeconds")).toBe("0")
+    expect(body.get("windowDurationSeconds")).toBe("3")
+    expect(body.get("sourceFile")).toBeNull()
     expect(await screen.findByRole("button", { name: /^Voice_Clone_01/i })).toBeInTheDocument()
   })
 

@@ -124,6 +124,6 @@ function normalizeProviderSample(sample: VoiceProvider["sample"]): VoiceProvider
   }
 }
 
-function positiveNumberOrDefault(value: number | undefined, fallback: number) {
-  return Number.isFinite(value) && value > 0 ? value : fallback
+function positiveNumberOrDefault(value: number | undefined, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : fallback
 }

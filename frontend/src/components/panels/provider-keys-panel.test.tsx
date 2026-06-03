@@ -3,6 +3,12 @@ import { describe, expect, it, vi } from "vitest"
 
 import { ProviderKeysPanel } from "./provider-keys-panel"
 
+const sample = {
+  maxWindowSeconds: 120,
+  recommendedMinSeconds: 60,
+  recommendedMaxSeconds: 120,
+}
+
 const elevenLabsProvider = {
   id: "elevenlabs",
   label: "ElevenLabs",
@@ -10,6 +16,7 @@ const elevenLabsProvider = {
   manageKeyUrl: "https://elevenlabs.io/app/subscription/api",
   docsUrl: "https://elevenlabs.io/docs/api-reference/authentication",
   links: [],
+  sample,
   tuning: { controls: [], presets: [], defaultValues: {} },
 }
 
@@ -20,6 +27,7 @@ const zonosProvider = {
   manageKeyUrl: "https://example.test/zonos/key",
   docsUrl: "https://example.test/zonos/docs",
   links: [],
+  sample,
   tuning: { controls: [], presets: [], defaultValues: {} },
 }
 
