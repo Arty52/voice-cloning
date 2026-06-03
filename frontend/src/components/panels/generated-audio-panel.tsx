@@ -1,5 +1,6 @@
-import { Download, HardDrive, Trash2 } from "lucide-react"
+import { HardDrive, Trash2 } from "lucide-react"
 
+import { GeneratedAudioItem } from "@/components/generated-audio-item"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Loading } from "@/components/ui/loading"
@@ -11,7 +12,7 @@ import {
   type GeneratedAudioUsage,
 } from "@/lib/generated-audio-storage"
 import { isTemporaryGeneratedAudioId } from "@/lib/generated-audio-view-model"
-import { formatBytes, formatGeneratedAudioCountBadge, formatNumber } from "@/lib/formatters"
+import { formatBytes, formatGeneratedAudioCountBadge } from "@/lib/formatters"
 import { cn } from "@/lib/utils"
 import type { GeneratedAudioMutation } from "@/hooks/use-generated-audio-library"
 import type { AsyncStatus, GeneratedResult, RequestStatus } from "@/types"
@@ -139,49 +140,13 @@ export function GeneratedAudioPanel({
             </Button>
           </div>
           {items.map((item, index) => (
-            <div className="rounded-md border border-border bg-background/60 p-3" key={item.id}>
-              <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-medium">{item.voiceName}</div>
-                  <div className="mt-1 truncate font-mono text-xs text-muted-foreground">Voice {item.voiceId}</div>
-                </div>
-                <div className="flex shrink-0 flex-wrap gap-2">
-                  {index === 0 ? <Badge>Latest</Badge> : null}
-                  <Badge>{item.cacheState === "hit" ? "Cache Hit" : "Cache Miss"}</Badge>
-                </div>
-              </div>
-              <audio aria-label={`Generated voice playback for ${item.voiceName}`} controls src={item.url} />
-              <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
-                <span className="truncate font-mono">Model {item.modelId}</span>
-                <span>
-                  {item.characterCount === null ? "Generated" : `${formatNumber(item.characterCount)} chars`}{" "}
-                  {item.generatedAt}
-                </span>
-                <span className="font-mono">{formatBytes(item.sizeBytes)}</span>
-              </div>
-              {item.requestId ? <div className="mt-2 truncate font-mono text-xs text-muted-foreground">Request {item.requestId}</div> : null}
-              <div className="mt-3 flex flex-wrap gap-2">
-                <a
-                  className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-secondary px-3 text-sm font-medium text-secondary-foreground transition hover:bg-secondary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  download={`voice-clone-${item.appVoiceId}-${item.id}.mp3`}
-                  href={item.url}
-                >
-                  <Download aria-hidden="true" className="size-4" />
-                  Download
-                </a>
-                <Button
-                  aria-label={`Remove generated audio for ${item.voiceName}`}
-                  disabled={mutationStatus === "delete"}
-                  onClick={() => onDelete(item.id)}
-                  size="sm"
-                  type="button"
-                  variant="secondary"
-                >
-                  <Trash2 aria-hidden="true" className="size-4" />
-                  Remove
-                </Button>
-              </div>
-            </div>
+            <GeneratedAudioItem
+              badge={index === 0 ? "Latest" : undefined}
+              isDeleteDisabled={mutationStatus === "delete"}
+              item={item}
+              key={item.id}
+              onDelete={onDelete}
+            />
           ))}
         </div>
       ) : (
