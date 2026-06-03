@@ -92,7 +92,10 @@ async def load_uploaded_sample(upload: UploadFile, settings: Settings, max_bytes
     if not content:
         raise HTTPException(status_code=422, detail="Uploaded voice sample is empty.")
     if len(content) > resolved_max_bytes:
-        raise HTTPException(status_code=413, detail="Uploaded voice sample must be 10 MB or smaller.")
+        raise HTTPException(
+            status_code=413,
+            detail=f"Uploaded voice sample must be {_upload_limit_label(resolved_max_bytes)} or smaller.",
+        )
 
     return VoiceSample(
         content=content,
@@ -118,3 +121,10 @@ def save_sample_file(sample: VoiceSample, destination: Path) -> VoiceSample:
 async def save_uploaded_sample(upload: UploadFile, destination: Path, settings: Settings) -> VoiceSample:
     sample = await load_uploaded_sample(upload, settings)
     return save_sample_file(sample, destination)
+
+
+def _upload_limit_label(max_bytes: int) -> str:
+    mebibytes = max_bytes / (1024 * 1024)
+    if mebibytes.is_integer():
+        return f"{int(mebibytes)} MB"
+    return f"{mebibytes:.1f} MB"

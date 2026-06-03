@@ -101,7 +101,11 @@ class VoiceLibrary:
             source_destination = self.assets_dir / "sources" / f"{voice_id}{source_extension}"
             if source_destination.exists():
                 raise HTTPException(status_code=409, detail="A source audio file with that name already exists.")
-            source_sample = await load_uploaded_sample(source_upload, self.settings)
+            source_sample = await load_uploaded_sample(
+                source_upload,
+                self.settings,
+                max_bytes=self.settings.max_source_upload_bytes,
+            )
 
         saved = await save_uploaded_sample(upload, destination, self.settings)
         saved_source: VoiceSample | None = None
