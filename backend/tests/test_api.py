@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+import voice_cloning.voice_library as voice_library_module
 from voice_cloning.api import SpeechGenerationCanceled, _await_or_cancel_on_disconnect, create_app
 from voice_cloning.cache import VoiceCache
 from voice_cloning.config import Settings
@@ -1012,6 +1013,23 @@ def test_source_window_voice_requires_source_file_and_window(tmp_path: Path) -> 
     assert missing_window.json()["detail"] == "Window start and duration are required for sourceWindow samples."
 
 
+def test_excerpt_voice_rejects_source_file(tmp_path: Path) -> None:
+    client, _ = make_client(tmp_path)
+
+    response = client.post(
+        "/api/voices",
+        data={"name": "Voice_Clone_01", "sampleMode": "excerpt"},
+        files={
+            "sampleFile": ("voice.wav", b"active-excerpt", "audio/wav"),
+            "sourceFile": ("source.mp3", b"original-source", "audio/mpeg"),
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Source file is only accepted for sourceWindow samples."
+    assert not (tmp_path / "assets" / "voices" / "voice-clone-01.wav").exists()
+
+
 def test_source_window_original_uses_source_upload_cap(tmp_path: Path) -> None:
     client, _ = make_client(tmp_path, max_source_upload_bytes=1024 * 1024)
 
@@ -1031,6 +1049,37 @@ def test_source_window_original_uses_source_upload_cap(tmp_path: Path) -> None:
 
     assert response.status_code == 413
     assert response.json()["detail"] == "Uploaded voice sample must be 1 MB or smaller."
+    assert not (tmp_path / "assets" / "voices" / "voice-clone-01.wav").exists()
+    assert not (tmp_path / "assets" / "voices" / "sources" / "voice-clone-01.mp3").exists()
+
+
+def test_source_window_cleans_active_file_when_source_write_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    client, _ = make_client(tmp_path)
+
+    def fail_source_write(sample: VoiceSample, destination: Path) -> VoiceSample:
+        raise OSError("source write failed")
+
+    monkeypatch.setattr(voice_library_module, "save_sample_file", fail_source_write)
+
+    with pytest.raises(OSError, match="source write failed"):
+        client.post(
+            "/api/voices",
+            data={
+                "name": "Voice_Clone_01",
+                "sampleMode": "sourceWindow",
+                "windowStartSeconds": "0",
+                "windowDurationSeconds": "60",
+            },
+            files={
+                "sampleFile": ("voice-window.wav", b"active-excerpt", "audio/wav"),
+                "sourceFile": ("source.mp3", b"original-source", "audio/mpeg"),
+            },
+        )
+
+    voices = client.get("/api/voices")
+
+    assert voices.status_code == 200
+    assert [voice["id"] for voice in voices.json()["voices"]] == ["default"]
     assert not (tmp_path / "assets" / "voices" / "voice-clone-01.wav").exists()
     assert not (tmp_path / "assets" / "voices" / "sources" / "voice-clone-01.mp3").exists()
 

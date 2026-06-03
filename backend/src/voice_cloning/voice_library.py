@@ -96,7 +96,8 @@ class VoiceLibrary:
         source_destination: Path | None = None
         source_sample: VoiceSample | None = None
         if resolved_sample_mode == "sourceWindow":
-            assert source_upload is not None
+            if source_upload is None:
+                raise HTTPException(status_code=422, detail="Source file is required for sourceWindow samples.")
             source_extension = Path(source_upload.filename or "").suffix.lower() or ".mp3"
             source_destination = self.assets_dir / "sources" / f"{voice_id}{source_extension}"
             if source_destination.exists():
@@ -107,10 +108,16 @@ class VoiceLibrary:
                 max_bytes=self.settings.max_source_upload_bytes,
             )
 
-        saved = await save_uploaded_sample(upload, destination, self.settings)
         saved_source: VoiceSample | None = None
-        if source_destination is not None and source_sample is not None:
-            saved_source = save_sample_file(source_sample, source_destination)
+        try:
+            saved = await save_uploaded_sample(upload, destination, self.settings)
+            if source_destination is not None and source_sample is not None:
+                saved_source = save_sample_file(source_sample, source_destination)
+        except Exception:
+            _unlink_if_exists(destination)
+            if source_destination is not None:
+                _unlink_if_exists(source_destination)
+            raise
         asset = VoiceAsset(
             id=voice_id,
             name=display_name,
@@ -350,6 +357,9 @@ def _normalize_window_metadata(
     if has_window_start != has_window_duration:
         raise HTTPException(status_code=422, detail="Window start and duration must be provided together.")
 
+    if sample_mode != "sourceWindow" and source_upload is not None:
+        raise HTTPException(status_code=422, detail="Source file is only accepted for sourceWindow samples.")
+
     if sample_mode == "sourceWindow":
         if source_upload is None:
             raise HTTPException(status_code=422, detail="Source file is required for sourceWindow samples.")
@@ -364,3 +374,10 @@ def _normalize_window_metadata(
     if window_duration_seconds <= 0:
         raise HTTPException(status_code=422, detail="Window duration must be greater than zero.")
     return window_start_seconds, window_duration_seconds
+
+
+def _unlink_if_exists(path: Path) -> None:
+    try:
+        path.unlink(missing_ok=True)
+    except FileNotFoundError:
+        pass
