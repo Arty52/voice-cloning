@@ -1,5 +1,6 @@
 import { Download, Trash2 } from "lucide-react"
 
+import { AudioPlayer } from "@/components/audio-player"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { formatBytes, formatNumber } from "@/lib/formatters"
@@ -33,7 +34,7 @@ export function GeneratedAudioItem({
           <Badge>{item.cacheState === "hit" ? "Cache Hit" : "Cache Miss"}</Badge>
         </div>
       </div>
-      <audio aria-label={`Generated voice playback for ${item.voiceName}`} controls src={item.url} />
+      <AudioPlayer ariaLabel={`Generated voice playback for ${item.voiceName}`} src={item.url} />
       <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
         <span className="truncate font-mono">Model {item.modelId}</span>
         <span>
