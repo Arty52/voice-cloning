@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge"
 import { TuningInfo } from "@/components/tuning-info"
+import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import type {
   ProviderTuningControl,
@@ -30,7 +31,7 @@ export function VoiceTuningPanel({
   tuning,
 }: VoiceTuningPanelProps) {
   if (controls.length === 0) {
-    return null
+    return isLoading ? <VoiceTuningSkeleton /> : null
   }
 
   return (
@@ -86,6 +87,31 @@ export function VoiceTuningPanel({
             onChange={onTuningValueChange}
             value={tuning[control.id] ?? control.defaultValue}
           />
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function VoiceTuningSkeleton() {
+  return (
+    <section aria-busy="true" className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
+          <Skeleton className="h-5 w-28" />
+          <Skeleton className="h-4 w-64 max-w-full" />
+        </div>
+        <Skeleton className="h-6 w-20 shrink-0" />
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2" aria-label="Loading Voice Tuning" role="status">
+        {[0, 1, 2, 3].map((item) => (
+          <div aria-hidden="true" className="flex flex-col gap-2" key={item}>
+            <div className="flex items-center justify-between gap-3">
+              <Skeleton className="h-4 w-28" />
+              <Skeleton className="h-3 w-10" />
+            </div>
+            <Skeleton className="h-2 w-full" />
+          </div>
         ))}
       </div>
     </section>

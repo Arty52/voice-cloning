@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { Loading } from "@/components/ui/loading"
 import type { AsyncStatus, ProviderKeySource, VoiceProvider } from "@/types"
 
 type DraftKeyState = {
@@ -54,6 +55,7 @@ export function ProviderKeysPanel({
   const canCopy = Boolean(activeProviderKey)
   const canClear = hasBrowserKey
   const canSave = draftKey.trim() !== savedKey
+  const isProviderLoading = providerStatus === "idle" || providerStatus === "loading"
 
   function handleSave() {
     const nextKey = draftKey.trim()
@@ -83,14 +85,16 @@ export function ProviderKeysPanel({
   }
 
   return (
-    <Card aria-labelledby="provider-keys-title">
+    <Card aria-busy={isProviderLoading} aria-labelledby="provider-keys-title">
       <CardHeader>
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
             <KeyRound aria-hidden="true" className="size-4 text-primary" />
             <CardTitle id="provider-keys-title">Provider Keys</CardTitle>
           </div>
-          <Badge>{keySourceLabel(keySource, providerStatus)}</Badge>
+          <Badge>
+            {isProviderLoading ? <Loading text="Loading" size="sm" variant="secondary" /> : keySourceLabel(keySource, providerStatus)}
+          </Badge>
         </div>
         <CardDescription>Store a browser-local key for this workspace, or use the backend `.env` fallback.</CardDescription>
       </CardHeader>
