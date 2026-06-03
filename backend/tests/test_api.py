@@ -250,6 +250,11 @@ def test_providers_endpoint_returns_public_provider_descriptor(tmp_path: Path) -
     ]
     assert provider["tuning"]["defaultValues"]["useSpeakerBoost"] is True
     assert [preset["id"] for preset in provider["tuning"]["presets"]] == ["standard", "animated"]
+    assert provider["sample"] == {
+        "maxWindowSeconds": 120,
+        "recommendedMinSeconds": 60,
+        "recommendedMaxSeconds": 120,
+    }
     assert provider["links"][0]["label"] == "API Requests"
     assert "server-secret" not in response.text
 

@@ -95,6 +95,11 @@ def providers_payload(
                 "docsUrl": provider.docs_url,
                 "links": [{"label": link.label, "href": link.href} for link in provider.links],
                 "tuning": tuning_payload(provider.tuning),
+                "sample": {
+                    "maxWindowSeconds": provider.sample.max_window_seconds,
+                    "recommendedMinSeconds": provider.sample.recommended_min_seconds,
+                    "recommendedMaxSeconds": provider.sample.recommended_max_seconds,
+                },
             }
             for provider in providers
         ],
