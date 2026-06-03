@@ -32,6 +32,9 @@ export function formatGenerationElapsedTime(elapsedMs: number) {
   }
   if (normalizedMs < 10_000) {
     const tenths = Math.round(normalizedMs / 100) / 10
+    if (Number.isInteger(tenths) || tenths >= 10) {
+      return `${Math.round(tenths)}s`
+    }
     return `${tenths.toFixed(1)}s`
   }
   const roundedSeconds = Math.round(normalizedMs / 1000)

@@ -10,7 +10,9 @@ describe("formatGenerationElapsedTime", () => {
   })
 
   it("formats second-scale durations", () => {
+    expect(formatGenerationElapsedTime(1_000)).toBe("1s")
     expect(formatGenerationElapsedTime(1234)).toBe("1.2s")
+    expect(formatGenerationElapsedTime(9_999)).toBe("10s")
     expect(formatGenerationElapsedTime(12_300)).toBe("12s")
   })
 
