@@ -89,10 +89,17 @@ function App() {
     }
     return generatedAudio.generatedAudioItems.find((item) => item.id === latestGeneratedAudioId) ?? null
   }, [generatedAudio.generatedAudioItems, latestGeneratedAudioId])
+  const archivedGeneratedAudioItems = useMemo(() => {
+    if (!latestGeneratedAudioId) {
+      return generatedAudio.generatedAudioItems
+    }
+    return generatedAudio.generatedAudioItems.filter((item) => item.id !== latestGeneratedAudioId)
+  }, [generatedAudio.generatedAudioItems, latestGeneratedAudioId])
   const latestStorageError =
     latestGeneratedAudioItem && isTemporaryGeneratedAudioId(latestGeneratedAudioItem.id)
       ? generatedAudio.generatedAudioStorageError
       : null
+  const archiveStorageError = latestStorageError ? null : generatedAudio.generatedAudioStorageError
   const result = latestGeneratedAudioItem ?? generatedAudio.generatedAudioItems[0] ?? null
   const characterCount = useMemo(() => text.trim().length, [text])
   const modelMultiplier = selectedModel?.characterCostMultiplier ?? null
@@ -241,15 +248,14 @@ function App() {
             />
 
             <GeneratedAudioPanel
-              error={speech.error}
-              items={generatedAudio.generatedAudioItems}
+              allItems={generatedAudio.generatedAudioItems}
+              items={archivedGeneratedAudioItems}
               libraryStatus={generatedAudio.generatedAudioStatus}
               mutationStatus={generatedAudio.generatedAudioMutation}
               onClear={requestClearGeneratedAudio}
               onDelete={(id) => void generatedAudio.handleDeleteGeneratedAudio(id)}
               onStorageLimitChange={handleStorageLimitChange}
-              status={speech.status}
-              storageError={generatedAudio.generatedAudioStorageError}
+              storageError={archiveStorageError}
               storageLimitBytes={generatedAudio.storageLimitBytes}
               usage={generatedAudio.generatedAudioUsage}
             />

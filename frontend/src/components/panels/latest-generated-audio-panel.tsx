@@ -66,7 +66,6 @@ export function LatestGeneratedAudioPanel({
 
       {item ? (
         <GeneratedAudioItem
-          badge="Latest"
           className={isGenerating ? "mt-4" : undefined}
           isDeleteDisabled={isDeleteDisabled}
           item={item}

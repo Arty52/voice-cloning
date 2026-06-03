@@ -13,40 +13,36 @@ import {
 } from "@/lib/generated-audio-storage"
 import { isTemporaryGeneratedAudioId } from "@/lib/generated-audio-view-model"
 import { formatBytes, formatGeneratedAudioCountBadge } from "@/lib/formatters"
-import { cn } from "@/lib/utils"
 import type { GeneratedAudioMutation } from "@/hooks/use-generated-audio-library"
-import type { AsyncStatus, GeneratedResult, RequestStatus } from "@/types"
+import type { AsyncStatus, GeneratedResult } from "@/types"
 
 type GeneratedAudioPanelProps = {
-  error: string | null
+  allItems: GeneratedResult[]
   items: GeneratedResult[]
   libraryStatus: AsyncStatus
   mutationStatus: GeneratedAudioMutation | null
   onClear: () => void
   onDelete: (id: string) => void
   onStorageLimitChange: (limitBytes: number) => void
-  status: RequestStatus
   storageError: string | null
   storageLimitBytes: number
   usage: GeneratedAudioUsage | null
 }
 
 export function GeneratedAudioPanel({
-  error,
+  allItems,
   items,
   libraryStatus,
   mutationStatus,
   onClear,
   onDelete,
   onStorageLimitChange,
-  status,
   storageError,
   storageLimitBytes,
   usage,
 }: GeneratedAudioPanelProps) {
-  const isCanceled = status === "canceled"
   const resolvedUsage = usage ?? {
-    itemCount: items.length,
+    itemCount: allItems.length,
     limitBytes: storageLimitBytes || DEFAULT_GENERATED_AUDIO_STORAGE_LIMIT_BYTES,
     remainingBytes: storageLimitBytes || DEFAULT_GENERATED_AUDIO_STORAGE_LIMIT_BYTES,
     usedBytes: 0,
@@ -54,37 +50,23 @@ export function GeneratedAudioPanel({
   const usagePercent =
     resolvedUsage.limitBytes > 0 ? Math.min(100, Math.round((resolvedUsage.usedBytes / resolvedUsage.limitBytes) * 100)) : 0
   const savedItemCount =
-    usage?.itemCount ?? items.filter((item) => !isTemporaryGeneratedAudioId(item.id)).length
-  const temporaryItemCount = Math.max(0, items.length - savedItemCount)
+    usage?.itemCount ?? allItems.filter((item) => !isTemporaryGeneratedAudioId(item.id)).length
+  const temporaryItemCount = Math.max(0, allItems.length - savedItemCount)
   const itemCountBadge = formatGeneratedAudioCountBadge(savedItemCount, temporaryItemCount)
   const isLibraryLoading = libraryStatus === "idle" || libraryStatus === "loading"
-  const isGenerating = status === "generating"
-  const isBusy = isLibraryLoading || isGenerating || mutationStatus !== null
+  const isBusy = isLibraryLoading || mutationStatus !== null
   const mutationLabel = mutationStatus ? generatedAudioMutationLabel(mutationStatus) : null
+  const hasGeneratedAudio = allItems.length > 0
 
   return (
     <section aria-busy={isBusy} className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-base font-medium">Generated Audio</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Saved in this browser for playback and download.</p>
+          <h2 className="text-base font-medium">Generated Audio Archive</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Saved in this browser for later playback and download.</p>
         </div>
         {itemCountBadge ? <Badge>{itemCountBadge}</Badge> : null}
       </div>
-
-      {error ? (
-        <div
-          className={cn(
-            "mb-4 rounded-md border p-3 text-sm",
-            isCanceled
-              ? "border-border bg-background/60 text-muted-foreground"
-              : "border-destructive/40 bg-destructive/10 text-foreground"
-          )}
-          role={isCanceled ? "status" : "alert"}
-        >
-          {error}
-        </div>
-      ) : null}
 
       {storageError ? (
         <div className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm" role="alert">
@@ -92,10 +74,9 @@ export function GeneratedAudioPanel({
         </div>
       ) : null}
 
-      {isGenerating || mutationLabel ? (
+      {mutationLabel ? (
         <div className="mb-4 flex flex-col gap-2 rounded-md border border-border bg-background/60 p-3">
-          {isGenerating ? <Loading text="Generating Speech" variant="secondary" /> : null}
-          {mutationLabel ? <Loading text={mutationLabel} variant="secondary" /> : null}
+          <Loading text={mutationLabel} variant="secondary" />
         </div>
       ) : null}
 
@@ -131,27 +112,30 @@ export function GeneratedAudioPanel({
 
       {isLibraryLoading ? (
         <GeneratedAudioSkeletonList />
-      ) : items.length > 0 ? (
-        <div className="space-y-3">
-          <div className="flex justify-end">
-            <Button disabled={mutationStatus === "clear"} onClick={onClear} size="sm" type="button" variant="secondary">
-              <Trash2 aria-hidden="true" className="size-4" />
-              Clear All
-            </Button>
-          </div>
-          {items.map((item, index) => (
-            <GeneratedAudioItem
-              badge={index === 0 ? "Latest" : undefined}
-              isDeleteDisabled={mutationStatus === "delete"}
-              item={item}
-              key={item.id}
-              onDelete={onDelete}
-            />
-          ))}
-        </div>
       ) : (
-        <div className="rounded-md border border-dashed border-border bg-background/50 p-5 text-sm text-muted-foreground">
-          No generated speech yet.
+        <div className="flex flex-col gap-3">
+          {hasGeneratedAudio ? (
+            <div className="flex justify-end">
+              <Button disabled={mutationStatus === "clear"} onClick={onClear} size="sm" type="button" variant="secondary">
+                <Trash2 aria-hidden="true" className="size-4" />
+                Clear All
+              </Button>
+            </div>
+          ) : null}
+          {items.length > 0 ? (
+            items.map((item) => (
+              <GeneratedAudioItem
+                isDeleteDisabled={mutationStatus === "delete"}
+                item={item}
+                key={item.id}
+                onDelete={onDelete}
+              />
+            ))
+          ) : (
+            <div className="rounded-md border border-dashed border-border bg-background/50 p-5 text-sm text-muted-foreground">
+              {hasGeneratedAudio ? "No archived generated speech yet." : "No generated speech yet."}
+            </div>
+          )}
         </div>
       )}
     </section>
@@ -160,7 +144,7 @@ export function GeneratedAudioPanel({
 
 function GeneratedAudioSkeletonList() {
   return (
-    <div aria-label="Loading Generated Audio" className="space-y-3" role="status">
+    <div aria-label="Loading Generated Audio" className="flex flex-col gap-3" role="status">
       {[0, 1].map((item) => (
         <div aria-hidden="true" className="rounded-md border border-border bg-background/60 p-3" key={item}>
           <div className="mb-3 flex items-start justify-between gap-3">
