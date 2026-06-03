@@ -11,7 +11,7 @@ export function GeneratedAudioMetadata({ metadata }: GeneratedAudioMetadataProps
   }
 
   return (
-    <div aria-label="Generated Audio Settings" className="mb-3 flex flex-wrap gap-2">
+    <div aria-label="Generated Audio Settings" className="mb-3 flex flex-wrap gap-2" role="group">
       <Badge>{metadata.providerLabel}</Badge>
       {metadata.presetLabel ? <Badge>Preset: {metadata.presetLabel}</Badge> : null}
       {metadata.mode === "custom" ? <Badge>Custom Settings</Badge> : null}
