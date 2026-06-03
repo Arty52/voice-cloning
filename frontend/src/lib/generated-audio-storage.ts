@@ -24,6 +24,7 @@ export type StoredGeneratedAudio = {
   modelId: string
   characterCount: number | null
   requestId: string | null
+  generationElapsedMs: number | null
   tuningMetadata?: GeneratedAudioTuningMetadata | null
 }
 
@@ -39,6 +40,7 @@ export type SaveGeneratedAudioInput = {
   modelId: string
   characterCount: number | null
   requestId: string | null
+  generationElapsedMs?: number | null
   tuningMetadata?: GeneratedAudioTuningMetadata | null
 }
 
@@ -80,6 +82,7 @@ export async function saveGeneratedAudio(
     id: input.id ?? createGeneratedAudioId(),
     contentType: input.contentType || input.blob.type || "audio/mpeg",
     createdAt: input.createdAt ?? new Date().toISOString(),
+    generationElapsedMs: normalizeGenerationElapsedMs(input.generationElapsedMs),
     sizeBytes: input.blob.size,
     tuningMetadata: input.tuningMetadata ?? null,
   }
@@ -203,10 +206,29 @@ async function getAllGeneratedAudioRecords(): Promise<StoredGeneratedAudio[]> {
   try {
     const transaction = database.transaction(GENERATED_AUDIO_STORE_NAME, "readonly")
     const request = transaction.objectStore(GENERATED_AUDIO_STORE_NAME).getAll()
-    return await idbRequest<StoredGeneratedAudio[]>(request)
+    const records = await idbRequest<Array<StoredGeneratedAudio | LegacyStoredGeneratedAudio>>(request)
+    return records.map(normalizeStoredGeneratedAudio)
   } finally {
     database.close()
   }
+}
+
+type LegacyStoredGeneratedAudio = Omit<StoredGeneratedAudio, "generationElapsedMs"> & {
+  generationElapsedMs?: number | null
+}
+
+function normalizeStoredGeneratedAudio(record: StoredGeneratedAudio | LegacyStoredGeneratedAudio): StoredGeneratedAudio {
+  return {
+    ...record,
+    generationElapsedMs: normalizeGenerationElapsedMs(record.generationElapsedMs),
+  }
+}
+
+function normalizeGenerationElapsedMs(value: number | null | undefined) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null
+  }
+  return Math.max(0, Math.round(value))
 }
 
 async function putGeneratedAudioRecord(record: StoredGeneratedAudio): Promise<void> {

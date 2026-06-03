@@ -10,6 +10,7 @@ const baseRecord: StoredGeneratedAudio = {
   characterCount: 54,
   contentType: "audio/mpeg",
   createdAt: "2026-05-28T10:01:00.000Z",
+  generationElapsedMs: 1234,
   id: "generated-audio",
   modelId: "eleven_multilingual_v2",
   requestId: "req_test_123",
@@ -54,11 +55,15 @@ describe("storedAudioToResult", () => {
       presetLabel: "Animated Dialogue",
       providerLabel: "ElevenLabs",
     })
+    expect(result.generationElapsedMs).toBe(1234)
   })
 
-  it("normalizes legacy records without tuning metadata", () => {
-    const result = storedAudioToResult(baseRecord)
+  it("normalizes legacy records without optional metadata", () => {
+    const legacyRecord: Partial<StoredGeneratedAudio> = { ...baseRecord }
+    delete legacyRecord.generationElapsedMs
+    const result = storedAudioToResult(legacyRecord as StoredGeneratedAudio)
 
+    expect(result.generationElapsedMs).toBeNull()
     expect(result.tuningMetadata).toBeNull()
   })
 })
