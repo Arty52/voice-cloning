@@ -27,6 +27,7 @@ class Settings:
     storage_dir: Path
     cors_allowed_origins: list[str]
     max_upload_bytes: int = 10 * 1024 * 1024
+    max_source_upload_bytes: int = 50 * 1024 * 1024
     max_text_chars: int = 5000
 
     @classmethod

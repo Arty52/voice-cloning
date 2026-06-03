@@ -24,8 +24,22 @@ def create_voices_router(voice_library: VoiceLibrary) -> APIRouter:
         return _voice_sample_response(voice_library, voice_id)
 
     @router.post("/api/voices", status_code=201)
-    async def add_voice(name: str = Form(...), sampleFile: UploadFile = File(...)) -> dict[str, object]:
-        asset = await voice_library.add_upload(name, sampleFile)
+    async def add_voice(
+        name: str = Form(...),
+        sampleFile: UploadFile = File(...),
+        sampleMode: str = Form("excerpt"),
+        sourceFile: UploadFile | None = File(None),
+        windowStartSeconds: float | None = Form(None),
+        windowDurationSeconds: float | None = Form(None),
+    ) -> dict[str, object]:
+        asset = await voice_library.add_upload(
+            name,
+            sampleFile,
+            sample_mode=sampleMode,
+            source_upload=sourceFile,
+            window_start_seconds=windowStartSeconds,
+            window_duration_seconds=windowDurationSeconds,
+        )
         return {"voice": voice_asset_payload(asset)}
 
     @router.patch("/api/voices/{voice_id}")

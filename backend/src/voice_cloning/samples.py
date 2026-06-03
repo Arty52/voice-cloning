@@ -82,16 +82,20 @@ def load_sample_file(path: Path, content_type: str) -> VoiceSample:
     )
 
 
-async def load_uploaded_sample(upload: UploadFile, settings: Settings) -> VoiceSample:
+async def load_uploaded_sample(upload: UploadFile, settings: Settings, max_bytes: int | None = None) -> VoiceSample:
     filename = upload.filename or "uploaded-sample"
     content_type = upload.content_type or "application/octet-stream"
     _validate_audio_file(filename, content_type)
 
+    resolved_max_bytes = settings.max_upload_bytes if max_bytes is None else max_bytes
     content = await upload.read()
     if not content:
         raise HTTPException(status_code=422, detail="Uploaded voice sample is empty.")
-    if len(content) > settings.max_upload_bytes:
-        raise HTTPException(status_code=413, detail="Uploaded voice sample must be 10 MB or smaller.")
+    if len(content) > resolved_max_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Uploaded voice sample must be {_upload_limit_label(resolved_max_bytes)} or smaller.",
+        )
 
     return VoiceSample(
         content=content,
@@ -101,8 +105,7 @@ async def load_uploaded_sample(upload: UploadFile, settings: Settings) -> VoiceS
     )
 
 
-async def save_uploaded_sample(upload: UploadFile, destination: Path, settings: Settings) -> VoiceSample:
-    sample = await load_uploaded_sample(upload, settings)
+def save_sample_file(sample: VoiceSample, destination: Path) -> VoiceSample:
     destination.parent.mkdir(parents=True, exist_ok=True)
     temp_path = destination.with_suffix(f"{destination.suffix}.tmp")
     temp_path.write_bytes(sample.content)
@@ -113,3 +116,15 @@ async def save_uploaded_sample(upload: UploadFile, destination: Path, settings: 
         content_type=sample.content_type,
         sha256=sample.sha256,
     )
+
+
+async def save_uploaded_sample(upload: UploadFile, destination: Path, settings: Settings) -> VoiceSample:
+    sample = await load_uploaded_sample(upload, settings)
+    return save_sample_file(sample, destination)
+
+
+def _upload_limit_label(max_bytes: int) -> str:
+    mebibytes = max_bytes / (1024 * 1024)
+    if mebibytes.is_integer():
+        return f"{int(mebibytes)} MB"
+    return f"{mebibytes:.1f} MB"

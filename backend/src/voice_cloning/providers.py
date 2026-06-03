@@ -60,6 +60,13 @@ class ProviderTuningMetadata:
 
 
 @dataclass(frozen=True)
+class ProviderSampleMetadata:
+    max_window_seconds: int
+    recommended_min_seconds: int
+    recommended_max_seconds: int
+
+
+@dataclass(frozen=True)
 class ProviderDescriptor:
     id: str
     label: str
@@ -67,6 +74,11 @@ class ProviderDescriptor:
     docs_url: str
     links: tuple[ProviderLink, ...] = ()
     tuning: ProviderTuningMetadata = ProviderTuningMetadata()
+    sample: ProviderSampleMetadata = ProviderSampleMetadata(
+        max_window_seconds=120,
+        recommended_min_seconds=60,
+        recommended_max_seconds=120,
+    )
 
 
 @dataclass(frozen=True)
@@ -263,6 +275,13 @@ ELEVENLABS_TUNING_METADATA = ProviderTuningMetadata(
 )
 
 
+ELEVENLABS_SAMPLE_METADATA = ProviderSampleMetadata(
+    max_window_seconds=120,
+    recommended_min_seconds=60,
+    recommended_max_seconds=120,
+)
+
+
 ELEVENLABS_PROVIDER_DESCRIPTOR = ProviderDescriptor(
     id=DEFAULT_PROVIDER_ID,
     label="ElevenLabs",
@@ -291,6 +310,7 @@ ELEVENLABS_PROVIDER_DESCRIPTOR = ProviderDescriptor(
         ),
     ),
     tuning=ELEVENLABS_TUNING_METADATA,
+    sample=ELEVENLABS_SAMPLE_METADATA,
 )
 
 

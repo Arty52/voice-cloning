@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+import voice_cloning.voice_library as voice_library_module
 from voice_cloning.api import SpeechGenerationCanceled, _await_or_cancel_on_disconnect, create_app
 from voice_cloning.cache import VoiceCache
 from voice_cloning.config import Settings
@@ -35,6 +36,7 @@ from voice_cloning.providers import (
     ProviderTuningValue,
     resolve_elevenlabs_key,
 )
+from voice_cloning.samples import sample_hash
 from voice_cloning.services.speech import SpeechServiceError, generate_speech
 from voice_cloning.voice_library import VoiceLibrary
 
@@ -182,7 +184,12 @@ class FakeNoTuningProvider(FakeElevenLabsProvider):
         return {}
 
 
-def make_settings(tmp_path: Path, api_key: str = "test-key", with_default_sample: bool = True) -> Settings:
+def make_settings(
+    tmp_path: Path,
+    api_key: str = "test-key",
+    with_default_sample: bool = True,
+    max_source_upload_bytes: int = 50 * 1024 * 1024,
+) -> Settings:
     voice_assets_dir = tmp_path / "assets" / "voices"
     sample_path = voice_assets_dir / "default" / "default-voice.mp3"
     if with_default_sample:
@@ -198,6 +205,7 @@ def make_settings(tmp_path: Path, api_key: str = "test-key", with_default_sample
         voice_manifest_path=voice_assets_dir / "voices.json",
         storage_dir=tmp_path / "storage",
         cors_allowed_origins=["http://localhost:4340"],
+        max_source_upload_bytes=max_source_upload_bytes,
     )
 
 
@@ -205,8 +213,14 @@ def make_client(
     tmp_path: Path,
     api_key: str = "test-key",
     with_default_sample: bool = True,
+    max_source_upload_bytes: int = 50 * 1024 * 1024,
 ) -> tuple[TestClient, FakeElevenLabsProvider]:
-    settings = make_settings(tmp_path, api_key=api_key, with_default_sample=with_default_sample)
+    settings = make_settings(
+        tmp_path,
+        api_key=api_key,
+        with_default_sample=with_default_sample,
+        max_source_upload_bytes=max_source_upload_bytes,
+    )
     fake_client = FakeElevenLabsProvider().bind_settings(settings)
     app = create_app(
         settings=settings,
@@ -250,6 +264,11 @@ def test_providers_endpoint_returns_public_provider_descriptor(tmp_path: Path) -
     ]
     assert provider["tuning"]["defaultValues"]["useSpeakerBoost"] is True
     assert [preset["id"] for preset in provider["tuning"]["presets"]] == ["standard", "animated"]
+    assert provider["sample"] == {
+        "maxWindowSeconds": 120,
+        "recommendedMinSeconds": 60,
+        "recommendedMaxSeconds": 120,
+    }
     assert provider["links"][0]["label"] == "API Requests"
     assert "server-secret" not in response.text
 
@@ -331,6 +350,42 @@ def test_voice_manifest_bootstraps_default_voice(tmp_path: Path) -> None:
     assert response.json()["defaultVoiceId"] == "default"
     assert response.json()["voices"][0]["name"] == "Default voice"
     assert response.json()["voices"][0]["filePath"] == "default/default-voice.mp3"
+
+
+def test_voice_manifest_migrates_legacy_assets_with_excerpt_defaults(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path, with_default_sample=False)
+    sample_path = settings.voice_assets_dir / "legacy.mp3"
+    sample_path.parent.mkdir(parents=True)
+    sample_path.write_bytes(b"legacy-sample")
+    settings.voice_manifest_path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "defaultVoiceId": "legacy",
+                "voices": [
+                    {
+                        "id": "legacy",
+                        "name": "Legacy Voice",
+                        "filePath": "legacy.mp3",
+                        "contentType": "audio/mpeg",
+                        "sha256": "legacy-hash",
+                        "source": "upload",
+                        "createdAt": "2026-05-28T00:00:00+00:00",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    payload = VoiceLibrary(settings).list_payload()
+
+    voice = payload["voices"][0]
+    assert voice["sampleMode"] == "excerpt"
+    assert voice["windowStartSeconds"] is None
+    assert voice["windowDurationSeconds"] is None
+    assert voice["sourceFilePath"] is None
+    assert json.loads(settings.voice_manifest_path.read_text(encoding="utf-8"))["voices"][0]["sampleMode"] == "excerpt"
 
 
 def test_subscription_endpoint_returns_sanitized_quota(tmp_path: Path) -> None:
@@ -888,7 +943,173 @@ def test_add_uploaded_voice_stores_named_asset(tmp_path: Path) -> None:
     assert response.status_code == 201
     assert response.json()["voice"]["id"] == "voice-clone-01"
     assert response.json()["voice"]["name"] == "Voice_Clone_01"
+    assert response.json()["voice"]["sampleMode"] == "excerpt"
+    assert response.json()["voice"]["windowStartSeconds"] is None
+    assert response.json()["voice"]["windowDurationSeconds"] is None
+    assert response.json()["voice"]["sourceFilePath"] is None
     assert (tmp_path / "assets" / "voices" / "voice-clone-01.mp3").read_bytes() == b"uploaded-sample"
+
+
+def test_add_source_window_voice_stores_active_sample_and_local_source(tmp_path: Path) -> None:
+    client, fake_client = make_client(tmp_path)
+
+    response = client.post(
+        "/api/voices",
+        data={
+            "name": "Voice_Clone_01",
+            "sampleMode": "sourceWindow",
+            "windowStartSeconds": "12.5",
+            "windowDurationSeconds": "60",
+        },
+        files={
+            "sampleFile": ("voice-window.wav", b"active-excerpt", "audio/wav"),
+            "sourceFile": ("source.mp3", b"original-source", "audio/mpeg"),
+        },
+    )
+    speech = client.post("/api/speech", data={"text": "Use the window.", "voiceId": "voice-clone-01"})
+
+    assert response.status_code == 201
+    voice = response.json()["voice"]
+    assert voice["sampleMode"] == "sourceWindow"
+    assert voice["filePath"] == "voice-clone-01.wav"
+    assert voice["sha256"] == sample_hash(b"active-excerpt")
+    assert voice["windowStartSeconds"] == 12.5
+    assert voice["windowDurationSeconds"] == 60
+    assert voice["sourceFilePath"] == "sources/voice-clone-01.mp3"
+    assert voice["sourceContentType"] == "audio/mpeg"
+    assert voice["sourceSha256"] == sample_hash(b"original-source")
+    assert (tmp_path / "assets" / "voices" / "voice-clone-01.wav").read_bytes() == b"active-excerpt"
+    assert (tmp_path / "assets" / "voices" / "sources" / "voice-clone-01.mp3").read_bytes() == b"original-source"
+    assert speech.status_code == 200
+    assert fake_client.created_samples[0].filename == "voice-clone-01.wav"
+    assert fake_client.created_samples[0].content == b"active-excerpt"
+
+
+def test_source_window_voice_requires_source_file_and_window(tmp_path: Path) -> None:
+    client, _ = make_client(tmp_path)
+
+    missing_source = client.post(
+        "/api/voices",
+        data={
+            "name": "Voice_Clone_01",
+            "sampleMode": "sourceWindow",
+            "windowStartSeconds": "0",
+            "windowDurationSeconds": "60",
+        },
+        files={"sampleFile": ("voice.wav", b"active-excerpt", "audio/wav")},
+    )
+    missing_window = client.post(
+        "/api/voices",
+        data={"name": "Voice_Clone_02", "sampleMode": "sourceWindow"},
+        files={
+            "sampleFile": ("voice.wav", b"active-excerpt", "audio/wav"),
+            "sourceFile": ("source.mp3", b"original-source", "audio/mpeg"),
+        },
+    )
+
+    assert missing_source.status_code == 422
+    assert missing_source.json()["detail"] == "Source file is required for sourceWindow samples."
+    assert missing_window.status_code == 422
+    assert missing_window.json()["detail"] == "Window start and duration are required for sourceWindow samples."
+
+
+def test_excerpt_voice_rejects_source_file(tmp_path: Path) -> None:
+    client, _ = make_client(tmp_path)
+
+    response = client.post(
+        "/api/voices",
+        data={"name": "Voice_Clone_01", "sampleMode": "excerpt"},
+        files={
+            "sampleFile": ("voice.wav", b"active-excerpt", "audio/wav"),
+            "sourceFile": ("source.mp3", b"original-source", "audio/mpeg"),
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Source file is only accepted for sourceWindow samples."
+    assert not (tmp_path / "assets" / "voices" / "voice-clone-01.wav").exists()
+
+
+def test_source_window_original_uses_source_upload_cap(tmp_path: Path) -> None:
+    client, _ = make_client(tmp_path, max_source_upload_bytes=1024 * 1024)
+
+    response = client.post(
+        "/api/voices",
+        data={
+            "name": "Voice_Clone_01",
+            "sampleMode": "sourceWindow",
+            "windowStartSeconds": "0",
+            "windowDurationSeconds": "60",
+        },
+        files={
+            "sampleFile": ("voice.wav", b"active-excerpt", "audio/wav"),
+            "sourceFile": ("source.mp3", b"x" * (1024 * 1024 + 1), "audio/mpeg"),
+        },
+    )
+
+    assert response.status_code == 413
+    assert response.json()["detail"] == "Uploaded voice sample must be 1 MB or smaller."
+    assert not (tmp_path / "assets" / "voices" / "voice-clone-01.wav").exists()
+    assert not (tmp_path / "assets" / "voices" / "sources" / "voice-clone-01.mp3").exists()
+
+
+def test_source_window_cleans_active_file_when_source_write_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    client, _ = make_client(tmp_path)
+
+    def fail_source_write(sample: VoiceSample, destination: Path) -> VoiceSample:
+        raise OSError("source write failed")
+
+    monkeypatch.setattr(voice_library_module, "save_sample_file", fail_source_write)
+
+    with pytest.raises(OSError, match="source write failed"):
+        client.post(
+            "/api/voices",
+            data={
+                "name": "Voice_Clone_01",
+                "sampleMode": "sourceWindow",
+                "windowStartSeconds": "0",
+                "windowDurationSeconds": "60",
+            },
+            files={
+                "sampleFile": ("voice-window.wav", b"active-excerpt", "audio/wav"),
+                "sourceFile": ("source.mp3", b"original-source", "audio/mpeg"),
+            },
+        )
+
+    voices = client.get("/api/voices")
+
+    assert voices.status_code == 200
+    assert [voice["id"] for voice in voices.json()["voices"]] == ["default"]
+    assert not (tmp_path / "assets" / "voices" / "voice-clone-01.wav").exists()
+    assert not (tmp_path / "assets" / "voices" / "sources" / "voice-clone-01.mp3").exists()
+
+
+def test_source_window_duplicate_name_is_rejected_before_source_write(tmp_path: Path) -> None:
+    client, _ = make_client(tmp_path)
+    first = client.post(
+        "/api/voices",
+        data={"name": "Voice_Clone_01"},
+        files={"sampleFile": ("voice.mp3", b"uploaded-sample", "audio/mpeg")},
+    )
+
+    response = client.post(
+        "/api/voices",
+        data={
+            "name": "Voice Clone 01",
+            "sampleMode": "sourceWindow",
+            "windowStartSeconds": "0",
+            "windowDurationSeconds": "60",
+        },
+        files={
+            "sampleFile": ("voice-window.wav", b"active-excerpt", "audio/wav"),
+            "sourceFile": ("source.mp3", b"original-source", "audio/mpeg"),
+        },
+    )
+
+    assert first.status_code == 201
+    assert response.status_code == 409
+    assert "already exists" in response.json()["detail"]
+    assert not (tmp_path / "assets" / "voices" / "sources").exists()
 
 
 def test_add_uploaded_voice_rejects_duplicate_slug(tmp_path: Path) -> None:

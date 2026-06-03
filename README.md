@@ -20,7 +20,7 @@ It gives you a small voice library, text-to-speech generation, model selection, 
 
 ## Features
 
-- Save named local voice samples into `assets/voices/` from upload or browser microphone recording.
+- Save named local voice samples into `assets/voices/` from upload, selected upload excerpts, or browser microphone recording.
 - Select any saved voice and mark one as the local default.
 - Generate speech from text using the active voice provider.
 - Reuse provider cloned voices by sample hash through a local cache.
@@ -42,7 +42,7 @@ Provider keys can come from either `.env` on the FastAPI backend or the browser 
 
 The backend never returns key material from `.env` or browser headers. Browser `localStorage` is local developer-tool storage, not encrypted secret storage; clear the Provider Keys panel or browser site data to remove a saved GUI key.
 
-Voice samples are local files under `assets/voices/` and are ignored by git. Cloned voice cache data is written under `storage/`, scoped by provider and key fingerprint, and ignored by git. Generated MP3 output is saved in your browser's IndexedDB by default, not on the backend; use the Generated Audio panel to remove one item or clear all saved browser audio.
+Voice samples are local files under `assets/voices/` and are ignored by git. When a long upload is saved with its original source retained, the backend stores the original under `assets/voices/sources/` and still sends only the active excerpt sample to the provider. Cloned voice cache data is written under `storage/`, scoped by provider and key fingerprint, and ignored by git. Generated MP3 output is saved in your browser's IndexedDB by default, not on the backend; use the Generated Audio panel to remove one item or clear all saved browser audio.
 
 Text, voice samples, selected model id, and provider-specific tuning settings are sent to the active provider when you generate speech. Subscription and model metadata are fetched through the backend when the configured key has the required read permissions. Review the active provider's policies and obtain consent before cloning or generating with any voice.
 
@@ -228,6 +228,11 @@ To add another provider, follow [docs/ADDING_PROVIDER.md](docs/ADDING_PROVIDER.m
         "defaultValues": {
           "stability": 0.5
         }
+      },
+      "sample": {
+        "maxWindowSeconds": 120,
+        "recommendedMinSeconds": 60,
+        "recommendedMaxSeconds": 120
       }
     }
   ]
@@ -272,7 +277,13 @@ If model metadata is unavailable, generation still works by omitting `modelId` a
 `POST /api/voices` accepts multipart form fields:
 
 - `name`: local voice display name
-- `sampleFile`: audio file to store in `assets/voices/`
+- `sampleFile`: active provider sample to store in `assets/voices/`; this is the only voice sample sent to the provider for cloning
+- `sampleMode`: optional, either `excerpt` or `sourceWindow`; defaults to `excerpt`
+- `sourceFile`: optional original audio file to keep locally when `sampleMode` is `sourceWindow`
+- `windowStartSeconds`: optional selected window start time in seconds
+- `windowDurationSeconds`: optional selected window duration in seconds
+
+Active provider samples are capped at 10 MB. Original source files retained for `sourceWindow` assets are local-only and capped at 50 MB. For the built-in ElevenLabs provider, `/api/providers` reports a 120-second maximum sample window with a 60-120 second recommended window. Existing voice manifest entries without sample-window metadata are treated as `excerpt` assets.
 
 `PATCH /api/voices/{voiceId}` accepts JSON and renames a local voice without changing its stable local id or sample file:
 
@@ -374,6 +385,10 @@ Generated audio saved in the browser can be removed from the Generated Audio pan
 The Add Voice panel can record through the browser microphone or fall back to file upload. Browser recordings are encoded as local WAV files before they are sent to the backend, avoiding browser-specific `MediaRecorder` container differences across Safari, Chrome, Edge on Windows, and Firefox. Recordings stop before the backend's 10 MB upload cap; most devices can record up to 90 seconds, while very high sample-rate devices may stop sooner.
 
 Recording requires a browser that supports microphone access on `localhost` and user permission for the microphone. If permission is denied or the microphone API is unavailable, use Sample File upload instead.
+
+### Long uploaded samples
+
+The backend voice API supports provider-sized windows from longer local uploads. The frontend prepares the active excerpt before upload, and the backend stores that excerpt as `sampleFile`. When the UI sends `sampleMode=sourceWindow`, the original `sourceFile` is retained locally for traceability under `assets/voices/sources/`; it remains ignored by git and is not sent to the provider.
 
 Remove containers and volumes:
 

@@ -4,6 +4,9 @@ from dataclasses import dataclass
 from typing import Literal
 
 
+VoiceSampleMode = Literal["excerpt", "sourceWindow"]
+
+
 @dataclass(frozen=True)
 class VoiceSample:
     content: bytes
@@ -21,6 +24,12 @@ class VoiceAsset:
     sha256: str
     source: Literal["default", "upload"]
     created_at: str
+    sample_mode: VoiceSampleMode = "excerpt"
+    window_start_seconds: float | None = None
+    window_duration_seconds: float | None = None
+    source_file_path: str | None = None
+    source_content_type: str | None = None
+    source_sha256: str | None = None
 
 
 @dataclass(frozen=True)
