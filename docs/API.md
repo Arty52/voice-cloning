@@ -156,7 +156,9 @@ The response is `audio/mpeg` with these headers:
 - `X-App-Voice-Id`: local voice asset ID
 - `X-Sample-Sha256`: sample hash
 - `X-Character-Count`: actual provider character usage when returned
+- `X-Model-Id`: selected or default provider model id used for generation
 - `X-Request-Id`: request id when returned by the provider
+- `Content-Disposition`: attachment filename for browser downloads
 
 Generation elapsed time is not part of the backend/provider response contract. The frontend measures `generationElapsedMs` around the `/api/speech` request and stores it with browser-local generated audio metadata.
 

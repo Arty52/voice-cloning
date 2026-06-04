@@ -93,7 +93,7 @@ Providers may charge credits for text-to-speech and voice cloning. For the built
 - selected ElevenLabs model
 - whether a voice sample has already been cloned and cached
 
-The Cost & Quota panel shows a pre-run estimate and the remaining provider-reported character quota when available. Estimates are approximate. After a generation, the app shows the actual `x-character-count` response header when the provider supplies it. Generated Audio entries also show browser-measured generation time; this is the local request duration from starting generation until the browser receives the audio blob, not provider-reported compute time.
+The Cost & Quota panel shows a pre-run estimate and the remaining provider-reported character quota when available. Estimates are approximate. After a generation, the app shows the actual `X-Character-Count` response header when the provider supplies it. Generated Audio entries also show browser-measured generation time; this is the local request duration from starting generation until the browser receives the audio blob, not provider-reported compute time.
 
 The optional live smoke test calls ElevenLabs and may consume credits.
 
