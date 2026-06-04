@@ -12,8 +12,8 @@ This folder contains committed media used by the public README and docs.
 
 ## Current Assets
 
-- `voice-studio-desktop.png`: desktop capture of the Voice Studio with mocked demo data.
-- `voice-studio-mobile.png`: mobile capture of the same public-safe demo state.
+- `voice-studio-desktop.png`: desktop capture of the Voice Studio with mocked demo data, 1440 x 1000, about 420 KB.
+- `voice-studio-mobile.png`: mobile capture of the same public-safe demo state, 390 x 1000, about 184 KB.
 
 ## Refresh Checklist
 
