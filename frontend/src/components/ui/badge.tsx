@@ -1,4 +1,4 @@
-import type { HTMLAttributes } from "react"
+import { forwardRef, type HTMLAttributes } from "react"
 
 import { cn } from "@/lib/utils"
 
@@ -13,7 +13,10 @@ const badgeVariants: Record<BadgeVariant, string> = {
   secondary: "border-border bg-secondary text-secondary-foreground",
 }
 
-export function Badge({ className, variant = "secondary", ...props }: BadgeProps) {
+export const Badge = forwardRef<HTMLSpanElement, BadgeProps>(function Badge(
+  { className, variant = "secondary", ...props },
+  ref
+) {
   return (
     <span
       className={cn(
@@ -21,7 +24,8 @@ export function Badge({ className, variant = "secondary", ...props }: BadgeProps
         badgeVariants[variant],
         className
       )}
+      ref={ref}
       {...props}
     />
   )
-}
+})
