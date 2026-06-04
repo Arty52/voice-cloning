@@ -5,7 +5,7 @@ from hashlib import sha256
 from typing import Any, Literal, Mapping, Protocol
 
 from .config import Settings
-from .models import ModelSummary, SpeechResult, SubscriptionSummary, VoiceClone, VoiceSample
+from .models import ModelSummary, SpeechResult, SubscriptionSummary, VoiceClone, VoicePresetId, VoiceSample
 
 
 DEFAULT_PROVIDER_ID = "elevenlabs"
@@ -45,6 +45,7 @@ class ProviderTuningPreset:
     label: str
     description: str
     values: Mapping[str, ProviderTuningValue]
+    voice_preset_id: VoicePresetId | None = None
 
 
 @dataclass(frozen=True)
@@ -251,6 +252,7 @@ ELEVENLABS_TUNING_METADATA = ProviderTuningMetadata(
             id="standard",
             label="Standard Narration",
             description="Balanced clone similarity for steady narration.",
+            voice_preset_id="standardNarration",
             values={
                 "stability": 0.5,
                 "similarityBoost": 0.75,
@@ -263,6 +265,7 @@ ELEVENLABS_TUNING_METADATA = ProviderTuningMetadata(
             id="animated",
             label="Animated Dialogue",
             description="More expressive delivery for character reads.",
+            voice_preset_id="animatedDialogue",
             values={
                 "stability": 0.4,
                 "similarityBoost": 0.75,

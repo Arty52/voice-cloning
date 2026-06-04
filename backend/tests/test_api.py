@@ -250,6 +250,18 @@ def test_providers_endpoint_returns_public_provider_descriptor(tmp_path: Path) -
     payload = response.json()
     provider = payload["providers"][0]
     assert payload["defaultProviderId"] == "elevenlabs"
+    assert payload["voicePresets"] == [
+        {
+            "id": "standardNarration",
+            "label": "Standard Narration",
+            "description": "Balanced clone similarity for steady narration.",
+        },
+        {
+            "id": "animatedDialogue",
+            "label": "Animated Dialogue",
+            "description": "More expressive delivery for character reads.",
+        },
+    ]
     assert provider["id"] == "elevenlabs"
     assert provider["label"] == "ElevenLabs"
     assert provider["serverKeyConfigured"] is True
@@ -264,6 +276,10 @@ def test_providers_endpoint_returns_public_provider_descriptor(tmp_path: Path) -
     ]
     assert provider["tuning"]["defaultValues"]["useSpeakerBoost"] is True
     assert [preset["id"] for preset in provider["tuning"]["presets"]] == ["standard", "animated"]
+    assert [preset["voicePresetId"] for preset in provider["tuning"]["presets"]] == [
+        "standardNarration",
+        "animatedDialogue",
+    ]
     assert provider["sample"] == {
         "maxWindowSeconds": 120,
         "recommendedMinSeconds": 60,
