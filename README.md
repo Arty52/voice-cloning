@@ -2,9 +2,9 @@
 
 Voice Clone Lab is a local-first voice studio for experimenting with provider-backed voice cloning from your own browser. It gives you a small saved voice library, text-to-speech generation, model selection, cost/quota visibility, voice tuning controls, playback, downloads, and a browser-local provider key manager.
 
-![Voice Clone Lab desktop voice studio showing text input, a demo voice library, generated audio playback, voice tuning controls, provider key status, and cost/quota panels.](docs/assets/voice-studio-desktop.png)
+![Screenshot of the Voice Clone Lab desktop Voice Studio showing text input, Demo Narrator and Demo Dialogue in the voice library, generated audio playback, Voice Tuning, Provider Keys, and Cost & Quota panels.](docs/assets/voice-studio-desktop.png)
 
-The screenshot uses sanitized demo data and does not include real API keys, voice samples, generated audio files, or account details.
+Public-safe demo screenshot: this capture uses mocked data and does not include real API keys, voice samples, generated audio files, or account details. A mobile capture is available in [docs/assets/voice-studio-mobile.png](docs/assets/voice-studio-mobile.png).
 
 ## What This Is
 
