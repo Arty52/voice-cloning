@@ -366,6 +366,7 @@ def test_voice_manifest_bootstraps_default_voice(tmp_path: Path) -> None:
     assert response.json()["defaultVoiceId"] == "default"
     assert response.json()["voices"][0]["name"] == "Default voice"
     assert response.json()["voices"][0]["filePath"] == "default/default-voice.mp3"
+    assert response.json()["voices"][0]["voicePresetId"] == "standardNarration"
 
 
 def test_voice_manifest_migrates_legacy_assets_with_excerpt_defaults(tmp_path: Path) -> None:
@@ -387,6 +388,7 @@ def test_voice_manifest_migrates_legacy_assets_with_excerpt_defaults(tmp_path: P
                         "sha256": "legacy-hash",
                         "source": "upload",
                         "createdAt": "2026-05-28T00:00:00+00:00",
+                        "voicePresetId": "unsupported",
                     }
                 ],
             }
@@ -401,7 +403,10 @@ def test_voice_manifest_migrates_legacy_assets_with_excerpt_defaults(tmp_path: P
     assert voice["windowStartSeconds"] is None
     assert voice["windowDurationSeconds"] is None
     assert voice["sourceFilePath"] is None
-    assert json.loads(settings.voice_manifest_path.read_text(encoding="utf-8"))["voices"][0]["sampleMode"] == "excerpt"
+    assert voice["voicePresetId"] == "standardNarration"
+    migrated_voice = json.loads(settings.voice_manifest_path.read_text(encoding="utf-8"))["voices"][0]
+    assert migrated_voice["sampleMode"] == "excerpt"
+    assert migrated_voice["voicePresetId"] == "standardNarration"
 
 
 def test_subscription_endpoint_returns_sanitized_quota(tmp_path: Path) -> None:
@@ -963,6 +968,7 @@ def test_add_uploaded_voice_stores_named_asset(tmp_path: Path) -> None:
     assert response.json()["voice"]["windowStartSeconds"] is None
     assert response.json()["voice"]["windowDurationSeconds"] is None
     assert response.json()["voice"]["sourceFilePath"] is None
+    assert response.json()["voice"]["voicePresetId"] == "standardNarration"
     assert (tmp_path / "assets" / "voices" / "voice-clone-01.mp3").read_bytes() == b"uploaded-sample"
 
 
@@ -994,6 +1000,7 @@ def test_add_source_window_voice_stores_active_sample_and_local_source(tmp_path:
     assert voice["sourceFilePath"] == "sources/voice-clone-01.mp3"
     assert voice["sourceContentType"] == "audio/mpeg"
     assert voice["sourceSha256"] == sample_hash(b"original-source")
+    assert voice["voicePresetId"] == "standardNarration"
     assert (tmp_path / "assets" / "voices" / "voice-clone-01.wav").read_bytes() == b"active-excerpt"
     assert (tmp_path / "assets" / "voices" / "sources" / "voice-clone-01.mp3").read_bytes() == b"original-source"
     assert speech.status_code == 200
@@ -1178,6 +1185,20 @@ def test_rename_voice_updates_display_name_without_changing_asset_identity(tmp_p
         **original_voice,
         "name": "Narration Take 01",
     }
+
+
+def test_voice_library_updates_preset_without_renaming(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    voice_library = VoiceLibrary(settings)
+    voice_library.list_payload()
+
+    payload = voice_library.update_asset("default", voice_preset_id="animatedDialogue")
+
+    assert payload["voices"][0]["name"] == "Default voice"
+    assert payload["voices"][0]["voicePresetId"] == "animatedDialogue"
+    assert json.loads(settings.voice_manifest_path.read_text(encoding="utf-8"))["voices"][0][
+        "voicePresetId"
+    ] == "animatedDialogue"
 
 
 def test_rename_voice_rejects_duplicate_normalized_name(tmp_path: Path) -> None:

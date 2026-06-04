@@ -28,6 +28,7 @@ VOICE_PRESETS: tuple[VoicePreset, ...] = (
         description="More expressive delivery for character reads.",
     ),
 )
+VOICE_PRESET_IDS = frozenset(preset.id for preset in VOICE_PRESETS)
 
 
 @dataclass(frozen=True)
@@ -53,6 +54,7 @@ class VoiceAsset:
     source_file_path: str | None = None
     source_content_type: str | None = None
     source_sha256: str | None = None
+    voice_preset_id: VoicePresetId = DEFAULT_VOICE_PRESET_ID
 
 
 @dataclass(frozen=True)

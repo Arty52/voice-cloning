@@ -144,6 +144,7 @@ def voice_asset_payload(asset: VoiceAsset) -> dict[str, object]:
         "sourceFilePath": asset.source_file_path,
         "sourceContentType": asset.source_content_type,
         "sourceSha256": asset.source_sha256,
+        "voicePresetId": asset.voice_preset_id,
     }
 
 
