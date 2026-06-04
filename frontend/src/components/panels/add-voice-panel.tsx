@@ -5,10 +5,18 @@ import { AudioWindowCropper } from "@/components/audio-window-cropper"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Loading } from "@/components/ui/loading"
+import { VoicePresetToggleGroup } from "@/components/voice-preset-toggle-group"
 import type { AudioWindow } from "@/lib/audio-window"
 import { formatRecordingDuration } from "@/lib/formatters"
 import { cn } from "@/lib/utils"
-import type { ProviderSampleMetadata, RecorderStatus, VoiceSampleInputMode, VoiceSampleMode } from "@/types"
+import type {
+  ProviderSampleMetadata,
+  RecorderStatus,
+  VoicePreset,
+  VoicePresetId,
+  VoiceSampleInputMode,
+  VoiceSampleMode,
+} from "@/types"
 
 type AddVoicePanelProps = {
   canUpload: boolean
@@ -29,13 +37,16 @@ type AddVoicePanelProps = {
   recordingDurationSeconds: number
   sampleLimits: ProviderSampleMetadata
   sampleMode: VoiceSampleMode
+  setUploadVoicePresetId: (voicePresetId: VoicePresetId) => void
   setUploadName: (name: string) => void
   uploadDurationSeconds: number | null
   uploadError: string | null
   uploadFile: File | null
   uploadName: string
   uploadPreviewUrl: string | null
+  uploadVoicePresetId: VoicePresetId
   uploadWindow: AudioWindow | null
+  voicePresets: VoicePreset[]
   voiceSampleInputMode: VoiceSampleInputMode
 }
 
@@ -58,13 +69,16 @@ export function AddVoicePanel({
   recordingDurationSeconds,
   sampleLimits,
   sampleMode,
+  setUploadVoicePresetId,
   setUploadName,
   uploadDurationSeconds,
   uploadError,
   uploadFile,
   uploadName,
   uploadPreviewUrl,
+  uploadVoicePresetId,
   uploadWindow,
+  voicePresets,
   voiceSampleInputMode,
 }: AddVoicePanelProps) {
   const recorderLoadingLabel =
@@ -102,6 +116,14 @@ export function AddVoicePanel({
             Enter a voice name to enable Save Voice.
           </span>
         </label>
+        <VoicePresetToggleGroup
+          disabled={isUploading}
+          id="add-voice-preset"
+          label="Voice Preset"
+          onChange={setUploadVoicePresetId}
+          value={uploadVoicePresetId}
+          voicePresets={voicePresets}
+        />
         <div className="grid grid-cols-2 gap-1 rounded-md border border-border bg-background/60 p-1" role="group" aria-label="Voice sample source">
           <Button
             aria-pressed={voiceSampleInputMode === "upload"}

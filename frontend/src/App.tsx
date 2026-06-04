@@ -273,12 +273,14 @@ function App() {
               isUpdatingVoice={voiceLibrary.isUpdatingVoice}
               onDeleteRequest={requestDeleteVoice}
               onPlayVoice={voiceLibrary.playVoice}
+              onPresetChange={(voice, voicePresetId) => void voiceLibrary.updateVoicePreset(voice, voicePresetId)}
               onRenameRequest={voiceLibrary.requestRename}
               onSelectVoice={voiceLibrary.setSelectedVoiceId}
               onSetDefault={() => void voiceLibrary.setDefault()}
               selectedVoice={voiceLibrary.selectedVoice}
               selectedVoiceId={voiceLibrary.selectedVoiceId}
               voiceError={voiceLibrary.voiceError}
+              voicePresets={providerKeys.voicePresets}
               voices={voiceLibrary.voices}
               voiceStatus={voiceLibrary.voiceStatus}
             />
@@ -303,12 +305,15 @@ function App() {
               sampleLimits={voiceInput.sampleLimits}
               sampleMode={voiceInput.sampleMode}
               setUploadName={voiceInput.setUploadName}
+              setUploadVoicePresetId={voiceInput.setUploadVoicePresetId}
               uploadDurationSeconds={voiceInput.uploadDurationSeconds}
               uploadError={voiceInput.uploadError}
               uploadFile={voiceInput.uploadFile}
               uploadName={voiceInput.uploadName}
               uploadPreviewUrl={voiceInput.uploadPreviewUrl}
+              uploadVoicePresetId={voiceInput.uploadVoicePresetId}
               uploadWindow={voiceInput.uploadWindow}
+              voicePresets={providerKeys.voicePresets}
               voiceSampleInputMode={voiceInput.voiceSampleInputMode}
             />
 

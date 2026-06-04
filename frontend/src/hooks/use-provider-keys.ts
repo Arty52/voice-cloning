@@ -8,7 +8,8 @@ import {
   setStoredProviderKey,
   type StoredProviderKeys,
 } from "@/lib/provider-keys"
-import type { AsyncStatus, ProviderKeySource, VoiceProvider } from "@/types"
+import { FALLBACK_VOICE_PRESETS, normalizeVoicePresets } from "@/lib/voice-presets"
+import type { AsyncStatus, ProviderKeySource, VoicePreset, VoiceProvider } from "@/types"
 
 const DEFAULT_PROVIDER_SAMPLE = {
   maxWindowSeconds: 120,
@@ -22,6 +23,7 @@ export function useProviderKeys() {
   const [providerStatus, setProviderStatus] = useState<AsyncStatus>("idle")
   const [providerError, setProviderError] = useState<string | null>(null)
   const [providerKeys, setProviderKeys] = useState<StoredProviderKeys>(() => loadStoredProviderKeys())
+  const [voicePresets, setVoicePresets] = useState<VoicePreset[]>(FALLBACK_VOICE_PRESETS)
 
   useEffect(() => {
     let isMounted = true
@@ -35,6 +37,7 @@ export function useProviderKeys() {
           return
         }
         const loadedProviders = Array.isArray(payload.providers) ? payload.providers.map(normalizeVoiceProvider) : []
+        setVoicePresets(normalizeVoicePresets(payload.voicePresets))
         setProviders(loadedProviders)
         setDefaultProviderId(payload.defaultProviderId || loadedProviders[0]?.id || "elevenlabs")
         setProviderStatus("success")
@@ -43,6 +46,7 @@ export function useProviderKeys() {
           return
         }
         setProviders([])
+        setVoicePresets(FALLBACK_VOICE_PRESETS)
         setProviderStatus("error")
         setProviderError(caught instanceof Error ? caught.message : "Unable to load provider settings.")
       }
@@ -91,6 +95,7 @@ export function useProviderKeys() {
     providers,
     providerStatus,
     saveProviderKey,
+    voicePresets,
   }
 }
 
