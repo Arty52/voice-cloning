@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest"
 
 import { formatCompactBytes, formatExactBytes, formatGenerationElapsedTime } from "./formatters"
 
+const formatTestNumber = (value: number) => new Intl.NumberFormat().format(value)
+
 describe("formatGenerationElapsedTime", () => {
   it("formats sub-second durations", () => {
     expect(formatGenerationElapsedTime(0)).toBe("0s")
@@ -43,6 +45,6 @@ describe("formatExactBytes", () => {
   it("formats exact byte counts", () => {
     expect(formatExactBytes(0)).toBe("0 bytes")
     expect(formatExactBytes(1)).toBe("1 byte")
-    expect(formatExactBytes(898_656)).toBe("898,656 bytes")
+    expect(formatExactBytes(898_656)).toBe(`${formatTestNumber(898_656)} bytes`)
   })
 })

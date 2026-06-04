@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { buildGeneratedAudioSizeDisplay, storedAudioToResult } from "./generated-audio-view-model"
 import type { StoredGeneratedAudio } from "./generated-audio-storage"
 
+const formatTestNumber = (value: number) => new Intl.NumberFormat().format(value)
+
 const baseRecord: StoredGeneratedAudio = {
   appVoiceId: "default",
   blob: new Blob(["sample"], { type: "audio/mpeg" }),
@@ -70,10 +72,12 @@ describe("storedAudioToResult", () => {
 
 describe("buildGeneratedAudioSizeDisplay", () => {
   it("builds generated audio size labels from byte counts", () => {
+    const exactLabel = `${formatTestNumber(898_656)} bytes`
+
     expect(buildGeneratedAudioSizeDisplay(898_656)).toEqual({
-      ariaLabel: "Generated Audio Size 878 KB; Exact Size 898,656 bytes",
+      ariaLabel: `Generated Audio Size 878 KB; Exact Size ${exactLabel}`,
       detailLabel: "Exact Size",
-      exactLabel: "898,656 bytes",
+      exactLabel,
       visibleLabel: "878 KB",
     })
   })
