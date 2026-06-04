@@ -4,11 +4,7 @@ This folder contains committed media used by the public README and docs.
 
 ## Public-Safe Rules
 
-- Use sanitized demo data only.
-- Do not show API keys, key fragments, real account identifiers, real voice names, or real source filenames.
-- Do not commit generated audio, voice samples, provider cache files, or temporary browser captures.
-- Keep screenshots focused on the local app UI, not third-party provider dashboards.
-- Prefer actual app screenshots over generated artwork so visitors see the interface they will run locally.
+Follow the canonical [Public Media Guidelines](../PUBLIC_MEDIA.md) before adding or refreshing assets in this folder.
 
 ## Current Assets
 
