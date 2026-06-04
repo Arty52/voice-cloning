@@ -4,6 +4,10 @@ Voice Clone Lab is a local, Dockerized web app for experimenting with provider-b
 
 It gives you a small voice library, text-to-speech generation, model selection, cost/quota visibility, tuning controls, playback, downloads, and a browser-local provider key manager.
 
+![Voice Clone Lab desktop voice studio showing text input, a demo voice library, generated audio playback, voice tuning controls, provider key status, and cost/quota panels.](docs/assets/voice-studio-desktop.png)
+
+The screenshot uses sanitized demo data and does not include real API keys, voice samples, generated audio files, or account details.
+
 ## What This Is
 
 - A local development tool for testing provider-backed voice cloning with built-in ElevenLabs support.
