@@ -25,6 +25,18 @@ Provider-backed routes accept an optional `providerId` request value and an opti
 ```json
 {
   "defaultProviderId": "elevenlabs",
+  "voicePresets": [
+    {
+      "id": "standardNarration",
+      "label": "Standard Narration",
+      "description": "Balanced clone similarity for steady narration."
+    },
+    {
+      "id": "animatedDialogue",
+      "label": "Animated Dialogue",
+      "description": "More expressive delivery for character reads."
+    }
+  ],
   "providers": [
     {
       "id": "elevenlabs",
@@ -54,6 +66,7 @@ Provider-backed routes accept an optional `providerId` request value and an opti
         "presets": [
           {
             "id": "standard",
+            "voicePresetId": "standardNarration",
             "label": "Standard Narration",
             "description": "Balanced clone similarity for steady narration.",
             "values": {
@@ -74,6 +87,11 @@ Provider-backed routes accept an optional `providerId` request value and an opti
   ]
 }
 ```
+
+`voicePresets` are provider-independent local voice assignments. Provider tuning presets may include
+`voicePresetId` when they implement one of those semantic presets. If a future provider uses different
+provider-specific preset ids or setting names, it should still map equivalent tuning values to the shared
+voice preset id.
 
 ## Subscription And Models
 
@@ -120,14 +138,18 @@ If model metadata is unavailable, generation still works by omitting `modelId` a
 - `sourceFile`: optional original audio file to keep locally when `sampleMode` is `sourceWindow`
 - `windowStartSeconds`: optional selected window start time in seconds
 - `windowDurationSeconds`: optional selected window duration in seconds
+- `voicePresetId`: optional local preset assignment, either `standardNarration` or `animatedDialogue`; defaults to `standardNarration`
 
-Active provider samples are capped at 10 MB. Original source files retained for `sourceWindow` assets are local-only and capped at 50 MB. For the built-in ElevenLabs provider, `/api/providers` reports a 120-second maximum sample window with a 60-120 second recommended window. Existing voice manifest entries without sample-window metadata are treated as `excerpt` assets.
+Voice payloads include `voicePresetId` alongside the active sample metadata. Active provider samples are capped at 10 MB. Original source files retained for `sourceWindow` assets are local-only and capped at 50 MB. For the built-in ElevenLabs provider, `/api/providers` reports a 120-second maximum sample window with a 60-120 second recommended window. Existing voice manifest entries without sample-window metadata are treated as `excerpt` assets.
+Existing voice manifest entries without preset metadata, or with an unsupported preset id, are migrated to `standardNarration`.
 
-`PATCH /api/voices/{voiceId}` accepts JSON and renames a local voice without changing its stable local id or sample file:
+`PATCH /api/voices/{voiceId}` accepts JSON and updates a local voice without changing its stable local id or sample file:
 
 ```json
-{ "name": "Voice_Clone_01" }
+{ "name": "Voice_Clone_01", "voicePresetId": "animatedDialogue" }
 ```
+
+Both fields are optional, but at least one of `name` or `voicePresetId` is required. Existing clients that send only `name` keep working.
 
 `DELETE /api/voices/{voiceId}` removes a local voice sample and reassigns the default to the first remaining voice, or to none when the library is empty.
 
