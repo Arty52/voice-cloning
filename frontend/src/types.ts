@@ -5,6 +5,7 @@ export type AsyncStatus = "idle" | "loading" | "success" | "error"
 export type RecorderStatus = "idle" | "starting" | "recording" | "stopping" | "recorded" | "error"
 export type VoiceSampleInputMode = "upload" | "record"
 export type VoiceSampleMode = "excerpt" | "sourceWindow"
+export type VoicePresetId = "standardNarration" | "animatedDialogue"
 export type ProviderKeySource = "browser" | "server" | "missing"
 
 export type VoiceProvider = {
@@ -53,6 +54,7 @@ export type ProviderTuningPreset = {
   id: string
   label: string
   description: string
+  voicePresetId?: VoicePresetId
   values: VoiceTuningValues
 }
 
@@ -65,6 +67,13 @@ export type ProviderTuningMetadata = {
 export type ProvidersResponse = {
   defaultProviderId: string
   providers: VoiceProvider[]
+  voicePresets: VoicePreset[]
+}
+
+export type VoicePreset = {
+  id: VoicePresetId
+  label: string
+  description: string
 }
 
 export type VoiceAsset = {
@@ -81,6 +90,7 @@ export type VoiceAsset = {
   sourceFilePath: string | null
   sourceContentType: string | null
   sourceSha256: string | null
+  voicePresetId: VoicePresetId
 }
 
 export type VoicesResponse = {

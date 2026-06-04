@@ -31,6 +31,7 @@ const defaultVoice = {
   sourceFilePath: null,
   sourceContentType: null,
   sourceSha256: null,
+  voicePresetId: "standardNarration" as const,
 }
 
 const voiceCloneVoice = {
@@ -47,6 +48,7 @@ const voiceCloneVoice = {
   sourceFilePath: null,
   sourceContentType: null,
   sourceSha256: null,
+  voicePresetId: "standardNarration" as const,
 }
 
 const subscription = {
@@ -145,12 +147,14 @@ const elevenLabsTuning = {
       id: "standard",
       label: "Standard Narration",
       description: "Balanced clone similarity for steady narration.",
+      voicePresetId: "standardNarration" as const,
       values: { stability: 0.5, similarityBoost: 0.75, style: 0, speed: 1, useSpeakerBoost: true },
     },
     {
       id: "animated",
       label: "Animated Dialogue",
       description: "More expressive delivery for character reads.",
+      voicePresetId: "animatedDialogue" as const,
       values: { stability: 0.4, similarityBoost: 0.75, style: 0.35, speed: 1, useSpeakerBoost: true },
     },
   ],
@@ -159,6 +163,18 @@ const elevenLabsTuning = {
 
 const providersResponse: ProvidersResponse = {
   defaultProviderId: "elevenlabs",
+  voicePresets: [
+    {
+      id: "standardNarration",
+      label: "Standard Narration",
+      description: "Balanced clone similarity for steady narration.",
+    },
+    {
+      id: "animatedDialogue",
+      label: "Animated Dialogue",
+      description: "More expressive delivery for character reads.",
+    },
+  ],
   providers: [
     {
       id: "elevenlabs",
@@ -329,12 +345,18 @@ function mockFetch() {
   })
 }
 
-function mockFetchWithProviders(nextProvidersResponse: ProvidersResponse) {
+function mockFetchWithProviders(
+  nextProvidersResponse: Omit<ProvidersResponse, "voicePresets"> & Partial<Pick<ProvidersResponse, "voicePresets">>
+) {
+  const resolvedProvidersResponse: ProvidersResponse = {
+    ...nextProvidersResponse,
+    voicePresets: nextProvidersResponse.voicePresets ?? providersResponse.voicePresets,
+  }
   return vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
     const path = url.split("?")[0]
     if (path === "/api/providers" && !init) {
-      return okJson(nextProvidersResponse)
+      return okJson(resolvedProvidersResponse)
     }
     if (path === "/api/voices" && !init) {
       return okJson({ defaultVoiceId: "default", voices: [defaultVoice] })

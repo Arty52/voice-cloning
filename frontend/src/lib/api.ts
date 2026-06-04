@@ -4,6 +4,7 @@ import type {
   ProvidersResponse,
   SubscriptionResponse,
   VoiceAsset,
+  VoicePresetId,
   VoiceSampleMode,
   VoicesResponse,
   VoiceTuningValues,
@@ -19,8 +20,14 @@ export type ProviderRequestOptions = {
 export type AddVoiceOptions = {
   sampleMode?: VoiceSampleMode
   sourceFile?: File | null
+  voicePresetId?: VoicePresetId
   windowDurationSeconds?: number | null
   windowStartSeconds?: number | null
+}
+
+export type VoiceUpdate = {
+  name?: string
+  voicePresetId?: VoicePresetId
 }
 
 export type SpeechApiRequest = {
@@ -61,6 +68,9 @@ export async function addVoice(name: string, sampleFile: File, options: AddVoice
   if (options.sourceFile) {
     formData.append("sourceFile", options.sourceFile)
   }
+  if (options.voicePresetId) {
+    formData.append("voicePresetId", options.voicePresetId)
+  }
   if (options.windowStartSeconds !== undefined && options.windowStartSeconds !== null) {
     formData.append("windowStartSeconds", String(options.windowStartSeconds))
   }
@@ -74,10 +84,14 @@ export async function addVoice(name: string, sampleFile: File, options: AddVoice
 }
 
 export async function renameVoice(voiceId: string, name: string) {
+  return updateVoice(voiceId, { name })
+}
+
+export async function updateVoice(voiceId: string, update: VoiceUpdate) {
   return fetchJson<VoicesResponse>(`/api/voices/${encodeURIComponent(voiceId)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify(update),
   })
 }
 
