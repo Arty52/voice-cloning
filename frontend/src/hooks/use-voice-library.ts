@@ -1,7 +1,7 @@
 import { type FormEvent, useEffect, useRef, useState } from "react"
 
 import * as voiceApi from "@/lib/api"
-import type { AsyncStatus, VoiceAsset, VoicesResponse } from "@/types"
+import type { AsyncStatus, VoiceAsset, VoicePresetId, VoicesResponse } from "@/types"
 
 export function useVoiceLibrary() {
   const [voices, setVoices] = useState<VoiceAsset[]>([])
@@ -143,6 +143,22 @@ export function useVoiceLibrary() {
     }
   }
 
+  async function updateVoicePreset(voice: VoiceAsset, voicePresetId: VoicePresetId) {
+    if (voice.voicePresetId === voicePresetId) {
+      return
+    }
+    setVoiceActionStatus("loading")
+    setVoiceError(null)
+    try {
+      const payload = await voiceApi.updateVoice(voice.id, { voicePresetId })
+      applyVoicePayload(payload)
+      setVoiceActionStatus("success")
+    } catch (caught) {
+      setVoiceActionStatus("error")
+      setVoiceError(caught instanceof Error ? caught.message : "Unable to update voice preset.")
+    }
+  }
+
   return {
     addSavedVoice,
     canSetDefault,
@@ -164,6 +180,7 @@ export function useVoiceLibrary() {
     setSelectedVoiceId,
     setVoiceError,
     submitRename,
+    updateVoicePreset,
     voiceActionStatus,
     voiceError,
     voices,

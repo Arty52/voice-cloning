@@ -2,11 +2,14 @@ import { Check, FileAudio, Pencil, Star, Trash2, Volume2 } from "lucide-react"
 
 import { AudioPlayer } from "@/components/audio-player"
 import { ActionMenu } from "@/components/ui/action-menu"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Loading } from "@/components/ui/loading"
 import { Skeleton } from "@/components/ui/skeleton"
+import { VoicePresetToggleGroup } from "@/components/voice-preset-toggle-group"
 import { cn } from "@/lib/utils"
-import type { AsyncStatus, VoiceAsset } from "@/types"
+import { voicePresetLabel } from "@/lib/voice-presets"
+import type { AsyncStatus, VoiceAsset, VoicePreset, VoicePresetId } from "@/types"
 
 type VoiceLibraryPanelProps = {
   canSetDefault: boolean
@@ -16,12 +19,14 @@ type VoiceLibraryPanelProps = {
   isUpdatingVoice: boolean
   onDeleteRequest: (voice: VoiceAsset) => void
   onPlayVoice: (voice: VoiceAsset) => void
+  onPresetChange: (voice: VoiceAsset, voicePresetId: VoicePresetId) => void
   onRenameRequest: (voice: VoiceAsset) => void
   onSelectVoice: (voiceId: string) => void
   onSetDefault: () => void
   selectedVoice: VoiceAsset | null
   selectedVoiceId: string
   voiceError: string | null
+  voicePresets: VoicePreset[]
   voices: VoiceAsset[]
   voiceStatus: AsyncStatus
 }
@@ -34,12 +39,14 @@ export function VoiceLibraryPanel({
   isUpdatingVoice,
   onDeleteRequest,
   onPlayVoice,
+  onPresetChange,
   onRenameRequest,
   onSelectVoice,
   onSetDefault,
   selectedVoice,
   selectedVoiceId,
   voiceError,
+  voicePresets,
   voices,
   voiceStatus,
 }: VoiceLibraryPanelProps) {
@@ -87,7 +94,12 @@ export function VoiceLibraryPanel({
               >
                 <span className="min-w-0">
                   <span className="block truncate font-medium text-foreground">{voice.name}</span>
-                  <span className="block truncate font-mono text-xs text-muted-foreground">{voice.filePath}</span>
+                  <span className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
+                    <Badge className="shrink-0 px-1.5 py-0.5" variant="secondary">
+                      {voicePresetLabel(voicePresets, voice.voicePresetId)}
+                    </Badge>
+                    <span className="min-w-0 truncate font-mono text-xs text-muted-foreground">{voice.filePath}</span>
+                  </span>
                 </span>
                 <span className="flex shrink-0 items-center gap-2">
                   {isDefault ? <Star aria-label="Default voice" className="size-4 text-primary" /> : null}
@@ -124,11 +136,21 @@ export function VoiceLibraryPanel({
       <div className="mt-4 rounded-md border border-border bg-background/60 p-3">
         <div className="mb-2 text-sm font-medium">Selected Preview</div>
         {selectedVoice ? (
-          <AudioPlayer
-            ariaLabel="Selected voice sample preview"
-            key={selectedVoice.id}
-            src={`/api/voices/${encodeURIComponent(selectedVoice.id)}/sample`}
-          />
+          <div className="flex flex-col gap-3">
+            <AudioPlayer
+              ariaLabel="Selected voice sample preview"
+              key={selectedVoice.id}
+              src={`/api/voices/${encodeURIComponent(selectedVoice.id)}/sample`}
+            />
+            <VoicePresetToggleGroup
+              disabled={isGenerating || isUpdatingVoice}
+              id="selected-voice-preset"
+              label="Voice Preset"
+              onChange={(voicePresetId) => onPresetChange(selectedVoice, voicePresetId)}
+              value={selectedVoice.voicePresetId}
+              voicePresets={voicePresets}
+            />
+          </div>
         ) : (
           <p className="text-sm text-muted-foreground">No voice selected.</p>
         )}

@@ -2,8 +2,17 @@ import { type ChangeEvent, type FormEvent, useEffect, useMemo, useRef, useState 
 
 import { clampAudioWindow, createWindowedAudioFile, decodeAudioFile, type AudioWindow } from "@/lib/audio-window"
 import { addVoice } from "@/lib/api"
+import { DEFAULT_VOICE_PRESET_ID } from "@/lib/voice-presets"
 import { startVoiceRecorder, type VoiceRecorderSession } from "@/lib/voice-recorder"
-import type { AsyncStatus, ProviderSampleMetadata, RecorderStatus, VoiceAsset, VoiceSampleInputMode, VoiceSampleMode } from "@/types"
+import type {
+  AsyncStatus,
+  ProviderSampleMetadata,
+  RecorderStatus,
+  VoiceAsset,
+  VoicePresetId,
+  VoiceSampleInputMode,
+  VoiceSampleMode,
+} from "@/types"
 
 const DEFAULT_PROVIDER_SAMPLE: ProviderSampleMetadata = {
   maxWindowSeconds: 120,
@@ -26,6 +35,7 @@ export function useVoiceSampleInput({ onVoiceSaved, providerSample }: UseVoiceSa
   const [uploadDurationSeconds, setUploadDurationSeconds] = useState<number | null>(null)
   const [uploadWindow, setUploadWindow] = useState<AudioWindow | null>(null)
   const [sampleMode, setSampleMode] = useState<VoiceSampleMode>("excerpt")
+  const [uploadVoicePresetId, setUploadVoicePresetId] = useState<VoicePresetId>(DEFAULT_VOICE_PRESET_ID)
   const [voiceSampleInputMode, setVoiceSampleInputMode] = useState<VoiceSampleInputMode>("upload")
   const [recorderStatus, setRecorderStatus] = useState<RecorderStatus>("idle")
   const [recorderError, setRecorderError] = useState<string | null>(null)
@@ -194,11 +204,13 @@ export function useVoiceSampleInput({ onVoiceSaved, providerSample }: UseVoiceSa
       const payload = await addVoice(uploadName.trim(), activeSampleFile, {
         sampleMode: voiceSampleInputMode === "upload" ? sampleMode : "excerpt",
         sourceFile: voiceSampleInputMode === "upload" && sampleMode === "sourceWindow" ? uploadFile : null,
+        voicePresetId: uploadVoicePresetId,
         windowDurationSeconds: voiceSampleInputMode === "upload" ? selectedUploadWindow?.durationSeconds : null,
         windowStartSeconds: voiceSampleInputMode === "upload" ? selectedUploadWindow?.startSeconds : null,
       })
       onVoiceSaved(payload.voice)
       setUploadName("")
+      setUploadVoicePresetId(DEFAULT_VOICE_PRESET_ID)
       resetSampleInput()
       setUploadStatus("success")
     } catch (caught) {
@@ -239,11 +251,13 @@ export function useVoiceSampleInput({ onVoiceSaved, providerSample }: UseVoiceSa
     sampleLimits,
     sampleMode,
     setUploadName,
+    setUploadVoicePresetId,
     uploadDurationSeconds,
     uploadError,
     uploadFile,
     uploadName,
     uploadPreviewUrl,
+    uploadVoicePresetId,
     uploadStatus,
     uploadWindow: clampedUploadWindow,
     voiceSampleInputMode,
