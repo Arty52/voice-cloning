@@ -8,8 +8,8 @@ Follow the canonical [Public Media Guidelines](../PUBLIC_MEDIA.md) before adding
 
 ## Current Assets
 
-- `voice-studio-desktop.png`: desktop capture of the Voice Studio with mocked demo data, 1440 x 1000, about 420 KB.
-- `voice-studio-mobile.png`: mobile capture of the same public-safe demo state, 390 x 1000, about 184 KB.
+- `voice-studio-desktop.png`: desktop capture of the Voice Studio with mocked demo data and voice preset controls, 1440 x 1000, about 284 KB.
+- `voice-studio-mobile.png`: mobile capture of the same public-safe demo state focused on voice preset controls, 390 x 1000, about 62 KB.
 
 ## Refresh Checklist
 
