@@ -1,4 +1,5 @@
 import { Field, FieldLabel } from "@/components/ui/field"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import type { VoicePreset, VoicePresetId } from "@/types"
 
@@ -38,14 +39,22 @@ export function VoicePresetToggleGroup({
         variant="default"
       >
         {voicePresets.map((preset) => (
-          <ToggleGroupItem
-            className="h-auto min-h-16 flex-col items-start gap-1 rounded px-3 py-2 text-left data-[state=on]:bg-secondary data-[state=on]:text-secondary-foreground"
-            key={preset.id}
-            value={preset.id}
-          >
-            <span className="text-sm font-medium">{preset.label}</span>
-            <span className="text-xs leading-5 text-muted-foreground">{preset.description}</span>
-          </ToggleGroupItem>
+          <Tooltip key={preset.id}>
+            <TooltipTrigger asChild>
+              <ToggleGroupItem
+                className="h-10 min-w-0 rounded px-3 text-center text-sm font-medium data-[state=on]:bg-secondary data-[state=on]:text-secondary-foreground"
+                value={preset.id}
+              >
+                <span className="min-w-0 truncate">{preset.label}</span>
+              </ToggleGroupItem>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-64" side="top" sideOffset={6}>
+              <div className="flex flex-col gap-1">
+                <span className="font-medium">{preset.label}</span>
+                <span>{preset.description}</span>
+              </div>
+            </TooltipContent>
+          </Tooltip>
         ))}
       </ToggleGroup>
     </Field>
