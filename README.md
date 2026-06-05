@@ -75,7 +75,7 @@ http://localhost:6420
 3. Save it with a local name and choose Standard Narration or Animated Dialogue.
 4. Enter text to speak.
 5. Review Cost & Quota and choose a model if metadata is available.
-6. Adjust Voice Tuning if needed; selecting a saved voice starts from its assigned preset.
+6. Adjust Voice Tuning if needed; selecting a saved voice starts from its assigned preset when the active provider maps that preset, otherwise from provider defaults.
 7. Generate speech.
 8. Play, download, or remove generated audio from the browser library.
 
