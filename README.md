@@ -63,6 +63,7 @@ http://localhost:6420
 
 - API keys stay local to `.env` or browser-local storage and are never returned by the API.
 - Real voice samples under `assets/voices/` are ignored by git.
+- Local voice preset assignments are saved with the ignored voice manifest under `assets/voices/`.
 - Generated audio and provider cache data under `storage/` are ignored by git.
 - Browser-generated audio is stored in browser IndexedDB by default, not committed to the repository.
 - The optional live smoke test calls ElevenLabs, may consume credits, and may create or reuse a cloned voice.
@@ -71,10 +72,10 @@ http://localhost:6420
 
 1. Add an ElevenLabs key in the Provider Keys panel if `.env` does not provide one.
 2. Upload or record a voice sample.
-3. Save it with a local name.
+3. Save it with a local name and choose Standard Narration or Animated Dialogue.
 4. Enter text to speak.
 5. Review Cost & Quota and choose a model if metadata is available.
-6. Adjust Voice Tuning if needed.
+6. Adjust Voice Tuning if needed; selecting a saved voice starts from its assigned preset.
 7. Generate speech.
 8. Play, download, or remove generated audio from the browser library.
 
