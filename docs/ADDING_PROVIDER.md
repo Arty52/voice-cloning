@@ -9,7 +9,7 @@ Voice Clone Lab uses ElevenLabs as the built-in provider, but backend services a
 - Provider without quota metadata: return an unavailable subscription payload through the metadata route and keep generation usable.
 - Provider without model metadata: return an unavailable models payload and use the provider default model id.
 - Provider without tuning controls: expose empty `controls`, `presets`, and `defaultValues`; the UI hides Voice Tuning for that provider.
-- Provider with provider-specific tuning: define controls, defaults, validation, and presets in the adapter. Do not add provider-specific tuning constants to the frontend.
+- Provider with provider-specific tuning: define controls, defaults, validation, and presets in the adapter. Map equivalent presets to semantic `voicePresetId` values when possible. Do not add provider-specific tuning constants to the frontend.
 - Providers are not expected to report generated-audio wall-clock timing. The browser records provider-agnostic `generationElapsedMs` for saved generated audio; provider-specific latency fields should remain out of the provider contract unless a future feature explicitly normalizes them.
 
 ## Implementation Checklist
@@ -19,6 +19,7 @@ Voice Clone Lab uses ElevenLabs as the built-in provider, but backend services a
 - Keep third-party HTTP payloads and error parsing inside the provider adapter.
 - Map provider models and quota data into internal dataclasses before routes serialize them.
 - Validate `voiceSettings` against the provider's tuning controls and reject unsupported ids with a clear 422.
+- Add `voicePresetId` to provider tuning presets that match the semantic Standard Narration or Animated Dialogue assignments. Provider preset `id` values may remain provider-specific.
 - Use provider id plus active key fingerprint for cache namespaces so one provider/account never reuses another provider/account's clone id.
 - Register the provider in `ProviderRegistry` and keep the intended default explicit.
 - Add backend tests for provider lookup, key fallback, model/quota unavailable paths, clone cache behavior, setting normalization, and sanitized errors.
@@ -34,6 +35,15 @@ Provider tuning metadata is public UI metadata, not secret configuration. Contro
 - `select`: scalar `defaultValue` plus labeled options.
 
 Control ids are provider payload keys. Labels and presets use Title Case; descriptions use sentence case. Presets are optional provider-specific value maps. If a provider's concepts do not match ElevenLabs Stability, Style, or Speaker Boost, use that provider's own names and meanings.
+
+Voice presets are semantic assignments for local voices, not provider clone ids. The API exposes the shared voice presets separately from provider tuning metadata:
+
+- `standardNarration`: balanced reading defaults.
+- `animatedDialogue`: more expressive character or dialogue defaults.
+
+When a provider has matching tuning presets, attach `voicePresetId` to those provider presets. For example, a provider preset with id `balanced-read` can map to `standardNarration`, while a preset with id `character-read` can map to `animatedDialogue`. The frontend uses this mapping when a saved voice is selected, so provider-specific preset ids can change without changing stored voice metadata.
+
+If a provider has tuning controls but no good semantic match, omit `voicePresetId` from that provider preset. The preset can still be shown and applied manually. If a provider has no tuning controls, keep `controls`, `presets`, and `defaultValues` empty; generation remains usable with an empty settings object.
 
 ## Public Safety Checklist
 
