@@ -7,5 +7,6 @@ class DefaultVoiceRequest(BaseModel):
     voiceId: str
 
 
-class RenameVoiceRequest(BaseModel):
-    name: str
+class VoiceUpdateRequest(BaseModel):
+    name: str | None = None
+    voicePresetId: str | None = None

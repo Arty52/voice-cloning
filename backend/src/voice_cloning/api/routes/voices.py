@@ -4,7 +4,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from ...voice_library import VoiceLibrary
-from ..schemas import DefaultVoiceRequest, RenameVoiceRequest
+from ..schemas import DefaultVoiceRequest, VoiceUpdateRequest
 from ..serializers import voice_asset_payload
 
 
@@ -31,6 +31,7 @@ def create_voices_router(voice_library: VoiceLibrary) -> APIRouter:
         sourceFile: UploadFile | None = File(None),
         windowStartSeconds: float | None = Form(None),
         windowDurationSeconds: float | None = Form(None),
+        voicePresetId: str | None = Form(None),
     ) -> dict[str, object]:
         asset = await voice_library.add_upload(
             name,
@@ -39,12 +40,17 @@ def create_voices_router(voice_library: VoiceLibrary) -> APIRouter:
             source_upload=sourceFile,
             window_start_seconds=windowStartSeconds,
             window_duration_seconds=windowDurationSeconds,
+            voice_preset_id=voicePresetId,
         )
         return {"voice": voice_asset_payload(asset)}
 
     @router.patch("/api/voices/{voice_id}")
-    def rename_voice(voice_id: str, request: RenameVoiceRequest) -> dict[str, object]:
-        return voice_library.rename_asset(voice_id, request.name)
+    def update_voice(voice_id: str, request: VoiceUpdateRequest) -> dict[str, object]:
+        return voice_library.update_asset(
+            voice_id,
+            name=request.name,
+            voice_preset_id=request.voicePresetId,
+        )
 
     @router.delete("/api/voices/{voice_id}")
     def delete_voice(voice_id: str) -> dict[str, object]:

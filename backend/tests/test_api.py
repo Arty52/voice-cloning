@@ -250,6 +250,18 @@ def test_providers_endpoint_returns_public_provider_descriptor(tmp_path: Path) -
     payload = response.json()
     provider = payload["providers"][0]
     assert payload["defaultProviderId"] == "elevenlabs"
+    assert payload["voicePresets"] == [
+        {
+            "id": "standardNarration",
+            "label": "Standard Narration",
+            "description": "Balanced clone similarity for steady narration.",
+        },
+        {
+            "id": "animatedDialogue",
+            "label": "Animated Dialogue",
+            "description": "More expressive delivery for character reads.",
+        },
+    ]
     assert provider["id"] == "elevenlabs"
     assert provider["label"] == "ElevenLabs"
     assert provider["serverKeyConfigured"] is True
@@ -264,6 +276,10 @@ def test_providers_endpoint_returns_public_provider_descriptor(tmp_path: Path) -
     ]
     assert provider["tuning"]["defaultValues"]["useSpeakerBoost"] is True
     assert [preset["id"] for preset in provider["tuning"]["presets"]] == ["standard", "animated"]
+    assert [preset["voicePresetId"] for preset in provider["tuning"]["presets"]] == [
+        "standardNarration",
+        "animatedDialogue",
+    ]
     assert provider["sample"] == {
         "maxWindowSeconds": 120,
         "recommendedMinSeconds": 60,
@@ -350,6 +366,7 @@ def test_voice_manifest_bootstraps_default_voice(tmp_path: Path) -> None:
     assert response.json()["defaultVoiceId"] == "default"
     assert response.json()["voices"][0]["name"] == "Default voice"
     assert response.json()["voices"][0]["filePath"] == "default/default-voice.mp3"
+    assert response.json()["voices"][0]["voicePresetId"] == "standardNarration"
 
 
 def test_voice_manifest_migrates_legacy_assets_with_excerpt_defaults(tmp_path: Path) -> None:
@@ -371,6 +388,7 @@ def test_voice_manifest_migrates_legacy_assets_with_excerpt_defaults(tmp_path: P
                         "sha256": "legacy-hash",
                         "source": "upload",
                         "createdAt": "2026-05-28T00:00:00+00:00",
+                        "voicePresetId": "unsupported",
                     }
                 ],
             }
@@ -385,7 +403,10 @@ def test_voice_manifest_migrates_legacy_assets_with_excerpt_defaults(tmp_path: P
     assert voice["windowStartSeconds"] is None
     assert voice["windowDurationSeconds"] is None
     assert voice["sourceFilePath"] is None
-    assert json.loads(settings.voice_manifest_path.read_text(encoding="utf-8"))["voices"][0]["sampleMode"] == "excerpt"
+    assert voice["voicePresetId"] == "standardNarration"
+    migrated_voice = json.loads(settings.voice_manifest_path.read_text(encoding="utf-8"))["voices"][0]
+    assert migrated_voice["sampleMode"] == "excerpt"
+    assert migrated_voice["voicePresetId"] == "standardNarration"
 
 
 def test_subscription_endpoint_returns_sanitized_quota(tmp_path: Path) -> None:
@@ -947,7 +968,37 @@ def test_add_uploaded_voice_stores_named_asset(tmp_path: Path) -> None:
     assert response.json()["voice"]["windowStartSeconds"] is None
     assert response.json()["voice"]["windowDurationSeconds"] is None
     assert response.json()["voice"]["sourceFilePath"] is None
+    assert response.json()["voice"]["voicePresetId"] == "standardNarration"
     assert (tmp_path / "assets" / "voices" / "voice-clone-01.mp3").read_bytes() == b"uploaded-sample"
+
+
+def test_add_uploaded_voice_stores_requested_preset(tmp_path: Path) -> None:
+    client, _ = make_client(tmp_path)
+
+    response = client.post(
+        "/api/voices",
+        data={"name": "Voice_Clone_01", "voicePresetId": "animatedDialogue"},
+        files={"sampleFile": ("voice.mp3", b"uploaded-sample", "audio/mpeg")},
+    )
+    voices = client.get("/api/voices")
+
+    assert response.status_code == 201
+    assert response.json()["voice"]["voicePresetId"] == "animatedDialogue"
+    assert voices.json()["voices"][1]["voicePresetId"] == "animatedDialogue"
+
+
+def test_add_uploaded_voice_rejects_unknown_preset(tmp_path: Path) -> None:
+    client, _ = make_client(tmp_path)
+
+    response = client.post(
+        "/api/voices",
+        data={"name": "Voice_Clone_01", "voicePresetId": "unsupported"},
+        files={"sampleFile": ("voice.mp3", b"uploaded-sample", "audio/mpeg")},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Voice preset must be standardNarration or animatedDialogue."
+    assert not (tmp_path / "assets" / "voices" / "voice-clone-01.mp3").exists()
 
 
 def test_add_source_window_voice_stores_active_sample_and_local_source(tmp_path: Path) -> None:
@@ -978,6 +1029,7 @@ def test_add_source_window_voice_stores_active_sample_and_local_source(tmp_path:
     assert voice["sourceFilePath"] == "sources/voice-clone-01.mp3"
     assert voice["sourceContentType"] == "audio/mpeg"
     assert voice["sourceSha256"] == sample_hash(b"original-source")
+    assert voice["voicePresetId"] == "standardNarration"
     assert (tmp_path / "assets" / "voices" / "voice-clone-01.wav").read_bytes() == b"active-excerpt"
     assert (tmp_path / "assets" / "voices" / "sources" / "voice-clone-01.mp3").read_bytes() == b"original-source"
     assert speech.status_code == 200
@@ -1162,6 +1214,49 @@ def test_rename_voice_updates_display_name_without_changing_asset_identity(tmp_p
         **original_voice,
         "name": "Narration Take 01",
     }
+
+
+def test_voice_library_updates_preset_without_renaming(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    voice_library = VoiceLibrary(settings)
+    voice_library.list_payload()
+
+    payload = voice_library.update_asset("default", voice_preset_id="animatedDialogue")
+
+    assert payload["voices"][0]["name"] == "Default voice"
+    assert payload["voices"][0]["voicePresetId"] == "animatedDialogue"
+    assert json.loads(settings.voice_manifest_path.read_text(encoding="utf-8"))["voices"][0][
+        "voicePresetId"
+    ] == "animatedDialogue"
+
+
+def test_patch_voice_updates_preset_without_renaming(tmp_path: Path) -> None:
+    client, _ = make_client(tmp_path)
+
+    response = client.patch("/api/voices/default", json={"voicePresetId": "animatedDialogue"})
+
+    assert response.status_code == 200
+    voice = response.json()["voices"][0]
+    assert voice["name"] == "Default voice"
+    assert voice["voicePresetId"] == "animatedDialogue"
+
+
+def test_patch_voice_rejects_empty_payload(tmp_path: Path) -> None:
+    client, _ = make_client(tmp_path)
+
+    response = client.patch("/api/voices/default", json={})
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Voice name or preset is required."
+
+
+def test_patch_voice_rejects_unknown_preset(tmp_path: Path) -> None:
+    client, _ = make_client(tmp_path)
+
+    response = client.patch("/api/voices/default", json={"voicePresetId": "unsupported"})
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Voice preset must be standardNarration or animatedDialogue."
 
 
 def test_rename_voice_rejects_duplicate_normalized_name(tmp_path: Path) -> None:

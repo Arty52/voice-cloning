@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi.responses import Response
 
-from ..models import CachedVoice, ModelSummary, SubscriptionSummary, VoiceAsset, VoiceSample
+from ..models import CachedVoice, ModelSummary, SubscriptionSummary, VoiceAsset, VoicePreset, VoiceSample, VOICE_PRESETS
 from ..providers import (
     ProviderDescriptor,
     ProviderTuningControl,
@@ -86,6 +86,7 @@ def providers_payload(
 ) -> dict[str, object]:
     return {
         "defaultProviderId": default_provider_id,
+        "voicePresets": [voice_preset_payload(preset) for preset in VOICE_PRESETS],
         "providers": [
             {
                 "id": provider.id,
@@ -103,6 +104,14 @@ def providers_payload(
             }
             for provider in providers
         ],
+    }
+
+
+def voice_preset_payload(preset: VoicePreset) -> dict[str, object]:
+    return {
+        "id": preset.id,
+        "label": preset.label,
+        "description": preset.description,
     }
 
 
@@ -135,6 +144,7 @@ def voice_asset_payload(asset: VoiceAsset) -> dict[str, object]:
         "sourceFilePath": asset.source_file_path,
         "sourceContentType": asset.source_content_type,
         "sourceSha256": asset.source_sha256,
+        "voicePresetId": asset.voice_preset_id,
     }
 
 
@@ -168,9 +178,12 @@ def tuning_control_payload(control: ProviderTuningControl) -> dict[str, object]:
 
 
 def tuning_preset_payload(preset: ProviderTuningPreset) -> dict[str, object]:
-    return {
+    payload: dict[str, object] = {
         "id": preset.id,
         "label": preset.label,
         "description": preset.description,
         "values": dict(preset.values),
     }
+    if preset.voice_preset_id is not None:
+        payload["voicePresetId"] = preset.voice_preset_id
+    return payload

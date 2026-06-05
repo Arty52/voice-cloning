@@ -5,6 +5,30 @@ from typing import Literal
 
 
 VoiceSampleMode = Literal["excerpt", "sourceWindow"]
+VoicePresetId = Literal["standardNarration", "animatedDialogue"]
+DEFAULT_VOICE_PRESET_ID: VoicePresetId = "standardNarration"
+
+
+@dataclass(frozen=True)
+class VoicePreset:
+    id: VoicePresetId
+    label: str
+    description: str
+
+
+VOICE_PRESETS: tuple[VoicePreset, ...] = (
+    VoicePreset(
+        id="standardNarration",
+        label="Standard Narration",
+        description="Balanced clone similarity for steady narration.",
+    ),
+    VoicePreset(
+        id="animatedDialogue",
+        label="Animated Dialogue",
+        description="More expressive delivery for character reads.",
+    ),
+)
+VOICE_PRESET_IDS = frozenset(preset.id for preset in VOICE_PRESETS)
 
 
 @dataclass(frozen=True)
@@ -30,6 +54,7 @@ class VoiceAsset:
     source_file_path: str | None = None
     source_content_type: str | None = None
     source_sha256: str | None = None
+    voice_preset_id: VoicePresetId = DEFAULT_VOICE_PRESET_ID
 
 
 @dataclass(frozen=True)

@@ -8,7 +8,7 @@ from typing import Any
 from fastapi import HTTPException, UploadFile
 
 from .config import Settings
-from .models import VoiceAsset, VoiceSample, VoiceSampleMode
+from .models import DEFAULT_VOICE_PRESET_ID, VOICE_PRESET_IDS, VoiceAsset, VoicePresetId, VoiceSample, VoiceSampleMode
 from .samples import (
     load_default_sample,
     load_sample_file,
@@ -66,6 +66,7 @@ class VoiceLibrary:
         source_upload: UploadFile | None = None,
         window_start_seconds: float | None = None,
         window_duration_seconds: float | None = None,
+        voice_preset_id: str | None = None,
     ) -> VoiceAsset:
         display_name = name.strip()
         if not display_name:
@@ -78,6 +79,7 @@ class VoiceLibrary:
             window_start_seconds,
             window_duration_seconds,
         )
+        resolved_voice_preset_id = _normalize_voice_preset_id(voice_preset_id)
 
         manifest = self._read_manifest()
         voice_id = slugify_voice_name(display_name)
@@ -134,6 +136,7 @@ class VoiceLibrary:
             else None,
             source_content_type=saved_source.content_type if saved_source is not None else None,
             source_sha256=saved_source.sha256 if saved_source is not None else None,
+            voice_preset_id=resolved_voice_preset_id,
         )
         manifest["voices"].append(self._asset_to_payload(asset))
         if not manifest.get("defaultVoiceId"):
@@ -142,22 +145,41 @@ class VoiceLibrary:
         return asset
 
     def rename_asset(self, voice_id: str, name: str) -> dict[str, object]:
-        display_name = name.strip()
-        if not display_name:
+        return self.update_asset(voice_id, name=name)
+
+    def update_asset(
+        self,
+        voice_id: str,
+        *,
+        name: str | None = None,
+        voice_preset_id: str | None = None,
+    ) -> dict[str, object]:
+        if name is None and voice_preset_id is None:
+            raise HTTPException(status_code=422, detail="Voice name or preset is required.")
+
+        display_name = name.strip() if name is not None else None
+        if display_name == "":
             raise HTTPException(status_code=422, detail="Voice name is required.")
+        resolved_voice_preset_id = (
+            _normalize_voice_preset_id(voice_preset_id) if voice_preset_id is not None else None
+        )
 
         manifest = self._read_manifest()
         voices = manifest["voices"]
         voice_index = self._find_voice_index(voices, voice_id)
-        normalized_name = slugify_voice_name(display_name)
-        if any(
-            index != voice_index and slugify_voice_name(str(item.get("name", ""))) == normalized_name
-            for index, item in enumerate(voices)
-            if isinstance(item, dict)
-        ):
-            raise HTTPException(status_code=409, detail="A voice with that name already exists.")
+        if display_name is not None:
+            normalized_name = slugify_voice_name(display_name)
+            if any(
+                index != voice_index and slugify_voice_name(str(item.get("name", ""))) == normalized_name
+                for index, item in enumerate(voices)
+                if isinstance(item, dict)
+            ):
+                raise HTTPException(status_code=409, detail="A voice with that name already exists.")
 
-        voices[voice_index]["name"] = display_name
+            voices[voice_index]["name"] = display_name
+        if resolved_voice_preset_id is not None:
+            voices[voice_index]["voicePresetId"] = resolved_voice_preset_id
+
         self._write_manifest(manifest)
         return {
             "defaultVoiceId": manifest["defaultVoiceId"],
@@ -279,6 +301,7 @@ class VoiceLibrary:
             source_file_path=_optional_str(payload.get("sourceFilePath")),
             source_content_type=_optional_str(payload.get("sourceContentType")),
             source_sha256=_optional_str(payload.get("sourceSha256")),
+            voice_preset_id=_normalize_voice_preset_id(payload.get("voicePresetId")),
         )
 
     @staticmethod
@@ -297,6 +320,7 @@ class VoiceLibrary:
             "sourceFilePath": asset.source_file_path,
             "sourceContentType": asset.source_content_type,
             "sourceSha256": asset.source_sha256,
+            "voicePresetId": asset.voice_preset_id,
         }
 
     @staticmethod
@@ -309,6 +333,7 @@ class VoiceLibrary:
             "sourceFilePath": None,
             "sourceContentType": None,
             "sourceSha256": None,
+            "voicePresetId": DEFAULT_VOICE_PRESET_ID,
         }
         for key, value in defaults.items():
             if key not in payload:
@@ -316,6 +341,9 @@ class VoiceLibrary:
                 migrated = True
         if payload.get("sampleMode") not in {"excerpt", "sourceWindow"}:
             payload["sampleMode"] = "excerpt"
+            migrated = True
+        if payload.get("voicePresetId") not in VOICE_PRESET_IDS:
+            payload["voicePresetId"] = DEFAULT_VOICE_PRESET_ID
             migrated = True
         return migrated
 
@@ -344,6 +372,14 @@ def _normalize_sample_mode(value: str | None) -> VoiceSampleMode:
     if normalized in {"excerpt", "sourceWindow"}:
         return "sourceWindow" if normalized == "sourceWindow" else "excerpt"
     raise HTTPException(status_code=422, detail="Sample mode must be excerpt or sourceWindow.")
+
+
+def _normalize_voice_preset_id(value: Any) -> VoicePresetId:
+    if value is None or value == "":
+        return DEFAULT_VOICE_PRESET_ID
+    if isinstance(value, str) and value in VOICE_PRESET_IDS:
+        return value  # type: ignore[return-value]
+    raise HTTPException(status_code=422, detail="Voice preset must be standardNarration or animatedDialogue.")
 
 
 def _normalize_window_metadata(
