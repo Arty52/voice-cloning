@@ -2,7 +2,7 @@
 
 Voice Clone Lab is a local-first voice studio for experimenting with provider-backed voice cloning from your own browser. It gives you a small saved voice library, text-to-speech generation, model selection, cost/quota visibility, voice tuning controls, playback, downloads, and a browser-local provider key manager.
 
-![Screenshot of the Voice Clone Lab desktop Voice Studio showing text input, Demo Narrator and Demo Dialogue in the voice library, generated audio playback, Voice Tuning, Provider Keys, and Cost & Quota panels.](docs/assets/voice-studio-desktop.png)
+![Screenshot of the Voice Clone Lab desktop Voice Studio showing text input, Demo Narrator and Demo Dialogue with voice preset badges, generated audio playback, Voice Tuning, and Voice Preset assignment controls.](docs/assets/voice-studio-desktop.png)
 
 Public-safe demo screenshot: this capture uses mocked data and does not include real API keys, voice samples, generated audio files, or account details. A mobile capture is available in [docs/assets/voice-studio-mobile.png](docs/assets/voice-studio-mobile.png).
 
@@ -63,6 +63,7 @@ http://localhost:6420
 
 - API keys stay local to `.env` or browser-local storage and are never returned by the API.
 - Real voice samples under `assets/voices/` are ignored by git.
+- Local voice preset assignments are saved with the ignored voice manifest under `assets/voices/`.
 - Generated audio and provider cache data under `storage/` are ignored by git.
 - Browser-generated audio is stored in browser IndexedDB by default, not committed to the repository.
 - The optional live smoke test calls ElevenLabs, may consume credits, and may create or reuse a cloned voice.
@@ -71,10 +72,10 @@ http://localhost:6420
 
 1. Add an ElevenLabs key in the Provider Keys panel if `.env` does not provide one.
 2. Upload or record a voice sample.
-3. Save it with a local name.
+3. Save it with a local name and choose Standard Narration or Animated Dialogue.
 4. Enter text to speak.
 5. Review Cost & Quota and choose a model if metadata is available.
-6. Adjust Voice Tuning if needed.
+6. Adjust Voice Tuning if needed; selecting a saved voice starts from its assigned preset when the active provider maps that preset, otherwise from provider defaults.
 7. Generate speech.
 8. Play, download, or remove generated audio from the browser library.
 

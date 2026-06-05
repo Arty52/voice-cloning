@@ -61,11 +61,11 @@ Then:
 
 1. Add an ElevenLabs key in the Provider Keys panel if `.env` does not provide one.
 2. Upload or record a voice sample. For long uploads, choose the sample window and whether to keep the original local source.
-3. Give it a local name, such as `Voice_Clone_01`.
+3. Give it a local name, such as `Voice_Clone_01`, and choose Standard Narration or Animated Dialogue.
 4. Save the voice.
 5. Enter text.
 6. Check the Cost & Quota panel and choose a model if model metadata is available.
-7. Adjust tuning sliders if needed.
+7. Adjust tuning sliders if needed; selecting a saved voice initializes tuning from that voice's assigned preset when the active provider maps it, otherwise from provider defaults.
 8. Generate speech.
 9. Play, download, or remove saved generated MP3s from the Generated Audio panel.
 
@@ -75,13 +75,21 @@ The API is available at:
 http://localhost:6420
 ```
 
+## Voice Preset Assignments
+
+Each local voice has a provider-independent voice preset assignment. Choose Standard Narration for balanced reading, or Animated Dialogue for more expressive delivery, when saving a new voice or editing the selected voice in the Voice Library.
+
+The assignment is saved as local voice metadata and is not a provider clone id or provider secret. When you select a voice, Voice Tuning starts from the active provider preset mapped to that assignment. If the active provider has no matching mapped preset, Voice Tuning uses that provider's default values instead. Manual slider, toggle, or select changes are per-request only; they show as Custom and do not overwrite the saved assignment.
+
+Existing voices or older manifests without an assignment default to Standard Narration. This iteration persists only the preset id, not custom tuning overrides.
+
 ## Privacy Model
 
 Provider keys can come from either `.env` on the FastAPI backend or the browser UI. A browser-saved key is stored in `localStorage`; browser code sends it only to the local API through `X-Voice-Provider-Key`, and the backend uses that active key to authenticate provider requests for the selected `providerId`. A browser key takes precedence over `.env`; clearing it falls back to `.env` when the built-in ElevenLabs `ELEVENLABS_API_KEY` is configured.
 
 The backend never returns key material from `.env` or browser headers. Browser `localStorage` is local developer-tool storage, not encrypted secret storage; clear the Provider Keys panel or browser site data to remove a saved GUI key.
 
-Voice samples are local files under `assets/voices/` and are ignored by git. When a long upload is saved with its original source retained, the backend stores the original under `assets/voices/sources/` and still sends only the active excerpt sample to the provider. Cloned voice cache data is written under `storage/`, scoped by provider and key fingerprint, and ignored by git. Generated MP3 output is saved in your browser's IndexedDB by default, not on the backend; use the Generated Audio panel to remove one item or clear all saved browser audio.
+Voice samples and their local manifest metadata are stored under `assets/voices/` and are ignored by git. When a long upload is saved with its original source retained, the backend stores the original under `assets/voices/sources/` and still sends only the active excerpt sample to the provider. Cloned voice cache data is written under `storage/`, scoped by provider and key fingerprint, and ignored by git. Generated MP3 output is saved in your browser's IndexedDB by default, not on the backend; use the Generated Audio panel to remove one item or clear all saved browser audio.
 
 Text, voice samples, selected model id, and provider-specific tuning settings are sent to the active provider when you generate speech. Subscription and model metadata are fetched through the backend when the configured key has the required read permissions. Review the active provider's policies and obtain consent before cloning or generating with any voice.
 

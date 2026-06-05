@@ -19,6 +19,8 @@ Voice Clone Lab is a small local app, but changes should still keep clear bounda
 - Provider key material must never appear in serialized responses. Browser-provided keys may be accepted through explicit request headers, resolved in routes/services, and passed to clients for that request only.
 - Domain helpers should not import FastAPI unless they are specifically route or request/file-upload adapters.
 - Voice asset APIs must keep `filePath`, `contentType`, and `sha256` pointed at the active provider sample. Any retained original source file is metadata only and must not be used for provider cloning unless a later explicit workflow promotes a new excerpt.
+- `VoiceLibrary` owns local voice asset persistence, including `voicePresetId`. The current implementation is manifest-backed under ignored `assets/voices/` data, and it normalizes missing or invalid preset ids to `standardNarration` before writing.
+- Keep voice persistence behind the `VoiceLibrary` API and route/service contract. A future PostgreSQL-backed library should be able to replace the manifest implementation without changing frontend request shapes or provider adapter contracts.
 
 ## Frontend Boundaries
 
@@ -28,6 +30,7 @@ Voice Clone Lab is a small local app, but changes should still keep clear bounda
 - Hooks should be feature scoped: provider keys, voice library, metadata, generated audio storage, speech generation, recording/upload flow, and dialogs are separate responsibilities.
 - Speech-generation hooks own browser-observed operational metadata such as `generationElapsedMs`. Treat this as user-perceived request duration, measured from the browser before the local API request until the generated audio blob is received; do not require providers to return equivalent timing metadata.
 - Provider-specific tuning controls, presets, defaults, and source links come from `/api/providers`. Frontend UI should render those descriptors generically instead of hardcoding provider-specific tuning constants.
+- Provider-independent voice presets come from `/api/providers` as top-level `voicePresets`. A selected voice's `voicePresetId` initializes per-request Voice Tuning through the active provider preset whose `voicePresetId` matches. If no active provider preset is mapped to that semantic id, the frontend falls back to provider `defaultValues`. Manual tuning changes remain request-local and should not mutate the saved voice assignment.
 - Provider-specific sample limits come from `/api/providers`. Frontend upload/crop flows should use those limits to prepare active samples before calling `/api/voices`.
 - Browser audio-window utilities own decode, clamping, and active excerpt generation. They should produce provider-facing excerpts without server-side ffmpeg, while upload hooks decide whether to include the local-only original source file.
 - Shared constants, types, and formatters belong outside feature components so tests and future features can reuse them without importing a giant app file.
@@ -50,3 +53,5 @@ Voice Clone Lab is a small local app, but changes should still keep clear bounda
 ## Provider Extensions
 
 Use [ADDING_PROVIDER.md](ADDING_PROVIDER.md) for the contributor checklist. A provider addition should generally be an adapter, registry wiring, tests, and docs. Do not spread provider-specific request payloads, tuning semantics, or secret handling into route handlers or frontend components.
+
+Providers may expose their own tuning preset ids and values, but semantic voice preset assignments stay provider-independent. When a provider has an equivalent preset, map it with `voicePresetId` instead of teaching frontend code to understand that provider's preset naming.
