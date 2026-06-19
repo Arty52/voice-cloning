@@ -104,7 +104,7 @@ async def _run_external_command(args: list[str], label: str, timeout_seconds: fl
     try:
         process = await asyncio.create_subprocess_exec(
             *args,
-            stdout=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.PIPE,
         )
     except FileNotFoundError as exc:

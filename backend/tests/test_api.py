@@ -41,6 +41,7 @@ from voice_cloning.providers import (
     ProviderTuningValue,
     resolve_elevenlabs_key,
 )
+from voice_cloning.sample_processors import _run_external_command
 from voice_cloning.samples import sample_hash
 from voice_cloning.services.sample_processing import SampleProcessingRequest, SampleProcessingService
 from voice_cloning.services.speech import SpeechServiceError, generate_speech
@@ -270,6 +271,18 @@ def wait_for_processing_job(client: TestClient, job_id: str, status: str = "succ
             return payload
         time.sleep(0.02)
     raise AssertionError(f"Sample processing job did not reach {status}: {payload}")
+
+
+def test_settings_blank_sample_processing_timeout_uses_default(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_ROOT", str(tmp_path))
+    monkeypatch.setenv("SAMPLE_PROCESSING_TIMEOUT_SECONDS", "   ")
+
+    settings = Settings.from_env()
+
+    assert settings.sample_processing_timeout_seconds == 900
 
 
 def write_fake_command(path: Path, body: str) -> Path:
@@ -833,6 +846,30 @@ def test_demucs_sample_processor_rejects_oversized_result(tmp_path: Path) -> Non
 
     assert response.status_code == 202
     assert job["error"] == "Processed voice sample must be 5 bytes or smaller."
+
+
+def test_external_command_discards_stdout(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured_streams: dict[str, object] = {}
+
+    class FakeProcess:
+        returncode = 0
+
+        async def communicate(self) -> tuple[None, bytes]:
+            return None, b""
+
+    async def fake_create_subprocess_exec(*args: str, stdout: object, stderr: object) -> FakeProcess:
+        captured_streams["stdout"] = stdout
+        captured_streams["stderr"] = stderr
+        return FakeProcess()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+
+    asyncio.run(_run_external_command(["fake-command"], "fake", 1))
+
+    assert captured_streams == {
+        "stdout": asyncio.subprocess.DEVNULL,
+        "stderr": asyncio.subprocess.PIPE,
+    }
 
 
 def test_subscription_endpoint_returns_sanitized_quota(tmp_path: Path) -> None:

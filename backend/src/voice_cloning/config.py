@@ -15,6 +15,16 @@ def _split_csv(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+def _float_env(name: str, default: float) -> float:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    normalized_value = raw_value.strip()
+    if not normalized_value:
+        return default
+    return float(normalized_value)
+
+
 @dataclass(frozen=True)
 class Settings:
     app_root: Path
@@ -77,7 +87,7 @@ class Settings:
             sample_processing_demucs_model=os.getenv("SAMPLE_PROCESSING_DEMUCS_MODEL", "htdemucs").strip()
             or "htdemucs",
             sample_processing_demucs_device=os.getenv("SAMPLE_PROCESSING_DEMUCS_DEVICE", "").strip(),
-            sample_processing_timeout_seconds=float(os.getenv("SAMPLE_PROCESSING_TIMEOUT_SECONDS", "900")),
+            sample_processing_timeout_seconds=_float_env("SAMPLE_PROCESSING_TIMEOUT_SECONDS", 900),
         )
 
     def require_api_key(self) -> None:
