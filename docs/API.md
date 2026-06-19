@@ -221,7 +221,7 @@ Sample Processing prepares local samples without changing the normal generation 
 - `operationId`: required operation id, currently `isolateVoice` when the optional processor is enabled
 - `processingPresetId`: optional Isolate Voice preset id; defaults to `balanced` when presets are advertised
 - `sourceVoiceId`: optional saved local voice id
-- `sourcePreference`: optional, either `original` or `active`; defaults to `original` for saved voices when a retained `sourceFilePath` exists
+- `sourcePreference`: optional, either `original` or `active`; `original` uses the retained full upload/source file when one exists and falls back to the active provider-facing sample when none exists; `active` always uses the provider-facing sample currently stored for the selected voice
 - `sourceFile`: optional uploaded audio source
 
 Exactly one of `sourceVoiceId` or `sourceFile` is required. The endpoint returns `202` with the created job:
@@ -271,7 +271,7 @@ Exactly one of `sourceVoiceId` or `sourceFile` is required. The endpoint returns
 { "name": "Voice_Clone_01 Isolated", "voicePresetId": "animatedDialogue" }
 ```
 
-The response is `201` with `{ "voice": { ... } }`. The saved voice is persisted through `VoiceLibrary`, uses the processed sample as its active `filePath`, and includes `processingSteps` metadata with the operation id, engine, source hash, result hash, and selected processing preset when present.
+The response is `201` with `{ "voice": { ... } }`. The saved voice is persisted through `VoiceLibrary` as a new local voice. This endpoint does not mutate, refine, overwrite, or replace the source voice. The new voice uses the processed sample as its active `filePath` and includes `processingSteps` metadata with the operation id, engine, source hash, result hash, and selected processing preset when present.
 
 ## Speech
 
