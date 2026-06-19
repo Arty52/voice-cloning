@@ -2,6 +2,10 @@ import type {
   ModelOption,
   ModelsResponse,
   ProvidersResponse,
+  SampleProcessingJobResponse,
+  SampleProcessingOperationId,
+  SampleProcessingOptionsResponse,
+  SampleProcessingSourcePreference,
   SubscriptionResponse,
   VoiceAsset,
   VoicePresetId,
@@ -27,6 +31,18 @@ export type AddVoiceOptions = {
 
 export type VoiceUpdate = {
   name?: string
+  voicePresetId?: VoicePresetId
+}
+
+export type CreateSampleProcessingJobRequest = {
+  operationId: SampleProcessingOperationId
+  sourceFile?: File | null
+  sourcePreference?: SampleProcessingSourcePreference
+  sourceVoiceId?: string | null
+}
+
+export type SaveProcessedVoiceRequest = {
+  name: string
   voicePresetId?: VoicePresetId
 }
 
@@ -119,6 +135,49 @@ export async function fetchSubscription(options?: ProviderRequestOptions) {
 
 export async function fetchModels(options?: ProviderRequestOptions) {
   return fetchJson<ModelsResponse>(providerUrl("/api/models", options), providerRequestInit(options))
+}
+
+export async function fetchSampleProcessingOptions() {
+  return fetchJson<SampleProcessingOptionsResponse>("/api/sample-processing/options")
+}
+
+export async function createSampleProcessingJob({
+  operationId,
+  sourceFile,
+  sourcePreference,
+  sourceVoiceId,
+}: CreateSampleProcessingJobRequest) {
+  const formData = new FormData()
+  formData.append("operationId", operationId)
+  if (sourceVoiceId) {
+    formData.append("sourceVoiceId", sourceVoiceId)
+  }
+  if (sourcePreference) {
+    formData.append("sourcePreference", sourcePreference)
+  }
+  if (sourceFile) {
+    formData.append("sourceFile", sourceFile)
+  }
+  return fetchJson<SampleProcessingJobResponse>("/api/sample-processing/jobs", {
+    method: "POST",
+    body: formData,
+  })
+}
+
+export async function fetchSampleProcessingJob(jobId: string) {
+  return fetchJson<SampleProcessingJobResponse>(`/api/sample-processing/jobs/${encodeURIComponent(jobId)}`)
+}
+
+export function sampleProcessingResultUrl(jobId: string) {
+  return `/api/sample-processing/jobs/${encodeURIComponent(jobId)}/result`
+}
+
+export async function saveProcessedVoice(jobId: string, request: SaveProcessedVoiceRequest) {
+  return fetchJson<{ voice: VoiceAsset }>(`/api/sample-processing/jobs/${encodeURIComponent(jobId)}/voice`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  })
 }
 
 export async function createSpeech({

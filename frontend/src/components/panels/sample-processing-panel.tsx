@@ -1,0 +1,280 @@
+import { AudioLines, ChevronDown, FileAudio, Save, Upload, Wand2 } from "lucide-react"
+
+import { AudioPlayer } from "@/components/audio-player"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { Input } from "@/components/ui/input"
+import { Loading } from "@/components/ui/loading"
+import { MenuSelect } from "@/components/ui/menu-select"
+import { VoicePresetToggleGroup } from "@/components/voice-preset-toggle-group"
+import type { SampleProcessingController } from "@/hooks/use-sample-processing"
+import { cn } from "@/lib/utils"
+import type { SampleProcessingOperationId, VoicePresetId } from "@/types"
+
+type SampleProcessingPanelProps = {
+  isExpanded: boolean
+  onToggleExpanded: () => void
+  processing: SampleProcessingController
+  voicePresets: { id: VoicePresetId; label: string; description: string }[]
+}
+
+export function SampleProcessingPanel({
+  isExpanded,
+  onToggleExpanded,
+  processing,
+  voicePresets,
+}: SampleProcessingPanelProps) {
+  const operationOptions = processing.operations.map((operation) => ({
+    label: operation.enabled ? operation.label : `${operation.label} Unavailable`,
+    value: operation.id,
+  }))
+  const voiceOptions = processing.voiceOptions.length > 0 ? processing.voiceOptions : [{ label: "No Voices", value: "" }]
+  const isUnavailable =
+    processing.optionsStatus === "success" &&
+    processing.enabledOperations.length === 0 &&
+    processing.operations.length > 0
+  const statusLabel = panelStatusLabel(processing)
+
+  return (
+    <section aria-busy={processing.isProcessing} className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-2">
+            <h2 className="truncate text-base font-medium">Sample Processing</h2>
+            <Badge className={cn(processing.status === "error" && "border-destructive/40 bg-destructive/10 text-destructive")}>
+              {statusLabel}
+            </Badge>
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">Prepare samples before adding them to the Voice Library.</p>
+        </div>
+        <Button
+          aria-expanded={isExpanded}
+          aria-label={isExpanded ? "Close Sample Processing" : "Open Sample Processing"}
+          onClick={onToggleExpanded}
+          size="icon"
+          type="button"
+          variant="secondary"
+        >
+          <ChevronDown aria-hidden="true" className={cn("size-4 transition-transform", isExpanded && "rotate-180")} />
+        </Button>
+      </div>
+
+      {isExpanded ? (
+        <div className="mt-4 space-y-4">
+          {processing.optionsStatus === "loading" ? (
+            <div className="rounded-md border border-border bg-background/60 p-3">
+              <Loading text="Loading Processing Options" variant="secondary" />
+            </div>
+          ) : null}
+
+          {processing.optionsError ? (
+            <Alert role="alert">
+              <AlertTitle>Sample Processing Unavailable</AlertTitle>
+              <AlertDescription>{processing.optionsError}</AlertDescription>
+            </Alert>
+          ) : null}
+
+          {isUnavailable ? (
+            <Alert>
+              <AlertTitle>Sample Processing Unavailable</AlertTitle>
+              <AlertDescription>Configure a local processor to enable sample operations.</AlertDescription>
+            </Alert>
+          ) : null}
+
+          <form className="space-y-3" onSubmit={processing.handleStartProcessing}>
+            <FieldGroup>
+              <Field>
+                <FieldLabel id="sample-processing-operation-label">Operation</FieldLabel>
+                <MenuSelect
+                  ariaLabel="Sample Processing Operation"
+                  disabled={processing.optionsStatus !== "success" || processing.operations.length === 0 || processing.isProcessing}
+                  onChange={(value) => {
+                    if (isSampleProcessingOperationId(value)) {
+                      processing.setOperationId(value)
+                    }
+                  }}
+                  options={operationOptions}
+                  value={processing.operationId}
+                />
+                {processing.selectedOperation ? (
+                  <FieldDescription>{processing.selectedOperation.description}</FieldDescription>
+                ) : null}
+              </Field>
+
+              <Field>
+                <FieldLabel>Source</FieldLabel>
+                <div className="grid grid-cols-2 gap-1 rounded-md border border-border bg-background/60 p-1" role="group" aria-label="Sample source">
+                  <Button
+                    aria-pressed={processing.sourceMode === "voice"}
+                    className={cn(processing.sourceMode !== "voice" && "bg-transparent")}
+                    disabled={processing.isProcessing}
+                    onClick={() => processing.handleSourceModeChange("voice")}
+                    type="button"
+                    variant={processing.sourceMode === "voice" ? "secondary" : "ghost"}
+                  >
+                    <FileAudio aria-hidden="true" className="size-4" />
+                    Saved Voice
+                  </Button>
+                  <Button
+                    aria-pressed={processing.sourceMode === "upload"}
+                    className={cn(processing.sourceMode !== "upload" && "bg-transparent")}
+                    disabled={processing.isProcessing}
+                    onClick={() => processing.handleSourceModeChange("upload")}
+                    type="button"
+                    variant={processing.sourceMode === "upload" ? "secondary" : "ghost"}
+                  >
+                    <Upload aria-hidden="true" className="size-4" />
+                    Audio File
+                  </Button>
+                </div>
+              </Field>
+
+              {processing.sourceMode === "voice" ? (
+                <>
+                  <Field>
+                    <FieldLabel id="sample-processing-voice-label">Saved Voice</FieldLabel>
+                    <MenuSelect
+                      ariaLabel="Sample Processing Saved Voice"
+                      disabled={processing.isProcessing || voiceOptions.length === 0 || voiceOptions[0]?.value === ""}
+                      onChange={processing.setSourceVoiceId}
+                      options={voiceOptions}
+                      value={processing.sourceVoiceId}
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel>Source Preference</FieldLabel>
+                    <div
+                      className="grid grid-cols-2 gap-1 rounded-md border border-border bg-background/60 p-1"
+                      role="group"
+                      aria-label="Source preference"
+                    >
+                      <Button
+                        aria-pressed={processing.sourcePreference === "original"}
+                        className={cn(processing.sourcePreference !== "original" && "bg-transparent")}
+                        disabled={processing.isProcessing}
+                        onClick={() => processing.setSourcePreference("original")}
+                        type="button"
+                        variant={processing.sourcePreference === "original" ? "secondary" : "ghost"}
+                      >
+                        Original Source
+                      </Button>
+                      <Button
+                        aria-pressed={processing.sourcePreference === "active"}
+                        className={cn(processing.sourcePreference !== "active" && "bg-transparent")}
+                        disabled={processing.isProcessing}
+                        onClick={() => processing.setSourcePreference("active")}
+                        type="button"
+                        variant={processing.sourcePreference === "active" ? "secondary" : "ghost"}
+                      >
+                        Active Sample
+                      </Button>
+                    </div>
+                  </Field>
+                </>
+              ) : (
+                <Field>
+                  <FieldLabel htmlFor="sample-processing-file">Audio File</FieldLabel>
+                  <Input
+                    accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac"
+                    disabled={processing.isProcessing}
+                    id="sample-processing-file"
+                    onChange={processing.handleSourceFileChange}
+                    type="file"
+                  />
+                </Field>
+              )}
+            </FieldGroup>
+
+            {processing.error ? (
+              <Alert className="border-destructive/40 bg-destructive/10 text-destructive" role="alert">
+                <AlertTitle>Processing Failed</AlertTitle>
+                <AlertDescription>{processing.error}</AlertDescription>
+              </Alert>
+            ) : null}
+
+            <Button className="w-full" disabled={!processing.canStart} type="submit">
+              {processing.isProcessing ? <Loading aria-hidden="true" size="sm" /> : <Wand2 aria-hidden="true" className="size-4" />}
+              {processing.status === "starting"
+                ? "Starting Processing"
+                : processing.status === "processing"
+                  ? "Processing Sample"
+                  : "Start Processing"}
+            </Button>
+          </form>
+
+          {processing.resultUrl && processing.job ? (
+            <form className="space-y-3 rounded-md border border-border bg-background/60 p-3" onSubmit={processing.handleSaveProcessedVoice}>
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-sm font-medium">Processed Preview</div>
+                <AudioLines aria-hidden="true" className="size-4 text-primary" />
+              </div>
+              <AudioPlayer ariaLabel="Processed sample preview" src={processing.resultUrl} />
+              <label className="block space-y-2 text-sm font-medium" htmlFor="processed-voice-name">
+                <span>Voice Name</span>
+                <Input
+                  disabled={processing.saveStatus === "loading"}
+                  id="processed-voice-name"
+                  onChange={(event) => processing.setSaveName(event.target.value)}
+                  required
+                  value={processing.saveName}
+                />
+              </label>
+              <VoicePresetToggleGroup
+                disabled={processing.saveStatus === "loading"}
+                id="processed-voice-preset"
+                label="Voice Preset"
+                onChange={processing.setSaveVoicePresetId}
+                value={processing.saveVoicePresetId}
+                voicePresets={voicePresets}
+              />
+              {processing.saveError ? (
+                <Alert className="border-destructive/40 bg-destructive/10 text-destructive" role="alert">
+                  <AlertTitle>Save Failed</AlertTitle>
+                  <AlertDescription>{processing.saveError}</AlertDescription>
+                </Alert>
+              ) : null}
+              {processing.saveStatus === "success" ? (
+                <Alert>
+                  <AlertTitle>Added To Voice Library</AlertTitle>
+                  <AlertDescription>{processing.saveName.trim()} is now selected.</AlertDescription>
+                </Alert>
+              ) : null}
+              <Button className="w-full" disabled={!processing.canSave} type="submit">
+                {processing.saveStatus === "loading" ? <Loading aria-hidden="true" size="sm" /> : <Save aria-hidden="true" className="size-4" />}
+                {processing.saveStatus === "loading" ? "Adding Voice" : "Add To Voice Library"}
+              </Button>
+            </form>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  )
+}
+
+function panelStatusLabel(processing: SampleProcessingController) {
+  if (processing.status === "starting") {
+    return "Starting"
+  }
+  if (processing.status === "processing") {
+    return "Processing"
+  }
+  if (processing.status === "success") {
+    return "Ready"
+  }
+  if (processing.status === "error") {
+    return "Error"
+  }
+  if (processing.optionsStatus === "loading" || processing.optionsStatus === "idle") {
+    return "Loading"
+  }
+  if (processing.enabledOperations.length === 0) {
+    return "Unavailable"
+  }
+  return "Ready"
+}
+
+function isSampleProcessingOperationId(value: string): value is SampleProcessingOperationId {
+  return value === "isolateVoice" || value === "trimSilence" || value === "separateSpeakers"
+}

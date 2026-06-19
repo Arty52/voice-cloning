@@ -8,6 +8,7 @@ import { CostQuotaPanel } from "@/components/panels/cost-quota-panel"
 import { GeneratedAudioPanel } from "@/components/panels/generated-audio-panel"
 import { LatestGeneratedAudioPanel } from "@/components/panels/latest-generated-audio-panel"
 import { ProviderKeysPanel } from "@/components/panels/provider-keys-panel"
+import { SampleProcessingPanel } from "@/components/panels/sample-processing-panel"
 import { SpeechInputPanel } from "@/components/panels/speech-input-panel"
 import { VoiceLibraryPanel } from "@/components/panels/voice-library-panel"
 import { VoiceTuningPanel } from "@/components/panels/voice-tuning-panel"
@@ -15,6 +16,7 @@ import { DEFAULT_TEXT } from "@/constants"
 import { useConfirmation } from "@/hooks/use-confirmation"
 import { useGeneratedAudioLibrary } from "@/hooks/use-generated-audio-library"
 import { useProviderKeys } from "@/hooks/use-provider-keys"
+import { useSampleProcessing } from "@/hooks/use-sample-processing"
 import { useSpeechGeneration } from "@/hooks/use-speech-generation"
 import { useVoiceLibrary } from "@/hooks/use-voice-library"
 import { useVoiceMetadata } from "@/hooks/use-voice-metadata"
@@ -33,6 +35,7 @@ const EMPTY_TUNING_METADATA: ProviderTuningMetadata = {
 function App() {
   const [text, setText] = useState(DEFAULT_TEXT)
   const [isCostQuotaExpanded, setIsCostQuotaExpanded] = useState(false)
+  const [isSampleProcessingExpanded, setIsSampleProcessingExpanded] = useState(false)
   const [latestGeneratedAudioId, setLatestGeneratedAudioId] = useState<string | null>(null)
   const textRef = useRef<HTMLTextAreaElement | null>(null)
   const confirmation = useConfirmation()
@@ -51,6 +54,11 @@ function App() {
   const voiceInput = useVoiceSampleInput({
     onVoiceSaved: voiceLibrary.addSavedVoice,
     providerSample: providerKeys.activeProvider?.sample,
+  })
+  const sampleProcessing = useSampleProcessing({
+    onVoiceSaved: voiceLibrary.addSavedVoice,
+    selectedVoice: voiceLibrary.selectedVoice,
+    voices: voiceLibrary.voices,
   })
 
   const selectedModel = metadata.models.find((model) => model.modelId === metadata.selectedModelId) ?? null
@@ -237,6 +245,13 @@ function App() {
               voicePresets={providerKeys.voicePresets}
               voices={voiceLibrary.voices}
               voiceStatus={voiceLibrary.voiceStatus}
+            />
+
+            <SampleProcessingPanel
+              isExpanded={isSampleProcessingExpanded}
+              onToggleExpanded={() => setIsSampleProcessingExpanded((current) => !current)}
+              processing={sampleProcessing}
+              voicePresets={providerKeys.voicePresets}
             />
 
             <AddVoicePanel
