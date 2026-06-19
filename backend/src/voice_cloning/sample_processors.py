@@ -126,7 +126,8 @@ async def _run_external_command(args: list[str], label: str, timeout_seconds: fl
 
 
 def _clean_process_message(value: str) -> str:
-    return " ".join(value.split())[:500]
+    message = " ".join(value.split())
+    return message[-500:]
 
 
 def _bytes_label(max_bytes: int) -> str:

@@ -71,7 +71,7 @@ Remove backend cache data:
 make clean-cache
 ```
 
-Sample-processing jobs and intermediate stems live under ignored `storage/sample-processing/`. Remove that directory when you want to clear local processing artifacts.
+Sample-processing jobs and intermediate stems live under ignored `storage/sample-processing/`. Docker-routed Demucs model caches live under ignored `storage/model-cache/`. Remove either directory when you want to clear local processing artifacts or force model downloads again.
 
 Generated audio saved in the browser can be removed from the Generated Audio panel with Remove or Clear All. The panel also lets you choose a browser storage cap of 25 MB, 50 MB, 100 MB, or 250 MB. Lowering the cap prompts before pruning older saved audio. Saved generated audio metadata includes model, provider request metadata when returned, tuning snapshot metadata when available, and browser-measured generation elapsed time for new generations.
 

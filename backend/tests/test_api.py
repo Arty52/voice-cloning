@@ -278,13 +278,13 @@ def write_fake_command(path: Path, body: str) -> Path:
     return path
 
 
-def demucs_fake_command(path: Path, *, exit_code: int = 0) -> Path:
+def demucs_fake_command(path: Path, *, exit_code: int = 0, stderr: str = "demucs failed in test") -> Path:
     if exit_code != 0:
         return write_fake_command(
             path,
             f"""
 import sys
-sys.stderr.write("demucs failed in test")
+sys.stderr.write({stderr!r})
 raise SystemExit({exit_code})
 """,
         )
@@ -777,6 +777,24 @@ def test_demucs_sample_processor_reports_nonzero_command(tmp_path: Path) -> None
 
     assert response.status_code == 202
     assert job["error"] == "demucs failed with exit code 7. demucs failed in test"
+
+
+def test_demucs_sample_processor_reports_tail_of_long_command_errors(tmp_path: Path) -> None:
+    settings = demucs_processing_settings(
+        tmp_path,
+        demucs_fake_command(tmp_path / "demucs-fake", exit_code=7, stderr=("progress " * 120) + "useful final failure"),
+        ffmpeg_fake_command(tmp_path / "ffmpeg-fake"),
+    )
+    with TestClient(create_app(settings=settings)) as client:
+        response = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "isolateVoice"},
+            files={"sourceFile": ("source.wav", b"source-audio", "audio/wav")},
+        )
+        job = wait_for_processing_job(client, response.json()["job"]["id"], status="error")
+
+    assert response.status_code == 202
+    assert job["error"].endswith("useful final failure")
 
 
 def test_demucs_sample_processor_reports_timeout(tmp_path: Path) -> None:

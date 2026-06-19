@@ -51,6 +51,7 @@ ELEVENLABS_MODEL_ID=eleven_multilingual_v2
 Optionally enable local sample processing:
 
 ```sh
+INSTALL_SAMPLE_PROCESSING=1
 SAMPLE_PROCESSING_ENGINE=demucs
 SAMPLE_PROCESSING_DEMUCS_COMMAND=demucs
 SAMPLE_PROCESSING_FFMPEG_COMMAND=ffmpeg
@@ -59,7 +60,9 @@ SAMPLE_PROCESSING_DEMUCS_DEVICE=  # optional, such as cpu, cuda, or mps when sup
 SAMPLE_PROCESSING_TIMEOUT_SECONDS=900
 ```
 
-Leave `SAMPLE_PROCESSING_ENGINE` blank to keep Sample Processing unavailable. Demucs model downloads, separated stems, normalized job output, and local caches are runtime data and should not be committed.
+Leave `SAMPLE_PROCESSING_ENGINE` blank to keep Sample Processing unavailable. Leave `INSTALL_SAMPLE_PROCESSING=0` for the default lightweight Docker image. When you set `INSTALL_SAMPLE_PROCESSING=1`, rebuild the stack with `make recycle`; the backend image installs FFmpeg, CPU-only PyTorch/Torchaudio/TorchCodec wheels, and the optional `backend[sample-processing]` extra.
+
+Demucs model downloads, separated stems, normalized job output, and local caches are runtime data and should not be committed. Docker stores model caches under ignored `storage/model-cache/`.
 
 Start the app:
 
@@ -182,4 +185,4 @@ When Demucs is enabled, Isolate Voice runs the configured Demucs command with th
 
 Processed results are candidates, not automatic voice-library entries. Preview the result first, then choose Add To Voice Library to store it under `assets/voices/` through the same local Voice Library path as uploaded samples. The new voice keeps `filePath`, `contentType`, and `sha256` pointed at the processed active sample, and includes `processingSteps` metadata for traceability.
 
-Runtime files are written under ignored `storage/sample-processing/`. Demucs output folders and intermediate stems are job-local. Heavy model files may be downloaded by Demucs into its normal cache location outside the repository; keep those caches out of git. Future speaker-separation work will use the same operation registry and will likely require FFmpeg plus Hugging Face access for `pyannote.audio` models.
+Runtime files are written under ignored `storage/sample-processing/`. Demucs output folders and intermediate stems are job-local. Heavy model files are runtime data; the Docker stack routes them to ignored `storage/model-cache/`. Future speaker-separation work will use the same operation registry and will likely require FFmpeg plus Hugging Face access for `pyannote.audio` models.
