@@ -2260,7 +2260,9 @@ describe("App", () => {
     })
     const latestPanel = screen.getByRole("heading", { name: "Latest Generated Audio" }).closest("section")
     expect(latestPanel).not.toBeNull()
-    expect(within(latestPanel as HTMLElement).getByLabelText("Generated Audio Metadata")).toBeInTheDocument()
+    await waitFor(() =>
+      expect(within(latestPanel as HTMLElement).getByLabelText("Generated Audio Metadata")).toBeInTheDocument()
+    )
     expect(within(latestPanel as HTMLElement).getByText("ElevenLabs")).toBeInTheDocument()
     expect(within(latestPanel as HTMLElement).getByText("Custom Settings")).toBeInTheDocument()
     expect(within(latestPanel as HTMLElement).getByText("Stability 0.42")).toBeInTheDocument()
