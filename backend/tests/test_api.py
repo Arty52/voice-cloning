@@ -298,7 +298,17 @@ def write_fake_command(path: Path, body: str) -> Path:
     return path
 
 
-def demucs_fake_command(path: Path, *, exit_code: int = 0, stderr: str = "demucs failed in test") -> Path:
+def optional_path_literal(path: Path | None) -> str:
+    return "None" if path is None else repr(str(path))
+
+
+def demucs_fake_command(
+    path: Path,
+    *,
+    args_path: Path | None = None,
+    exit_code: int = 0,
+    stderr: str = "demucs failed in test",
+) -> Path:
     if exit_code != 0:
         return write_fake_command(
             path,
@@ -310,10 +320,14 @@ raise SystemExit({exit_code})
         )
     return write_fake_command(
         path,
-        """
+        f"""
 from pathlib import Path
+import json
 import sys
 args = sys.argv[1:]
+args_path = {optional_path_literal(args_path)}
+if args_path:
+    Path(args_path).write_text(json.dumps(args), encoding="utf-8")
 output_root = Path(args[args.index("-o") + 1])
 model = args[args.index("-n") + 1]
 source = Path(args[-1])
@@ -324,13 +338,23 @@ vocals.write_bytes(b"vocals")
     )
 
 
-def ffmpeg_fake_command(path: Path, output: bytes = b"normalized-voice", sleep_seconds: float = 0) -> Path:
+def ffmpeg_fake_command(
+    path: Path,
+    output: bytes = b"normalized-voice",
+    sleep_seconds: float = 0,
+    *,
+    args_path: Path | None = None,
+) -> Path:
     return write_fake_command(
         path,
         f"""
 from pathlib import Path
+import json
 import time
 import sys
+args_path = {optional_path_literal(args_path)}
+if args_path:
+    Path(args_path).write_text(json.dumps(sys.argv[1:]), encoding="utf-8")
 time.sleep({sleep_seconds!r})
 Path(sys.argv[-1]).write_bytes({output!r})
 """,
@@ -882,6 +906,73 @@ def test_demucs_sample_processor_normalizes_vocals_with_ffmpeg(tmp_path: Path) -
     assert job["result"]["sha256"] == sample_hash(b"normalized-voice")
     assert result.status_code == 200
     assert result.content == b"normalized-voice"
+
+
+@pytest.mark.parametrize(
+    ("processing_preset_id", "expected_model", "expected_demucs_args", "expected_filter"),
+    [
+        ("fast", "htdemucs", ["--shifts", "1"], None),
+        ("balanced", "htdemucs", [], None),
+        ("clean", "htdemucs", [], "highpass=f=70,lowpass=f=12000"),
+        ("maxIsolation", "htdemucs_ft", ["--shifts", "8", "--overlap", "0.5"], None),
+    ],
+)
+def test_demucs_sample_processor_maps_isolation_presets_to_commands(
+    tmp_path: Path,
+    processing_preset_id: str,
+    expected_model: str,
+    expected_demucs_args: list[str],
+    expected_filter: str | None,
+) -> None:
+    demucs_args_path = tmp_path / "demucs-args.json"
+    ffmpeg_args_path = tmp_path / "ffmpeg-args.json"
+    settings = demucs_processing_settings(
+        tmp_path,
+        demucs_fake_command(tmp_path / "demucs-fake", args_path=demucs_args_path),
+        ffmpeg_fake_command(tmp_path / "ffmpeg-fake", args_path=ffmpeg_args_path),
+    )
+    with TestClient(create_app(settings=settings)) as client:
+        response = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "isolateVoice", "processingPresetId": processing_preset_id},
+            files={"sourceFile": ("source.wav", b"source-audio", "audio/wav")},
+        )
+        job = wait_for_processing_job(client, response.json()["job"]["id"])
+
+    demucs_args = json.loads(demucs_args_path.read_text(encoding="utf-8"))
+    ffmpeg_args = json.loads(ffmpeg_args_path.read_text(encoding="utf-8"))
+    assert response.status_code == 202
+    assert job["processingPresetId"] == processing_preset_id
+    assert demucs_args[demucs_args.index("-n") + 1] == expected_model
+    for expected_arg in expected_demucs_args:
+        assert expected_arg in demucs_args
+    if expected_filter is None:
+        assert "-af" not in ffmpeg_args
+    else:
+        assert ffmpeg_args[ffmpeg_args.index("-af") + 1] == expected_filter
+
+
+def test_demucs_sample_processor_reports_max_isolation_model_failures(tmp_path: Path) -> None:
+    settings = demucs_processing_settings(
+        tmp_path,
+        demucs_fake_command(
+            tmp_path / "demucs-fake",
+            exit_code=7,
+            stderr="Could not find model htdemucs_ft",
+        ),
+        ffmpeg_fake_command(tmp_path / "ffmpeg-fake"),
+    )
+    with TestClient(create_app(settings=settings)) as client:
+        response = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "isolateVoice", "processingPresetId": "maxIsolation"},
+            files={"sourceFile": ("source.wav", b"source-audio", "audio/wav")},
+        )
+        job = wait_for_processing_job(client, response.json()["job"]["id"], status="error")
+
+    assert response.status_code == 202
+    assert job["processingPresetId"] == "maxIsolation"
+    assert job["error"] == "demucs failed with exit code 7. Could not find model htdemucs_ft"
 
 
 def test_demucs_sample_processor_reports_missing_command(tmp_path: Path) -> None:
