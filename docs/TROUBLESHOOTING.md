@@ -59,6 +59,8 @@ SAMPLE_PROCESSING_TIMEOUT_SECONDS=1800
 
 You can also choose a supported device with `SAMPLE_PROCESSING_DEMUCS_DEVICE`, such as `cpu`, `cuda`, or `mps`, depending on the local Demucs installation.
 
+Max Isolation uses the finetuned `htdemucs_ft` model. The first run may download additional model weights. If the model is unavailable in the local Demucs install or cache, the job reports the Demucs model error instead of falling back to a weaker preset.
+
 ## Sample Processing Output Is Missing Or Too Large
 
 If Demucs finishes but no `vocals.wav` stem exists, the job fails with a sanitized error and leaves the job directory under ignored `storage/sample-processing/` for inspection. If FFmpeg writes a result larger than the active sample cap, the backend deletes that result and reports the size limit. Shorten the source, choose a smaller retained source window, or raise the local upload cap only for trusted local work.
