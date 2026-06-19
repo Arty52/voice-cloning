@@ -609,6 +609,56 @@ def test_sample_processing_rejects_tampered_result_path(tmp_path: Path) -> None:
     assert response.json()["detail"] == "Sample processing path is invalid."
 
 
+def test_sample_processing_rejects_invalid_source_without_job_directory(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path, max_source_upload_bytes=5)
+    processor = FakeSampleProcessor()
+    voice_library = VoiceLibrary(settings)
+    service = SampleProcessingService(settings, voice_library, processor)
+    app = create_app(settings=settings, voice_library=voice_library, sample_processing_service=service)
+    client = TestClient(app)
+
+    no_source = client.post(
+        "/api/sample-processing/jobs",
+        data={"operationId": "isolateVoice"},
+    )
+    oversized_upload = client.post(
+        "/api/sample-processing/jobs",
+        data={"operationId": "isolateVoice"},
+        files={"sourceFile": ("uploaded.wav", b"too-large", "audio/wav")},
+    )
+    missing_voice = client.post(
+        "/api/sample-processing/jobs",
+        data={"operationId": "isolateVoice", "sourceVoiceId": "missing"},
+    )
+
+    assert no_source.status_code == 422
+    assert oversized_upload.status_code == 413
+    assert missing_voice.status_code == 404
+    assert service._jobs == {}
+    assert service._tasks == {}
+    assert [path for path in settings.sample_processing_dir.iterdir()] == []
+
+
+def test_sample_processing_cleans_task_registry_after_completion(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    processor = FakeSampleProcessor()
+    voice_library = VoiceLibrary(settings)
+    service = SampleProcessingService(settings, voice_library, processor)
+    app = create_app(settings=settings, voice_library=voice_library, sample_processing_service=service)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/sample-processing/jobs",
+        data={"operationId": "isolateVoice"},
+        files={"sourceFile": ("uploaded.wav", b"uploaded-source", "audio/wav")},
+    )
+    job = wait_for_processing_job(client, response.json()["job"]["id"])
+
+    assert response.status_code == 202
+    assert job["status"] == "success"
+    assert service._tasks == {}
+
+
 def test_subscription_endpoint_returns_sanitized_quota(tmp_path: Path) -> None:
     client, _ = make_client(tmp_path)
 

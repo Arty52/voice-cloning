@@ -4,6 +4,7 @@ import asyncio
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
+import shutil
 from typing import Protocol
 from uuid import uuid4
 
@@ -129,46 +130,57 @@ class SampleProcessingService:
         resolved_operation_id = _normalize_operation_id(operation_id)
         resolved_source_preference = _normalize_source_preference(source_preference)
         operation = self._enabled_operation(resolved_operation_id)
-        job_id = uuid4().hex
-        job_dir = self._job_dir(job_id)
-        job_dir.mkdir(parents=True, exist_ok=False)
 
         if bool(source_voice_id and source_voice_id.strip()) == bool(source_upload):
             raise SampleProcessingServiceError("Choose one source voice or upload one source file.", 422)
 
-        if source_upload is not None:
-            source_path, source_sample, source_name = await self._source_from_upload(job_dir, source_upload)
-        else:
-            source_path, source_sample, source_name = self._source_from_voice(
-                (source_voice_id or "").strip(),
-                resolved_source_preference,
-            )
+        job_id = uuid4().hex
+        job_dir = self._job_dir(job_id)
+        job_dir_created = False
+        try:
+            if source_upload is not None:
+                job_dir.mkdir(parents=True, exist_ok=False)
+                job_dir_created = True
+                source_path, source_sample, source_name = await self._source_from_upload(job_dir, source_upload)
+            else:
+                source_path, source_sample, source_name = self._source_from_voice(
+                    (source_voice_id or "").strip(),
+                    resolved_source_preference,
+                )
+                job_dir.mkdir(parents=True, exist_ok=False)
+                job_dir_created = True
 
-        now = _utc_now()
-        job = SampleProcessingJob(
-            id=job_id,
-            operation_id=operation.id,
-            status="pending",
-            source_name=source_name,
-            source_filename=source_sample.filename,
-            source_content_type=source_sample.content_type,
-            source_sha256=source_sample.sha256,
-            source_preference=resolved_source_preference,
-            created_at=now,
-            updated_at=now,
-            engine=self.processor.engine_name,
-        )
-        self._jobs[job_id] = job
-        request = SampleProcessingRequest(
-            job_id=job_id,
-            operation_id=operation.id,
-            source_path=source_path,
-            output_path=job_dir / RESULT_FILENAME,
-            job_dir=job_dir,
-            source=source_sample,
-        )
-        self._tasks[job_id] = asyncio.create_task(self._run_job(job_id, request))
-        return job
+            now = _utc_now()
+            job = SampleProcessingJob(
+                id=job_id,
+                operation_id=operation.id,
+                status="pending",
+                source_name=source_name,
+                source_filename=source_sample.filename,
+                source_content_type=source_sample.content_type,
+                source_sha256=source_sample.sha256,
+                source_preference=resolved_source_preference,
+                created_at=now,
+                updated_at=now,
+                engine=self.processor.engine_name,
+            )
+            self._jobs[job_id] = job
+            request = SampleProcessingRequest(
+                job_id=job_id,
+                operation_id=operation.id,
+                source_path=source_path,
+                output_path=job_dir / RESULT_FILENAME,
+                job_dir=job_dir,
+                source=source_sample,
+            )
+            self._tasks[job_id] = asyncio.create_task(self._run_job(job_id, request))
+            return job
+        except Exception:
+            self._jobs.pop(job_id, None)
+            self._tasks.pop(job_id, None)
+            if job_dir_created:
+                shutil.rmtree(job_dir, ignore_errors=True)
+            raise
 
     def get_job(self, job_id: str) -> SampleProcessingJob:
         job = self._jobs.get(job_id)
@@ -230,6 +242,8 @@ class SampleProcessingService:
             self._update_job(job_id, status="error", error=exc.detail)
         except Exception:
             self._update_job(job_id, status="error", error="Sample processing failed.")
+        finally:
+            self._tasks.pop(job_id, None)
 
     def _update_job(self, job_id: str, **changes: object) -> None:
         job = self.get_job(job_id)
