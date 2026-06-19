@@ -907,6 +907,34 @@ describe("App", () => {
     expect(await voiceLibraryPanel().findByText("Default voice Isolated")).toBeInTheDocument()
   })
 
+  it("clears a processed preview when sample processing inputs change", async () => {
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
+    const startButton = await sampleProcessingPanel().findByRole("button", { name: "Start Processing" })
+    await waitFor(() => expect(startButton).toBeEnabled())
+    await user.click(startButton)
+    expect(await sampleProcessingPanel().findByLabelText("Processed sample preview")).toBeInTheDocument()
+
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Active Sample" }))
+
+    await waitFor(() => {
+      expect(sampleProcessingPanel().queryByLabelText("Processed sample preview")).not.toBeInTheDocument()
+    })
+    expect(sampleProcessingPanel().queryByRole("button", { name: "Add To Voice Library" })).not.toBeInTheDocument()
+
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Start Processing" }))
+
+    const jobCalls = vi
+      .mocked(fetch)
+      .mock.calls.filter(([url, init]) => String(url) === "/api/sample-processing/jobs" && init?.method === "POST")
+    expect(jobCalls).toHaveLength(2)
+    const nextJobBody = jobCalls[1]?.[1]?.body as FormData
+    expect(nextJobBody.get("sourcePreference")).toBe("active")
+  })
+
   it("creates a sample processing job from an uploaded file", async () => {
     const user = userEvent.setup()
     const sourceFile = new File(["source"], "vegeta.wav", { type: "audio/wav" })

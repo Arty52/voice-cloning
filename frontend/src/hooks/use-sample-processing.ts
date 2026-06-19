@@ -93,20 +93,50 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
     void loadOptions()
   }, [])
 
-  function handleSourceFileChange(event: ChangeEvent<HTMLInputElement>) {
-    setSourceFile(event.currentTarget.files?.[0] ?? null)
+  function resetProcessedCandidate() {
+    runIdRef.current += 1
     setJob(null)
     setError(null)
     setSaveError(null)
+    setSaveStatus("idle")
     setStatus("idle")
   }
 
   function handleSourceModeChange(nextMode: SampleProcessingSourceMode) {
+    if (nextMode === sourceMode) {
+      return
+    }
     setSourceMode(nextMode)
-    setJob(null)
-    setError(null)
-    setSaveError(null)
-    setStatus("idle")
+    resetProcessedCandidate()
+  }
+
+  function handleSourceFileChange(event: ChangeEvent<HTMLInputElement>) {
+    setSourceFile(event.currentTarget.files?.[0] ?? null)
+    resetProcessedCandidate()
+  }
+
+  function handleOperationChange(nextOperationId: SampleProcessingOperationId) {
+    if (nextOperationId === operationId) {
+      return
+    }
+    setOperationId(nextOperationId)
+    resetProcessedCandidate()
+  }
+
+  function handleSourcePreferenceChange(nextPreference: SampleProcessingSourcePreference) {
+    if (nextPreference === sourcePreference) {
+      return
+    }
+    setSourcePreference(nextPreference)
+    resetProcessedCandidate()
+  }
+
+  function handleSourceVoiceChange(nextVoiceId: string) {
+    if (nextVoiceId === resolvedSourceVoiceId) {
+      return
+    }
+    setSourceVoiceId(nextVoiceId)
+    resetProcessedCandidate()
   }
 
   async function handleStartProcessing(event: FormEvent<HTMLFormElement>) {
@@ -244,11 +274,11 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
     saveVoicePresetId,
     selectedOperation,
     selectedSourceVoice,
-    setOperationId,
+    setOperationId: handleOperationChange,
     setSaveName,
     setSaveVoicePresetId,
-    setSourcePreference,
-    setSourceVoiceId,
+    setSourcePreference: handleSourcePreferenceChange,
+    setSourceVoiceId: handleSourceVoiceChange,
     sourceFile,
     sourceMode,
     sourcePreference,
