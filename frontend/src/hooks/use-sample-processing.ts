@@ -77,9 +77,10 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
         setOptionsStatus("success")
         const nextOperation = payload.operations.find((operation) => operation.enabled) ?? payload.operations[0]
         if (nextOperation) {
-          setOperationId((current) =>
-            payload.operations.some((operation) => operation.id === current) ? current : nextOperation.id
-          )
+          setOperationId((current) => {
+            const currentOperation = payload.operations.find((operation) => operation.id === current)
+            return currentOperation?.enabled ? current : nextOperation.id
+          })
         }
       } catch (caught) {
         if (!mountedRef.current) {
@@ -152,7 +153,7 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
     setSaveError(null)
     setSaveStatus("idle")
     setJob(null)
-    setSaveName(suggestedSaveName(sourceMode, selectedSourceVoice, sourceFile))
+    setSaveName(suggestedSaveName(sourceMode, selectedSourceVoice, sourceFile, selectedOperation))
     setSaveVoicePresetId(selectedSourceVoice?.voicePresetId ?? DEFAULT_VOICE_PRESET_ID)
 
     try {
@@ -290,11 +291,30 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
 
 export type SampleProcessingController = ReturnType<typeof useSampleProcessing>
 
-function suggestedSaveName(sourceMode: SampleProcessingSourceMode, sourceVoice: VoiceAsset | null, sourceFile: File | null) {
+function suggestedSaveName(
+  sourceMode: SampleProcessingSourceMode,
+  sourceVoice: VoiceAsset | null,
+  sourceFile: File | null,
+  operation: SampleProcessingOptionsResponse["operations"][number] | null
+) {
+  const suffix = operationNameSuffix(operation)
   if (sourceMode === "voice") {
-    return `${sourceVoice?.name || "Processed Voice"} Isolated`
+    return `${sourceVoice?.name || "Processed Voice"} ${suffix}`
   }
-  return `${fileStem(sourceFile?.name) || "Uploaded Source"} Isolated`
+  return `${fileStem(sourceFile?.name) || "Uploaded Source"} ${suffix}`
+}
+
+function operationNameSuffix(operation: SampleProcessingOptionsResponse["operations"][number] | null) {
+  if (operation?.id === "isolateVoice") {
+    return "Isolated"
+  }
+  if (operation?.id === "trimSilence") {
+    return "Trimmed"
+  }
+  if (operation?.id === "separateSpeakers") {
+    return "Separated"
+  }
+  return operation?.label ?? "Processed"
 }
 
 function fileStem(filename: string | undefined) {

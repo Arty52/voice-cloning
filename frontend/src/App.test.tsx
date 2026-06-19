@@ -878,6 +878,49 @@ describe("App", () => {
     expect(sampleProcessingPanel().getByRole("button", { name: "Start Processing" })).toBeDisabled()
   })
 
+  it("switches to an enabled sample processing operation and names the result for that operation", async () => {
+    const baseFetch = mockFetch()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/sample-processing/options" && !init) {
+          return okJson({
+            engine: "fake",
+            operations: sampleProcessingOptions.operations.map((operation) => {
+              if (operation.id === "isolateVoice") {
+                return { ...operation, enabled: false }
+              }
+              if (operation.id === "trimSilence") {
+                return { ...operation, enabled: true }
+              }
+              return operation
+            }),
+          })
+        }
+        return baseFetch(input, init)
+      })
+    )
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
+    expect(await sampleProcessingPanel().findByRole("button", { name: "Sample Processing Operation: Trim Silence" })).toBeInTheDocument()
+    const startButton = sampleProcessingPanel().getByRole("button", { name: "Start Processing" })
+    await waitFor(() => expect(startButton).toBeEnabled())
+
+    await user.click(startButton)
+
+    const jobCall = vi.mocked(fetch).mock.calls.find(
+      ([url, init]) => String(url) === "/api/sample-processing/jobs" && init?.method === "POST"
+    )
+    const jobBody = jobCall?.[1]?.body as FormData
+    expect(jobBody.get("operationId")).toBe("trimSilence")
+    expect(await sampleProcessingPanel().findByLabelText("Processed sample preview")).toBeInTheDocument()
+    expect(sampleProcessingPanel().getByLabelText("Voice Name")).toHaveValue("Default voice Trimmed")
+  })
+
   it("processes an existing voice, previews the result, and saves it as a selectable voice", async () => {
     const user = userEvent.setup()
     renderApp()
