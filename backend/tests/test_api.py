@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import sys
 import time
+from typing import get_args
 
 import pytest
 from fastapi.testclient import TestClient
@@ -25,6 +26,7 @@ from voice_cloning.models import (
     CachedVoice,
     ModelSummary,
     SampleProcessingOperation,
+    SampleProcessingPresetId,
     SampleProcessingResult,
     SpeechResult,
     SubscriptionSummary,
@@ -598,6 +600,10 @@ def test_voice_manifest_loads_legacy_processing_steps_without_preset_metadata(tm
 
     assert asset.processing_steps[0].processing_preset_id is None
     assert asset.processing_steps[0].processing_preset_label is None
+
+
+def test_voice_manifest_processing_preset_ids_follow_model_literal() -> None:
+    assert voice_library_module.SAMPLE_PROCESSING_PRESET_IDS == frozenset(get_args(SampleProcessingPresetId))
 
 
 def test_sample_processing_options_report_unavailable_default_processor(tmp_path: Path) -> None:

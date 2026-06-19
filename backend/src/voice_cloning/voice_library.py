@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
 
 from fastapi import HTTPException, UploadFile
 
@@ -28,7 +28,7 @@ from .samples import (
 )
 
 
-SAMPLE_PROCESSING_PRESET_IDS = frozenset({"fast", "balanced", "clean", "maxIsolation"})
+SAMPLE_PROCESSING_PRESET_IDS = frozenset(get_args(SampleProcessingPresetId))
 
 
 class VoiceLibrary:
