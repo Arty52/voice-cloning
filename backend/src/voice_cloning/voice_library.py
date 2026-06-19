@@ -8,7 +8,15 @@ from typing import Any
 from fastapi import HTTPException, UploadFile
 
 from .config import Settings
-from .models import DEFAULT_VOICE_PRESET_ID, VOICE_PRESET_IDS, VoiceAsset, VoicePresetId, VoiceSample, VoiceSampleMode
+from .models import (
+    DEFAULT_VOICE_PRESET_ID,
+    VOICE_PRESET_IDS,
+    VoiceAsset,
+    VoicePresetId,
+    VoiceProcessingStep,
+    VoiceSample,
+    VoiceSampleMode,
+)
 from .samples import (
     load_default_sample,
     load_sample_file,
@@ -137,6 +145,51 @@ class VoiceLibrary:
             source_content_type=saved_source.content_type if saved_source is not None else None,
             source_sha256=saved_source.sha256 if saved_source is not None else None,
             voice_preset_id=resolved_voice_preset_id,
+        )
+        manifest["voices"].append(self._asset_to_payload(asset))
+        if not manifest.get("defaultVoiceId"):
+            manifest["defaultVoiceId"] = asset.id
+        self._write_manifest(manifest)
+        return asset
+
+    def add_processed_sample(
+        self,
+        name: str,
+        sample: VoiceSample,
+        processing_steps: tuple[VoiceProcessingStep, ...],
+        voice_preset_id: str | None = None,
+    ) -> VoiceAsset:
+        display_name = name.strip()
+        if not display_name:
+            raise HTTPException(status_code=422, detail="Voice name is required.")
+
+        resolved_voice_preset_id = _normalize_voice_preset_id(voice_preset_id)
+        manifest = self._read_manifest()
+        voice_id = slugify_voice_name(display_name)
+        if any(
+            isinstance(item, dict)
+            and (item.get("id") == voice_id or slugify_voice_name(str(item.get("name", ""))) == voice_id)
+            for item in manifest["voices"]
+        ):
+            raise HTTPException(status_code=409, detail="A voice with that name already exists.")
+
+        extension = Path(sample.filename or "").suffix.lower() or ".wav"
+        destination = self.assets_dir / f"{voice_id}{extension}"
+        if destination.exists():
+            raise HTTPException(status_code=409, detail="A voice asset file with that name already exists.")
+
+        saved = save_sample_file(sample, destination)
+        asset = VoiceAsset(
+            id=voice_id,
+            name=display_name,
+            file_path=destination.relative_to(self.assets_dir).as_posix(),
+            content_type=saved.content_type,
+            sha256=saved.sha256,
+            source="upload",
+            created_at=datetime.now(UTC).isoformat(),
+            sample_mode="excerpt",
+            voice_preset_id=resolved_voice_preset_id,
+            processing_steps=processing_steps,
         )
         manifest["voices"].append(self._asset_to_payload(asset))
         if not manifest.get("defaultVoiceId"):
@@ -302,6 +355,7 @@ class VoiceLibrary:
             source_content_type=_optional_str(payload.get("sourceContentType")),
             source_sha256=_optional_str(payload.get("sourceSha256")),
             voice_preset_id=_normalize_voice_preset_id(payload.get("voicePresetId")),
+            processing_steps=_processing_steps_from_payload(payload.get("processingSteps")),
         )
 
     @staticmethod
@@ -321,6 +375,7 @@ class VoiceLibrary:
             "sourceContentType": asset.source_content_type,
             "sourceSha256": asset.source_sha256,
             "voicePresetId": asset.voice_preset_id,
+            "processingSteps": [_processing_step_to_payload(step) for step in asset.processing_steps],
         }
 
     @staticmethod
@@ -334,6 +389,7 @@ class VoiceLibrary:
             "sourceContentType": None,
             "sourceSha256": None,
             "voicePresetId": DEFAULT_VOICE_PRESET_ID,
+            "processingSteps": [],
         }
         for key, value in defaults.items():
             if key not in payload:
@@ -344,6 +400,9 @@ class VoiceLibrary:
             migrated = True
         if payload.get("voicePresetId") not in VOICE_PRESET_IDS:
             payload["voicePresetId"] = DEFAULT_VOICE_PRESET_ID
+            migrated = True
+        if not isinstance(payload.get("processingSteps"), list):
+            payload["processingSteps"] = []
             migrated = True
         return migrated
 
@@ -365,6 +424,49 @@ def _optional_str(value: Any) -> str | None:
     if isinstance(value, str) and value.strip():
         return value
     return None
+
+
+def _processing_steps_from_payload(value: Any) -> tuple[VoiceProcessingStep, ...]:
+    if not isinstance(value, list):
+        return ()
+    steps: list[VoiceProcessingStep] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        operation_id = item.get("operationId")
+        if operation_id not in {"isolateVoice", "trimSilence", "separateSpeakers"}:
+            continue
+        step_id = _optional_str(item.get("id"))
+        label = _optional_str(item.get("label"))
+        created_at = _optional_str(item.get("createdAt"))
+        source_sha256 = _optional_str(item.get("sourceSha256"))
+        result_sha256 = _optional_str(item.get("resultSha256"))
+        if not step_id or not label or not created_at or not source_sha256 or not result_sha256:
+            continue
+        steps.append(
+            VoiceProcessingStep(
+                id=step_id,
+                label=label,
+                operation_id=operation_id,  # type: ignore[arg-type]
+                created_at=created_at,
+                source_sha256=source_sha256,
+                result_sha256=result_sha256,
+                engine=_optional_str(item.get("engine")),
+            )
+        )
+    return tuple(steps)
+
+
+def _processing_step_to_payload(step: VoiceProcessingStep) -> dict[str, object]:
+    return {
+        "id": step.id,
+        "label": step.label,
+        "operationId": step.operation_id,
+        "createdAt": step.created_at,
+        "sourceSha256": step.source_sha256,
+        "resultSha256": step.result_sha256,
+        "engine": step.engine,
+    }
 
 
 def _normalize_sample_mode(value: str | None) -> VoiceSampleMode:

@@ -25,6 +25,7 @@ class Settings:
     voice_assets_dir: Path
     voice_manifest_path: Path
     storage_dir: Path
+    sample_processing_dir: Path
     cors_allowed_origins: list[str]
     max_upload_bytes: int = 10 * 1024 * 1024
     max_source_upload_bytes: int = 50 * 1024 * 1024
@@ -41,6 +42,9 @@ class Settings:
         )
         voice_manifest = Path(os.getenv("VOICE_MANIFEST_PATH", voice_assets_dir / "voices.json"))
         storage_dir = Path(os.getenv("STORAGE_DIR", app_root / "storage"))
+        sample_processing_dir = Path(
+            os.getenv("SAMPLE_PROCESSING_DIR", storage_dir / "sample-processing")
+        )
         origins = os.getenv(
             "CORS_ALLOWED_ORIGINS",
             "http://localhost:4340,http://127.0.0.1:4340",
@@ -57,6 +61,7 @@ class Settings:
             voice_assets_dir=voice_assets_dir.resolve(),
             voice_manifest_path=voice_manifest.resolve(),
             storage_dir=storage_dir.resolve(),
+            sample_processing_dir=sample_processing_dir.resolve(),
             cors_allowed_origins=_split_csv(origins),
         )
 

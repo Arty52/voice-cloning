@@ -2,7 +2,19 @@ from __future__ import annotations
 
 from fastapi.responses import Response
 
-from ..models import CachedVoice, ModelSummary, SubscriptionSummary, VoiceAsset, VoicePreset, VoiceSample, VOICE_PRESETS
+from ..models import (
+    CachedVoice,
+    ModelSummary,
+    SampleProcessingJob,
+    SampleProcessingOperation,
+    SampleProcessingResult,
+    SubscriptionSummary,
+    VoiceAsset,
+    VoicePreset,
+    VoiceProcessingStep,
+    VoiceSample,
+    VOICE_PRESETS,
+)
 from ..providers import (
     ProviderDescriptor,
     ProviderTuningControl,
@@ -145,6 +157,63 @@ def voice_asset_payload(asset: VoiceAsset) -> dict[str, object]:
         "sourceContentType": asset.source_content_type,
         "sourceSha256": asset.source_sha256,
         "voicePresetId": asset.voice_preset_id,
+        "processingSteps": [voice_processing_step_payload(step) for step in asset.processing_steps],
+    }
+
+
+def voice_processing_step_payload(step: VoiceProcessingStep) -> dict[str, object]:
+    return {
+        "id": step.id,
+        "label": step.label,
+        "operationId": step.operation_id,
+        "createdAt": step.created_at,
+        "sourceSha256": step.source_sha256,
+        "resultSha256": step.result_sha256,
+        "engine": step.engine,
+    }
+
+
+def sample_processing_options_payload(
+    operations: tuple[SampleProcessingOperation, ...],
+) -> dict[str, object]:
+    return {
+        "operations": [sample_processing_operation_payload(operation) for operation in operations],
+    }
+
+
+def sample_processing_operation_payload(operation: SampleProcessingOperation) -> dict[str, object]:
+    return {
+        "id": operation.id,
+        "label": operation.label,
+        "description": operation.description,
+        "enabled": operation.enabled,
+    }
+
+
+def sample_processing_job_payload(job: SampleProcessingJob) -> dict[str, object]:
+    return {
+        "id": job.id,
+        "operationId": job.operation_id,
+        "status": job.status,
+        "sourceName": job.source_name,
+        "sourceFilename": job.source_filename,
+        "sourceContentType": job.source_content_type,
+        "sourceSha256": job.source_sha256,
+        "sourcePreference": job.source_preference,
+        "createdAt": job.created_at,
+        "updatedAt": job.updated_at,
+        "error": job.error,
+        "engine": job.engine,
+        "result": sample_processing_result_payload(job.result) if job.result is not None else None,
+    }
+
+
+def sample_processing_result_payload(result: SampleProcessingResult) -> dict[str, object]:
+    return {
+        "path": result.path,
+        "filename": result.filename,
+        "contentType": result.content_type,
+        "sha256": result.sha256,
     }
 
 

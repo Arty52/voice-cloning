@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 import json
 from pathlib import Path
+import time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -21,6 +23,8 @@ from voice_cloning.api.serializers import audio_response
 from voice_cloning.models import (
     CachedVoice,
     ModelSummary,
+    SampleProcessingOperation,
+    SampleProcessingResult,
     SpeechResult,
     SubscriptionSummary,
     VoiceClone,
@@ -37,6 +41,7 @@ from voice_cloning.providers import (
     resolve_elevenlabs_key,
 )
 from voice_cloning.samples import sample_hash
+from voice_cloning.services.sample_processing import SampleProcessingRequest, SampleProcessingService
 from voice_cloning.services.speech import SpeechServiceError, generate_speech
 from voice_cloning.voice_library import VoiceLibrary
 
@@ -184,6 +189,28 @@ class FakeNoTuningProvider(FakeElevenLabsProvider):
         return {}
 
 
+class FakeSampleProcessor:
+    engine_name = "fake-processor"
+
+    def __init__(self, output: bytes = b"isolated-voice") -> None:
+        self.output = output
+        self.requests: list[SampleProcessingRequest] = []
+
+    def operations(self) -> tuple[SampleProcessingOperation, ...]:
+        return (
+            SampleProcessingOperation(
+                id="isolateVoice",
+                label="Isolate Voice",
+                description="Separate the vocal stem from music or background audio.",
+                enabled=True,
+            ),
+        )
+
+    async def process(self, request: SampleProcessingRequest) -> None:
+        self.requests.append(request)
+        request.output_path.write_bytes(self.output)
+
+
 def make_settings(
     tmp_path: Path,
     api_key: str = "test-key",
@@ -204,6 +231,7 @@ def make_settings(
         voice_assets_dir=voice_assets_dir,
         voice_manifest_path=voice_assets_dir / "voices.json",
         storage_dir=tmp_path / "storage",
+        sample_processing_dir=tmp_path / "storage" / "sample-processing",
         cors_allowed_origins=["http://localhost:4340"],
         max_source_upload_bytes=max_source_upload_bytes,
     )
@@ -229,6 +257,18 @@ def make_client(
         voice_library=VoiceLibrary(settings),
     )
     return TestClient(app), fake_client
+
+
+def wait_for_processing_job(client: TestClient, job_id: str, status: str = "success") -> dict[str, object]:
+    payload: dict[str, object] = {}
+    for _ in range(50):
+        response = client.get(f"/api/sample-processing/jobs/{job_id}")
+        assert response.status_code == 200
+        payload = response.json()["job"]
+        if payload["status"] == status:
+            return payload
+        time.sleep(0.02)
+    raise AssertionError(f"Sample processing job did not reach {status}: {payload}")
 
 
 def test_health_reports_default_sample(tmp_path: Path) -> None:
@@ -404,9 +444,219 @@ def test_voice_manifest_migrates_legacy_assets_with_excerpt_defaults(tmp_path: P
     assert voice["windowDurationSeconds"] is None
     assert voice["sourceFilePath"] is None
     assert voice["voicePresetId"] == "standardNarration"
+    assert voice["processingSteps"] == []
     migrated_voice = json.loads(settings.voice_manifest_path.read_text(encoding="utf-8"))["voices"][0]
     assert migrated_voice["sampleMode"] == "excerpt"
     assert migrated_voice["voicePresetId"] == "standardNarration"
+    assert migrated_voice["processingSteps"] == []
+
+
+def test_sample_processing_options_report_unavailable_default_processor(tmp_path: Path) -> None:
+    client, _ = make_client(tmp_path)
+
+    response = client.get("/api/sample-processing/options")
+    create = client.post(
+        "/api/sample-processing/jobs",
+        data={"operationId": "isolateVoice"},
+        files={"sourceFile": ("source.wav", b"source-audio", "audio/wav")},
+    )
+
+    assert response.status_code == 200
+    operations = response.json()["operations"]
+    assert [operation["id"] for operation in operations] == ["isolateVoice", "trimSilence", "separateSpeakers"]
+    assert all(operation["enabled"] is False for operation in operations)
+    assert create.status_code == 503
+    assert create.json()["detail"] == "Sample processing is not available. Configure a processor to use this operation."
+
+
+def test_sample_processing_job_uses_original_voice_source_and_saves_result_as_voice(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    voice_library = VoiceLibrary(settings)
+    processor = FakeSampleProcessor()
+    fake_provider = FakeElevenLabsProvider().bind_settings(settings)
+    app = create_app(
+        settings=settings,
+        provider_registry=ProviderRegistry([fake_provider]),
+        voice_library=voice_library,
+        sample_processor=processor,
+    )
+    client = TestClient(app)
+    upload = client.post(
+        "/api/voices",
+        data={
+            "name": "Voice_Clone_01",
+            "sampleMode": "sourceWindow",
+            "windowStartSeconds": "0",
+            "windowDurationSeconds": "30",
+        },
+        files={
+            "sampleFile": ("active.wav", b"active-excerpt", "audio/wav"),
+            "sourceFile": ("source.wav", b"original-source", "audio/wav"),
+        },
+    )
+
+    response = client.post(
+        "/api/sample-processing/jobs",
+        data={"operationId": "isolateVoice", "sourceVoiceId": "voice-clone-01"},
+    )
+    assert response.status_code == 202
+    job_id = response.json()["job"]["id"]
+    job = wait_for_processing_job(client, job_id)
+    result = client.get(f"/api/sample-processing/jobs/{job_id}/result")
+    save = client.post(
+        f"/api/sample-processing/jobs/{job_id}/voice",
+        json={"name": "Voice Clone 01 Isolated", "voicePresetId": "animatedDialogue"},
+    )
+    speech = client.post("/api/speech", data={"text": "Use processed sample.", "voiceId": "voice-clone-01-isolated"})
+
+    assert upload.status_code == 201
+    assert processor.requests[0].source_path == settings.voice_assets_dir / "sources" / "voice-clone-01.wav"
+    assert processor.requests[0].source.content == b"original-source"
+    assert job["status"] == "success"
+    assert job["result"]["filename"] == "result.wav"
+    assert result.status_code == 200
+    assert result.headers["content-type"].startswith("audio/wav")
+    assert result.content == b"isolated-voice"
+    assert save.status_code == 201
+    voice = save.json()["voice"]
+    assert voice["id"] == "voice-clone-01-isolated"
+    assert voice["name"] == "Voice Clone 01 Isolated"
+    assert voice["contentType"] == "audio/wav"
+    assert voice["sha256"] == sample_hash(b"isolated-voice")
+    assert voice["voicePresetId"] == "animatedDialogue"
+    assert voice["processingSteps"] == [
+        {
+            "id": job_id,
+            "label": "Isolate Voice",
+            "operationId": "isolateVoice",
+            "createdAt": voice["processingSteps"][0]["createdAt"],
+            "sourceSha256": sample_hash(b"original-source"),
+            "resultSha256": sample_hash(b"isolated-voice"),
+            "engine": "fake-processor",
+        }
+    ]
+    assert (settings.voice_assets_dir / "voice-clone-01-isolated.wav").read_bytes() == b"isolated-voice"
+    assert speech.status_code == 200
+
+
+def test_sample_processing_job_accepts_uploaded_source(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    processor = FakeSampleProcessor()
+    app = create_app(settings=settings, sample_processor=processor)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/sample-processing/jobs",
+        data={"operationId": "isolateVoice"},
+        files={"sourceFile": ("uploaded.wav", b"uploaded-source", "audio/wav")},
+    )
+    job = wait_for_processing_job(client, response.json()["job"]["id"])
+
+    assert response.status_code == 202
+    assert job["sourceName"] == "uploaded"
+    assert job["sourceSha256"] == sample_hash(b"uploaded-source")
+    assert processor.requests[0].source.content == b"uploaded-source"
+
+
+def test_sample_processing_save_rejects_duplicate_voice_name(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    processor = FakeSampleProcessor()
+    app = create_app(settings=settings, sample_processor=processor)
+    client = TestClient(app)
+    create = client.post(
+        "/api/sample-processing/jobs",
+        data={"operationId": "isolateVoice"},
+        files={"sourceFile": ("uploaded.wav", b"uploaded-source", "audio/wav")},
+    )
+    job_id = create.json()["job"]["id"]
+    wait_for_processing_job(client, job_id)
+    first = client.post(f"/api/sample-processing/jobs/{job_id}/voice", json={"name": "Processed Voice"})
+
+    second = client.post(f"/api/sample-processing/jobs/{job_id}/voice", json={"name": "Processed Voice"})
+
+    assert first.status_code == 201
+    assert second.status_code == 409
+    assert second.json()["detail"] == "A voice with that name already exists."
+
+
+def test_sample_processing_rejects_tampered_result_path(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    processor = FakeSampleProcessor()
+    voice_library = VoiceLibrary(settings)
+    service = SampleProcessingService(settings, voice_library, processor)
+    app = create_app(settings=settings, voice_library=voice_library, sample_processing_service=service)
+    client = TestClient(app)
+    create = client.post(
+        "/api/sample-processing/jobs",
+        data={"operationId": "isolateVoice"},
+        files={"sourceFile": ("uploaded.wav", b"uploaded-source", "audio/wav")},
+    )
+    job_id = create.json()["job"]["id"]
+    job = wait_for_processing_job(client, job_id)
+    service._jobs[job_id] = replace(
+        service.get_job(job_id),
+        result=SampleProcessingResult(
+            path="../escape.wav",
+            filename="escape.wav",
+            content_type="audio/wav",
+            sha256=job["result"]["sha256"],
+        ),
+    )
+
+    response = client.get(f"/api/sample-processing/jobs/{job_id}/result")
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Sample processing path is invalid."
+
+
+def test_sample_processing_rejects_invalid_source_without_job_directory(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path, max_source_upload_bytes=5)
+    processor = FakeSampleProcessor()
+    voice_library = VoiceLibrary(settings)
+    service = SampleProcessingService(settings, voice_library, processor)
+    app = create_app(settings=settings, voice_library=voice_library, sample_processing_service=service)
+    client = TestClient(app)
+
+    no_source = client.post(
+        "/api/sample-processing/jobs",
+        data={"operationId": "isolateVoice"},
+    )
+    oversized_upload = client.post(
+        "/api/sample-processing/jobs",
+        data={"operationId": "isolateVoice"},
+        files={"sourceFile": ("uploaded.wav", b"too-large", "audio/wav")},
+    )
+    missing_voice = client.post(
+        "/api/sample-processing/jobs",
+        data={"operationId": "isolateVoice", "sourceVoiceId": "missing"},
+    )
+
+    assert no_source.status_code == 422
+    assert oversized_upload.status_code == 413
+    assert missing_voice.status_code == 404
+    assert service._jobs == {}
+    assert service._tasks == {}
+    assert [path for path in settings.sample_processing_dir.iterdir()] == []
+
+
+def test_sample_processing_cleans_task_registry_after_completion(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    processor = FakeSampleProcessor()
+    voice_library = VoiceLibrary(settings)
+    service = SampleProcessingService(settings, voice_library, processor)
+    app = create_app(settings=settings, voice_library=voice_library, sample_processing_service=service)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/sample-processing/jobs",
+        data={"operationId": "isolateVoice"},
+        files={"sourceFile": ("uploaded.wav", b"uploaded-source", "audio/wav")},
+    )
+    job = wait_for_processing_job(client, response.json()["job"]["id"])
+
+    assert response.status_code == 202
+    assert job["status"] == "success"
+    assert service._tasks == {}
 
 
 def test_subscription_endpoint_returns_sanitized_quota(tmp_path: Path) -> None:
