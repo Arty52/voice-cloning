@@ -23,6 +23,7 @@ type UseSampleProcessingOptions = {
 }
 
 const POLL_INTERVAL_MS = 1500
+const TIMER_INTERVAL_MS = 100
 const DEFAULT_PROCESSING_PRESET_ID: SampleProcessingPresetId = "balanced"
 
 export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: UseSampleProcessingOptions) {
@@ -42,8 +43,10 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
   const [saveVoicePresetId, setSaveVoicePresetId] = useState<VoicePresetId>(DEFAULT_VOICE_PRESET_ID)
   const [saveStatus, setSaveStatus] = useState<AsyncStatus>("idle")
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [processingElapsedMs, setProcessingElapsedMs] = useState<number | null>(null)
   const runIdRef = useRef(0)
   const mountedRef = useRef(true)
+  const processingStartedAtRef = useRef<number | null>(null)
 
   const operations = useMemo(() => options?.operations ?? [], [options])
   const enabledOperations = useMemo(() => operations.filter((operation) => operation.enabled), [operations])
@@ -68,8 +71,19 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
     return () => {
       mountedRef.current = false
       runIdRef.current += 1
+      processingStartedAtRef.current = null
     }
   }, [])
+
+  useEffect(() => {
+    if (!isProcessing || processingStartedAtRef.current === null) {
+      return
+    }
+    const intervalId = window.setInterval(() => {
+      updateProcessingElapsedTime()
+    }, TIMER_INTERVAL_MS)
+    return () => window.clearInterval(intervalId)
+  }, [isProcessing])
 
   useEffect(() => {
     async function loadOptions() {
@@ -104,6 +118,7 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
 
   function resetProcessedCandidate() {
     runIdRef.current += 1
+    clearProcessingTimer()
     setJob(null)
     setError(null)
     setSaveError(null)
@@ -165,6 +180,7 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
 
     const runId = runIdRef.current + 1
     runIdRef.current = runId
+    startProcessingTimer()
     setStatus("starting")
     setError(null)
     setSaveError(null)
@@ -186,10 +202,12 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
       }
       setJob(payload.job)
       if (payload.job.status === "success") {
+        finishProcessingTimer()
         setStatus("success")
         return
       }
       if (payload.job.status === "error") {
+        finishProcessingTimer()
         setStatus("error")
         setError(payload.job.error || "Sample processing failed.")
         return
@@ -200,6 +218,7 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
       if (!isActiveRun(runId)) {
         return
       }
+      finishProcessingTimer()
       setStatus("error")
       setError(caught instanceof Error ? caught.message : "Unable to start sample processing.")
     }
@@ -214,10 +233,12 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
         }
         setJob(payload.job)
         if (payload.job.status === "success") {
+          finishProcessingTimer()
           setStatus("success")
           return
         }
         if (payload.job.status === "error") {
+          finishProcessingTimer()
           setStatus("error")
           setError(payload.job.error || "Sample processing failed.")
           return
@@ -226,6 +247,7 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
         if (!isActiveRun(runId)) {
           return
         }
+        finishProcessingTimer()
         setStatus("error")
         setError(caught instanceof Error ? caught.message : "Unable to poll sample processing job.")
         return
@@ -270,6 +292,29 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
     return mountedRef.current && runIdRef.current === runId
   }
 
+  function startProcessingTimer() {
+    processingStartedAtRef.current = performance.now()
+    setProcessingElapsedMs(0)
+  }
+
+  function updateProcessingElapsedTime() {
+    const startedAt = processingStartedAtRef.current
+    if (startedAt === null) {
+      return
+    }
+    setProcessingElapsedMs(Math.max(0, Math.round(performance.now() - startedAt)))
+  }
+
+  function finishProcessingTimer() {
+    updateProcessingElapsedTime()
+    processingStartedAtRef.current = null
+  }
+
+  function clearProcessingTimer() {
+    processingStartedAtRef.current = null
+    setProcessingElapsedMs(null)
+  }
+
   return {
     canSave,
     canStart,
@@ -288,6 +333,7 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
     optionsStatus,
     processingPresetId: resolvedProcessingPresetId,
     processingPresets,
+    processingElapsedMs,
     resultUrl,
     saveError,
     saveName,

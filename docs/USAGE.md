@@ -187,4 +187,6 @@ Isolation Strength offers four presets. Fast uses fewer Demucs shifts for quick 
 
 Processed results are candidates, not automatic voice-library entries. Preview the result first, then choose Add To Voice Library to store it under `assets/voices/` through the same local Voice Library path as uploaded samples. The new voice keeps `filePath`, `contentType`, and `sha256` pointed at the processed active sample, and includes `processingSteps` metadata for traceability, including the selected isolation preset when one was used.
 
+Sample Processing shows a browser-observed elapsed timer while the current job runs and keeps the final time visible with the current preview or error. This timing is local to the Sample Processing section and is not saved to voice metadata.
+
 Runtime files are written under ignored `storage/sample-processing/`. Demucs output folders and intermediate stems are job-local. Heavy model files are runtime data; the Docker stack routes them to ignored `storage/model-cache/`. Future speaker-separation work will use the same operation registry and will likely require FFmpeg plus Hugging Face access for `pyannote.audio` models.

@@ -584,6 +584,7 @@ describe("App", () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
   })
@@ -975,6 +976,7 @@ describe("App", () => {
     expect(jobBody.get("sourceFile")).toBeNull()
 
     expect(await sampleProcessingPanel().findByLabelText("Processed sample preview")).toBeInTheDocument()
+    expect(sampleProcessingPanel().getByLabelText("Sample Processing Elapsed Time")).toHaveTextContent("Finished In")
     expect(sampleProcessingPanel().getByLabelText("Voice Name")).toHaveValue("Default voice Isolated")
 
     await user.click(sampleProcessingPanel().getByRole("button", { name: "Add To Voice Library" }))
@@ -988,6 +990,55 @@ describe("App", () => {
       voicePresetId: "standardNarration",
     })
     expect(await voiceLibraryPanel().findByText("Default voice Isolated")).toBeInTheDocument()
+  })
+
+  it("shows live and final sample processing elapsed time", async () => {
+    let currentTime = 0
+    vi.spyOn(performance, "now").mockImplementation(() => currentTime)
+    const baseFetch = mockFetch()
+    let pollCount = 0
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/sample-processing/jobs/job-1" && !init) {
+          pollCount += 1
+          if (pollCount === 1) {
+            return okJson({
+              job: {
+                ...successfulSampleProcessingJob.job,
+                status: "running",
+                result: null,
+              },
+            })
+          }
+          return okJson(successfulSampleProcessingJob)
+        }
+        return baseFetch(input, init)
+      })
+    )
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
+    const startButton = await sampleProcessingPanel().findByRole("button", { name: "Start Processing" })
+    await waitFor(() => expect(startButton).toBeEnabled())
+    await user.click(startButton)
+
+    expect(await sampleProcessingPanel().findByLabelText("Sample Processing Elapsed Time")).toHaveTextContent("Elapsed 0s")
+
+    currentTime = 1234
+    await waitFor(() => {
+      expect(sampleProcessingPanel().getByLabelText("Sample Processing Elapsed Time")).toHaveTextContent("Elapsed 1.2s")
+    })
+
+    currentTime = 12_300
+
+    await waitFor(() => {
+      expect(sampleProcessingPanel().getByLabelText("Processed sample preview")).toBeInTheDocument()
+    }, { timeout: 2500 })
+    expect(sampleProcessingPanel().getByLabelText("Sample Processing Elapsed Time")).toHaveTextContent("Finished In 12s")
   })
 
   it("sends the selected isolation strength preset", async () => {
@@ -1022,12 +1073,14 @@ describe("App", () => {
     await waitFor(() => expect(startButton).toBeEnabled())
     await user.click(startButton)
     expect(await sampleProcessingPanel().findByLabelText("Processed sample preview")).toBeInTheDocument()
+    expect(sampleProcessingPanel().getByLabelText("Sample Processing Elapsed Time")).toHaveTextContent("Finished In")
 
     await user.click(sampleProcessingPanel().getByRole("button", { name: "Active Sample" }))
 
     await waitFor(() => {
       expect(sampleProcessingPanel().queryByLabelText("Processed sample preview")).not.toBeInTheDocument()
     })
+    expect(sampleProcessingPanel().queryByLabelText("Sample Processing Elapsed Time")).not.toBeInTheDocument()
     expect(sampleProcessingPanel().queryByRole("button", { name: "Add To Voice Library" })).not.toBeInTheDocument()
 
     await user.click(sampleProcessingPanel().getByRole("button", { name: "Start Processing" }))
@@ -1040,6 +1093,27 @@ describe("App", () => {
     expect(nextJobBody.get("sourcePreference")).toBe("active")
   })
 
+  it("clears a processed preview when the sample processing operation changes", async () => {
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
+    const startButton = await sampleProcessingPanel().findByRole("button", { name: "Start Processing" })
+    await waitFor(() => expect(startButton).toBeEnabled())
+    await user.click(startButton)
+    expect(await sampleProcessingPanel().findByLabelText("Processed sample preview")).toBeInTheDocument()
+    expect(sampleProcessingPanel().getByLabelText("Sample Processing Elapsed Time")).toHaveTextContent("Finished In")
+
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Sample Processing Operation: Isolate Voice" }))
+    await user.click(sampleProcessingPanel().getByRole("menuitemradio", { name: "Trim Silence Unavailable" }))
+
+    await waitFor(() => {
+      expect(sampleProcessingPanel().queryByLabelText("Processed sample preview")).not.toBeInTheDocument()
+    })
+    expect(sampleProcessingPanel().queryByLabelText("Sample Processing Elapsed Time")).not.toBeInTheDocument()
+  })
+
   it("clears a processed preview when the isolation strength changes", async () => {
     const user = userEvent.setup()
     renderApp()
@@ -1050,6 +1124,7 @@ describe("App", () => {
     await waitFor(() => expect(startButton).toBeEnabled())
     await user.click(startButton)
     expect(await sampleProcessingPanel().findByLabelText("Processed sample preview")).toBeInTheDocument()
+    expect(sampleProcessingPanel().getByLabelText("Sample Processing Elapsed Time")).toHaveTextContent("Finished In")
 
     const isolationStrength = within(sampleProcessingPanel().getByRole("radiogroup", { name: "Isolation Strength" }))
     await user.click(isolationStrength.getByRole("radio", { name: "Max Isolation" }))
@@ -1057,6 +1132,7 @@ describe("App", () => {
     await waitFor(() => {
       expect(sampleProcessingPanel().queryByLabelText("Processed sample preview")).not.toBeInTheDocument()
     })
+    expect(sampleProcessingPanel().queryByLabelText("Sample Processing Elapsed Time")).not.toBeInTheDocument()
     expect(sampleProcessingPanel().queryByRole("button", { name: "Add To Voice Library" })).not.toBeInTheDocument()
 
     await user.click(sampleProcessingPanel().getByRole("button", { name: "Start Processing" }))
@@ -1091,6 +1167,15 @@ describe("App", () => {
     expect(jobBody.get("sourceFile")).toBe(sourceFile)
     expect(jobBody.get("sourceVoiceId")).toBeNull()
     expect(await sampleProcessingPanel().findByLabelText("Processed sample preview")).toBeInTheDocument()
+    expect(sampleProcessingPanel().getByLabelText("Sample Processing Elapsed Time")).toHaveTextContent("Finished In")
+
+    const replacementFile = new File(["replacement"], "vegeta-clean.wav", { type: "audio/wav" })
+    await user.upload(sampleProcessingPanel().getByLabelText("Audio File"), replacementFile)
+
+    await waitFor(() => {
+      expect(sampleProcessingPanel().queryByLabelText("Processed sample preview")).not.toBeInTheDocument()
+    })
+    expect(sampleProcessingPanel().queryByLabelText("Sample Processing Elapsed Time")).not.toBeInTheDocument()
   })
 
   it("shows sample processing job errors", async () => {
@@ -1122,6 +1207,7 @@ describe("App", () => {
     await user.click(startButton)
 
     expect(await sampleProcessingPanel().findByText("Processing Failed")).toBeInTheDocument()
+    expect(sampleProcessingPanel().getByLabelText("Sample Processing Elapsed Time")).toHaveTextContent("Stopped After")
     expect(sampleProcessingPanel().getByText("demucs command was not found.")).toBeInTheDocument()
   })
 
@@ -2174,7 +2260,9 @@ describe("App", () => {
     })
     const latestPanel = screen.getByRole("heading", { name: "Latest Generated Audio" }).closest("section")
     expect(latestPanel).not.toBeNull()
-    expect(within(latestPanel as HTMLElement).getByLabelText("Generated Audio Metadata")).toBeInTheDocument()
+    await waitFor(() =>
+      expect(within(latestPanel as HTMLElement).getByLabelText("Generated Audio Metadata")).toBeInTheDocument()
+    )
     expect(within(latestPanel as HTMLElement).getByText("ElevenLabs")).toBeInTheDocument()
     expect(within(latestPanel as HTMLElement).getByText("Custom Settings")).toBeInTheDocument()
     expect(within(latestPanel as HTMLElement).getByText("Stability 0.42")).toBeInTheDocument()
