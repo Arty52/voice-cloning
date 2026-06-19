@@ -815,7 +815,7 @@ def test_demucs_sample_processor_reports_timeout(tmp_path: Path) -> None:
         tmp_path,
         demucs_fake_command(tmp_path / "demucs-fake"),
         ffmpeg_fake_command(tmp_path / "ffmpeg-fake", sleep_seconds=2),
-        sample_processing_timeout_seconds=0.25,
+        sample_processing_timeout_seconds=1,
     )
     with TestClient(create_app(settings=settings)) as client:
         response = client.post(
