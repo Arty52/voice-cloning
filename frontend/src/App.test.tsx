@@ -875,7 +875,7 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    const addPresetGroup = within(addVoicePanel().getByRole("group", { name: "Voice Preset" }))
+    const addPresetGroup = within(addVoicePanel().getByRole("radiogroup", { name: "Voice Preset" }))
     await user.click(addPresetGroup.getByRole("radio", { name: /animated dialogue/i }))
     await user.type(screen.getByLabelText(/voice name/i), "Voice_Clone_01")
     const file = new File(["sample"], "voice-clone-01.wav", { type: "audio/wav" })
@@ -1222,7 +1222,7 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    const currentPresetGroup = () => within(voiceLibraryPanel().getByRole("group", { name: "Voice Preset" }))
+    const currentPresetGroup = () => within(voiceLibraryPanel().getByRole("radiogroup", { name: "Voice Preset" }))
     expect(currentPresetGroup().getByRole("radio", { name: /standard narration/i })).toHaveAttribute("aria-checked", "true")
 
     await user.click(currentPresetGroup().getByRole("radio", { name: /animated dialogue/i }))
