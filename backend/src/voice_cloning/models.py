@@ -7,6 +7,9 @@ from typing import Literal
 VoiceSampleMode = Literal["excerpt", "sourceWindow"]
 VoicePresetId = Literal["standardNarration", "animatedDialogue"]
 DEFAULT_VOICE_PRESET_ID: VoicePresetId = "standardNarration"
+SampleProcessingOperationId = Literal["isolateVoice", "trimSilence", "separateSpeakers"]
+SampleProcessingSourcePreference = Literal["original", "active"]
+SampleProcessingJobStatus = Literal["pending", "running", "success", "error"]
 
 
 @dataclass(frozen=True)
@@ -40,6 +43,17 @@ class VoiceSample:
 
 
 @dataclass(frozen=True)
+class VoiceProcessingStep:
+    id: str
+    label: str
+    operation_id: SampleProcessingOperationId
+    created_at: str
+    source_sha256: str
+    result_sha256: str
+    engine: str | None = None
+
+
+@dataclass(frozen=True)
 class VoiceAsset:
     id: str
     name: str
@@ -55,6 +69,7 @@ class VoiceAsset:
     source_content_type: str | None = None
     source_sha256: str | None = None
     voice_preset_id: VoicePresetId = DEFAULT_VOICE_PRESET_ID
+    processing_steps: tuple[VoiceProcessingStep, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -110,3 +125,36 @@ class CachedVoice:
     sample_name: str
     created_at: str
     requires_verification: bool
+
+
+@dataclass(frozen=True)
+class SampleProcessingOperation:
+    id: SampleProcessingOperationId
+    label: str
+    description: str
+    enabled: bool
+
+
+@dataclass(frozen=True)
+class SampleProcessingResult:
+    path: str
+    filename: str
+    content_type: str
+    sha256: str
+
+
+@dataclass(frozen=True)
+class SampleProcessingJob:
+    id: str
+    operation_id: SampleProcessingOperationId
+    status: SampleProcessingJobStatus
+    source_name: str
+    source_filename: str
+    source_content_type: str
+    source_sha256: str
+    source_preference: SampleProcessingSourcePreference
+    created_at: str
+    updated_at: str
+    error: str | None = None
+    result: SampleProcessingResult | None = None
+    engine: str | None = None

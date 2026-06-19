@@ -10,3 +10,8 @@ class DefaultVoiceRequest(BaseModel):
 class VoiceUpdateRequest(BaseModel):
     name: str | None = None
     voicePresetId: str | None = None
+
+
+class SaveProcessedVoiceRequest(BaseModel):
+    name: str
+    voicePresetId: str | None = None
