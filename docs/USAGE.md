@@ -9,6 +9,9 @@ This guide covers local setup, provider key handling, and the browser workflow f
 - Optional for host development:
   - Python 3.14+
   - Node.js 24+
+- Optional for local sample processing:
+  - FFmpeg
+  - Demucs, when `SAMPLE_PROCESSING_ENGINE=demucs`
 
 ## ElevenLabs API Key Permissions
 
@@ -45,6 +48,19 @@ ELEVENLABS_API_KEY=your_key_here  # optional when you use the Provider Keys pane
 ELEVENLABS_MODEL_ID=eleven_multilingual_v2
 ```
 
+Optionally enable local sample processing:
+
+```sh
+SAMPLE_PROCESSING_ENGINE=demucs
+SAMPLE_PROCESSING_DEMUCS_COMMAND=demucs
+SAMPLE_PROCESSING_FFMPEG_COMMAND=ffmpeg
+SAMPLE_PROCESSING_DEMUCS_MODEL=htdemucs
+SAMPLE_PROCESSING_DEMUCS_DEVICE=  # optional, such as cpu, cuda, or mps when supported
+SAMPLE_PROCESSING_TIMEOUT_SECONDS=900
+```
+
+Leave `SAMPLE_PROCESSING_ENGINE` blank to keep Sample Processing unavailable. Demucs model downloads, separated stems, normalized job output, and local caches are runtime data and should not be committed.
+
 Start the app:
 
 ```sh
@@ -63,11 +79,12 @@ Then:
 2. Upload or record a voice sample. For long uploads, choose the sample window and whether to keep the original local source.
 3. Give it a local name, such as `Voice_Clone_01`, and choose Standard Narration or Animated Dialogue.
 4. Save the voice.
-5. Enter text.
-6. Check the Cost & Quota panel and choose a model if model metadata is available.
-7. Adjust tuning sliders if needed; selecting a saved voice initializes tuning from that voice's assigned preset when the active provider maps it, otherwise from provider defaults.
-8. Generate speech.
-9. Play, download, or remove saved generated MP3s from the Generated Audio panel.
+5. Optionally process the saved original or active sample in Sample Processing, preview the output, and add the processed result to the Voice Library.
+6. Enter text.
+7. Check the Cost & Quota panel and choose a model if model metadata is available.
+8. Adjust tuning sliders if needed; selecting a saved voice initializes tuning from that voice's assigned preset when the active provider maps it, otherwise from provider defaults.
+9. Generate speech.
+10. Play, download, or remove saved generated MP3s from the Generated Audio panel.
 
 The API is available at:
 
@@ -156,3 +173,13 @@ The cropper has two save modes:
 Cropped excerpts are encoded in the browser as mono 32 kHz WAV files so a two-minute active sample stays below the default 10 MB active upload cap. The backend stores that excerpt under `assets/voices/` and sends only that active sample to the provider for cloning. When the UI sends `sampleMode=sourceWindow`, the original `sourceFile` is retained locally under `assets/voices/sources/`; it remains ignored by git and is not sent to the provider.
 
 If the browser cannot decode the selected file type, choose a shorter browser-decodable file such as WAV, MP3, M4A, or WebM. This rollout intentionally avoids server-side audio transcoding so local source files and generated excerpts remain easy to reason about in a public repository.
+
+## Sample Processing
+
+Sample Processing is a separate workflow from Add Voice. It is intended for preparing source samples before using them for generation, starting with Isolate Voice and leaving room for later operations such as Silence Removal and Speaker Separation.
+
+When Demucs is enabled, Isolate Voice runs the configured Demucs command with the `htdemucs` model by default, extracts the vocals stem, then runs FFmpeg to normalize the result to mono 32 kHz WAV. Existing saved voices default to processing the retained original source when `sourceFilePath` exists; otherwise the active provider-facing sample is used. Uploaded files can also be processed without first saving them as voices.
+
+Processed results are candidates, not automatic voice-library entries. Preview the result first, then choose Add To Voice Library to store it under `assets/voices/` through the same local Voice Library path as uploaded samples. The new voice keeps `filePath`, `contentType`, and `sha256` pointed at the processed active sample, and includes `processingSteps` metadata for traceability.
+
+Runtime files are written under ignored `storage/sample-processing/`. Demucs output folders and intermediate stems are job-local. Heavy model files may be downloaded by Demucs into its normal cache location outside the repository; keep those caches out of git. Future speaker-separation work will use the same operation registry and will likely require FFmpeg plus Hugging Face access for `pyannote.audio` models.

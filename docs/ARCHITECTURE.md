@@ -21,6 +21,7 @@ Voice Clone Lab is a small local app, but changes should still keep clear bounda
 - Voice asset APIs must keep `filePath`, `contentType`, and `sha256` pointed at the active provider sample. Any retained original source file is metadata only and must not be used for provider cloning unless a later explicit workflow promotes a new excerpt.
 - `VoiceLibrary` owns local voice asset persistence, including `voicePresetId`. The current implementation is manifest-backed under ignored `assets/voices/` data, and it normalizes missing or invalid preset ids to `standardNarration` before writing.
 - Keep voice persistence behind the `VoiceLibrary` API and route/service contract. A future PostgreSQL-backed library should be able to replace the manifest implementation without changing frontend request shapes or provider adapter contracts.
+- Sample-processing routes should stay behind `SampleProcessingService`. The service owns job state, source selection, result path safety, and saving processed results through `VoiceLibrary`; processor adapters own external tool execution such as Demucs, FFmpeg, or future diarization engines. Runtime job data belongs under ignored `storage/sample-processing/`.
 
 ## Frontend Boundaries
 
@@ -32,6 +33,7 @@ Voice Clone Lab is a small local app, but changes should still keep clear bounda
 - Provider-specific tuning controls, presets, defaults, and source links come from `/api/providers`. Frontend UI should render those descriptors generically instead of hardcoding provider-specific tuning constants.
 - Provider-independent voice presets come from `/api/providers` as top-level `voicePresets`. A selected voice's `voicePresetId` initializes per-request Voice Tuning through the active provider preset whose `voicePresetId` matches. If no active provider preset is mapped to that semantic id, the frontend falls back to provider `defaultValues`. Manual tuning changes remain request-local and should not mutate the saved voice assignment.
 - Provider-specific sample limits come from `/api/providers`. Frontend upload/crop flows should use those limits to prepare active samples before calling `/api/voices`.
+- Sample-processing UI belongs outside the Add Voice flow. Feature hooks should call `/api/sample-processing/*`, poll jobs, manage result preview URLs, and save the selected result explicitly before adding it to the Voice Library.
 - Browser audio-window utilities own decode, clamping, and active excerpt generation. They should produce provider-facing excerpts without server-side ffmpeg, while upload hooks decide whether to include the local-only original source file.
 - Shared constants, types, and formatters belong outside feature components so tests and future features can reuse them without importing a giant app file.
 
