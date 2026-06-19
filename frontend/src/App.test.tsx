@@ -362,6 +362,14 @@ function sampleProcessingPanel() {
   return scopedPanelByHeading("Sample Processing")
 }
 
+function expectVoicePresetSelection(control: HTMLElement, selected: boolean) {
+  expect(control).toHaveAttribute("aria-checked", String(selected))
+  if (selected) {
+    expect(control).toHaveClass("aria-checked:bg-primary")
+    expect(control).toHaveClass("aria-checked:text-primary-foreground")
+  }
+}
+
 function voiceTuningPanel() {
   return scopedPanelByHeading("Voice Tuning")
 }
@@ -1158,7 +1166,13 @@ describe("App", () => {
 
     await screen.findByText("default/default-voice.mp3")
     const addPresetGroup = within(addVoicePanel().getByRole("radiogroup", { name: "Voice Preset" }))
-    await user.click(addPresetGroup.getByRole("radio", { name: /animated dialogue/i }))
+    const standardPreset = addPresetGroup.getByRole("radio", { name: /standard narration/i })
+    const animatedPreset = addPresetGroup.getByRole("radio", { name: /animated dialogue/i })
+    expectVoicePresetSelection(standardPreset, true)
+    expectVoicePresetSelection(animatedPreset, false)
+    await user.click(animatedPreset)
+    expectVoicePresetSelection(standardPreset, false)
+    expectVoicePresetSelection(animatedPreset, true)
     await user.type(screen.getByLabelText(/voice name/i), "Voice_Clone_01")
     const file = new File(["sample"], "voice-clone-01.wav", { type: "audio/wav" })
     await user.upload(screen.getByLabelText(/sample file/i), file)
@@ -1505,9 +1519,12 @@ describe("App", () => {
 
     await screen.findByText("default/default-voice.mp3")
     const currentPresetGroup = () => within(voiceLibraryPanel().getByRole("radiogroup", { name: "Voice Preset" }))
-    expect(currentPresetGroup().getByRole("radio", { name: /standard narration/i })).toHaveAttribute("aria-checked", "true")
+    const currentStandardPreset = () => currentPresetGroup().getByRole("radio", { name: /standard narration/i })
+    const currentAnimatedPreset = () => currentPresetGroup().getByRole("radio", { name: /animated dialogue/i })
+    expectVoicePresetSelection(currentStandardPreset(), true)
+    expectVoicePresetSelection(currentAnimatedPreset(), false)
 
-    await user.click(currentPresetGroup().getByRole("radio", { name: /animated dialogue/i }))
+    await user.click(currentAnimatedPreset())
 
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
@@ -1518,7 +1535,8 @@ describe("App", () => {
         })
       )
     )
-    expect(currentPresetGroup().getByRole("radio", { name: /animated dialogue/i })).toHaveAttribute("aria-checked", "true")
+    expectVoicePresetSelection(currentStandardPreset(), false)
+    expectVoicePresetSelection(currentAnimatedPreset(), true)
     expect(screen.getByRole("slider", { name: /stability/i })).toHaveValue("0.4")
     expect(screen.getByRole("slider", { name: /style/i })).toHaveValue("0.35")
   })
