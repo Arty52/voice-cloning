@@ -10,6 +10,7 @@ from fastapi import HTTPException, UploadFile
 from .config import Settings
 from .models import (
     DEFAULT_VOICE_PRESET_ID,
+    SampleProcessingPresetId,
     VOICE_PRESET_IDS,
     VoiceAsset,
     VoicePresetId,
@@ -25,6 +26,9 @@ from .samples import (
     save_uploaded_sample,
     slugify_voice_name,
 )
+
+
+SAMPLE_PROCESSING_PRESET_IDS = frozenset({"fast", "balanced", "clean", "maxIsolation"})
 
 
 class VoiceLibrary:
@@ -441,6 +445,7 @@ def _processing_steps_from_payload(value: Any) -> tuple[VoiceProcessingStep, ...
         created_at = _optional_str(item.get("createdAt"))
         source_sha256 = _optional_str(item.get("sourceSha256"))
         result_sha256 = _optional_str(item.get("resultSha256"))
+        processing_preset_id = _optional_processing_preset_id(item.get("processingPresetId"))
         if not step_id or not label or not created_at or not source_sha256 or not result_sha256:
             continue
         steps.append(
@@ -452,13 +457,17 @@ def _processing_steps_from_payload(value: Any) -> tuple[VoiceProcessingStep, ...
                 source_sha256=source_sha256,
                 result_sha256=result_sha256,
                 engine=_optional_str(item.get("engine")),
+                processing_preset_id=processing_preset_id,
+                processing_preset_label=(
+                    _optional_str(item.get("processingPresetLabel")) if processing_preset_id is not None else None
+                ),
             )
         )
     return tuple(steps)
 
 
 def _processing_step_to_payload(step: VoiceProcessingStep) -> dict[str, object]:
-    return {
+    payload: dict[str, object] = {
         "id": step.id,
         "label": step.label,
         "operationId": step.operation_id,
@@ -467,6 +476,10 @@ def _processing_step_to_payload(step: VoiceProcessingStep) -> dict[str, object]:
         "resultSha256": step.result_sha256,
         "engine": step.engine,
     }
+    if step.processing_preset_id is not None:
+        payload["processingPresetId"] = step.processing_preset_id
+        payload["processingPresetLabel"] = step.processing_preset_label
+    return payload
 
 
 def _normalize_sample_mode(value: str | None) -> VoiceSampleMode:
@@ -482,6 +495,12 @@ def _normalize_voice_preset_id(value: Any) -> VoicePresetId:
     if isinstance(value, str) and value in VOICE_PRESET_IDS:
         return value  # type: ignore[return-value]
     raise HTTPException(status_code=422, detail="Voice preset must be standardNarration or animatedDialogue.")
+
+
+def _optional_processing_preset_id(value: Any) -> SampleProcessingPresetId | None:
+    if isinstance(value, str) and value in SAMPLE_PROCESSING_PRESET_IDS:
+        return value  # type: ignore[return-value]
+    return None
 
 
 def _normalize_window_metadata(

@@ -43,7 +43,12 @@ from voice_cloning.providers import (
 )
 from voice_cloning.sample_processors import _run_external_command
 from voice_cloning.samples import sample_hash
-from voice_cloning.services.sample_processing import SampleProcessingRequest, SampleProcessingService
+from voice_cloning.services.sample_processing import (
+    DEFAULT_ISOLATION_PROCESSING_PRESET_ID,
+    ISOLATION_PROCESSING_PRESETS,
+    SampleProcessingRequest,
+    SampleProcessingService,
+)
 from voice_cloning.services.speech import SpeechServiceError, generate_speech
 from voice_cloning.voice_library import VoiceLibrary
 
@@ -205,6 +210,8 @@ class FakeSampleProcessor:
                 label="Isolate Voice",
                 description="Separate the vocal stem from music or background audio.",
                 enabled=True,
+                processing_presets=ISOLATION_PROCESSING_PRESETS,
+                default_processing_preset_id=DEFAULT_ISOLATION_PROCESSING_PRESET_ID,
             ),
         )
 
@@ -525,6 +532,50 @@ def test_voice_manifest_migrates_legacy_assets_with_excerpt_defaults(tmp_path: P
     assert migrated_voice["processingSteps"] == []
 
 
+def test_voice_manifest_loads_legacy_processing_steps_without_preset_metadata(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path, with_default_sample=False)
+    sample_path = settings.voice_assets_dir / "legacy.wav"
+    sample_path.parent.mkdir(parents=True)
+    sample_path.write_bytes(b"legacy-sample")
+    settings.voice_manifest_path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "defaultVoiceId": "legacy",
+                "voices": [
+                    {
+                        "id": "legacy",
+                        "name": "Legacy Voice",
+                        "filePath": "legacy.wav",
+                        "contentType": "audio/wav",
+                        "sha256": "legacy-hash",
+                        "source": "upload",
+                        "createdAt": "2026-05-28T00:00:00+00:00",
+                        "voicePresetId": "standardNarration",
+                        "processingSteps": [
+                            {
+                                "id": "job-legacy",
+                                "label": "Isolate Voice",
+                                "operationId": "isolateVoice",
+                                "createdAt": "2026-06-19T00:00:00+00:00",
+                                "sourceSha256": "source-hash",
+                                "resultSha256": "result-hash",
+                                "engine": "demucs",
+                            }
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    asset = VoiceLibrary(settings).list_assets()[0]
+
+    assert asset.processing_steps[0].processing_preset_id is None
+    assert asset.processing_steps[0].processing_preset_label is None
+
+
 def test_sample_processing_options_report_unavailable_default_processor(tmp_path: Path) -> None:
     client, _ = make_client(tmp_path)
 
@@ -541,6 +592,42 @@ def test_sample_processing_options_report_unavailable_default_processor(tmp_path
     assert all(operation["enabled"] is False for operation in operations)
     assert create.status_code == 503
     assert create.json()["detail"] == "Sample processing is not available. Configure a processor to use this operation."
+
+
+def test_sample_processing_options_include_isolation_presets(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    app = create_app(settings=settings, sample_processor=FakeSampleProcessor())
+    client = TestClient(app)
+
+    response = client.get("/api/sample-processing/options")
+
+    assert response.status_code == 200
+    operation = response.json()["operations"][0]
+    assert operation["id"] == "isolateVoice"
+    assert operation["enabled"] is True
+    assert operation["defaultProcessingPresetId"] == "balanced"
+    assert operation["processingPresets"] == [
+        {
+            "id": "fast",
+            "label": "Fast",
+            "description": "Quickest preview with lighter separation quality.",
+        },
+        {
+            "id": "balanced",
+            "label": "Balanced",
+            "description": "Default vocal isolation quality and runtime.",
+        },
+        {
+            "id": "clean",
+            "label": "Clean",
+            "description": "Balanced isolation with conservative cleanup for background residue.",
+        },
+        {
+            "id": "maxIsolation",
+            "label": "Max Isolation",
+            "description": "Slower, strongest separation attempt for difficult tracks.",
+        },
+    ]
 
 
 def test_sample_processing_job_uses_original_voice_source_and_saves_result_as_voice(tmp_path: Path) -> None:
@@ -586,7 +673,11 @@ def test_sample_processing_job_uses_original_voice_source_and_saves_result_as_vo
     assert upload.status_code == 201
     assert processor.requests[0].source_path == settings.voice_assets_dir / "sources" / "voice-clone-01.wav"
     assert processor.requests[0].source.content == b"original-source"
+    assert processor.requests[0].processing_preset_id == "balanced"
+    assert processor.requests[0].processing_preset_label == "Balanced"
     assert job["status"] == "success"
+    assert job["processingPresetId"] == "balanced"
+    assert job["processingPresetLabel"] == "Balanced"
     assert job["result"]["filename"] == "result.wav"
     assert result.status_code == 200
     assert result.headers["content-type"].startswith("audio/wav")
@@ -607,6 +698,8 @@ def test_sample_processing_job_uses_original_voice_source_and_saves_result_as_vo
             "sourceSha256": sample_hash(b"original-source"),
             "resultSha256": sample_hash(b"isolated-voice"),
             "engine": "fake-processor",
+            "processingPresetId": "balanced",
+            "processingPresetLabel": "Balanced",
         }
     ]
     assert (settings.voice_assets_dir / "voice-clone-01-isolated.wav").read_bytes() == b"isolated-voice"
@@ -630,6 +723,41 @@ def test_sample_processing_job_accepts_uploaded_source(tmp_path: Path) -> None:
     assert job["sourceName"] == "uploaded"
     assert job["sourceSha256"] == sample_hash(b"uploaded-source")
     assert processor.requests[0].source.content == b"uploaded-source"
+
+
+def test_sample_processing_job_accepts_selected_processing_preset(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    processor = FakeSampleProcessor()
+    app = create_app(settings=settings, sample_processor=processor)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/sample-processing/jobs",
+        data={"operationId": "isolateVoice", "processingPresetId": "clean"},
+        files={"sourceFile": ("uploaded.wav", b"uploaded-source", "audio/wav")},
+    )
+    job = wait_for_processing_job(client, response.json()["job"]["id"])
+
+    assert response.status_code == 202
+    assert job["processingPresetId"] == "clean"
+    assert job["processingPresetLabel"] == "Clean"
+    assert processor.requests[0].processing_preset_id == "clean"
+    assert processor.requests[0].processing_preset_label == "Clean"
+
+
+def test_sample_processing_job_rejects_invalid_processing_preset(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    app = create_app(settings=settings, sample_processor=FakeSampleProcessor())
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/sample-processing/jobs",
+        data={"operationId": "isolateVoice", "processingPresetId": "tooStrong"},
+        files={"sourceFile": ("uploaded.wav", b"uploaded-source", "audio/wav")},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Unsupported processing preset: tooStrong."
 
 
 def test_sample_processing_save_rejects_duplicate_voice_name(tmp_path: Path) -> None:
