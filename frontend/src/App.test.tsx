@@ -212,18 +212,45 @@ const sampleProcessingOptions = {
       label: "Isolate Voice",
       description: "Separate the vocal stem from music or background audio with Demucs.",
       enabled: true,
+      defaultProcessingPresetId: "balanced" as const,
+      processingPresets: [
+        {
+          id: "fast" as const,
+          label: "Fast",
+          description: "Quickest preview with lighter separation quality.",
+        },
+        {
+          id: "balanced" as const,
+          label: "Balanced",
+          description: "Default vocal isolation quality and runtime.",
+        },
+        {
+          id: "clean" as const,
+          label: "Clean",
+          description: "Balanced isolation with conservative cleanup for background residue.",
+        },
+        {
+          id: "maxIsolation" as const,
+          label: "Max Isolation",
+          description: "Slower, strongest separation attempt for difficult tracks.",
+        },
+      ],
     },
     {
       id: "trimSilence" as const,
       label: "Trim Silence",
       description: "Remove leading, trailing, or long empty regions from a sample.",
       enabled: false,
+      defaultProcessingPresetId: null,
+      processingPresets: [],
     },
     {
       id: "separateSpeakers" as const,
       label: "Separate Speakers",
       description: "Split a track into speaker-specific samples.",
       enabled: false,
+      defaultProcessingPresetId: null,
+      processingPresets: [],
     },
   ],
 }
@@ -234,6 +261,8 @@ const successfulSampleProcessingJob = {
     operationId: "isolateVoice" as const,
     operationLabel: "Isolate Voice",
     status: "success" as const,
+    processingPresetId: "balanced" as const,
+    processingPresetLabel: "Balanced",
     sourceName: "Default voice",
     sourceSha256: "default-hash",
     sourcePreference: "original" as const,
@@ -929,6 +958,8 @@ describe("App", () => {
     await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
     const startButton = await sampleProcessingPanel().findByRole("button", { name: "Start Processing" })
     await waitFor(() => expect(startButton).toBeEnabled())
+    const isolationStrength = within(sampleProcessingPanel().getByRole("radiogroup", { name: "Isolation Strength" }))
+    expect(isolationStrength.getByRole("radio", { name: "Balanced" })).toHaveAttribute("aria-checked", "true")
 
     await user.click(startButton)
 
@@ -938,6 +969,7 @@ describe("App", () => {
     expect(jobCall).toBeDefined()
     const jobBody = jobCall?.[1]?.body as FormData
     expect(jobBody.get("operationId")).toBe("isolateVoice")
+    expect(jobBody.get("processingPresetId")).toBe("balanced")
     expect(jobBody.get("sourceVoiceId")).toBe("default")
     expect(jobBody.get("sourcePreference")).toBe("original")
     expect(jobBody.get("sourceFile")).toBeNull()
@@ -956,6 +988,28 @@ describe("App", () => {
       voicePresetId: "standardNarration",
     })
     expect(await voiceLibraryPanel().findByText("Default voice Isolated")).toBeInTheDocument()
+  })
+
+  it("sends the selected isolation strength preset", async () => {
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
+    const isolationStrength = within(sampleProcessingPanel().getByRole("radiogroup", { name: "Isolation Strength" }))
+    await user.click(isolationStrength.getByRole("radio", { name: "Clean" }))
+    expect(isolationStrength.getByRole("radio", { name: "Clean" })).toHaveAttribute("aria-checked", "true")
+    expect(sampleProcessingPanel().getByText("Balanced isolation with conservative cleanup for background residue.")).toBeInTheDocument()
+
+    const startButton = await sampleProcessingPanel().findByRole("button", { name: "Start Processing" })
+    await waitFor(() => expect(startButton).toBeEnabled())
+    await user.click(startButton)
+
+    const jobCall = vi.mocked(fetch).mock.calls.find(
+      ([url, init]) => String(url) === "/api/sample-processing/jobs" && init?.method === "POST"
+    )
+    const jobBody = jobCall?.[1]?.body as FormData
+    expect(jobBody.get("processingPresetId")).toBe("clean")
   })
 
   it("clears a processed preview when sample processing inputs change", async () => {
@@ -984,6 +1038,35 @@ describe("App", () => {
     expect(jobCalls).toHaveLength(2)
     const nextJobBody = jobCalls[1]?.[1]?.body as FormData
     expect(nextJobBody.get("sourcePreference")).toBe("active")
+  })
+
+  it("clears a processed preview when the isolation strength changes", async () => {
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
+    const startButton = await sampleProcessingPanel().findByRole("button", { name: "Start Processing" })
+    await waitFor(() => expect(startButton).toBeEnabled())
+    await user.click(startButton)
+    expect(await sampleProcessingPanel().findByLabelText("Processed sample preview")).toBeInTheDocument()
+
+    const isolationStrength = within(sampleProcessingPanel().getByRole("radiogroup", { name: "Isolation Strength" }))
+    await user.click(isolationStrength.getByRole("radio", { name: "Max Isolation" }))
+
+    await waitFor(() => {
+      expect(sampleProcessingPanel().queryByLabelText("Processed sample preview")).not.toBeInTheDocument()
+    })
+    expect(sampleProcessingPanel().queryByRole("button", { name: "Add To Voice Library" })).not.toBeInTheDocument()
+
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Start Processing" }))
+
+    const jobCalls = vi
+      .mocked(fetch)
+      .mock.calls.filter(([url, init]) => String(url) === "/api/sample-processing/jobs" && init?.method === "POST")
+    expect(jobCalls).toHaveLength(2)
+    const nextJobBody = jobCalls[1]?.[1]?.body as FormData
+    expect(nextJobBody.get("processingPresetId")).toBe("maxIsolation")
   })
 
   it("creates a sample processing job from an uploaded file", async () => {

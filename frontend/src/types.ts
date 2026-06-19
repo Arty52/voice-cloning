@@ -8,6 +8,7 @@ export type VoiceSampleMode = "excerpt" | "sourceWindow"
 export type VoicePresetId = "standardNarration" | "animatedDialogue"
 export type ProviderKeySource = "browser" | "server" | "missing"
 export type SampleProcessingOperationId = "isolateVoice" | "trimSilence" | "separateSpeakers"
+export type SampleProcessingPresetId = "fast" | "balanced" | "clean" | "maxIsolation"
 export type SampleProcessingSourcePreference = "original" | "active"
 export type SampleProcessingJobStatus = "pending" | "running" | "success" | "error"
 
@@ -110,6 +111,8 @@ export type VoiceProcessingStep = {
   sourceSha256: string
   resultSha256: string
   engine: string
+  processingPresetId?: SampleProcessingPresetId
+  processingPresetLabel?: string | null
 }
 
 export type SampleProcessingOperation = {
@@ -117,6 +120,14 @@ export type SampleProcessingOperation = {
   label: string
   description: string
   enabled: boolean
+  processingPresets: SampleProcessingPreset[]
+  defaultProcessingPresetId: SampleProcessingPresetId | null
+}
+
+export type SampleProcessingPreset = {
+  id: SampleProcessingPresetId
+  label: string
+  description: string
 }
 
 export type SampleProcessingOptionsResponse = {
@@ -135,6 +146,8 @@ export type SampleProcessingJob = {
   operationId: SampleProcessingOperationId
   operationLabel: string
   status: SampleProcessingJobStatus
+  processingPresetId: SampleProcessingPresetId | null
+  processingPresetLabel: string | null
   sourceName: string
   sourceSha256: string
   sourcePreference: SampleProcessingSourcePreference

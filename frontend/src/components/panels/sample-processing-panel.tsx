@@ -8,10 +8,11 @@ import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui
 import { Input } from "@/components/ui/input"
 import { Loading } from "@/components/ui/loading"
 import { MenuSelect } from "@/components/ui/menu-select"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { VoicePresetToggleGroup } from "@/components/voice-preset-toggle-group"
 import type { SampleProcessingController } from "@/hooks/use-sample-processing"
 import { cn } from "@/lib/utils"
-import type { SampleProcessingOperationId, VoicePresetId } from "@/types"
+import type { SampleProcessingOperationId, SampleProcessingPresetId, VoicePresetId } from "@/types"
 
 type SampleProcessingPanelProps = {
   isExpanded: boolean
@@ -102,6 +103,37 @@ export function SampleProcessingPanel({
                   <FieldDescription>{processing.selectedOperation.description}</FieldDescription>
                 ) : null}
               </Field>
+
+              {processing.selectedOperation?.enabled === true && processing.processingPresets.length > 0 ? (
+                <Field>
+                  <FieldLabel id="sample-processing-preset-label">Isolation Strength</FieldLabel>
+                  <ToggleGroup
+                    aria-labelledby="sample-processing-preset-label"
+                    className="grid w-full grid-cols-2 rounded-md border border-border bg-background/60 p-1"
+                    disabled={processing.isProcessing}
+                    onValueChange={(value) => {
+                      if (isSampleProcessingPresetId(value)) {
+                        processing.setProcessingPresetId(value)
+                      }
+                    }}
+                    type="single"
+                    value={processing.processingPresetId}
+                  >
+                    {processing.processingPresets.map((preset) => (
+                      <ToggleGroupItem
+                        className="h-9 min-w-0 rounded px-2 text-center text-xs font-medium text-muted-foreground aria-checked:bg-primary aria-checked:text-primary-foreground aria-checked:shadow-sm"
+                        key={preset.id}
+                        value={preset.id}
+                      >
+                        <span className="min-w-0 truncate">{preset.label}</span>
+                      </ToggleGroupItem>
+                    ))}
+                  </ToggleGroup>
+                  {processing.selectedProcessingPreset ? (
+                    <FieldDescription>{processing.selectedProcessingPreset.description}</FieldDescription>
+                  ) : null}
+                </Field>
+              ) : null}
 
               <Field>
                 <FieldLabel>Source</FieldLabel>
@@ -277,4 +309,8 @@ function panelStatusLabel(processing: SampleProcessingController) {
 
 function isSampleProcessingOperationId(value: string): value is SampleProcessingOperationId {
   return value === "isolateVoice" || value === "trimSilence" || value === "separateSpeakers"
+}
+
+function isSampleProcessingPresetId(value: string): value is SampleProcessingPresetId {
+  return value === "fast" || value === "balanced" || value === "clean" || value === "maxIsolation"
 }

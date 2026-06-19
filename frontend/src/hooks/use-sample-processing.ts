@@ -7,6 +7,7 @@ import type {
   SampleProcessingJob,
   SampleProcessingOperationId,
   SampleProcessingOptionsResponse,
+  SampleProcessingPresetId,
   SampleProcessingSourcePreference,
   VoiceAsset,
   VoicePresetId,
@@ -22,12 +23,14 @@ type UseSampleProcessingOptions = {
 }
 
 const POLL_INTERVAL_MS = 1500
+const DEFAULT_PROCESSING_PRESET_ID: SampleProcessingPresetId = "balanced"
 
 export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: UseSampleProcessingOptions) {
   const [options, setOptions] = useState<SampleProcessingOptionsResponse | null>(null)
   const [optionsStatus, setOptionsStatus] = useState<AsyncStatus>("idle")
   const [optionsError, setOptionsError] = useState<string | null>(null)
   const [operationId, setOperationId] = useState<SampleProcessingOperationId>("isolateVoice")
+  const [processingPresetId, setProcessingPresetId] = useState<SampleProcessingPresetId>(DEFAULT_PROCESSING_PRESET_ID)
   const [sourceMode, setSourceMode] = useState<SampleProcessingSourceMode>("voice")
   const [sourceVoiceId, setSourceVoiceId] = useState("")
   const [sourcePreference, setSourcePreference] = useState<SampleProcessingSourcePreference>("original")
@@ -45,6 +48,10 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
   const operations = useMemo(() => options?.operations ?? [], [options])
   const enabledOperations = useMemo(() => operations.filter((operation) => operation.enabled), [operations])
   const selectedOperation = operations.find((operation) => operation.id === operationId) ?? null
+  const processingPresets = selectedOperation?.enabled === true ? selectedOperation.processingPresets : []
+  const resolvedProcessingPresetId = resolveProcessingPresetId(processingPresetId, selectedOperation)
+  const selectedProcessingPreset =
+    processingPresets.find((preset) => preset.id === resolvedProcessingPresetId) ?? null
   const resolvedSourceVoiceId = voices.some((voice) => voice.id === sourceVoiceId)
     ? sourceVoiceId
     : selectedVoice?.id ?? voices[0]?.id ?? ""
@@ -81,6 +88,7 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
             const currentOperation = payload.operations.find((operation) => operation.id === current)
             return currentOperation?.enabled ? current : nextOperation.id
           })
+          setProcessingPresetId((current) => resolveProcessingPresetId(current, nextOperation))
         }
       } catch (caught) {
         if (!mountedRef.current) {
@@ -121,6 +129,15 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
       return
     }
     setOperationId(nextOperationId)
+    setProcessingPresetId(resolveProcessingPresetId(undefined, operations.find((operation) => operation.id === nextOperationId)))
+    resetProcessedCandidate()
+  }
+
+  function handleProcessingPresetChange(nextPresetId: SampleProcessingPresetId) {
+    if (nextPresetId === resolvedProcessingPresetId) {
+      return
+    }
+    setProcessingPresetId(nextPresetId)
     resetProcessedCandidate()
   }
 
@@ -159,6 +176,7 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
     try {
       const payload = await api.createSampleProcessingJob({
         operationId,
+        processingPresetId: processingPresets.length > 0 ? resolvedProcessingPresetId : null,
         sourceFile: sourceMode === "upload" ? sourceFile : null,
         sourcePreference: sourceMode === "voice" ? sourcePreference : undefined,
         sourceVoiceId: sourceMode === "voice" ? resolvedSourceVoiceId : null,
@@ -268,14 +286,18 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
     options,
     optionsError,
     optionsStatus,
+    processingPresetId: resolvedProcessingPresetId,
+    processingPresets,
     resultUrl,
     saveError,
     saveName,
     saveStatus,
     saveVoicePresetId,
     selectedOperation,
+    selectedProcessingPreset,
     selectedSourceVoice,
     setOperationId: handleOperationChange,
+    setProcessingPresetId: handleProcessingPresetChange,
     setSaveName,
     setSaveVoicePresetId,
     setSourcePreference: handleSourcePreferenceChange,
@@ -290,6 +312,17 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
 }
 
 export type SampleProcessingController = ReturnType<typeof useSampleProcessing>
+
+function resolveProcessingPresetId(
+  current: SampleProcessingPresetId | undefined,
+  operation: SampleProcessingOptionsResponse["operations"][number] | null | undefined
+) {
+  const presets = operation?.processingPresets ?? []
+  if (presets.some((preset) => preset.id === current)) {
+    return current ?? DEFAULT_PROCESSING_PRESET_ID
+  }
+  return operation?.defaultProcessingPresetId ?? presets[0]?.id ?? DEFAULT_PROCESSING_PRESET_ID
+}
 
 function suggestedSaveName(
   sourceMode: SampleProcessingSourceMode,
