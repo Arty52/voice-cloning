@@ -11,6 +11,7 @@ import { MenuSelect } from "@/components/ui/menu-select"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { VoicePresetToggleGroup } from "@/components/voice-preset-toggle-group"
 import type { SampleProcessingController } from "@/hooks/use-sample-processing"
+import { formatElapsedTime } from "@/lib/formatters"
 import { cn } from "@/lib/utils"
 import type { SampleProcessingOperationId, SampleProcessingPresetId, VoicePresetId } from "@/types"
 
@@ -37,6 +38,7 @@ export function SampleProcessingPanel({
     processing.enabledOperations.length === 0 &&
     processing.operations.length > 0
   const statusLabel = panelStatusLabel(processing)
+  const elapsedTimeLabel = panelElapsedTimeLabel(processing)
 
   return (
     <section aria-busy={processing.isProcessing} className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5">
@@ -47,6 +49,11 @@ export function SampleProcessingPanel({
             <Badge className={cn(processing.status === "error" && "border-destructive/40 bg-destructive/10 text-destructive")}>
               {statusLabel}
             </Badge>
+            {elapsedTimeLabel ? (
+              <span aria-label="Sample Processing Elapsed Time" className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                {elapsedTimeLabel}
+              </span>
+            ) : null}
           </div>
           <p className="mt-1 text-sm text-muted-foreground">Prepare samples before adding them to the Voice Library.</p>
         </div>
@@ -305,6 +312,23 @@ function panelStatusLabel(processing: SampleProcessingController) {
     return "Unavailable"
   }
   return "Ready"
+}
+
+function panelElapsedTimeLabel(processing: SampleProcessingController) {
+  if (processing.processingElapsedMs === null) {
+    return null
+  }
+  const elapsedTime = formatElapsedTime(processing.processingElapsedMs)
+  if (processing.status === "starting" || processing.status === "processing") {
+    return `Elapsed ${elapsedTime}`
+  }
+  if (processing.status === "success") {
+    return `Finished In ${elapsedTime}`
+  }
+  if (processing.status === "error") {
+    return `Stopped After ${elapsedTime}`
+  }
+  return null
 }
 
 function isSampleProcessingOperationId(value: string): value is SampleProcessingOperationId {
