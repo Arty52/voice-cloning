@@ -32,6 +32,7 @@ const defaultVoice = {
   sourceContentType: null,
   sourceSha256: null,
   voicePresetId: "standardNarration" as const,
+  processingSteps: [],
 }
 
 const voiceCloneVoice = {
@@ -49,6 +50,7 @@ const voiceCloneVoice = {
   sourceContentType: null,
   sourceSha256: null,
   voicePresetId: "standardNarration" as const,
+  processingSteps: [],
 }
 
 const subscription = {
@@ -202,6 +204,75 @@ const providersResponse: ProvidersResponse = {
   ],
 }
 
+const sampleProcessingOptions = {
+  engine: "demucs",
+  operations: [
+    {
+      id: "isolateVoice" as const,
+      label: "Isolate Voice",
+      description: "Separate the vocal stem from music or background audio with Demucs.",
+      enabled: true,
+    },
+    {
+      id: "trimSilence" as const,
+      label: "Trim Silence",
+      description: "Remove leading, trailing, or long empty regions from a sample.",
+      enabled: false,
+    },
+    {
+      id: "separateSpeakers" as const,
+      label: "Separate Speakers",
+      description: "Split a track into speaker-specific samples.",
+      enabled: false,
+    },
+  ],
+}
+
+const successfulSampleProcessingJob = {
+  job: {
+    id: "job-1",
+    operationId: "isolateVoice" as const,
+    operationLabel: "Isolate Voice",
+    status: "success" as const,
+    sourceName: "Default voice",
+    sourceSha256: "default-hash",
+    sourcePreference: "original" as const,
+    engine: "demucs",
+    createdAt: "2026-06-19T00:00:00+00:00",
+    updatedAt: "2026-06-19T00:00:01+00:00",
+    error: null,
+    result: {
+      filename: "result.wav",
+      contentType: "audio/wav",
+      sha256: "processed-hash",
+    },
+  },
+}
+
+function processedVoiceFrom(init?: RequestInit) {
+  const payload = typeof init?.body === "string" ? (JSON.parse(init.body) as { name?: string; voicePresetId?: string }) : {}
+  return {
+    ...voiceCloneVoice,
+    id: "default-voice-isolated",
+    name: payload.name || "Default voice Isolated",
+    filePath: "default-voice-isolated.wav",
+    contentType: "audio/wav",
+    sha256: "processed-hash",
+    voicePresetId: payload.voicePresetId === "animatedDialogue" ? ("animatedDialogue" as const) : ("standardNarration" as const),
+    processingSteps: [
+      {
+        id: "job-1",
+        label: "Isolate Voice",
+        operationId: "isolateVoice" as const,
+        createdAt: "2026-06-19T00:00:01+00:00",
+        sourceSha256: "default-hash",
+        resultSha256: "processed-hash",
+        engine: "demucs",
+      },
+    ],
+  }
+}
+
 function okJson(payload: unknown) {
   return Promise.resolve(
     new Response(JSON.stringify(payload), {
@@ -287,6 +358,18 @@ function voiceLibraryPanel() {
   return scopedPanelByHeading("Voice Library")
 }
 
+function sampleProcessingPanel() {
+  return scopedPanelByHeading("Sample Processing")
+}
+
+function expectVoicePresetSelection(control: HTMLElement, selected: boolean) {
+  expect(control).toHaveAttribute("aria-checked", String(selected))
+  if (selected) {
+    expect(control).toHaveClass("aria-checked:bg-primary")
+    expect(control).toHaveClass("aria-checked:text-primary-foreground")
+  }
+}
+
 function voiceTuningPanel() {
   return scopedPanelByHeading("Voice Tuning")
 }
@@ -354,6 +437,28 @@ function mockFetch() {
         models: [multilingualModel, flashModel],
       })
     }
+    if (path === "/api/sample-processing/options" && !init) {
+      return okJson(sampleProcessingOptions)
+    }
+    if (path === "/api/sample-processing/jobs" && init?.method === "POST") {
+      return Promise.resolve(
+        new Response(JSON.stringify({ ...successfulSampleProcessingJob, job: { ...successfulSampleProcessingJob.job, status: "running" } }), {
+          status: 202,
+          headers: { "Content-Type": "application/json" },
+        })
+      )
+    }
+    if (path === "/api/sample-processing/jobs/job-1" && !init) {
+      return okJson(successfulSampleProcessingJob)
+    }
+    if (path === "/api/sample-processing/jobs/job-1/voice" && init?.method === "POST") {
+      return Promise.resolve(
+        new Response(JSON.stringify({ voice: processedVoiceFrom(init) }), {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        })
+      )
+    }
     if (path === "/api/voices" && init?.method === "POST") {
       return Promise.resolve(
         new Response(JSON.stringify({ voice: uploadedVoiceFrom(init) }), {
@@ -398,6 +503,28 @@ function mockFetchWithProviders(
         defaultModelId: "eleven_multilingual_v2",
         models: [multilingualModel, flashModel],
       })
+    }
+    if (path === "/api/sample-processing/options" && !init) {
+      return okJson(sampleProcessingOptions)
+    }
+    if (path === "/api/sample-processing/jobs" && init?.method === "POST") {
+      return Promise.resolve(
+        new Response(JSON.stringify({ ...successfulSampleProcessingJob, job: { ...successfulSampleProcessingJob.job, status: "running" } }), {
+          status: 202,
+          headers: { "Content-Type": "application/json" },
+        })
+      )
+    }
+    if (path === "/api/sample-processing/jobs/job-1" && !init) {
+      return okJson(successfulSampleProcessingJob)
+    }
+    if (path === "/api/sample-processing/jobs/job-1/voice" && init?.method === "POST") {
+      return Promise.resolve(
+        new Response(JSON.stringify({ voice: processedVoiceFrom(init) }), {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        })
+      )
     }
     if (path === "/api/voices" && init?.method === "POST") {
       return Promise.resolve(
@@ -709,6 +836,212 @@ describe("App", () => {
     )
   })
 
+  it("keeps sample processing separate between voice library and add voice", async () => {
+    renderApp()
+
+    const voiceLibraryHeading = await screen.findByText("Voice Library")
+    const sampleProcessingHeading = screen.getByText("Sample Processing")
+    const addVoiceHeading = screen.getByText("Add Voice")
+
+    expect(voiceLibraryHeading.compareDocumentPosition(sampleProcessingHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(sampleProcessingHeading.compareDocumentPosition(addVoiceHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" })).toHaveAttribute(
+      "aria-expanded",
+      "false"
+    )
+    expect(sampleProcessingPanel().queryByRole("button", { name: "Start Processing" })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /^Generate$/ })).toBeInTheDocument()
+  })
+
+  it("shows unavailable sample processing state", async () => {
+    const baseFetch = mockFetch()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/sample-processing/options" && !init) {
+          return okJson({
+            engine: null,
+            operations: sampleProcessingOptions.operations.map((operation) => ({ ...operation, enabled: false })),
+          })
+        }
+        return baseFetch(input, init)
+      })
+    )
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
+
+    expect(await sampleProcessingPanel().findByText("Sample Processing Unavailable")).toBeInTheDocument()
+    expect(sampleProcessingPanel().getByRole("button", { name: "Start Processing" })).toBeDisabled()
+  })
+
+  it("switches to an enabled sample processing operation and names the result for that operation", async () => {
+    const baseFetch = mockFetch()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/sample-processing/options" && !init) {
+          return okJson({
+            engine: "fake",
+            operations: sampleProcessingOptions.operations.map((operation) => {
+              if (operation.id === "isolateVoice") {
+                return { ...operation, enabled: false }
+              }
+              if (operation.id === "trimSilence") {
+                return { ...operation, enabled: true }
+              }
+              return operation
+            }),
+          })
+        }
+        return baseFetch(input, init)
+      })
+    )
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
+    expect(await sampleProcessingPanel().findByRole("button", { name: "Sample Processing Operation: Trim Silence" })).toBeInTheDocument()
+    const startButton = sampleProcessingPanel().getByRole("button", { name: "Start Processing" })
+    await waitFor(() => expect(startButton).toBeEnabled())
+
+    await user.click(startButton)
+
+    const jobCall = vi.mocked(fetch).mock.calls.find(
+      ([url, init]) => String(url) === "/api/sample-processing/jobs" && init?.method === "POST"
+    )
+    const jobBody = jobCall?.[1]?.body as FormData
+    expect(jobBody.get("operationId")).toBe("trimSilence")
+    expect(await sampleProcessingPanel().findByLabelText("Processed sample preview")).toBeInTheDocument()
+    expect(sampleProcessingPanel().getByLabelText("Voice Name")).toHaveValue("Default voice Trimmed")
+  })
+
+  it("processes an existing voice, previews the result, and saves it as a selectable voice", async () => {
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
+    const startButton = await sampleProcessingPanel().findByRole("button", { name: "Start Processing" })
+    await waitFor(() => expect(startButton).toBeEnabled())
+
+    await user.click(startButton)
+
+    const jobCall = vi.mocked(fetch).mock.calls.find(
+      ([url, init]) => String(url) === "/api/sample-processing/jobs" && init?.method === "POST"
+    )
+    expect(jobCall).toBeDefined()
+    const jobBody = jobCall?.[1]?.body as FormData
+    expect(jobBody.get("operationId")).toBe("isolateVoice")
+    expect(jobBody.get("sourceVoiceId")).toBe("default")
+    expect(jobBody.get("sourcePreference")).toBe("original")
+    expect(jobBody.get("sourceFile")).toBeNull()
+
+    expect(await sampleProcessingPanel().findByLabelText("Processed sample preview")).toBeInTheDocument()
+    expect(sampleProcessingPanel().getByLabelText("Voice Name")).toHaveValue("Default voice Isolated")
+
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Add To Voice Library" }))
+
+    const saveCall = vi.mocked(fetch).mock.calls.find(
+      ([url, init]) => String(url) === "/api/sample-processing/jobs/job-1/voice" && init?.method === "POST"
+    )
+    expect(saveCall).toBeDefined()
+    expect(JSON.parse(saveCall?.[1]?.body as string)).toEqual({
+      name: "Default voice Isolated",
+      voicePresetId: "standardNarration",
+    })
+    expect(await voiceLibraryPanel().findByText("Default voice Isolated")).toBeInTheDocument()
+  })
+
+  it("clears a processed preview when sample processing inputs change", async () => {
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
+    const startButton = await sampleProcessingPanel().findByRole("button", { name: "Start Processing" })
+    await waitFor(() => expect(startButton).toBeEnabled())
+    await user.click(startButton)
+    expect(await sampleProcessingPanel().findByLabelText("Processed sample preview")).toBeInTheDocument()
+
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Active Sample" }))
+
+    await waitFor(() => {
+      expect(sampleProcessingPanel().queryByLabelText("Processed sample preview")).not.toBeInTheDocument()
+    })
+    expect(sampleProcessingPanel().queryByRole("button", { name: "Add To Voice Library" })).not.toBeInTheDocument()
+
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Start Processing" }))
+
+    const jobCalls = vi
+      .mocked(fetch)
+      .mock.calls.filter(([url, init]) => String(url) === "/api/sample-processing/jobs" && init?.method === "POST")
+    expect(jobCalls).toHaveLength(2)
+    const nextJobBody = jobCalls[1]?.[1]?.body as FormData
+    expect(nextJobBody.get("sourcePreference")).toBe("active")
+  })
+
+  it("creates a sample processing job from an uploaded file", async () => {
+    const user = userEvent.setup()
+    const sourceFile = new File(["source"], "vegeta.wav", { type: "audio/wav" })
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Audio File" }))
+    await user.upload(sampleProcessingPanel().getByLabelText("Audio File"), sourceFile)
+    const startButton = sampleProcessingPanel().getByRole("button", { name: "Start Processing" })
+    await waitFor(() => expect(startButton).toBeEnabled())
+
+    await user.click(startButton)
+
+    const jobCall = vi.mocked(fetch).mock.calls.find(
+      ([url, init]) => String(url) === "/api/sample-processing/jobs" && init?.method === "POST"
+    )
+    const jobBody = jobCall?.[1]?.body as FormData
+    expect(jobBody.get("operationId")).toBe("isolateVoice")
+    expect(jobBody.get("sourceFile")).toBe(sourceFile)
+    expect(jobBody.get("sourceVoiceId")).toBeNull()
+    expect(await sampleProcessingPanel().findByLabelText("Processed sample preview")).toBeInTheDocument()
+  })
+
+  it("shows sample processing job errors", async () => {
+    const baseFetch = mockFetch()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/sample-processing/jobs/job-1" && !init) {
+          return okJson({
+            job: {
+              ...successfulSampleProcessingJob.job,
+              status: "error",
+              error: "demucs command was not found.",
+              result: null,
+            },
+          })
+        }
+        return baseFetch(input, init)
+      })
+    )
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
+    const startButton = await sampleProcessingPanel().findByRole("button", { name: "Start Processing" })
+    await waitFor(() => expect(startButton).toBeEnabled())
+    await user.click(startButton)
+
+    expect(await sampleProcessingPanel().findByText("Processing Failed")).toBeInTheDocument()
+    expect(sampleProcessingPanel().getByText("demucs command was not found.")).toBeInTheDocument()
+  })
+
   it("collapses cost quota details while keeping the overview", async () => {
     const user = userEvent.setup()
     renderApp()
@@ -876,7 +1209,13 @@ describe("App", () => {
 
     await screen.findByText("default/default-voice.mp3")
     const addPresetGroup = within(addVoicePanel().getByRole("radiogroup", { name: "Voice Preset" }))
-    await user.click(addPresetGroup.getByRole("radio", { name: /animated dialogue/i }))
+    const standardPreset = addPresetGroup.getByRole("radio", { name: /standard narration/i })
+    const animatedPreset = addPresetGroup.getByRole("radio", { name: /animated dialogue/i })
+    expectVoicePresetSelection(standardPreset, true)
+    expectVoicePresetSelection(animatedPreset, false)
+    await user.click(animatedPreset)
+    expectVoicePresetSelection(standardPreset, false)
+    expectVoicePresetSelection(animatedPreset, true)
     await user.type(screen.getByLabelText(/voice name/i), "Voice_Clone_01")
     const file = new File(["sample"], "voice-clone-01.wav", { type: "audio/wav" })
     await user.upload(screen.getByLabelText(/sample file/i), file)
@@ -1223,9 +1562,12 @@ describe("App", () => {
 
     await screen.findByText("default/default-voice.mp3")
     const currentPresetGroup = () => within(voiceLibraryPanel().getByRole("radiogroup", { name: "Voice Preset" }))
-    expect(currentPresetGroup().getByRole("radio", { name: /standard narration/i })).toHaveAttribute("aria-checked", "true")
+    const currentStandardPreset = () => currentPresetGroup().getByRole("radio", { name: /standard narration/i })
+    const currentAnimatedPreset = () => currentPresetGroup().getByRole("radio", { name: /animated dialogue/i })
+    expectVoicePresetSelection(currentStandardPreset(), true)
+    expectVoicePresetSelection(currentAnimatedPreset(), false)
 
-    await user.click(currentPresetGroup().getByRole("radio", { name: /animated dialogue/i }))
+    await user.click(currentAnimatedPreset())
 
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
@@ -1236,7 +1578,8 @@ describe("App", () => {
         })
       )
     )
-    expect(currentPresetGroup().getByRole("radio", { name: /animated dialogue/i })).toHaveAttribute("aria-checked", "true")
+    expectVoicePresetSelection(currentStandardPreset(), false)
+    expectVoicePresetSelection(currentAnimatedPreset(), true)
     expect(screen.getByRole("slider", { name: /stability/i })).toHaveValue("0.4")
     expect(screen.getByRole("slider", { name: /style/i })).toHaveValue("0.35")
   })

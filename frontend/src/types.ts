@@ -7,6 +7,9 @@ export type VoiceSampleInputMode = "upload" | "record"
 export type VoiceSampleMode = "excerpt" | "sourceWindow"
 export type VoicePresetId = "standardNarration" | "animatedDialogue"
 export type ProviderKeySource = "browser" | "server" | "missing"
+export type SampleProcessingOperationId = "isolateVoice" | "trimSilence" | "separateSpeakers"
+export type SampleProcessingSourcePreference = "original" | "active"
+export type SampleProcessingJobStatus = "pending" | "running" | "success" | "error"
 
 export type VoiceProvider = {
   id: string
@@ -91,11 +94,59 @@ export type VoiceAsset = {
   sourceContentType: string | null
   sourceSha256: string | null
   voicePresetId: VoicePresetId
+  processingSteps: VoiceProcessingStep[]
 }
 
 export type VoicesResponse = {
   defaultVoiceId: string
   voices: VoiceAsset[]
+}
+
+export type VoiceProcessingStep = {
+  id: string
+  label: string
+  operationId: SampleProcessingOperationId
+  createdAt: string
+  sourceSha256: string
+  resultSha256: string
+  engine: string
+}
+
+export type SampleProcessingOperation = {
+  id: SampleProcessingOperationId
+  label: string
+  description: string
+  enabled: boolean
+}
+
+export type SampleProcessingOptionsResponse = {
+  engine: string | null
+  operations: SampleProcessingOperation[]
+}
+
+export type SampleProcessingResult = {
+  filename: string
+  contentType: string
+  sha256: string
+}
+
+export type SampleProcessingJob = {
+  id: string
+  operationId: SampleProcessingOperationId
+  operationLabel: string
+  status: SampleProcessingJobStatus
+  sourceName: string
+  sourceSha256: string
+  sourcePreference: SampleProcessingSourcePreference
+  engine: string
+  createdAt: string
+  updatedAt: string
+  error: string | null
+  result: SampleProcessingResult | null
+}
+
+export type SampleProcessingJobResponse = {
+  job: SampleProcessingJob
 }
 
 export type SubscriptionResponse = {

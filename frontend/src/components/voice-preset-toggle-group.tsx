@@ -42,7 +42,7 @@ export function VoicePresetToggleGroup({
           <Tooltip key={preset.id}>
             <TooltipTrigger asChild>
               <ToggleGroupItem
-                className="h-10 min-w-0 rounded px-3 text-center text-sm font-medium data-[state=on]:bg-secondary data-[state=on]:text-secondary-foreground"
+                className="h-10 min-w-0 rounded px-3 text-center text-sm font-medium text-muted-foreground aria-checked:bg-primary aria-checked:text-primary-foreground aria-checked:shadow-sm aria-checked:ring-1 aria-checked:ring-primary/30 aria-checked:hover:bg-primary/90"
                 value={preset.id}
               >
                 <span className="min-w-0 truncate">{preset.label}</span>

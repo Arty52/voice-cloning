@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { addVoice, providerHeaders, updateVoice, VOICE_PROVIDER_KEY_HEADER } from "./api"
+import {
+  addVoice,
+  createSampleProcessingJob,
+  providerHeaders,
+  saveProcessedVoice,
+  updateVoice,
+  VOICE_PROVIDER_KEY_HEADER,
+} from "./api"
 
 function okJson(payload: unknown, status = 200) {
   return Promise.resolve(
@@ -65,6 +72,50 @@ describe("voice API helpers", () => {
         body: JSON.stringify({ voicePresetId: "standardNarration" }),
         headers: { "Content-Type": "application/json" },
         method: "PATCH",
+      })
+    )
+  })
+
+  it("creates a sample processing job from a saved voice", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => okJson({ job: { id: "job-1", status: "running" } })))
+
+    await createSampleProcessingJob({
+      operationId: "isolateVoice",
+      sourcePreference: "original",
+      sourceVoiceId: "voice-clone-01",
+    })
+
+    expect(fetch).toHaveBeenCalledWith("/api/sample-processing/jobs", expect.objectContaining({ method: "POST" }))
+    const body = vi.mocked(fetch).mock.calls[0][1]?.body as FormData
+    expect(body.get("operationId")).toBe("isolateVoice")
+    expect(body.get("sourceVoiceId")).toBe("voice-clone-01")
+    expect(body.get("sourcePreference")).toBe("original")
+    expect(body.get("sourceFile")).toBeNull()
+  })
+
+  it("creates a sample processing job from an uploaded file", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => okJson({ job: { id: "job-1", status: "running" } })))
+    const source = new File(["source"], "source.wav", { type: "audio/wav" })
+
+    await createSampleProcessingJob({ operationId: "isolateVoice", sourceFile: source })
+
+    const body = vi.mocked(fetch).mock.calls[0][1]?.body as FormData
+    expect(body.get("operationId")).toBe("isolateVoice")
+    expect(body.get("sourceFile")).toBe(source)
+    expect(body.get("sourceVoiceId")).toBeNull()
+  })
+
+  it("saves a processed result as a voice", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => okJson({ voice: { id: "vegeta-isolated", name: "Vegeta Isolated" } })))
+
+    await saveProcessedVoice("job-1", { name: "Vegeta Isolated", voicePresetId: "animatedDialogue" })
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/sample-processing/jobs/job-1/voice",
+      expect.objectContaining({
+        body: JSON.stringify({ name: "Vegeta Isolated", voicePresetId: "animatedDialogue" }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
       })
     )
   })
