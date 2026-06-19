@@ -1,24 +1,32 @@
 import { describe, expect, it } from "vitest"
 
-import { formatCompactBytes, formatExactBytes, formatGenerationElapsedTime } from "./formatters"
+import { formatCompactBytes, formatElapsedTime, formatExactBytes, formatGenerationElapsedTime } from "./formatters"
 
 const formatTestNumber = (value: number) => new Intl.NumberFormat().format(value)
 
-describe("formatGenerationElapsedTime", () => {
+describe("formatElapsedTime", () => {
   it("formats sub-second durations", () => {
-    expect(formatGenerationElapsedTime(0)).toBe("0s")
-    expect(formatGenerationElapsedTime(42)).toBe("< 0.1s")
-    expect(formatGenerationElapsedTime(850)).toBe("0.9s")
+    expect(formatElapsedTime(0)).toBe("0s")
+    expect(formatElapsedTime(42)).toBe("< 0.1s")
+    expect(formatElapsedTime(850)).toBe("0.9s")
   })
 
   it("formats second-scale durations", () => {
-    expect(formatGenerationElapsedTime(1_000)).toBe("1s")
-    expect(formatGenerationElapsedTime(1234)).toBe("1.2s")
-    expect(formatGenerationElapsedTime(9_999)).toBe("10s")
-    expect(formatGenerationElapsedTime(12_300)).toBe("12s")
+    expect(formatElapsedTime(1_000)).toBe("1s")
+    expect(formatElapsedTime(1234)).toBe("1.2s")
+    expect(formatElapsedTime(9_999)).toBe("10s")
+    expect(formatElapsedTime(12_300)).toBe("12s")
   })
 
   it("formats minute-scale durations", () => {
+    expect(formatElapsedTime(65_000)).toBe("1m 5s")
+  })
+})
+
+describe("formatGenerationElapsedTime", () => {
+  it("preserves generation elapsed labels through the shared formatter", () => {
+    expect(formatGenerationElapsedTime(850)).toBe("0.9s")
+    expect(formatGenerationElapsedTime(12_300)).toBe("12s")
     expect(formatGenerationElapsedTime(65_000)).toBe("1m 5s")
   })
 })

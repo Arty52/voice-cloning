@@ -36,7 +36,7 @@ export function formatRecordingDuration(durationSeconds: number) {
   return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`
 }
 
-export function formatGenerationElapsedTime(elapsedMs: number) {
+export function formatElapsedTime(elapsedMs: number) {
   if (!Number.isFinite(elapsedMs)) {
     return "unknown time"
   }
@@ -61,6 +61,10 @@ export function formatGenerationElapsedTime(elapsedMs: number) {
   const minutes = Math.floor(roundedSeconds / 60)
   const remainingSeconds = roundedSeconds % 60
   return `${minutes}m ${remainingSeconds}s`
+}
+
+export function formatGenerationElapsedTime(elapsedMs: number) {
+  return formatElapsedTime(elapsedMs)
 }
 
 export function formatGeneratedAudioTime(value: string) {
