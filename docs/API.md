@@ -14,6 +14,11 @@ The FastAPI service is available at `http://localhost:6420` when the Docker stac
 - `PATCH /api/voices/{voiceId}`
 - `DELETE /api/voices/{voiceId}`
 - `PUT /api/voices/default`
+- `GET /api/sample-processing/options`
+- `POST /api/sample-processing/jobs`
+- `GET /api/sample-processing/jobs/{jobId}`
+- `GET /api/sample-processing/jobs/{jobId}/result`
+- `POST /api/sample-processing/jobs/{jobId}/voice`
 - `POST /api/speech`
 
 Provider-backed routes accept an optional `providerId` request value and an optional `X-Voice-Provider-Key` header. When `providerId` is omitted, the backend uses `defaultProviderId`. When the header is present and non-empty, the browser-provided key overrides the selected provider's backend fallback key; otherwise the backend falls back to `.env`. The API never returns either key.
@@ -142,6 +147,7 @@ If model metadata is unavailable, generation still works by omitting `modelId` a
 
 Voice payloads include `voicePresetId` alongside the active sample metadata. Active provider samples are capped at 10 MB. Original source files retained for `sourceWindow` assets are local-only and capped at 50 MB. For the built-in ElevenLabs provider, `/api/providers` reports a 120-second maximum sample window with a 60-120 second recommended window. Existing voice manifest entries without sample-window metadata are treated as `excerpt` assets.
 Existing voice manifest entries without preset metadata, or with an unsupported preset id, are migrated to `standardNarration`.
+Existing voice manifest entries without processing metadata are migrated to `processingSteps: []`.
 
 `PATCH /api/voices/{voiceId}` accepts JSON and updates a local voice without changing its stable local id or sample file:
 
@@ -158,6 +164,86 @@ Both fields are optional, but at least one of `name` or `voicePresetId` is requi
 ```json
 { "voiceId": "voice-clone-01" }
 ```
+
+## Sample Processing
+
+Sample Processing prepares local samples without changing the normal generation flow. The first operation is `isolateVoice`; future operations such as `trimSilence` and `separateSpeakers` are exposed through the same options shape.
+
+`GET /api/sample-processing/options` returns the processor status and operation registry:
+
+```json
+{
+  "engine": "demucs",
+  "operations": [
+    {
+      "id": "isolateVoice",
+      "label": "Isolate Voice",
+      "description": "Separate the vocal stem from music or background audio with Demucs.",
+      "enabled": true
+    },
+    {
+      "id": "trimSilence",
+      "label": "Trim Silence",
+      "description": "Remove leading, trailing, or long empty regions from a sample.",
+      "enabled": false
+    }
+  ]
+}
+```
+
+`POST /api/sample-processing/jobs` accepts multipart form fields:
+
+- `operationId`: required operation id, currently `isolateVoice` when the optional processor is enabled
+- `sourceVoiceId`: optional saved local voice id
+- `sourcePreference`: optional, either `original` or `active`; defaults to `original` for saved voices when a retained `sourceFilePath` exists
+- `sourceFile`: optional uploaded audio source
+
+Exactly one of `sourceVoiceId` or `sourceFile` is required. The endpoint returns `202` with the created job:
+
+```json
+{
+  "job": {
+    "id": "sample-job-id",
+    "operationId": "isolateVoice",
+    "operationLabel": "Isolate Voice",
+    "status": "running",
+    "sourceName": "Voice_Clone_01",
+    "sourceSha256": "abc123",
+    "sourcePreference": "original",
+    "engine": "demucs",
+    "createdAt": "2026-06-19T12:00:00Z",
+    "updatedAt": "2026-06-19T12:00:01Z",
+    "error": null,
+    "result": null
+  }
+}
+```
+
+`GET /api/sample-processing/jobs/{jobId}` returns the same job shape while polling. A successful job includes a normalized mono 32 kHz WAV result:
+
+```json
+{
+  "job": {
+    "id": "sample-job-id",
+    "status": "success",
+    "result": {
+      "filename": "result.wav",
+      "contentType": "audio/wav",
+      "sha256": "def456"
+    }
+  }
+}
+```
+
+`GET /api/sample-processing/jobs/{jobId}/result` streams the processed WAV result. The result is available only after the job reaches `success`.
+
+`POST /api/sample-processing/jobs/{jobId}/voice` saves a successful result as a local voice:
+
+```json
+{ "name": "Voice_Clone_01 Isolated", "voicePresetId": "animatedDialogue" }
+```
+
+The response is `201` with `{ "voice": { ... } }`. The saved voice is persisted through `VoiceLibrary`, uses the processed sample as its active `filePath`, and includes `processingSteps` metadata with the operation id, engine, source hash, and result hash.
 
 ## Speech
 

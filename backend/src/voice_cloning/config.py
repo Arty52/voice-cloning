@@ -15,6 +15,16 @@ def _split_csv(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+def _float_env(name: str, default: float) -> float:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    normalized_value = raw_value.strip()
+    if not normalized_value:
+        return default
+    return float(normalized_value)
+
+
 @dataclass(frozen=True)
 class Settings:
     app_root: Path
@@ -30,6 +40,12 @@ class Settings:
     max_upload_bytes: int = 10 * 1024 * 1024
     max_source_upload_bytes: int = 50 * 1024 * 1024
     max_text_chars: int = 5000
+    sample_processing_engine: str = ""
+    sample_processing_demucs_command: str = "demucs"
+    sample_processing_ffmpeg_command: str = "ffmpeg"
+    sample_processing_demucs_model: str = "htdemucs"
+    sample_processing_demucs_device: str = ""
+    sample_processing_timeout_seconds: float = 900
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -63,6 +79,15 @@ class Settings:
             storage_dir=storage_dir.resolve(),
             sample_processing_dir=sample_processing_dir.resolve(),
             cors_allowed_origins=_split_csv(origins),
+            sample_processing_engine=os.getenv("SAMPLE_PROCESSING_ENGINE", "").strip().lower(),
+            sample_processing_demucs_command=os.getenv("SAMPLE_PROCESSING_DEMUCS_COMMAND", "demucs").strip()
+            or "demucs",
+            sample_processing_ffmpeg_command=os.getenv("SAMPLE_PROCESSING_FFMPEG_COMMAND", "ffmpeg").strip()
+            or "ffmpeg",
+            sample_processing_demucs_model=os.getenv("SAMPLE_PROCESSING_DEMUCS_MODEL", "htdemucs").strip()
+            or "htdemucs",
+            sample_processing_demucs_device=os.getenv("SAMPLE_PROCESSING_DEMUCS_DEVICE", "").strip(),
+            sample_processing_timeout_seconds=_float_env("SAMPLE_PROCESSING_TIMEOUT_SECONDS", 900),
         )
 
     def require_api_key(self) -> None:

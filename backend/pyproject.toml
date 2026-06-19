@@ -15,6 +15,10 @@ dependencies = [
 dev = [
   "pytest>=9.0.0",
 ]
+sample-processing = [
+  "demucs==4.0.1",
+  "torchcodec>=0.14.0",
+]
 
 [build-system]
 requires = ["hatchling>=1.28.0"]

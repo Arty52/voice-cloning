@@ -7,6 +7,7 @@ from ..cache import VoiceCache
 from ..config import Settings
 from ..elevenlabs_client import ElevenLabsProvider
 from ..providers import ProviderRegistry
+from ..sample_processors import create_sample_processor
 from ..services.sample_processing import SampleProcessingService, SampleProcessor
 from ..voice_library import VoiceLibrary
 from .routes.health import create_health_router
@@ -31,7 +32,7 @@ def create_app(
     resolved_sample_processing = sample_processing_service or SampleProcessingService(
         resolved_settings,
         resolved_library,
-        sample_processor,
+        sample_processor or create_sample_processor(resolved_settings),
     )
 
     app = FastAPI(title="Local Voice Cloning API", version="0.1.0")

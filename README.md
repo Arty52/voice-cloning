@@ -66,6 +66,7 @@ http://localhost:6420
 - Local voice preset assignments are saved with the ignored voice manifest under `assets/voices/`.
 - Generated audio and provider cache data under `storage/` are ignored by git.
 - Browser-generated audio is stored in browser IndexedDB by default, not committed to the repository.
+- Optional sample-processing output, separated stems, and downloaded model data are runtime-only and must stay out of git.
 - The optional live smoke test calls ElevenLabs, may consume credits, and may create or reuse a cloned voice.
 
 ## Common Workflow
@@ -73,11 +74,25 @@ http://localhost:6420
 1. Add an ElevenLabs key in the Provider Keys panel if `.env` does not provide one.
 2. Upload or record a voice sample.
 3. Save it with a local name and choose Standard Narration or Animated Dialogue.
-4. Enter text to speak.
-5. Review Cost & Quota and choose a model if metadata is available.
-6. Adjust Voice Tuning if needed; selecting a saved voice starts from its assigned preset when the active provider maps that preset, otherwise from provider defaults.
-7. Generate speech.
-8. Play, download, or remove generated audio from the browser library.
+4. Optionally process a noisy or music-backed sample through Sample Processing, preview the result, and add it to the Voice Library.
+5. Enter text to speak.
+6. Review Cost & Quota and choose a model if metadata is available.
+7. Adjust Voice Tuning if needed; selecting a saved voice starts from its assigned preset when the active provider maps that preset, otherwise from provider defaults.
+8. Generate speech.
+9. Play, download, or remove generated audio from the browser library.
+
+## Optional Sample Processing
+
+Sample Processing is disabled by default. To enable the first operation, Isolate Voice, install Demucs and FFmpeg in the backend runtime and set:
+
+```sh
+INSTALL_SAMPLE_PROCESSING=1
+SAMPLE_PROCESSING_ENGINE=demucs
+SAMPLE_PROCESSING_DEMUCS_MODEL=htdemucs
+SAMPLE_PROCESSING_FFMPEG_COMMAND=ffmpeg
+```
+
+The Docker build uses CPU-only PyTorch, Torchaudio, and TorchCodec wheels when `INSTALL_SAMPLE_PROCESSING=1`, then installs the optional backend `sample-processing` extra and FFmpeg. Rebuild with `make recycle` after changing that flag. The backend calls those tools as external commands, normalizes successful results to mono 32 kHz WAV, and stores job output under ignored `storage/sample-processing/`. Demucs model files and caches are runtime data under ignored `storage/model-cache/`.
 
 ## Documentation
 

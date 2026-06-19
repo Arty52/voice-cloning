@@ -4,6 +4,7 @@ import asyncio
 from dataclasses import replace
 import json
 from pathlib import Path
+import sys
 import time
 
 import pytest
@@ -40,6 +41,7 @@ from voice_cloning.providers import (
     ProviderTuningValue,
     resolve_elevenlabs_key,
 )
+from voice_cloning.sample_processors import _run_external_command
 from voice_cloning.samples import sample_hash
 from voice_cloning.services.sample_processing import SampleProcessingRequest, SampleProcessingService
 from voice_cloning.services.speech import SpeechServiceError, generate_speech
@@ -269,6 +271,78 @@ def wait_for_processing_job(client: TestClient, job_id: str, status: str = "succ
             return payload
         time.sleep(0.02)
     raise AssertionError(f"Sample processing job did not reach {status}: {payload}")
+
+
+def test_settings_blank_sample_processing_timeout_uses_default(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_ROOT", str(tmp_path))
+    monkeypatch.setenv("SAMPLE_PROCESSING_TIMEOUT_SECONDS", "   ")
+
+    settings = Settings.from_env()
+
+    assert settings.sample_processing_timeout_seconds == 900
+
+
+def write_fake_command(path: Path, body: str) -> Path:
+    path.write_text(f"#!{sys.executable}\n{body}", encoding="utf-8")
+    path.chmod(0o755)
+    return path
+
+
+def demucs_fake_command(path: Path, *, exit_code: int = 0, stderr: str = "demucs failed in test") -> Path:
+    if exit_code != 0:
+        return write_fake_command(
+            path,
+            f"""
+import sys
+sys.stderr.write({stderr!r})
+raise SystemExit({exit_code})
+""",
+        )
+    return write_fake_command(
+        path,
+        """
+from pathlib import Path
+import sys
+args = sys.argv[1:]
+output_root = Path(args[args.index("-o") + 1])
+model = args[args.index("-n") + 1]
+source = Path(args[-1])
+vocals = output_root / model / source.stem / "vocals.wav"
+vocals.parent.mkdir(parents=True, exist_ok=True)
+vocals.write_bytes(b"vocals")
+""",
+    )
+
+
+def ffmpeg_fake_command(path: Path, output: bytes = b"normalized-voice", sleep_seconds: float = 0) -> Path:
+    return write_fake_command(
+        path,
+        f"""
+from pathlib import Path
+import time
+import sys
+time.sleep({sleep_seconds!r})
+Path(sys.argv[-1]).write_bytes({output!r})
+""",
+    )
+
+
+def demucs_processing_settings(
+    tmp_path: Path,
+    demucs_command: Path,
+    ffmpeg_command: Path,
+    **overrides: object,
+) -> Settings:
+    return replace(
+        make_settings(tmp_path),
+        sample_processing_engine="demucs",
+        sample_processing_demucs_command=str(demucs_command),
+        sample_processing_ffmpeg_command=str(ffmpeg_command),
+        **overrides,
+    )
 
 
 def test_health_reports_default_sample(tmp_path: Path) -> None:
@@ -657,6 +731,145 @@ def test_sample_processing_cleans_task_registry_after_completion(tmp_path: Path)
     assert response.status_code == 202
     assert job["status"] == "success"
     assert service._tasks == {}
+
+
+def test_demucs_sample_processor_normalizes_vocals_with_ffmpeg(tmp_path: Path) -> None:
+    settings = demucs_processing_settings(
+        tmp_path,
+        demucs_fake_command(tmp_path / "demucs-fake"),
+        ffmpeg_fake_command(tmp_path / "ffmpeg-fake"),
+    )
+    with TestClient(create_app(settings=settings)) as client:
+        response = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "isolateVoice"},
+            files={"sourceFile": ("source.wav", b"source-audio", "audio/wav")},
+        )
+        job = wait_for_processing_job(client, response.json()["job"]["id"])
+        result = client.get(f"/api/sample-processing/jobs/{job['id']}/result")
+
+    assert response.status_code == 202
+    assert job["status"] == "success"
+    assert job["engine"] == "demucs"
+    assert job["result"]["sha256"] == sample_hash(b"normalized-voice")
+    assert result.status_code == 200
+    assert result.content == b"normalized-voice"
+
+
+def test_demucs_sample_processor_reports_missing_command(tmp_path: Path) -> None:
+    settings = demucs_processing_settings(
+        tmp_path,
+        tmp_path / "missing-demucs",
+        ffmpeg_fake_command(tmp_path / "ffmpeg-fake"),
+    )
+    with TestClient(create_app(settings=settings)) as client:
+        response = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "isolateVoice"},
+            files={"sourceFile": ("source.wav", b"source-audio", "audio/wav")},
+        )
+        job = wait_for_processing_job(client, response.json()["job"]["id"], status="error")
+
+    assert response.status_code == 202
+    assert job["error"] == "demucs command was not found."
+
+
+def test_demucs_sample_processor_reports_nonzero_command(tmp_path: Path) -> None:
+    settings = demucs_processing_settings(
+        tmp_path,
+        demucs_fake_command(tmp_path / "demucs-fake", exit_code=7),
+        ffmpeg_fake_command(tmp_path / "ffmpeg-fake"),
+    )
+    with TestClient(create_app(settings=settings)) as client:
+        response = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "isolateVoice"},
+            files={"sourceFile": ("source.wav", b"source-audio", "audio/wav")},
+        )
+        job = wait_for_processing_job(client, response.json()["job"]["id"], status="error")
+
+    assert response.status_code == 202
+    assert job["error"] == "demucs failed with exit code 7. demucs failed in test"
+
+
+def test_demucs_sample_processor_reports_tail_of_long_command_errors(tmp_path: Path) -> None:
+    settings = demucs_processing_settings(
+        tmp_path,
+        demucs_fake_command(tmp_path / "demucs-fake", exit_code=7, stderr=("progress " * 120) + "useful final failure"),
+        ffmpeg_fake_command(tmp_path / "ffmpeg-fake"),
+    )
+    with TestClient(create_app(settings=settings)) as client:
+        response = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "isolateVoice"},
+            files={"sourceFile": ("source.wav", b"source-audio", "audio/wav")},
+        )
+        job = wait_for_processing_job(client, response.json()["job"]["id"], status="error")
+
+    assert response.status_code == 202
+    assert job["error"].endswith("useful final failure")
+
+
+def test_demucs_sample_processor_reports_timeout(tmp_path: Path) -> None:
+    settings = demucs_processing_settings(
+        tmp_path,
+        demucs_fake_command(tmp_path / "demucs-fake"),
+        ffmpeg_fake_command(tmp_path / "ffmpeg-fake", sleep_seconds=2),
+        sample_processing_timeout_seconds=1,
+    )
+    with TestClient(create_app(settings=settings)) as client:
+        response = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "isolateVoice"},
+            files={"sourceFile": ("source.wav", b"source-audio", "audio/wav")},
+        )
+        job = wait_for_processing_job(client, response.json()["job"]["id"], status="error")
+
+    assert response.status_code == 202
+    assert job["error"] == "ffmpeg timed out."
+
+
+def test_demucs_sample_processor_rejects_oversized_result(tmp_path: Path) -> None:
+    settings = demucs_processing_settings(
+        tmp_path,
+        demucs_fake_command(tmp_path / "demucs-fake"),
+        ffmpeg_fake_command(tmp_path / "ffmpeg-fake", output=b"too-big"),
+        max_upload_bytes=5,
+    )
+    with TestClient(create_app(settings=settings)) as client:
+        response = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "isolateVoice"},
+            files={"sourceFile": ("source.wav", b"source-audio", "audio/wav")},
+        )
+        job = wait_for_processing_job(client, response.json()["job"]["id"], status="error")
+
+    assert response.status_code == 202
+    assert job["error"] == "Processed voice sample must be 5 bytes or smaller."
+
+
+def test_external_command_discards_stdout(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured_streams: dict[str, object] = {}
+
+    class FakeProcess:
+        returncode = 0
+
+        async def communicate(self) -> tuple[None, bytes]:
+            return None, b""
+
+    async def fake_create_subprocess_exec(*args: str, stdout: object, stderr: object) -> FakeProcess:
+        captured_streams["stdout"] = stdout
+        captured_streams["stderr"] = stderr
+        return FakeProcess()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+
+    asyncio.run(_run_external_command(["fake-command"], "fake", 1))
+
+    assert captured_streams == {
+        "stdout": asyncio.subprocess.DEVNULL,
+        "stderr": asyncio.subprocess.PIPE,
+    }
 
 
 def test_subscription_endpoint_returns_sanitized_quota(tmp_path: Path) -> None:

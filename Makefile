@@ -5,7 +5,7 @@ VENV_DIR := .venv
 VENV_PYTHON := $(VENV_DIR)/bin/python
 
 .PHONY: \
-	setup install-backend install-frontend \
+	setup install-backend install-backend-processing install-frontend \
 	up down recycle destroy build logs ps \
 	test-backend test-frontend test check \
 	smoke-live clean-cache
@@ -16,6 +16,9 @@ install-backend:
 	$(PYTHON) -m venv $(VENV_DIR)
 	$(VENV_PYTHON) -m pip install --upgrade pip
 	$(VENV_PYTHON) -m pip install -e "backend[dev]"
+
+install-backend-processing: install-backend
+	$(VENV_PYTHON) -m pip install -e "backend[dev,sample-processing]"
 
 install-frontend:
 	cd frontend && npm ci
