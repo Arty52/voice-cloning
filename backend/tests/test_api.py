@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import sys
 import time
+from typing import get_args
 
 import pytest
 from fastapi.testclient import TestClient
@@ -25,6 +26,7 @@ from voice_cloning.models import (
     CachedVoice,
     ModelSummary,
     SampleProcessingOperation,
+    SampleProcessingPresetId,
     SampleProcessingResult,
     SpeechResult,
     SubscriptionSummary,
@@ -43,7 +45,12 @@ from voice_cloning.providers import (
 )
 from voice_cloning.sample_processors import _run_external_command
 from voice_cloning.samples import sample_hash
-from voice_cloning.services.sample_processing import SampleProcessingRequest, SampleProcessingService
+from voice_cloning.services.sample_processing import (
+    DEFAULT_ISOLATION_PROCESSING_PRESET_ID,
+    ISOLATION_PROCESSING_PRESETS,
+    SampleProcessingRequest,
+    SampleProcessingService,
+)
 from voice_cloning.services.speech import SpeechServiceError, generate_speech
 from voice_cloning.voice_library import VoiceLibrary
 
@@ -205,6 +212,8 @@ class FakeSampleProcessor:
                 label="Isolate Voice",
                 description="Separate the vocal stem from music or background audio.",
                 enabled=True,
+                processing_presets=ISOLATION_PROCESSING_PRESETS,
+                default_processing_preset_id=DEFAULT_ISOLATION_PROCESSING_PRESET_ID,
             ),
         )
 
@@ -291,7 +300,17 @@ def write_fake_command(path: Path, body: str) -> Path:
     return path
 
 
-def demucs_fake_command(path: Path, *, exit_code: int = 0, stderr: str = "demucs failed in test") -> Path:
+def optional_path_literal(path: Path | None) -> str:
+    return "None" if path is None else repr(str(path))
+
+
+def demucs_fake_command(
+    path: Path,
+    *,
+    args_path: Path | None = None,
+    exit_code: int = 0,
+    stderr: str = "demucs failed in test",
+) -> Path:
     if exit_code != 0:
         return write_fake_command(
             path,
@@ -303,10 +322,14 @@ raise SystemExit({exit_code})
         )
     return write_fake_command(
         path,
-        """
+        f"""
 from pathlib import Path
+import json
 import sys
 args = sys.argv[1:]
+args_path = {optional_path_literal(args_path)}
+if args_path:
+    Path(args_path).write_text(json.dumps(args), encoding="utf-8")
 output_root = Path(args[args.index("-o") + 1])
 model = args[args.index("-n") + 1]
 source = Path(args[-1])
@@ -317,13 +340,23 @@ vocals.write_bytes(b"vocals")
     )
 
 
-def ffmpeg_fake_command(path: Path, output: bytes = b"normalized-voice", sleep_seconds: float = 0) -> Path:
+def ffmpeg_fake_command(
+    path: Path,
+    output: bytes = b"normalized-voice",
+    sleep_seconds: float = 0,
+    *,
+    args_path: Path | None = None,
+) -> Path:
     return write_fake_command(
         path,
         f"""
 from pathlib import Path
+import json
 import time
 import sys
+args_path = {optional_path_literal(args_path)}
+if args_path:
+    Path(args_path).write_text(json.dumps(sys.argv[1:]), encoding="utf-8")
 time.sleep({sleep_seconds!r})
 Path(sys.argv[-1]).write_bytes({output!r})
 """,
@@ -525,6 +558,54 @@ def test_voice_manifest_migrates_legacy_assets_with_excerpt_defaults(tmp_path: P
     assert migrated_voice["processingSteps"] == []
 
 
+def test_voice_manifest_loads_legacy_processing_steps_without_preset_metadata(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path, with_default_sample=False)
+    sample_path = settings.voice_assets_dir / "legacy.wav"
+    sample_path.parent.mkdir(parents=True)
+    sample_path.write_bytes(b"legacy-sample")
+    settings.voice_manifest_path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "defaultVoiceId": "legacy",
+                "voices": [
+                    {
+                        "id": "legacy",
+                        "name": "Legacy Voice",
+                        "filePath": "legacy.wav",
+                        "contentType": "audio/wav",
+                        "sha256": "legacy-hash",
+                        "source": "upload",
+                        "createdAt": "2026-05-28T00:00:00+00:00",
+                        "voicePresetId": "standardNarration",
+                        "processingSteps": [
+                            {
+                                "id": "job-legacy",
+                                "label": "Isolate Voice",
+                                "operationId": "isolateVoice",
+                                "createdAt": "2026-06-19T00:00:00+00:00",
+                                "sourceSha256": "source-hash",
+                                "resultSha256": "result-hash",
+                                "engine": "demucs",
+                            }
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    asset = VoiceLibrary(settings).list_assets()[0]
+
+    assert asset.processing_steps[0].processing_preset_id is None
+    assert asset.processing_steps[0].processing_preset_label is None
+
+
+def test_voice_manifest_processing_preset_ids_follow_model_literal() -> None:
+    assert voice_library_module.SAMPLE_PROCESSING_PRESET_IDS == frozenset(get_args(SampleProcessingPresetId))
+
+
 def test_sample_processing_options_report_unavailable_default_processor(tmp_path: Path) -> None:
     client, _ = make_client(tmp_path)
 
@@ -541,6 +622,42 @@ def test_sample_processing_options_report_unavailable_default_processor(tmp_path
     assert all(operation["enabled"] is False for operation in operations)
     assert create.status_code == 503
     assert create.json()["detail"] == "Sample processing is not available. Configure a processor to use this operation."
+
+
+def test_sample_processing_options_include_isolation_presets(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    app = create_app(settings=settings, sample_processor=FakeSampleProcessor())
+    client = TestClient(app)
+
+    response = client.get("/api/sample-processing/options")
+
+    assert response.status_code == 200
+    operation = response.json()["operations"][0]
+    assert operation["id"] == "isolateVoice"
+    assert operation["enabled"] is True
+    assert operation["defaultProcessingPresetId"] == "balanced"
+    assert operation["processingPresets"] == [
+        {
+            "id": "fast",
+            "label": "Fast",
+            "description": "Quickest preview with lighter separation quality.",
+        },
+        {
+            "id": "balanced",
+            "label": "Balanced",
+            "description": "Default vocal isolation quality and runtime.",
+        },
+        {
+            "id": "clean",
+            "label": "Clean",
+            "description": "Balanced isolation with conservative cleanup for background residue.",
+        },
+        {
+            "id": "maxIsolation",
+            "label": "Max Isolation",
+            "description": "Slower, strongest separation attempt for difficult tracks.",
+        },
+    ]
 
 
 def test_sample_processing_job_uses_original_voice_source_and_saves_result_as_voice(tmp_path: Path) -> None:
@@ -586,7 +703,11 @@ def test_sample_processing_job_uses_original_voice_source_and_saves_result_as_vo
     assert upload.status_code == 201
     assert processor.requests[0].source_path == settings.voice_assets_dir / "sources" / "voice-clone-01.wav"
     assert processor.requests[0].source.content == b"original-source"
+    assert processor.requests[0].processing_preset_id == "balanced"
+    assert processor.requests[0].processing_preset_label == "Balanced"
     assert job["status"] == "success"
+    assert job["processingPresetId"] == "balanced"
+    assert job["processingPresetLabel"] == "Balanced"
     assert job["result"]["filename"] == "result.wav"
     assert result.status_code == 200
     assert result.headers["content-type"].startswith("audio/wav")
@@ -607,6 +728,8 @@ def test_sample_processing_job_uses_original_voice_source_and_saves_result_as_vo
             "sourceSha256": sample_hash(b"original-source"),
             "resultSha256": sample_hash(b"isolated-voice"),
             "engine": "fake-processor",
+            "processingPresetId": "balanced",
+            "processingPresetLabel": "Balanced",
         }
     ]
     assert (settings.voice_assets_dir / "voice-clone-01-isolated.wav").read_bytes() == b"isolated-voice"
@@ -630,6 +753,41 @@ def test_sample_processing_job_accepts_uploaded_source(tmp_path: Path) -> None:
     assert job["sourceName"] == "uploaded"
     assert job["sourceSha256"] == sample_hash(b"uploaded-source")
     assert processor.requests[0].source.content == b"uploaded-source"
+
+
+def test_sample_processing_job_accepts_selected_processing_preset(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    processor = FakeSampleProcessor()
+    app = create_app(settings=settings, sample_processor=processor)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/sample-processing/jobs",
+        data={"operationId": "isolateVoice", "processingPresetId": "clean"},
+        files={"sourceFile": ("uploaded.wav", b"uploaded-source", "audio/wav")},
+    )
+    job = wait_for_processing_job(client, response.json()["job"]["id"])
+
+    assert response.status_code == 202
+    assert job["processingPresetId"] == "clean"
+    assert job["processingPresetLabel"] == "Clean"
+    assert processor.requests[0].processing_preset_id == "clean"
+    assert processor.requests[0].processing_preset_label == "Clean"
+
+
+def test_sample_processing_job_rejects_invalid_processing_preset(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    app = create_app(settings=settings, sample_processor=FakeSampleProcessor())
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/sample-processing/jobs",
+        data={"operationId": "isolateVoice", "processingPresetId": "tooStrong"},
+        files={"sourceFile": ("uploaded.wav", b"uploaded-source", "audio/wav")},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Unsupported processing preset: tooStrong."
 
 
 def test_sample_processing_save_rejects_duplicate_voice_name(tmp_path: Path) -> None:
@@ -754,6 +912,73 @@ def test_demucs_sample_processor_normalizes_vocals_with_ffmpeg(tmp_path: Path) -
     assert job["result"]["sha256"] == sample_hash(b"normalized-voice")
     assert result.status_code == 200
     assert result.content == b"normalized-voice"
+
+
+@pytest.mark.parametrize(
+    ("processing_preset_id", "expected_model", "expected_demucs_args", "expected_filter"),
+    [
+        ("fast", "htdemucs", ["--shifts", "1"], None),
+        ("balanced", "htdemucs", [], None),
+        ("clean", "htdemucs", [], "highpass=f=70,lowpass=f=12000"),
+        ("maxIsolation", "htdemucs_ft", ["--shifts", "8", "--overlap", "0.5"], None),
+    ],
+)
+def test_demucs_sample_processor_maps_isolation_presets_to_commands(
+    tmp_path: Path,
+    processing_preset_id: str,
+    expected_model: str,
+    expected_demucs_args: list[str],
+    expected_filter: str | None,
+) -> None:
+    demucs_args_path = tmp_path / "demucs-args.json"
+    ffmpeg_args_path = tmp_path / "ffmpeg-args.json"
+    settings = demucs_processing_settings(
+        tmp_path,
+        demucs_fake_command(tmp_path / "demucs-fake", args_path=demucs_args_path),
+        ffmpeg_fake_command(tmp_path / "ffmpeg-fake", args_path=ffmpeg_args_path),
+    )
+    with TestClient(create_app(settings=settings)) as client:
+        response = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "isolateVoice", "processingPresetId": processing_preset_id},
+            files={"sourceFile": ("source.wav", b"source-audio", "audio/wav")},
+        )
+        job = wait_for_processing_job(client, response.json()["job"]["id"])
+
+    demucs_args = json.loads(demucs_args_path.read_text(encoding="utf-8"))
+    ffmpeg_args = json.loads(ffmpeg_args_path.read_text(encoding="utf-8"))
+    assert response.status_code == 202
+    assert job["processingPresetId"] == processing_preset_id
+    assert demucs_args[demucs_args.index("-n") + 1] == expected_model
+    for expected_arg in expected_demucs_args:
+        assert expected_arg in demucs_args
+    if expected_filter is None:
+        assert "-af" not in ffmpeg_args
+    else:
+        assert ffmpeg_args[ffmpeg_args.index("-af") + 1] == expected_filter
+
+
+def test_demucs_sample_processor_reports_max_isolation_model_failures(tmp_path: Path) -> None:
+    settings = demucs_processing_settings(
+        tmp_path,
+        demucs_fake_command(
+            tmp_path / "demucs-fake",
+            exit_code=7,
+            stderr="Could not find model htdemucs_ft",
+        ),
+        ffmpeg_fake_command(tmp_path / "ffmpeg-fake"),
+    )
+    with TestClient(create_app(settings=settings)) as client:
+        response = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "isolateVoice", "processingPresetId": "maxIsolation"},
+            files={"sourceFile": ("source.wav", b"source-audio", "audio/wav")},
+        )
+        job = wait_for_processing_job(client, response.json()["job"]["id"], status="error")
+
+    assert response.status_code == 202
+    assert job["processingPresetId"] == "maxIsolation"
+    assert job["error"] == "demucs failed with exit code 7. Could not find model htdemucs_ft"
 
 
 def test_demucs_sample_processor_reports_missing_command(tmp_path: Path) -> None:

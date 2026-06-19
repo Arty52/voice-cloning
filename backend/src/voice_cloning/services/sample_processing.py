@@ -15,6 +15,8 @@ from ..models import (
     SampleProcessingJob,
     SampleProcessingOperation,
     SampleProcessingOperationId,
+    SampleProcessingPreset,
+    SampleProcessingPresetId,
     SampleProcessingResult,
     SampleProcessingSourcePreference,
     VoiceAsset,
@@ -27,6 +29,30 @@ from ..voice_library import VoiceLibrary
 
 RESULT_FILENAME = "result.wav"
 RESULT_CONTENT_TYPE = "audio/wav"
+DEFAULT_ISOLATION_PROCESSING_PRESET_ID: SampleProcessingPresetId = "balanced"
+
+ISOLATION_PROCESSING_PRESETS: tuple[SampleProcessingPreset, ...] = (
+    SampleProcessingPreset(
+        id="fast",
+        label="Fast",
+        description="Quickest preview with lighter separation quality.",
+    ),
+    SampleProcessingPreset(
+        id="balanced",
+        label="Balanced",
+        description="Default vocal isolation quality and runtime.",
+    ),
+    SampleProcessingPreset(
+        id="clean",
+        label="Clean",
+        description="Balanced isolation with conservative cleanup for background residue.",
+    ),
+    SampleProcessingPreset(
+        id="maxIsolation",
+        label="Max Isolation",
+        description="Slower, strongest separation attempt for difficult tracks.",
+    ),
+)
 
 
 BASE_OPERATIONS: tuple[SampleProcessingOperation, ...] = (
@@ -66,6 +92,8 @@ class SampleProcessingRequest:
     output_path: Path
     job_dir: Path
     source: VoiceSample
+    processing_preset_id: SampleProcessingPresetId | None = None
+    processing_preset_label: str | None = None
 
 
 class SampleProcessor(Protocol):
@@ -115,6 +143,10 @@ class SampleProcessingService:
                     enabled=bool(processor_operation and processor_operation.enabled),
                     description=processor_operation.description if processor_operation else operation.description,
                     label=processor_operation.label if processor_operation else operation.label,
+                    processing_presets=processor_operation.processing_presets if processor_operation else (),
+                    default_processing_preset_id=(
+                        processor_operation.default_processing_preset_id if processor_operation else None
+                    ),
                 )
             )
         return tuple(operations)
@@ -123,6 +155,7 @@ class SampleProcessingService:
         self,
         *,
         operation_id: str,
+        processing_preset_id: str | None = None,
         source_preference: str | None,
         source_voice_id: str | None = None,
         source_upload: UploadFile | None = None,
@@ -130,6 +163,10 @@ class SampleProcessingService:
         resolved_operation_id = _normalize_operation_id(operation_id)
         resolved_source_preference = _normalize_source_preference(source_preference)
         operation = self._enabled_operation(resolved_operation_id)
+        resolved_processing_preset_id, resolved_processing_preset_label = _normalize_processing_preset(
+            processing_preset_id,
+            operation,
+        )
 
         if bool(source_voice_id and source_voice_id.strip()) == bool(source_upload):
             raise SampleProcessingServiceError("Choose one source voice or upload one source file.", 422)
@@ -163,6 +200,8 @@ class SampleProcessingService:
                 created_at=now,
                 updated_at=now,
                 engine=self.processor.engine_name,
+                processing_preset_id=resolved_processing_preset_id,
+                processing_preset_label=resolved_processing_preset_label,
             )
             self._jobs[job_id] = job
             request = SampleProcessingRequest(
@@ -172,6 +211,8 @@ class SampleProcessingService:
                 output_path=job_dir / RESULT_FILENAME,
                 job_dir=job_dir,
                 source=source_sample,
+                processing_preset_id=resolved_processing_preset_id,
+                processing_preset_label=resolved_processing_preset_label,
             )
             self._tasks[job_id] = asyncio.create_task(self._run_job(job_id, request))
             return job
@@ -218,6 +259,8 @@ class SampleProcessingService:
             source_sha256=job.source_sha256,
             result_sha256=sample.sha256,
             engine=job.engine,
+            processing_preset_id=job.processing_preset_id,
+            processing_preset_label=job.processing_preset_label,
         )
         return self.voice_library.add_processed_sample(
             name,
@@ -327,6 +370,25 @@ def _normalize_source_preference(value: str | None) -> SampleProcessingSourcePre
     if normalized in {"original", "active"}:
         return "active" if normalized == "active" else "original"
     raise SampleProcessingServiceError("Source preference must be original or active.", 422)
+
+
+def _normalize_processing_preset(
+    value: str | None,
+    operation: SampleProcessingOperation,
+) -> tuple[SampleProcessingPresetId | None, str | None]:
+    raw_value = (value or "").strip()
+    if not operation.processing_presets:
+        if raw_value:
+            raise SampleProcessingServiceError("Processing preset is not supported for this operation.", 422)
+        return None, None
+
+    resolved_value = raw_value or operation.default_processing_preset_id
+    if resolved_value is None:
+        resolved_value = operation.processing_presets[0].id
+    for preset in operation.processing_presets:
+        if preset.id == resolved_value:
+            return preset.id, preset.label
+    raise SampleProcessingServiceError(f"Unsupported processing preset: {raw_value}.", 422)
 
 
 def _require_relative_path(path: Path, parent: Path) -> None:

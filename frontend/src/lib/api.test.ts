@@ -81,6 +81,7 @@ describe("voice API helpers", () => {
 
     await createSampleProcessingJob({
       operationId: "isolateVoice",
+      processingPresetId: "clean",
       sourcePreference: "original",
       sourceVoiceId: "voice-clone-01",
     })
@@ -88,6 +89,7 @@ describe("voice API helpers", () => {
     expect(fetch).toHaveBeenCalledWith("/api/sample-processing/jobs", expect.objectContaining({ method: "POST" }))
     const body = vi.mocked(fetch).mock.calls[0][1]?.body as FormData
     expect(body.get("operationId")).toBe("isolateVoice")
+    expect(body.get("processingPresetId")).toBe("clean")
     expect(body.get("sourceVoiceId")).toBe("voice-clone-01")
     expect(body.get("sourcePreference")).toBe("original")
     expect(body.get("sourceFile")).toBeNull()

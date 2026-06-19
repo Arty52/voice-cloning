@@ -92,7 +92,7 @@ SAMPLE_PROCESSING_DEMUCS_MODEL=htdemucs
 SAMPLE_PROCESSING_FFMPEG_COMMAND=ffmpeg
 ```
 
-The Docker build uses CPU-only PyTorch, Torchaudio, and TorchCodec wheels when `INSTALL_SAMPLE_PROCESSING=1`, then installs the optional backend `sample-processing` extra and FFmpeg. Rebuild with `make recycle` after changing that flag. The backend calls those tools as external commands, normalizes successful results to mono 32 kHz WAV, and stores job output under ignored `storage/sample-processing/`. Demucs model files and caches are runtime data under ignored `storage/model-cache/`.
+The Docker build uses CPU-only PyTorch, Torchaudio, and TorchCodec wheels when `INSTALL_SAMPLE_PROCESSING=1`, then installs the optional backend `sample-processing` extra and FFmpeg. Rebuild with `make recycle` after changing that flag. The backend calls those tools as external commands, normalizes successful results to mono 32 kHz WAV, and stores job output under ignored `storage/sample-processing/`. Demucs model files and caches are runtime data under ignored `storage/model-cache/`. Isolate Voice includes Fast, Balanced, Clean, and Max Isolation strength presets; Balanced preserves the default behavior.
 
 ## Documentation
 

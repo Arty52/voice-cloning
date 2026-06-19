@@ -179,13 +179,38 @@ Sample Processing prepares local samples without changing the normal generation 
       "id": "isolateVoice",
       "label": "Isolate Voice",
       "description": "Separate the vocal stem from music or background audio with Demucs.",
-      "enabled": true
+      "enabled": true,
+      "defaultProcessingPresetId": "balanced",
+      "processingPresets": [
+        {
+          "id": "fast",
+          "label": "Fast",
+          "description": "Quickest preview with lighter separation quality."
+        },
+        {
+          "id": "balanced",
+          "label": "Balanced",
+          "description": "Default vocal isolation quality and runtime."
+        },
+        {
+          "id": "clean",
+          "label": "Clean",
+          "description": "Balanced isolation with conservative cleanup for background residue."
+        },
+        {
+          "id": "maxIsolation",
+          "label": "Max Isolation",
+          "description": "Slower, strongest separation attempt for difficult tracks."
+        }
+      ]
     },
     {
       "id": "trimSilence",
       "label": "Trim Silence",
       "description": "Remove leading, trailing, or long empty regions from a sample.",
-      "enabled": false
+      "enabled": false,
+      "defaultProcessingPresetId": null,
+      "processingPresets": []
     }
   ]
 }
@@ -194,6 +219,7 @@ Sample Processing prepares local samples without changing the normal generation 
 `POST /api/sample-processing/jobs` accepts multipart form fields:
 
 - `operationId`: required operation id, currently `isolateVoice` when the optional processor is enabled
+- `processingPresetId`: optional Isolate Voice preset id; defaults to `balanced` when presets are advertised
 - `sourceVoiceId`: optional saved local voice id
 - `sourcePreference`: optional, either `original` or `active`; defaults to `original` for saved voices when a retained `sourceFilePath` exists
 - `sourceFile`: optional uploaded audio source
@@ -207,6 +233,8 @@ Exactly one of `sourceVoiceId` or `sourceFile` is required. The endpoint returns
     "operationId": "isolateVoice",
     "operationLabel": "Isolate Voice",
     "status": "running",
+    "processingPresetId": "balanced",
+    "processingPresetLabel": "Balanced",
     "sourceName": "Voice_Clone_01",
     "sourceSha256": "abc123",
     "sourcePreference": "original",
@@ -243,7 +271,7 @@ Exactly one of `sourceVoiceId` or `sourceFile` is required. The endpoint returns
 { "name": "Voice_Clone_01 Isolated", "voicePresetId": "animatedDialogue" }
 ```
 
-The response is `201` with `{ "voice": { ... } }`. The saved voice is persisted through `VoiceLibrary`, uses the processed sample as its active `filePath`, and includes `processingSteps` metadata with the operation id, engine, source hash, and result hash.
+The response is `201` with `{ "voice": { ... } }`. The saved voice is persisted through `VoiceLibrary`, uses the processed sample as its active `filePath`, and includes `processingSteps` metadata with the operation id, engine, source hash, result hash, and selected processing preset when present.
 
 ## Speech
 

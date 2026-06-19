@@ -22,6 +22,7 @@ def create_sample_processing_router(sample_processing: SampleProcessingService) 
     @router.post("/api/sample-processing/jobs", status_code=202)
     async def create_sample_processing_job(
         operationId: str = Form(...),
+        processingPresetId: str | None = Form(None),
         sourceVoiceId: str | None = Form(None),
         sourcePreference: str = Form("original"),
         sourceFile: UploadFile | None = File(None),
@@ -29,6 +30,7 @@ def create_sample_processing_router(sample_processing: SampleProcessingService) 
         try:
             job = await sample_processing.create_job(
                 operation_id=operationId,
+                processing_preset_id=processingPresetId,
                 source_voice_id=sourceVoiceId,
                 source_preference=sourcePreference,
                 source_upload=sourceFile,

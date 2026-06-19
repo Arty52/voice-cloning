@@ -7,6 +7,7 @@ from ..models import (
     ModelSummary,
     SampleProcessingJob,
     SampleProcessingOperation,
+    SampleProcessingPreset,
     SampleProcessingResult,
     SubscriptionSummary,
     VoiceAsset,
@@ -162,7 +163,7 @@ def voice_asset_payload(asset: VoiceAsset) -> dict[str, object]:
 
 
 def voice_processing_step_payload(step: VoiceProcessingStep) -> dict[str, object]:
-    return {
+    payload: dict[str, object] = {
         "id": step.id,
         "label": step.label,
         "operationId": step.operation_id,
@@ -171,6 +172,10 @@ def voice_processing_step_payload(step: VoiceProcessingStep) -> dict[str, object
         "resultSha256": step.result_sha256,
         "engine": step.engine,
     }
+    if step.processing_preset_id is not None:
+        payload["processingPresetId"] = step.processing_preset_id
+        payload["processingPresetLabel"] = step.processing_preset_label
+    return payload
 
 
 def sample_processing_options_payload(
@@ -187,6 +192,16 @@ def sample_processing_operation_payload(operation: SampleProcessingOperation) ->
         "label": operation.label,
         "description": operation.description,
         "enabled": operation.enabled,
+        "processingPresets": [sample_processing_preset_payload(preset) for preset in operation.processing_presets],
+        "defaultProcessingPresetId": operation.default_processing_preset_id,
+    }
+
+
+def sample_processing_preset_payload(preset: SampleProcessingPreset) -> dict[str, object]:
+    return {
+        "id": preset.id,
+        "label": preset.label,
+        "description": preset.description,
     }
 
 
@@ -195,6 +210,8 @@ def sample_processing_job_payload(job: SampleProcessingJob) -> dict[str, object]
         "id": job.id,
         "operationId": job.operation_id,
         "status": job.status,
+        "processingPresetId": job.processing_preset_id,
+        "processingPresetLabel": job.processing_preset_label,
         "sourceName": job.source_name,
         "sourceFilename": job.source_filename,
         "sourceContentType": job.source_content_type,

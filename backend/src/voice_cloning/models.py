@@ -8,6 +8,7 @@ VoiceSampleMode = Literal["excerpt", "sourceWindow"]
 VoicePresetId = Literal["standardNarration", "animatedDialogue"]
 DEFAULT_VOICE_PRESET_ID: VoicePresetId = "standardNarration"
 SampleProcessingOperationId = Literal["isolateVoice", "trimSilence", "separateSpeakers"]
+SampleProcessingPresetId = Literal["fast", "balanced", "clean", "maxIsolation"]
 SampleProcessingSourcePreference = Literal["original", "active"]
 SampleProcessingJobStatus = Literal["pending", "running", "success", "error"]
 
@@ -51,6 +52,8 @@ class VoiceProcessingStep:
     source_sha256: str
     result_sha256: str
     engine: str | None = None
+    processing_preset_id: SampleProcessingPresetId | None = None
+    processing_preset_label: str | None = None
 
 
 @dataclass(frozen=True)
@@ -133,6 +136,15 @@ class SampleProcessingOperation:
     label: str
     description: str
     enabled: bool
+    processing_presets: tuple[SampleProcessingPreset, ...] = ()
+    default_processing_preset_id: SampleProcessingPresetId | None = None
+
+
+@dataclass(frozen=True)
+class SampleProcessingPreset:
+    id: SampleProcessingPresetId
+    label: str
+    description: str
 
 
 @dataclass(frozen=True)
@@ -158,3 +170,5 @@ class SampleProcessingJob:
     error: str | None = None
     result: SampleProcessingResult | None = None
     engine: str | None = None
+    processing_preset_id: SampleProcessingPresetId | None = None
+    processing_preset_label: str | None = None

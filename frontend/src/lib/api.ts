@@ -5,6 +5,7 @@ import type {
   SampleProcessingJobResponse,
   SampleProcessingOperationId,
   SampleProcessingOptionsResponse,
+  SampleProcessingPresetId,
   SampleProcessingSourcePreference,
   SubscriptionResponse,
   VoiceAsset,
@@ -36,6 +37,7 @@ export type VoiceUpdate = {
 
 export type CreateSampleProcessingJobRequest = {
   operationId: SampleProcessingOperationId
+  processingPresetId?: SampleProcessingPresetId | null
   sourceFile?: File | null
   sourcePreference?: SampleProcessingSourcePreference
   sourceVoiceId?: string | null
@@ -143,12 +145,16 @@ export async function fetchSampleProcessingOptions() {
 
 export async function createSampleProcessingJob({
   operationId,
+  processingPresetId,
   sourceFile,
   sourcePreference,
   sourceVoiceId,
 }: CreateSampleProcessingJobRequest) {
   const formData = new FormData()
   formData.append("operationId", operationId)
+  if (processingPresetId) {
+    formData.append("processingPresetId", processingPresetId)
+  }
   if (sourceVoiceId) {
     formData.append("sourceVoiceId", sourceVoiceId)
   }
