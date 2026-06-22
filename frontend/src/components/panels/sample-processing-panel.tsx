@@ -383,5 +383,13 @@ function isSampleProcessingOperationId(value: string): value is SampleProcessing
 }
 
 function isSampleProcessingPresetId(value: string): value is SampleProcessingPresetId {
-  return value === "fast" || value === "balanced" || value === "clean" || value === "maxIsolation"
+  return (
+    value === "fast" ||
+    value === "balanced" ||
+    value === "clean" ||
+    value === "maxIsolation" ||
+    value === "trimLight" ||
+    value === "trimBalanced" ||
+    value === "trimAggressive"
+  )
 }
