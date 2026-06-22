@@ -1,16 +1,16 @@
 # Voice Clone Lab
 
-Voice Clone Lab is a local-first voice studio for experimenting with provider-backed voice cloning from your own browser. It gives you a small saved voice library, text-to-speech generation, model selection, cost/quota visibility, voice tuning controls, playback, downloads, and a browser-local provider key manager.
+Voice Clone Lab is a local-first voice studio for experimenting with provider-backed voice cloning from your own browser. It gives you a sidebar workflow for preparing samples, managing voices, generating speech, reviewing generated audio, and keeping provider keys plus usage controls in one local workspace.
 
-![Screenshot of the Voice Clone Lab desktop Voice Studio showing text input, Demo Narrator and Demo Dialogue with voice preset badges, generated audio playback, Voice Tuning, and Voice Preset assignment controls.](docs/assets/voice-studio-desktop.png)
+![Screenshot of the Voice Clone Lab desktop Voice Studio showing the workflow sidebar, the Overview landing section, intro copy, workflow map cards, and local workspace notes.](docs/assets/voice-studio-desktop.png)
 
-Public-safe demo screenshot: this capture uses mocked data and does not include real API keys, voice samples, generated audio files, or account details. A mobile capture is available in [docs/assets/voice-studio-mobile.png](docs/assets/voice-studio-mobile.png).
+Public-safe demo screenshot: this capture uses mocked data and does not include real API keys, voice samples, generated audio files, or account details. A mobile workflow navigation capture is available in [docs/assets/voice-studio-mobile.png](docs/assets/voice-studio-mobile.png).
 
 ## What This Is
 
 - A local development tool for testing provider-backed voice cloning with built-in ElevenLabs support.
 - A Docker Compose app with a React + TypeScript frontend and Python FastAPI backend.
-- A browser workspace for saving named voice samples, choosing a voice, selecting a model, tuning generation settings, checking quota, and downloading generated speech.
+- A browser workspace for saving named voice samples, choosing a voice, selecting a model, tuning generation settings, checking quota, navigating workflow sections, and downloading generated speech.
 
 ## What This Is Not
 
@@ -34,7 +34,7 @@ Create a local environment file:
 cp .env.example .env
 ```
 
-Optionally add an ElevenLabs key to `.env` as a backend fallback. You can also add a browser-local key from the Provider Keys panel instead.
+Optionally add an ElevenLabs key to `.env` as a backend fallback. You can also add a browser-local key from `Provider & Usage` instead.
 
 ```sh
 ELEVENLABS_API_KEY=your_key_here
@@ -71,15 +71,13 @@ http://localhost:6420
 
 ## Common Workflow
 
-1. Add an ElevenLabs key in the Provider Keys panel if `.env` does not provide one.
-2. Upload or record a voice sample.
-3. Save it with a local name and choose Standard Narration or Animated Dialogue.
-4. Optionally process a noisy or music-backed sample through Sample Processing, preview the result, and add it to the Voice Library.
-5. Enter text to speak.
-6. Review Cost & Quota and choose a model if metadata is available.
-7. Adjust Voice Tuning if needed; selecting a saved voice starts from its assigned preset when the active provider maps that preset, otherwise from provider defaults.
-8. Generate speech.
-9. Play, download, or remove generated audio from the browser library.
+The Voice Studio opens on `Voices`. Use the sidebar to move between stable workflow sections:
+
+1. `Prepare Samples` (`#prepare`, optional step 0): process uploaded or saved samples before adding them to the library.
+2. `Voices` (`#voices`, step 1): upload, record, select, preview, rename, and assign local voice presets.
+3. `Generate Speech` (`#generate`, step 2): enter text, tune the selected voice, choose model settings, generate speech, and review the latest result.
+4. `Generated Audio` (`#archive`, optional): review, download, remove, or clear browser-saved generated audio.
+5. `Provider & Usage` (`#provider`): add browser-local provider keys, confirm `.env` fallback, choose models, and review quota/cost metadata.
 
 ## Optional Sample Processing
 

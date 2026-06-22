@@ -1,6 +1,6 @@
 # Usage Guide
 
-This guide covers local setup, provider key handling, and the browser workflow for Voice Clone Lab.
+This guide covers local setup, provider key handling, and the sidebar workflow for Voice Clone Lab.
 
 ## Prerequisites
 
@@ -44,7 +44,7 @@ cp .env.example .env
 Optionally edit `.env` and add your ElevenLabs key as the backend fallback:
 
 ```sh
-ELEVENLABS_API_KEY=your_key_here  # optional when you use the Provider Keys panel
+ELEVENLABS_API_KEY=your_key_here  # optional when you use Provider & Usage
 ELEVENLABS_MODEL_ID=eleven_multilingual_v2
 ```
 
@@ -84,18 +84,13 @@ Open the UI:
 http://localhost:4340
 ```
 
-Then:
+The UI opens on `Voices`. The sidebar is the top-level workflow map:
 
-1. Add an ElevenLabs key in the Provider Keys panel if `.env` does not provide one.
-2. Upload or record a voice sample. For long uploads, choose the sample window and whether to keep the original local source.
-3. Give it a local name, such as `Voice_Clone_01`, and choose Standard Narration or Animated Dialogue.
-4. Save the voice.
-5. Optionally process the saved original or active sample in Sample Processing, preview the output, and add the processed result to the Voice Library.
-6. Enter text.
-7. Check the Cost & Quota panel and choose a model if model metadata is available.
-8. Adjust tuning sliders if needed; selecting a saved voice initializes tuning from that voice's assigned preset when the active provider maps it, otherwise from provider defaults.
-9. Generate speech.
-10. Play, download, or remove saved generated MP3s from the Generated Audio panel.
+1. `Prepare Samples` (`#prepare`, optional step 0): optionally process an uploaded file or saved sample before creating a library voice.
+2. `Voices` (`#voices`, step 1): upload or record a voice sample, choose a local name such as `Voice_Clone_01`, choose Standard Narration or Animated Dialogue, save it, select it, and preview it.
+3. `Generate Speech` (`#generate`, step 2): enter text, review the latest result, and adjust Voice Tuning. Selecting a saved voice initializes tuning from that voice's assigned preset when the active provider maps it, otherwise from provider defaults.
+4. `Generated Audio` (`#archive`, optional): play, download, remove, or clear saved generated MP3s from browser IndexedDB.
+5. `Provider & Usage` (`#provider`): add an ElevenLabs key if `.env` does not provide one, confirm `.env` fallback, check Cost & Quota, and choose a model if model metadata is available.
 
 The API is available at:
 
@@ -113,11 +108,11 @@ Existing voices or older manifests without an assignment default to Standard Nar
 
 ## Privacy Model
 
-Provider keys can come from either `.env` on the FastAPI backend or the browser UI. A browser-saved key is stored in `localStorage`; browser code sends it only to the local API through `X-Voice-Provider-Key`, and the backend uses that active key to authenticate provider requests for the selected `providerId`. A browser key takes precedence over `.env`; clearing it falls back to `.env` when the built-in ElevenLabs `ELEVENLABS_API_KEY` is configured.
+Provider keys can come from either `.env` on the FastAPI backend or the `Provider & Usage` section in the browser UI. A browser-saved key is stored in `localStorage`; browser code sends it only to the local API through `X-Voice-Provider-Key`, and the backend uses that active key to authenticate provider requests for the selected `providerId`. A browser key takes precedence over `.env`; clearing it falls back to `.env` when the built-in ElevenLabs `ELEVENLABS_API_KEY` is configured.
 
-The backend never returns key material from `.env` or browser headers. Browser `localStorage` is local developer-tool storage, not encrypted secret storage; clear the Provider Keys panel or browser site data to remove a saved GUI key.
+The backend never returns key material from `.env` or browser headers. Browser `localStorage` is local developer-tool storage, not encrypted secret storage; clear the key in `Provider & Usage` or browser site data to remove a saved GUI key.
 
-Voice samples and their local manifest metadata are stored under `assets/voices/` and are ignored by git. When a long upload is saved with its original source retained, the backend stores the original under `assets/voices/sources/` and still sends only the active excerpt sample to the provider. Cloned voice cache data is written under `storage/`, scoped by provider and key fingerprint, and ignored by git. Generated MP3 output is saved in your browser's IndexedDB by default, not on the backend; use the Generated Audio panel to remove one item or clear all saved browser audio.
+Voice samples and their local manifest metadata are stored under `assets/voices/` and are ignored by git. When a long upload is saved with its original source retained, the backend stores the original under `assets/voices/sources/` and still sends only the active excerpt sample to the provider. Cloned voice cache data is written under `storage/`, scoped by provider and key fingerprint, and ignored by git. Generated MP3 output is saved in your browser's IndexedDB by default, not on the backend; use `Generated Audio` to remove one item or clear all saved browser audio.
 
 Text, voice samples, selected model id, and provider-specific tuning settings are sent to the active provider when you generate speech. Subscription and model metadata are fetched through the backend when the configured key has the required read permissions. Review the active provider's policies and obtain consent before cloning or generating with any voice.
 
@@ -129,7 +124,7 @@ Providers may charge credits for text-to-speech and voice cloning. For the built
 - selected ElevenLabs model
 - whether a voice sample has already been cloned and cached
 
-The Cost & Quota panel shows a pre-run estimate and the remaining provider-reported character quota when available. Estimates are approximate. After a generation, the app shows the actual `X-Character-Count` response header when the provider supplies it. Generated Audio entries also show browser-measured generation time; this is the local request duration from starting generation until the browser receives the audio blob, not provider-reported compute time.
+The Cost & Quota panel in `Provider & Usage` shows a pre-run estimate and the remaining provider-reported character quota when available. Estimates are approximate. After a generation, the app shows the actual `X-Character-Count` response header when the provider supplies it. Generated Audio entries also show browser-measured generation time; this is the local request duration from starting generation until the browser receives the audio blob, not provider-reported compute time.
 
 The optional live smoke test calls ElevenLabs and may consume credits.
 
@@ -187,7 +182,7 @@ If the browser cannot decode the selected file type, choose a shorter browser-de
 
 ## Sample Processing
 
-Sample Processing is a separate workflow from Add Voice. It is intended for preparing source samples before using them for generation. Current operations are Isolate Voice and Trim Silence, with Speaker Separation reserved for a later release.
+`Prepare Samples` is a separate optional workflow from `Voices`. It is intended for preparing source samples before using them for generation. Current operations are Isolate Voice and Trim Silence, with Speaker Separation reserved for a later release.
 
 Set `SAMPLE_PROCESSING_ENGINE=ffmpeg` to enable only Trim Silence. Set `SAMPLE_PROCESSING_ENGINE=demucs` to enable Isolate Voice and Trim Silence together. When Demucs is enabled, Isolate Voice runs the configured Demucs command with the `htdemucs` model by default, extracts the vocals stem, then runs FFmpeg to normalize the result to mono 32 kHz WAV. Trim Silence runs FFmpeg `silenceremove`, trims leading, trailing, and long interior empty sections, then normalizes the result to mono 32 kHz WAV. Existing saved voices default to Original Source, which uses the retained full upload/source file when `sourceFilePath` exists and falls back to the active provider-facing sample when no retained source exists. Choose Active Sample to process the provider-facing sample currently stored for the selected voice. Uploaded files can also be processed without first saving them as voices.
 
