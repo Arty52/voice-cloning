@@ -83,7 +83,15 @@ http://localhost:6420
 
 ## Optional Sample Processing
 
-Sample Processing is disabled by default. To enable the first operation, Isolate Voice, install Demucs and FFmpeg in the backend runtime and set:
+Sample Processing is disabled by default. To enable Trim Silence only, install FFmpeg in the backend runtime and set:
+
+```sh
+INSTALL_SAMPLE_PROCESSING=1
+SAMPLE_PROCESSING_ENGINE=ffmpeg
+SAMPLE_PROCESSING_FFMPEG_COMMAND=ffmpeg
+```
+
+To enable Isolate Voice and Trim Silence together, install Demucs and FFmpeg in the backend runtime and set:
 
 ```sh
 INSTALL_SAMPLE_PROCESSING=1
@@ -92,7 +100,7 @@ SAMPLE_PROCESSING_DEMUCS_MODEL=htdemucs
 SAMPLE_PROCESSING_FFMPEG_COMMAND=ffmpeg
 ```
 
-The Docker build uses CPU-only PyTorch, Torchaudio, and TorchCodec wheels when `INSTALL_SAMPLE_PROCESSING=1`, then installs the optional backend `sample-processing` extra and FFmpeg. Rebuild with `make recycle` after changing that flag. The backend calls those tools as external commands, normalizes successful results to mono 32 kHz WAV, and stores job output under ignored `storage/sample-processing/`. Demucs model files and caches are runtime data under ignored `storage/model-cache/`. Isolate Voice includes Fast, Balanced, Clean, and Max Isolation strength presets; Balanced preserves the default behavior.
+The Docker build uses CPU-only PyTorch, Torchaudio, and TorchCodec wheels when `INSTALL_SAMPLE_PROCESSING=1`, then installs the optional backend `sample-processing` extra and FFmpeg. Rebuild with `make recycle` after changing that flag. The backend calls those tools as external commands, normalizes successful results to mono 32 kHz WAV, and stores job output under ignored `storage/sample-processing/`. Demucs model files and caches are runtime data under ignored `storage/model-cache/`. Isolate Voice includes Fast, Balanced, Clean, and Max Isolation strength presets; Balanced preserves the default behavior. Trim Silence includes Light, Balanced, and Aggressive trim presets; Balanced is the default.
 
 ## Documentation
 

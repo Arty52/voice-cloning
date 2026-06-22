@@ -36,7 +36,7 @@ Some ElevenLabs keys are scoped. Use the permission error to update the key in t
 
 ## Sample Processing Unavailable
 
-Sample Processing is disabled unless `.env` sets `SAMPLE_PROCESSING_ENGINE=demucs` and the backend runtime can execute the configured Demucs and FFmpeg commands. If `/api/sample-processing/options` shows disabled operations, confirm the engine setting and restart the backend.
+Sample Processing is disabled unless `.env` sets `SAMPLE_PROCESSING_ENGINE=ffmpeg` or `SAMPLE_PROCESSING_ENGINE=demucs` and the backend runtime can execute the configured commands. `ffmpeg` enables Trim Silence only. `demucs` enables Isolate Voice and Trim Silence. If `/api/sample-processing/options` shows disabled operations, confirm the engine setting and restart the backend.
 
 ## Demucs Or FFmpeg Command Was Not Found
 
@@ -51,7 +51,7 @@ The backend invokes external tools with argument arrays and no shell, so shell a
 
 ## Sample Processing Is Slow Or Times Out
 
-The first Demucs run may download model weights and can take longer than later runs. Increase the timeout if the machine is slow or a GPU backend is warming up:
+Trim Silence is usually much faster than Isolate Voice, but long files or slow disks can still hit the command timeout. The first Demucs run may download model weights and can take longer than later runs. Increase the timeout if the machine is slow or a GPU backend is warming up:
 
 ```sh
 SAMPLE_PROCESSING_TIMEOUT_SECONDS=1800
@@ -63,7 +63,7 @@ Max Isolation uses the finetuned `htdemucs_ft` model. The first run may download
 
 ## Sample Processing Output Is Missing Or Too Large
 
-If Demucs finishes but no `vocals.wav` stem exists, the job fails with a sanitized error and leaves the job directory under ignored `storage/sample-processing/` for inspection. If FFmpeg writes a result larger than the active sample cap, the backend deletes that result and reports the size limit. Shorten the source, choose a smaller retained source window, or raise the local upload cap only for trusted local work.
+If Demucs finishes but no `vocals.wav` stem exists, the job fails with a sanitized error and leaves the job directory under ignored `storage/sample-processing/` for inspection. If FFmpeg does not produce the normalized Isolate Voice or Trim Silence result, the job reports an FFmpeg failure. If FFmpeg writes a result larger than the active sample cap, the backend deletes that result and reports the size limit. Shorten the source, choose a smaller retained source window, or raise the local upload cap only for trusted local work.
 
 ## Reset Local Runtime Data
 
