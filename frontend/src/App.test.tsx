@@ -437,6 +437,12 @@ function voiceTuningPanel() {
   return scopedPanelByHeading("Voice Tuning")
 }
 
+function openVoiceTuningPanel() {
+  const panel = voiceTuningPanel()
+  fireEvent.click(panel.getByRole("button", { name: "Show Controls" }))
+  return voiceTuningPanel()
+}
+
 function latestGeneratedAudioPanel() {
   return scopedPanelByHeading("Latest Generated Audio")
 }
@@ -1948,6 +1954,7 @@ describe("App", () => {
     )
     expectVoicePresetSelection(currentStandardPreset(), false)
     expectVoicePresetSelection(currentAnimatedPreset(), true)
+    openVoiceTuningPanel()
     expect(screen.getByRole("slider", { name: /stability/i })).toHaveValue("0.4")
     expect(screen.getByRole("slider", { name: /style/i })).toHaveValue("0.35")
   })
@@ -2098,6 +2105,7 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
+    openVoiceTuningPanel()
 
     expect(screen.getByRole("button", { name: /stability help/i })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /similarity help/i })).toBeInTheDocument()
@@ -2114,6 +2122,33 @@ describe("App", () => {
     expect(screen.getByRole("slider", { name: /style/i })).toHaveValue("0")
     expect(screen.getByRole("slider", { name: /speed/i })).toHaveValue("1")
     expect(screen.queryByText("Custom")).not.toBeInTheDocument()
+  })
+
+  it("collapses voice tuning controls by default and preserves changed values", async () => {
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    const showControls = voiceTuningPanel().getByRole("button", { name: "Show Controls" })
+
+    expect(showControls).toHaveAttribute("aria-expanded", "false")
+    expect(screen.queryByRole("slider", { name: /stability/i })).not.toBeInTheDocument()
+
+    fireEvent.click(showControls)
+
+    const hideControls = voiceTuningPanel().getByRole("button", { name: "Hide Controls" })
+    expect(hideControls).toHaveAttribute("aria-expanded", "true")
+    expect(screen.getByRole("slider", { name: /stability/i })).toHaveValue("0.5")
+
+    fireEvent.change(screen.getByRole("slider", { name: /stability/i }), { target: { value: "0.42" } })
+    expect(screen.getByText("Custom")).toBeInTheDocument()
+
+    fireEvent.click(hideControls)
+    expect(voiceTuningPanel().getByRole("button", { name: "Show Controls" })).toHaveAttribute("aria-expanded", "false")
+    expect(screen.queryByRole("slider", { name: /stability/i })).not.toBeInTheDocument()
+
+    openVoiceTuningPanel()
+
+    expect(screen.getByRole("slider", { name: /stability/i })).toHaveValue("0.42")
   })
 
   it("hides voice tuning when the active provider has no controls", async () => {
@@ -2206,6 +2241,7 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
+    openVoiceTuningPanel()
     fireEvent.change(screen.getByRole("slider", { name: /stability/i }), { target: { value: "0.9" } })
     expect(screen.getByText("Custom")).toBeInTheDocument()
 
@@ -2272,6 +2308,7 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
+    openVoiceTuningPanel()
     expect(screen.getByText("Voice Tuning")).toBeInTheDocument()
     expect(screen.queryByText("Preset")).not.toBeInTheDocument()
     expect(screen.getByRole("slider", { name: /warmth/i })).toHaveValue("0.2")
@@ -2323,6 +2360,7 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
+    openVoiceTuningPanel()
     await user.selectOptions(screen.getByRole("combobox", { name: "Mode" }), "2")
     await user.selectOptions(screen.getByRole("combobox", { name: "Enhanced" }), "true")
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
@@ -2374,6 +2412,7 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
+    openVoiceTuningPanel()
     const checkbox = screen.getByRole("checkbox", { name: "Expressive" })
     expect(checkbox).not.toBeChecked()
 
@@ -2401,6 +2440,7 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
+    openVoiceTuningPanel()
     await user.click(voiceTuningPanel().getByRole("button", { name: /animated dialogue/i }))
 
     expect(voiceTuningPanel().getByRole("button", { name: /standard narration/i })).toHaveAttribute("aria-pressed", "false")
@@ -2422,6 +2462,7 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
+    openVoiceTuningPanel()
     expect(voiceTuningPanel().getByRole("button", { name: /standard narration/i })).toHaveAttribute("aria-pressed", "true")
 
     await user.click(screen.getByRole("checkbox", { name: /Speaker boost/i }))
@@ -2435,6 +2476,7 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
+    openVoiceTuningPanel()
     fireEvent.change(screen.getByRole("slider", { name: /stability/i }), { target: { value: "0.42" } })
     fireEvent.change(screen.getByRole("slider", { name: /similarity/i }), { target: { value: "0.84" } })
     fireEvent.change(screen.getByRole("slider", { name: /style/i }), { target: { value: "0.2" } })

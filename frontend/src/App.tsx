@@ -25,6 +25,7 @@ function App() {
     handleGenerate,
     handleStorageLimitChange,
     hasModelRate,
+    isVoiceTuningExpanded,
     latestGeneratedAudioItem,
     latestStorageError,
     metadata,
@@ -38,6 +39,7 @@ function App() {
     sectionStatuses,
     selectedModel,
     selectedTuningPresetId,
+    setIsVoiceTuningExpanded,
     setText,
     speech,
     text,
@@ -146,8 +148,10 @@ function App() {
 
           <VoiceTuningPanel
             controls={providerTuning.controls}
+            isExpanded={isVoiceTuningExpanded}
             isGenerating={speech.isGenerating}
             isLoading={providerKeys.providerStatus === "idle" || providerKeys.providerStatus === "loading"}
+            onExpandedChange={setIsVoiceTuningExpanded}
             onPresetApply={voiceTuning.handlePresetApply}
             onTuningValueChange={voiceTuning.handleTuningValueChange}
             presets={providerTuning.presets}
