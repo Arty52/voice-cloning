@@ -169,7 +169,7 @@ Both fields are optional, but at least one of `name` or `voicePresetId` is requi
 
 Sample Processing prepares local samples without changing the normal generation flow. Enabled operations depend on local processor configuration: `SAMPLE_PROCESSING_ENGINE=demucs` enables `isolateVoice` and `trimSilence`, `SAMPLE_PROCESSING_ENGINE=ffmpeg` enables only `trimSilence`, and `separateSpeakers` remains reserved for future speaker-separation work.
 
-`GET /api/sample-processing/options` returns the processor status and operation registry:
+`GET /api/sample-processing/options` returns the operation registry for the configured processor:
 
 ```json
 {

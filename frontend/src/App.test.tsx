@@ -954,7 +954,7 @@ describe("App", () => {
     await screen.findByText("default/default-voice.mp3")
     await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
     expect(await sampleProcessingPanel().findByRole("button", { name: "Sample Processing Operation: Trim Silence" })).toBeInTheDocument()
-    const trimPresets = within(sampleProcessingPanel().getByRole("radiogroup", { name: "Isolation Strength" }))
+    const trimPresets = within(sampleProcessingPanel().getByRole("radiogroup", { name: "Trim Aggressiveness" }))
     expect(trimPresets.getByRole("radio", { name: "Balanced" })).toHaveAttribute("aria-checked", "true")
     await user.click(trimPresets.getByRole("radio", { name: "Aggressive" }))
     expect(trimPresets.getByRole("radio", { name: "Aggressive" })).toHaveAttribute("aria-checked", "true")

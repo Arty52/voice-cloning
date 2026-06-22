@@ -46,6 +46,7 @@ export function SampleProcessingPanel({
     processing.operations.length > 0
   const statusLabel = panelStatusLabel(processing)
   const elapsedTimeLabel = panelElapsedTimeLabel(processing)
+  const presetLabel = presetControlLabel(processing.operationId)
 
   return (
     <section aria-busy={processing.isProcessing} className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5">
@@ -120,7 +121,7 @@ export function SampleProcessingPanel({
 
               {processing.selectedOperation?.enabled === true && processing.processingPresets.length > 0 ? (
                 <Field>
-                  <FieldLabel id="sample-processing-preset-label">Isolation Strength</FieldLabel>
+                  <FieldLabel id="sample-processing-preset-label">{presetLabel}</FieldLabel>
                   <ToggleGroup
                     aria-labelledby="sample-processing-preset-label"
                     className="grid w-full grid-cols-2 rounded-md border border-border bg-background/60 p-1"
@@ -376,6 +377,16 @@ function panelElapsedTimeLabel(processing: SampleProcessingController) {
     return `Stopped After ${elapsedTime}`
   }
   return null
+}
+
+function presetControlLabel(operationId: SampleProcessingOperationId) {
+  if (operationId === "isolateVoice") {
+    return "Isolation Strength"
+  }
+  if (operationId === "trimSilence") {
+    return "Trim Aggressiveness"
+  }
+  return "Processing Preset"
 }
 
 function isSampleProcessingOperationId(value: string): value is SampleProcessingOperationId {
