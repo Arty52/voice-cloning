@@ -48,11 +48,19 @@ ELEVENLABS_API_KEY=your_key_here  # optional when you use the Provider Keys pane
 ELEVENLABS_MODEL_ID=eleven_multilingual_v2
 ```
 
-Optionally enable local sample processing:
+Optionally enable local sample processing for Trim Silence only:
 
 ```sh
 INSTALL_SAMPLE_PROCESSING=1
-SAMPLE_PROCESSING_ENGINE=ffmpeg  # ffmpeg for Trim Silence only; demucs for Isolate Voice plus Trim Silence
+SAMPLE_PROCESSING_ENGINE=ffmpeg
+SAMPLE_PROCESSING_FFMPEG_COMMAND=ffmpeg
+SAMPLE_PROCESSING_TIMEOUT_SECONDS=900
+```
+
+To also enable Isolate Voice through Demucs, use the Demucs engine and add the Demucs-specific settings:
+
+```sh
+SAMPLE_PROCESSING_ENGINE=demucs
 SAMPLE_PROCESSING_FFMPEG_COMMAND=ffmpeg
 SAMPLE_PROCESSING_DEMUCS_COMMAND=demucs
 SAMPLE_PROCESSING_DEMUCS_MODEL=htdemucs
