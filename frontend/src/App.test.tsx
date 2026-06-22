@@ -388,6 +388,24 @@ function renderApp() {
   )
 }
 
+function mockWorkflowViewport(isMobile: boolean) {
+  Object.defineProperty(window, "innerWidth", {
+    configurable: true,
+    value: isMobile ? 390 : 1024,
+  })
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      addEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+      matches: isMobile,
+      media: query,
+      onchange: null,
+      removeEventListener: vi.fn(),
+    })),
+  })
+}
+
 function scopedPanelByHeading(name: string) {
   const heading = screen.getByRole("heading", { name })
   const panel = heading.closest("section, form")
@@ -590,6 +608,8 @@ describe("App", () => {
   beforeEach(async () => {
     await deleteDatabase(GENERATED_AUDIO_DB_NAME)
     localStorage.clear()
+    window.history.replaceState(null, "", window.location.pathname)
+    mockWorkflowViewport(false)
     Object.defineProperty(HTMLTextAreaElement.prototype, "scrollHeight", {
       configurable: true,
       value: 320,
@@ -615,6 +635,46 @@ describe("App", () => {
 
     await waitFor(() => expect(textarea).toHaveStyle({ height: "320px" }))
     expect(await screen.findByText("default/default-voice.mp3")).toBeInTheDocument()
+  })
+
+  it("lands on voices with the desktop workflow sidebar active", async () => {
+    renderApp()
+
+    expect(await screen.findByRole("heading", { name: "Voices" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Voices" })).toHaveAttribute("aria-current", "page")
+    expect(screen.getByRole("complementary", { name: "Workflow Sidebar" })).toBeInTheDocument()
+    const workflowNav = within(screen.getByRole("navigation", { name: "Workflow Sections" }))
+    expect(workflowNav.getAllByText("Ready").length).toBeGreaterThan(0)
+  })
+
+  it("switches desktop workflow sections through stable hashes", async () => {
+    const user = userEvent.setup()
+    renderApp()
+
+    await user.click(await screen.findByRole("button", { name: "Generate Speech" }))
+
+    expect(window.location.hash).toBe("#generate")
+    expect(screen.getByRole("button", { name: "Generate Speech" })).toHaveAttribute("aria-current", "page")
+    expect(screen.getByRole("heading", { name: "Generate Speech" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Voices" })).not.toHaveAttribute("aria-current")
+  })
+
+  it("closes mobile workflow navigation after selecting a section", async () => {
+    mockWorkflowViewport(true)
+    const user = userEvent.setup()
+    renderApp()
+
+    await user.click(screen.getByRole("button", { name: "Toggle Workflow Navigation" }))
+
+    expect(await screen.findByRole("dialog", { name: "Workflow Navigation" })).toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: "Provider & Usage" }))
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Workflow Navigation" })).not.toBeInTheDocument()
+    )
+    expect(window.location.hash).toBe("#provider")
+    expect(screen.getByRole("heading", { name: "Provider & Usage" })).toBeInTheDocument()
   })
 
   it("shows missing key state and uses a saved browser key for provider requests", async () => {
@@ -652,6 +712,7 @@ describe("App", () => {
     renderApp()
 
     const keyInput = await screen.findByLabelText(/ElevenLabs API Key/i)
+    expect((await screen.findAllByText("Needs Key")).length).toBeGreaterThan(0)
     expect(screen.getAllByText("Missing Key")).toHaveLength(2)
     expect(screen.getByRole("button", { name: /^Generate$/ })).toBeDisabled()
 
@@ -819,7 +880,6 @@ describe("App", () => {
       )
     )
     expect(await screen.findByText(`${formatTestNumber(1234)} remaining`)).toBeInTheDocument()
-    await user.click(screen.getByRole("button", { name: /expand/i }))
     expect(screen.getByLabelText(/model/i)).toHaveValue("browser_model")
 
     staleSubscription.resolve(
@@ -849,29 +909,22 @@ describe("App", () => {
     expect(screen.getByLabelText(/model/i)).toHaveValue("browser_model")
   })
 
-  it("places cost quota under add voice and expands details", async () => {
-    const user = userEvent.setup()
+  it("shows provider usage details expanded", async () => {
     renderApp()
 
     const costHeading = await screen.findByText("Cost & Quota")
-    const addVoiceHeading = screen.getByText("Add Voice")
-    expect(addVoiceHeading.compareDocumentPosition(costHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const providerKeysHeading = screen.getByText("Provider Keys")
+    expect(providerKeysHeading.compareDocumentPosition(costHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(await screen.findByText(`${formatTestNumber(9000)} remaining`)).toBeInTheDocument()
     expect(screen.getByText(`~${formatTestNumber(97)}`)).toBeInTheDocument()
     expect(screen.getByText("No run")).toBeInTheDocument()
     const costQuotaDetails = document.querySelector("#cost-quota-details")
     expect(costQuotaDetails).toBeInTheDocument()
-    expect(costQuotaDetails).not.toBeVisible()
-    expect(screen.getByLabelText(/model/i)).not.toBeVisible()
-    expect(screen.getByText(`${formatTestNumber(1000)} / ${formatTestNumber(10000)}`)).not.toBeVisible()
-
-    const expandButton = screen.getByRole("button", { name: /expand/i })
-    expect(expandButton).toHaveAttribute("aria-expanded", "false")
-    await user.click(expandButton)
-
-    expect(screen.getByRole("button", { name: /collapse/i })).toHaveAttribute("aria-expanded", "true")
+    expect(costQuotaDetails).not.toHaveAttribute("hidden")
+    expect(screen.queryByRole("button", { name: /expand/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /collapse/i })).not.toBeInTheDocument()
     expect(screen.getByLabelText(/model/i)).toHaveValue("eleven_multilingual_v2")
-    expect(screen.getByText(`${formatTestNumber(1000)} / ${formatTestNumber(10000)}`)).toBeVisible()
+    expect(screen.getByText(`${formatTestNumber(1000)} / ${formatTestNumber(10000)}`)).toBeInTheDocument()
     expect(screen.getByRole("link", { name: /api requests/i })).toHaveAttribute(
       "href",
       "https://elevenlabs.io/app/developers/analytics/api-requests"
@@ -882,20 +935,16 @@ describe("App", () => {
     )
   })
 
-  it("keeps sample processing separate between voice library and add voice", async () => {
+  it("keeps sample processing in its own prepare section", async () => {
     renderApp()
 
     const voiceLibraryHeading = await screen.findByText("Voice Library")
     const sampleProcessingHeading = screen.getByText("Sample Processing")
     const addVoiceHeading = screen.getByText("Add Voice")
 
-    expect(voiceLibraryHeading.compareDocumentPosition(sampleProcessingHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(sampleProcessingHeading.compareDocumentPosition(addVoiceHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" })).toHaveAttribute(
-      "aria-expanded",
-      "false"
-    )
-    expect(sampleProcessingPanel().queryByRole("button", { name: "Start Processing" })).not.toBeInTheDocument()
+    expect(sampleProcessingHeading.compareDocumentPosition(voiceLibraryHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(voiceLibraryHeading.compareDocumentPosition(addVoiceHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(sampleProcessingPanel().getByRole("button", { name: "Start Processing" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /^Generate$/ })).toBeInTheDocument()
   })
 
@@ -914,11 +963,9 @@ describe("App", () => {
         return baseFetch(input, init)
       })
     )
-    const user = userEvent.setup()
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
 
     expect(await sampleProcessingPanel().findByText("Sample Processing Unavailable")).toBeInTheDocument()
     expect(sampleProcessingPanel().getByRole("button", { name: "Start Processing" })).toBeDisabled()
@@ -929,7 +976,6 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
     await user.click(await sampleProcessingPanel().findByRole("button", { name: "Sample Processing Operation: Isolate Voice" }))
 
     expect(screen.getByRole("menuitemradio", { name: "Speaker Separation Unavailable" })).toBeInTheDocument()
@@ -963,7 +1009,6 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
     expect(await sampleProcessingPanel().findByRole("button", { name: "Sample Processing Operation: Trim Silence" })).toBeInTheDocument()
     const trimAggressiveness = within(sampleProcessingPanel().getByRole("radiogroup", { name: "Trim Aggressiveness" }))
     expect(trimAggressiveness.getByRole("radio", { name: "Balanced" })).toHaveAttribute("aria-checked", "true")
@@ -987,7 +1032,6 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
 
     const sourcePreferenceHelp = await sampleProcessingPanel().findByRole("button", {
       name: "Explain Source Preference",
@@ -1030,7 +1074,6 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
     const startButton = await sampleProcessingPanel().findByRole("button", { name: "Start Processing" })
     await waitFor(() => expect(startButton).toBeEnabled())
     const isolationStrength = within(sampleProcessingPanel().getByRole("radiogroup", { name: "Isolation Strength" }))
@@ -1095,7 +1138,6 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
     const startButton = await sampleProcessingPanel().findByRole("button", { name: "Start Processing" })
     await waitFor(() => expect(startButton).toBeEnabled())
     await user.click(startButton)
@@ -1120,7 +1162,6 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
     const isolationStrength = within(sampleProcessingPanel().getByRole("radiogroup", { name: "Isolation Strength" }))
     await user.click(isolationStrength.getByRole("radio", { name: "Clean" }))
     expect(isolationStrength.getByRole("radio", { name: "Clean" })).toHaveAttribute("aria-checked", "true")
@@ -1142,7 +1183,6 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
     expect(sampleProcessingPanel().getByRole("radiogroup", { name: "Isolation Strength" })).toBeInTheDocument()
     await user.click(sampleProcessingPanel().getByRole("button", { name: "Sample Processing Operation: Isolate Voice" }))
     await user.click(sampleProcessingPanel().getByRole("menuitemradio", { name: "Trim Silence" }))
@@ -1172,7 +1212,6 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
     const startButton = await sampleProcessingPanel().findByRole("button", { name: "Start Processing" })
     await waitFor(() => expect(startButton).toBeEnabled())
     await user.click(startButton)
@@ -1202,7 +1241,6 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
     const startButton = await sampleProcessingPanel().findByRole("button", { name: "Start Processing" })
     await waitFor(() => expect(startButton).toBeEnabled())
     await user.click(startButton)
@@ -1223,7 +1261,6 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
     const startButton = await sampleProcessingPanel().findByRole("button", { name: "Start Processing" })
     await waitFor(() => expect(startButton).toBeEnabled())
     await user.click(startButton)
@@ -1254,7 +1291,6 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
     await user.click(sampleProcessingPanel().getByRole("button", { name: "Sample Processing Operation: Isolate Voice" }))
     await user.click(sampleProcessingPanel().getByRole("menuitemradio", { name: "Trim Silence" }))
     const startButton = await sampleProcessingPanel().findByRole("button", { name: "Start Processing" })
@@ -1289,7 +1325,6 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
     await user.click(sampleProcessingPanel().getByRole("button", { name: "Audio File" }))
     expect(sampleProcessingPanel().queryByText("Source Preference")).not.toBeInTheDocument()
     expect(sampleProcessingPanel().queryByRole("button", { name: "Explain Source Preference" })).not.toBeInTheDocument()
@@ -1341,7 +1376,6 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
     const startButton = await sampleProcessingPanel().findByRole("button", { name: "Start Processing" })
     await waitFor(() => expect(startButton).toBeEnabled())
     await user.click(startButton)
@@ -1351,20 +1385,15 @@ describe("App", () => {
     expect(sampleProcessingPanel().getByText("demucs command was not found.")).toBeInTheDocument()
   })
 
-  it("collapses cost quota details while keeping the overview", async () => {
-    const user = userEvent.setup()
+  it("keeps provider usage details available", async () => {
     renderApp()
 
     await screen.findByText(`${formatTestNumber(9000)} remaining`)
-    await user.click(screen.getByRole("button", { name: /expand/i }))
-    expect(screen.getByLabelText(/model/i)).toBeVisible()
-
-    await user.click(screen.getByRole("button", { name: /collapse/i }))
-
     expect(screen.getByText(`${formatTestNumber(9000)} remaining`)).toBeInTheDocument()
     expect(screen.getByText(`~${formatTestNumber(97)}`)).toBeInTheDocument()
-    expect(screen.getByLabelText(/model/i)).not.toBeVisible()
-    expect(screen.queryByRole("link", { name: /api requests/i })).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/model/i)).toHaveValue("eleven_multilingual_v2")
+    expect(screen.getByRole("link", { name: /api requests/i })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /collapse/i })).not.toBeInTheDocument()
   })
 
   it("shows pending state while generating speech", async () => {
@@ -2417,7 +2446,6 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(screen.getByRole("button", { name: /expand/i }))
     await user.selectOptions(screen.getByLabelText(/model/i), "eleven_flash_v2_5")
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
 
