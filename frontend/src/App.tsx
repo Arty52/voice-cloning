@@ -9,6 +9,7 @@ import { LatestGeneratedAudioPanel } from "@/components/panels/latest-generated-
 import { ProviderKeysPanel } from "@/components/panels/provider-keys-panel"
 import { SampleProcessingPanel } from "@/components/panels/sample-processing-panel"
 import { SpeechInputPanel } from "@/components/panels/speech-input-panel"
+import { StudioOverviewPanel } from "@/components/panels/studio-overview-panel"
 import { VoiceLibraryPanel } from "@/components/panels/voice-library-panel"
 import { VoiceTuningPanel } from "@/components/panels/voice-tuning-panel"
 import { useVoiceStudioController } from "@/hooks/use-voice-studio-controller"
@@ -60,6 +61,10 @@ function App() {
         sectionStatuses={sectionStatuses}
         sections={workflowSections}
       >
+        <WorkflowSectionPanel activeSectionId={activeSectionId} id="overview">
+          <StudioOverviewPanel sections={workflowSections} />
+        </WorkflowSectionPanel>
+
         <WorkflowSectionPanel activeSectionId={activeSectionId} id="prepare">
           <SampleProcessingPanel
             isCollapsible={false}

@@ -32,6 +32,7 @@ const baseStatusInput: WorkflowSectionStatusInput = {
 describe("workflow sections", () => {
   it("keeps the extensible workflow order stable", () => {
     expect(WORKFLOW_SECTIONS.map((section) => section.id)).toEqual([
+      "overview",
       "prepare",
       "voices",
       "generate",
@@ -39,19 +40,19 @@ describe("workflow sections", () => {
       "provider",
     ])
     expect(WORKFLOW_SECTIONS[0]).toMatchObject({
-      id: "prepare",
-      label: "Prepare Samples",
-      optional: true,
-      stepLabel: "0",
+      id: "overview",
+      label: "Overview",
+      optional: false,
+      stepLabel: "Start",
     })
-    expect(DEFAULT_WORKFLOW_SECTION_ID).toBe("voices")
+    expect(DEFAULT_WORKFLOW_SECTION_ID).toBe("overview")
   })
 
   it("maps section ids and invalid hashes to stable hashes", () => {
     expect(workflowSectionHash("generate")).toBe("#generate")
     expect(workflowSectionIdFromHash("#GENERATE")).toBe("generate")
-    expect(workflowSectionIdFromHash("#unknown")).toBe("voices")
-    expect(workflowSectionIdFromHash("")).toBe("voices")
+    expect(workflowSectionIdFromHash("#unknown")).toBe("overview")
+    expect(workflowSectionIdFromHash("")).toBe("overview")
   })
 
   it("derives required-step and error status labels from real workflow state", () => {
@@ -66,6 +67,7 @@ describe("workflow sections", () => {
       speechStatus: "error",
     })
 
+    expect(statuses.overview).toMatchObject({ label: "Start Here", tone: "neutral" })
     expect(statuses.prepare).toMatchObject({ label: "Error", tone: "error" })
     expect(statuses.voices).toMatchObject({ label: "Select Voice", tone: "attention" })
     expect(statuses.generate).toMatchObject({ label: "Error", tone: "error" })
