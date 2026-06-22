@@ -47,9 +47,11 @@ from voice_cloning.sample_processors import _run_external_command
 from voice_cloning.samples import sample_hash
 from voice_cloning.services.sample_processing import (
     DEFAULT_ISOLATION_PROCESSING_PRESET_ID,
+    DEFAULT_TRIM_SILENCE_PROCESSING_PRESET_ID,
     ISOLATION_PROCESSING_PRESETS,
     SampleProcessingRequest,
     SampleProcessingService,
+    TRIM_SILENCE_PROCESSING_PRESETS,
 )
 from voice_cloning.services.speech import SpeechServiceError, generate_speech
 from voice_cloning.voice_library import VoiceLibrary
@@ -217,6 +219,9 @@ class FakeSampleProcessor:
             ),
         )
 
+    def engine_name_for_operation(self, operation_id: str) -> str:
+        return self.engine_name
+
     async def process(self, request: SampleProcessingRequest) -> None:
         self.requests.append(request)
         request.output_path.write_bytes(self.output)
@@ -346,7 +351,18 @@ def ffmpeg_fake_command(
     sleep_seconds: float = 0,
     *,
     args_path: Path | None = None,
+    exit_code: int = 0,
+    stderr: str = "ffmpeg failed in test",
 ) -> Path:
+    if exit_code != 0:
+        return write_fake_command(
+            path,
+            f"""
+import sys
+sys.stderr.write({stderr!r})
+raise SystemExit({exit_code})
+""",
+        )
     return write_fake_command(
         path,
         f"""
@@ -373,6 +389,19 @@ def demucs_processing_settings(
         make_settings(tmp_path),
         sample_processing_engine="demucs",
         sample_processing_demucs_command=str(demucs_command),
+        sample_processing_ffmpeg_command=str(ffmpeg_command),
+        **overrides,
+    )
+
+
+def ffmpeg_processing_settings(
+    tmp_path: Path,
+    ffmpeg_command: Path,
+    **overrides: object,
+) -> Settings:
+    return replace(
+        make_settings(tmp_path),
+        sample_processing_engine="ffmpeg",
         sample_processing_ffmpeg_command=str(ffmpeg_command),
         **overrides,
     )
@@ -660,6 +689,57 @@ def test_sample_processing_options_include_isolation_presets(tmp_path: Path) -> 
     ]
 
 
+def test_ffmpeg_sample_processor_options_enable_trim_silence(tmp_path: Path) -> None:
+    settings = ffmpeg_processing_settings(tmp_path, ffmpeg_fake_command(tmp_path / "ffmpeg-fake"))
+    with TestClient(create_app(settings=settings)) as client:
+        response = client.get("/api/sample-processing/options")
+
+    assert response.status_code == 200
+    operations = response.json()["operations"]
+    assert operations[0]["id"] == "isolateVoice"
+    assert operations[0]["enabled"] is False
+    assert operations[1]["id"] == "trimSilence"
+    assert operations[1]["enabled"] is True
+    assert operations[1]["defaultProcessingPresetId"] == "trimBalanced"
+    assert operations[1]["processingPresets"] == [
+        {
+            "id": "trimLight",
+            "label": "Light",
+            "description": "Conservative trimming for only quieter or longer empty regions.",
+        },
+        {
+            "id": "trimBalanced",
+            "label": "Balanced",
+            "description": "Default silence trimming with a small amount of preserved room tone.",
+        },
+        {
+            "id": "trimAggressive",
+            "label": "Aggressive",
+            "description": "Tighter trimming for shorter or louder empty regions.",
+        },
+    ]
+    assert operations[2]["id"] == "separateSpeakers"
+    assert operations[2]["enabled"] is False
+
+
+def test_demucs_sample_processor_options_enable_isolation_and_trim_silence(tmp_path: Path) -> None:
+    settings = demucs_processing_settings(
+        tmp_path,
+        demucs_fake_command(tmp_path / "demucs-fake"),
+        ffmpeg_fake_command(tmp_path / "ffmpeg-fake"),
+    )
+    with TestClient(create_app(settings=settings)) as client:
+        response = client.get("/api/sample-processing/options")
+
+    operations = response.json()["operations"]
+    assert response.status_code == 200
+    assert operations[0]["id"] == "isolateVoice"
+    assert operations[0]["enabled"] is True
+    assert operations[1]["id"] == "trimSilence"
+    assert operations[1]["enabled"] is True
+    assert operations[1]["defaultProcessingPresetId"] == "trimBalanced"
+
+
 def test_sample_processing_job_uses_original_voice_source_and_saves_result_as_voice(tmp_path: Path) -> None:
     settings = make_settings(tmp_path)
     voice_library = VoiceLibrary(settings)
@@ -889,6 +969,188 @@ def test_sample_processing_cleans_task_registry_after_completion(tmp_path: Path)
     assert response.status_code == 202
     assert job["status"] == "success"
     assert service._tasks == {}
+
+
+def test_ffmpeg_sample_processor_trims_silence_and_saves_metadata(tmp_path: Path) -> None:
+    ffmpeg_args_path = tmp_path / "ffmpeg-args.json"
+    settings = ffmpeg_processing_settings(
+        tmp_path,
+        ffmpeg_fake_command(tmp_path / "ffmpeg-fake", args_path=ffmpeg_args_path),
+    )
+    with TestClient(create_app(settings=settings)) as client:
+        response = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "trimSilence"},
+            files={"sourceFile": ("source.wav", b"source-audio", "audio/wav")},
+        )
+        job = wait_for_processing_job(client, response.json()["job"]["id"])
+        result = client.get(f"/api/sample-processing/jobs/{job['id']}/result")
+        save = client.post(
+            f"/api/sample-processing/jobs/{job['id']}/voice",
+            json={"name": "Source Trimmed", "voicePresetId": "standardNarration"},
+        )
+
+    ffmpeg_args = json.loads(ffmpeg_args_path.read_text(encoding="utf-8"))
+    assert response.status_code == 202
+    assert job["status"] == "success"
+    assert job["engine"] == "ffmpeg"
+    assert job["processingPresetId"] == DEFAULT_TRIM_SILENCE_PROCESSING_PRESET_ID
+    assert job["processingPresetLabel"] == "Balanced"
+    assert "-af" in ffmpeg_args
+    assert "stop_duration=0.6" in ffmpeg_args[ffmpeg_args.index("-af") + 1]
+    assert result.status_code == 200
+    assert result.content == b"normalized-voice"
+    assert save.status_code == 201
+    voice = save.json()["voice"]
+    assert voice["sha256"] == sample_hash(b"normalized-voice")
+    assert voice["processingSteps"] == [
+        {
+            "id": job["id"],
+            "label": "Trim Silence",
+            "operationId": "trimSilence",
+            "createdAt": voice["processingSteps"][0]["createdAt"],
+            "sourceSha256": sample_hash(b"source-audio"),
+            "resultSha256": sample_hash(b"normalized-voice"),
+            "engine": "ffmpeg",
+            "processingPresetId": "trimBalanced",
+            "processingPresetLabel": "Balanced",
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    ("processing_preset_id", "expected_threshold", "expected_stop_duration", "expected_stop_silence"),
+    [
+        ("trimLight", "-50dB", "1.0", "0.25"),
+        ("trimBalanced", "-45dB", "0.6", "0.2"),
+        ("trimAggressive", "-38dB", "0.35", "0.1"),
+    ],
+)
+def test_ffmpeg_sample_processor_maps_trim_presets_to_silenceremove(
+    tmp_path: Path,
+    processing_preset_id: str,
+    expected_threshold: str,
+    expected_stop_duration: str,
+    expected_stop_silence: str,
+) -> None:
+    ffmpeg_args_path = tmp_path / "ffmpeg-args.json"
+    settings = ffmpeg_processing_settings(
+        tmp_path,
+        ffmpeg_fake_command(tmp_path / "ffmpeg-fake", args_path=ffmpeg_args_path),
+    )
+    with TestClient(create_app(settings=settings)) as client:
+        response = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "trimSilence", "processingPresetId": processing_preset_id},
+            files={"sourceFile": ("source.wav", b"source-audio", "audio/wav")},
+        )
+        job = wait_for_processing_job(client, response.json()["job"]["id"])
+
+    ffmpeg_args = json.loads(ffmpeg_args_path.read_text(encoding="utf-8"))
+    trim_filter = ffmpeg_args[ffmpeg_args.index("-af") + 1]
+    assert response.status_code == 202
+    assert job["processingPresetId"] == processing_preset_id
+    assert f"start_threshold={expected_threshold}" in trim_filter
+    assert f"stop_threshold={expected_threshold}" in trim_filter
+    assert f"stop_duration={expected_stop_duration}" in trim_filter
+    assert f"stop_silence={expected_stop_silence}" in trim_filter
+    assert ffmpeg_args[ffmpeg_args.index("-ac") + 1] == "1"
+    assert ffmpeg_args[ffmpeg_args.index("-ar") + 1] == "32000"
+
+
+@pytest.mark.parametrize(
+    ("operation_id", "processing_preset_id"),
+    [
+        ("trimSilence", "clean"),
+        ("isolateVoice", "trimAggressive"),
+    ],
+)
+def test_sample_processing_job_rejects_wrong_operation_processing_preset(
+    tmp_path: Path,
+    operation_id: str,
+    processing_preset_id: str,
+) -> None:
+    settings = demucs_processing_settings(
+        tmp_path,
+        demucs_fake_command(tmp_path / "demucs-fake"),
+        ffmpeg_fake_command(tmp_path / "ffmpeg-fake"),
+    )
+    with TestClient(create_app(settings=settings)) as client:
+        response = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": operation_id, "processingPresetId": processing_preset_id},
+            files={"sourceFile": ("source.wav", b"source-audio", "audio/wav")},
+        )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == f"Unsupported processing preset: {processing_preset_id}."
+
+
+def test_ffmpeg_sample_processor_reports_missing_command(tmp_path: Path) -> None:
+    settings = ffmpeg_processing_settings(tmp_path, tmp_path / "missing-ffmpeg")
+    with TestClient(create_app(settings=settings)) as client:
+        response = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "trimSilence"},
+            files={"sourceFile": ("source.wav", b"source-audio", "audio/wav")},
+        )
+        job = wait_for_processing_job(client, response.json()["job"]["id"], status="error")
+
+    assert response.status_code == 202
+    assert job["error"] == "ffmpeg command was not found."
+
+
+def test_ffmpeg_sample_processor_reports_nonzero_command(tmp_path: Path) -> None:
+    settings = ffmpeg_processing_settings(
+        tmp_path,
+        ffmpeg_fake_command(tmp_path / "ffmpeg-fake", exit_code=7),
+    )
+    with TestClient(create_app(settings=settings)) as client:
+        response = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "trimSilence"},
+            files={"sourceFile": ("source.wav", b"source-audio", "audio/wav")},
+        )
+        job = wait_for_processing_job(client, response.json()["job"]["id"], status="error")
+
+    assert response.status_code == 202
+    assert job["error"] == "ffmpeg failed with exit code 7. ffmpeg failed in test"
+
+
+def test_ffmpeg_sample_processor_reports_timeout(tmp_path: Path) -> None:
+    settings = ffmpeg_processing_settings(
+        tmp_path,
+        ffmpeg_fake_command(tmp_path / "ffmpeg-fake", sleep_seconds=2),
+        sample_processing_timeout_seconds=1,
+    )
+    with TestClient(create_app(settings=settings)) as client:
+        response = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "trimSilence"},
+            files={"sourceFile": ("source.wav", b"source-audio", "audio/wav")},
+        )
+        job = wait_for_processing_job(client, response.json()["job"]["id"], status="error")
+
+    assert response.status_code == 202
+    assert job["error"] == "ffmpeg timed out."
+
+
+def test_ffmpeg_sample_processor_rejects_oversized_result(tmp_path: Path) -> None:
+    settings = ffmpeg_processing_settings(
+        tmp_path,
+        ffmpeg_fake_command(tmp_path / "ffmpeg-fake", output=b"too-big"),
+        max_upload_bytes=5,
+    )
+    with TestClient(create_app(settings=settings)) as client:
+        response = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "trimSilence"},
+            files={"sourceFile": ("source.wav", b"source-audio", "audio/wav")},
+        )
+        job = wait_for_processing_job(client, response.json()["job"]["id"], status="error")
+
+    assert response.status_code == 202
+    assert job["error"] == "Processed voice sample must be 5 bytes or smaller."
 
 
 def test_demucs_sample_processor_normalizes_vocals_with_ffmpeg(tmp_path: Path) -> None:
