@@ -29,6 +29,7 @@ describe("Sidebar", () => {
 
     expect(screen.getByRole("complementary", { name: "Workflow Sidebar" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Voices" })).toHaveAttribute("aria-current", "page")
+    expect(screen.getByText("Workflow")).not.toHaveClass("uppercase")
     expect(screen.getByRole("main")).toHaveTextContent("Main Content")
   })
 

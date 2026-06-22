@@ -197,10 +197,7 @@ export function SidebarGroup({ className, ...props }: ComponentProps<"div">) {
 
 export function SidebarGroupLabel({ className, ...props }: ComponentProps<"div">) {
   return (
-    <div
-      className={cn("px-2 text-xs font-medium uppercase tracking-normal text-sidebar-foreground/70", className)}
-      {...props}
-    />
+    <div className={cn("px-2 text-xs font-medium tracking-normal text-sidebar-foreground/70", className)} {...props} />
   )
 }
 
