@@ -73,6 +73,36 @@ describe("workflow sections", () => {
     expect(statuses.provider).toMatchObject({ label: "Missing Key", tone: "attention" })
   })
 
+  it("derives error statuses without relying on truthy error messages", () => {
+    const statusOnlyStatuses = buildWorkflowSectionStatuses({
+      ...baseStatusInput,
+      generatedAudioStatus: "error",
+      processingOptionsStatus: "error",
+      providerStatus: "error",
+      speechStatus: "error",
+      voiceStatus: "error",
+    })
+
+    expect(statusOnlyStatuses.prepare).toMatchObject({ label: "Error", tone: "error" })
+    expect(statusOnlyStatuses.voices).toMatchObject({ label: "Error", tone: "error" })
+    expect(statusOnlyStatuses.generate).toMatchObject({ label: "Error", tone: "error" })
+    expect(statusOnlyStatuses.archive).toMatchObject({ label: "Error", tone: "error" })
+    expect(statusOnlyStatuses.provider).toMatchObject({ label: "Limited", tone: "attention" })
+
+    const emptyMessageStatuses = buildWorkflowSectionStatuses({
+      ...baseStatusInput,
+      generatedAudioStorageError: "",
+      processingOptionsError: "",
+      providerError: "",
+      voiceError: "",
+    })
+
+    expect(emptyMessageStatuses.prepare).toMatchObject({ label: "Error", tone: "error" })
+    expect(emptyMessageStatuses.voices).toMatchObject({ label: "Error", tone: "error" })
+    expect(emptyMessageStatuses.archive).toMatchObject({ label: "Error", tone: "error" })
+    expect(emptyMessageStatuses.provider).toMatchObject({ label: "Limited", tone: "attention" })
+  })
+
   it("derives busy and complete status labels", () => {
     const statuses = buildWorkflowSectionStatuses({
       ...baseStatusInput,

@@ -129,14 +129,15 @@ function prepareStatus(input: WorkflowSectionStatusInput): WorkflowSectionStatus
   if (input.processingStatus === "starting" || input.processingStatus === "processing") {
     return busyStatus("Processing")
   }
-  if (input.processingStatus === "error" || input.processingOptionsError) {
+  if (
+    input.processingStatus === "error" ||
+    input.processingOptionsStatus === "error" ||
+    input.processingOptionsError !== null
+  ) {
     return errorStatus("Error")
   }
   if (input.processingOptionsStatus === "idle" || input.processingOptionsStatus === "loading") {
     return busyStatus("Loading")
-  }
-  if (input.processingEnabledOperationCount === 0) {
-    return neutralStatus("Optional")
   }
   return neutralStatus("Optional")
 }
@@ -145,7 +146,7 @@ function voicesStatus(input: WorkflowSectionStatusInput): WorkflowSectionStatus 
   if (input.voiceStatus === "idle" || input.voiceStatus === "loading") {
     return busyStatus("Loading")
   }
-  if (input.voiceStatus === "error" || input.voiceError) {
+  if (input.voiceStatus === "error" || input.voiceError !== null) {
     return errorStatus("Error")
   }
   if (!input.selectedVoiceId) {
@@ -158,7 +159,7 @@ function generateStatus(input: WorkflowSectionStatusInput): WorkflowSectionStatu
   if (input.speechStatus === "generating") {
     return busyStatus("Generating")
   }
-  if (input.speechStatus === "error" && input.speechError) {
+  if (input.speechStatus === "error") {
     return errorStatus("Error")
   }
   if (!input.canUseProvider) {
@@ -171,7 +172,7 @@ function generateStatus(input: WorkflowSectionStatusInput): WorkflowSectionStatu
 }
 
 function archiveStatus(input: WorkflowSectionStatusInput): WorkflowSectionStatus {
-  if (input.generatedAudioStorageError) {
+  if (input.generatedAudioStatus === "error" || input.generatedAudioStorageError !== null) {
     return errorStatus("Error")
   }
   if (input.generatedAudioMutation) {
@@ -193,7 +194,7 @@ function providerStatus(input: WorkflowSectionStatusInput): WorkflowSectionStatu
   if (input.keySource === "missing") {
     return attentionStatus("Missing Key")
   }
-  if (input.providerError) {
+  if (input.providerStatus === "error" || input.providerError !== null) {
     return attentionStatus("Limited")
   }
   return successStatus("Ready")
