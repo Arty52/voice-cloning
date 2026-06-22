@@ -8,7 +8,7 @@ VoiceSampleMode = Literal["excerpt", "sourceWindow"]
 VoicePresetId = Literal["standardNarration", "animatedDialogue"]
 DEFAULT_VOICE_PRESET_ID: VoicePresetId = "standardNarration"
 SampleProcessingOperationId = Literal["isolateVoice", "trimSilence", "separateSpeakers"]
-SampleProcessingPresetId = Literal["fast", "balanced", "clean", "maxIsolation"]
+SampleProcessingPresetId = Literal["fast", "balanced", "clean", "maxIsolation", "trimLight", "trimBalanced", "trimAggressive"]
 SampleProcessingSourcePreference = Literal["original", "active"]
 SampleProcessingJobStatus = Literal["pending", "running", "success", "error"]
 

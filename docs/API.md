@@ -167,13 +167,12 @@ Both fields are optional, but at least one of `name` or `voicePresetId` is requi
 
 ## Sample Processing
 
-Sample Processing prepares local samples without changing the normal generation flow. The first operation is `isolateVoice`; future operations such as `trimSilence` and `separateSpeakers` are exposed through the same options shape.
+Sample Processing prepares local samples without changing the normal generation flow. Enabled operations depend on local processor configuration: `SAMPLE_PROCESSING_ENGINE=demucs` enables `isolateVoice` and `trimSilence`, `SAMPLE_PROCESSING_ENGINE=ffmpeg` enables only `trimSilence`, and `separateSpeakers` remains reserved for future speaker-separation work.
 
-`GET /api/sample-processing/options` returns the processor status and operation registry:
+`GET /api/sample-processing/options` returns the operation registry for the configured processor:
 
 ```json
 {
-  "engine": "demucs",
   "operations": [
     {
       "id": "isolateVoice",
@@ -207,10 +206,26 @@ Sample Processing prepares local samples without changing the normal generation 
     {
       "id": "trimSilence",
       "label": "Trim Silence",
-      "description": "Remove leading, trailing, or long empty regions from a sample.",
-      "enabled": false,
-      "defaultProcessingPresetId": null,
-      "processingPresets": []
+      "description": "Remove leading, trailing, and long interior empty sections with FFmpeg.",
+      "enabled": true,
+      "defaultProcessingPresetId": "trimBalanced",
+      "processingPresets": [
+        {
+          "id": "trimLight",
+          "label": "Light",
+          "description": "Conservative trimming for only quieter or longer empty regions."
+        },
+        {
+          "id": "trimBalanced",
+          "label": "Balanced",
+          "description": "Default silence trimming with a small amount of preserved room tone."
+        },
+        {
+          "id": "trimAggressive",
+          "label": "Aggressive",
+          "description": "Tighter trimming for shorter or louder empty regions."
+        }
+      ]
     }
   ]
 }
@@ -218,8 +233,8 @@ Sample Processing prepares local samples without changing the normal generation 
 
 `POST /api/sample-processing/jobs` accepts multipart form fields:
 
-- `operationId`: required operation id, currently `isolateVoice` when the optional processor is enabled
-- `processingPresetId`: optional Isolate Voice preset id; defaults to `balanced` when presets are advertised
+- `operationId`: required operation id, currently `isolateVoice` or `trimSilence` when the matching local processor is enabled
+- `processingPresetId`: optional operation preset id; Isolate Voice defaults to `balanced`, and Trim Silence defaults to `trimBalanced`
 - `sourceVoiceId`: optional saved local voice id
 - `sourcePreference`: optional, either `original` or `active`; `original` uses the retained full upload/source file when one exists and falls back to the active provider-facing sample when none exists; `active` always uses the provider-facing sample currently stored for the selected voice
 - `sourceFile`: optional uploaded audio source
@@ -264,6 +279,8 @@ Exactly one of `sourceVoiceId` or `sourceFile` is required. The endpoint returns
 ```
 
 `GET /api/sample-processing/jobs/{jobId}/result` streams the processed WAV result. The result is available only after the job reaches `success`.
+
+For `trimSilence`, the job `engine` is `ffmpeg`, and the saved `processingSteps` metadata records the selected trim preset. For `isolateVoice`, the job `engine` remains `demucs`.
 
 `POST /api/sample-processing/jobs/{jobId}/voice` saves a successful result as a local voice:
 

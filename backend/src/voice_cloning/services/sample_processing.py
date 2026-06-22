@@ -30,6 +30,7 @@ from ..voice_library import VoiceLibrary
 RESULT_FILENAME = "result.wav"
 RESULT_CONTENT_TYPE = "audio/wav"
 DEFAULT_ISOLATION_PROCESSING_PRESET_ID: SampleProcessingPresetId = "balanced"
+DEFAULT_TRIM_SILENCE_PROCESSING_PRESET_ID: SampleProcessingPresetId = "trimBalanced"
 
 ISOLATION_PROCESSING_PRESETS: tuple[SampleProcessingPreset, ...] = (
     SampleProcessingPreset(
@@ -51,6 +52,24 @@ ISOLATION_PROCESSING_PRESETS: tuple[SampleProcessingPreset, ...] = (
         id="maxIsolation",
         label="Max Isolation",
         description="Slower, strongest separation attempt for difficult tracks.",
+    ),
+)
+
+TRIM_SILENCE_PROCESSING_PRESETS: tuple[SampleProcessingPreset, ...] = (
+    SampleProcessingPreset(
+        id="trimLight",
+        label="Light",
+        description="Conservative trimming for only quieter or longer empty regions.",
+    ),
+    SampleProcessingPreset(
+        id="trimBalanced",
+        label="Balanced",
+        description="Default silence trimming with a small amount of preserved room tone.",
+    ),
+    SampleProcessingPreset(
+        id="trimAggressive",
+        label="Aggressive",
+        description="Tighter trimming for shorter or louder empty regions.",
     ),
 )
 
@@ -100,6 +119,8 @@ class SampleProcessor(Protocol):
     @property
     def engine_name(self) -> str: ...
 
+    def engine_name_for_operation(self, operation_id: SampleProcessingOperationId) -> str: ...
+
     def operations(self) -> tuple[SampleProcessingOperation, ...]: ...
 
     async def process(self, request: SampleProcessingRequest) -> None: ...
@@ -109,6 +130,9 @@ class UnavailableSampleProcessor:
     @property
     def engine_name(self) -> str:
         return "unavailable"
+
+    def engine_name_for_operation(self, operation_id: SampleProcessingOperationId) -> str:
+        return self.engine_name
 
     def operations(self) -> tuple[SampleProcessingOperation, ...]:
         return ()
@@ -199,7 +223,7 @@ class SampleProcessingService:
                 source_preference=resolved_source_preference,
                 created_at=now,
                 updated_at=now,
-                engine=self.processor.engine_name,
+                engine=self.processor.engine_name_for_operation(operation.id),
                 processing_preset_id=resolved_processing_preset_id,
                 processing_preset_label=resolved_processing_preset_label,
             )

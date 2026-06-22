@@ -239,10 +239,26 @@ const sampleProcessingOptions = {
     {
       id: "trimSilence" as const,
       label: "Trim Silence",
-      description: "Remove leading, trailing, or long empty regions from a sample.",
+      description: "Remove leading, trailing, and long interior empty sections with FFmpeg.",
       enabled: false,
-      defaultProcessingPresetId: null,
-      processingPresets: [],
+      defaultProcessingPresetId: "trimBalanced" as const,
+      processingPresets: [
+        {
+          id: "trimLight" as const,
+          label: "Light",
+          description: "Conservative trimming for only quieter or longer empty regions.",
+        },
+        {
+          id: "trimBalanced" as const,
+          label: "Balanced",
+          description: "Default silence trimming with a small amount of preserved room tone.",
+        },
+        {
+          id: "trimAggressive" as const,
+          label: "Aggressive",
+          description: "Tighter trimming for shorter or louder empty regions.",
+        },
+      ],
     },
     {
       id: "separateSpeakers" as const,
@@ -938,6 +954,10 @@ describe("App", () => {
     await screen.findByText("default/default-voice.mp3")
     await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
     expect(await sampleProcessingPanel().findByRole("button", { name: "Sample Processing Operation: Trim Silence" })).toBeInTheDocument()
+    const trimPresets = within(sampleProcessingPanel().getByRole("radiogroup", { name: "Trim Aggressiveness" }))
+    expect(trimPresets.getByRole("radio", { name: "Balanced" })).toHaveAttribute("aria-checked", "true")
+    await user.click(trimPresets.getByRole("radio", { name: "Aggressive" }))
+    expect(trimPresets.getByRole("radio", { name: "Aggressive" })).toHaveAttribute("aria-checked", "true")
     const startButton = sampleProcessingPanel().getByRole("button", { name: "Start Processing" })
     await waitFor(() => expect(startButton).toBeEnabled())
 
@@ -948,6 +968,7 @@ describe("App", () => {
     )
     const jobBody = jobCall?.[1]?.body as FormData
     expect(jobBody.get("operationId")).toBe("trimSilence")
+    expect(jobBody.get("processingPresetId")).toBe("trimAggressive")
     expect(await sampleProcessingPanel().findByLabelText("Processed sample preview")).toBeInTheDocument()
     expect(sampleProcessingPanel().getByLabelText("Voice Name")).toHaveValue("Default voice Trimmed")
   })
