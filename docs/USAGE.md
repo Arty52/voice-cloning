@@ -48,13 +48,21 @@ ELEVENLABS_API_KEY=your_key_here  # optional when you use the Provider Keys pane
 ELEVENLABS_MODEL_ID=eleven_multilingual_v2
 ```
 
-Optionally enable local sample processing:
+Optionally enable local sample processing for Trim Silence only:
 
 ```sh
 INSTALL_SAMPLE_PROCESSING=1
-SAMPLE_PROCESSING_ENGINE=demucs
-SAMPLE_PROCESSING_DEMUCS_COMMAND=demucs
+SAMPLE_PROCESSING_ENGINE=ffmpeg
 SAMPLE_PROCESSING_FFMPEG_COMMAND=ffmpeg
+SAMPLE_PROCESSING_TIMEOUT_SECONDS=900
+```
+
+To also enable Isolate Voice through Demucs, use the Demucs engine and add the Demucs-specific settings:
+
+```sh
+SAMPLE_PROCESSING_ENGINE=demucs
+SAMPLE_PROCESSING_FFMPEG_COMMAND=ffmpeg
+SAMPLE_PROCESSING_DEMUCS_COMMAND=demucs
 SAMPLE_PROCESSING_DEMUCS_MODEL=htdemucs
 SAMPLE_PROCESSING_DEMUCS_DEVICE=  # optional, such as cpu, cuda, or mps when supported
 SAMPLE_PROCESSING_TIMEOUT_SECONDS=900
@@ -179,14 +187,16 @@ If the browser cannot decode the selected file type, choose a shorter browser-de
 
 ## Sample Processing
 
-Sample Processing is a separate workflow from Add Voice. It is intended for preparing source samples before using them for generation, starting with Isolate Voice and leaving room for later operations such as Silence Removal and Speaker Separation.
+Sample Processing is a separate workflow from Add Voice. It is intended for preparing source samples before using them for generation. Current operations are Isolate Voice and Trim Silence, with Speaker Separation reserved for a later release.
 
-When Demucs is enabled, Isolate Voice runs the configured Demucs command with the `htdemucs` model by default, extracts the vocals stem, then runs FFmpeg to normalize the result to mono 32 kHz WAV. Existing saved voices default to Original Source, which uses the retained full upload/source file when `sourceFilePath` exists and falls back to the active provider-facing sample when no retained source exists. Choose Active Sample to process the provider-facing sample currently stored for the selected voice. Uploaded files can also be processed without first saving them as voices.
+Set `SAMPLE_PROCESSING_ENGINE=ffmpeg` to enable only Trim Silence. Set `SAMPLE_PROCESSING_ENGINE=demucs` to enable Isolate Voice and Trim Silence together. When Demucs is enabled, Isolate Voice runs the configured Demucs command with the `htdemucs` model by default, extracts the vocals stem, then runs FFmpeg to normalize the result to mono 32 kHz WAV. Trim Silence runs FFmpeg `silenceremove`, trims leading, trailing, and long interior empty sections, then normalizes the result to mono 32 kHz WAV. Existing saved voices default to Original Source, which uses the retained full upload/source file when `sourceFilePath` exists and falls back to the active provider-facing sample when no retained source exists. Choose Active Sample to process the provider-facing sample currently stored for the selected voice. Uploaded files can also be processed without first saving them as voices.
 
 Isolation Strength offers four presets. Fast uses fewer Demucs shifts for quick previews. Balanced is the default and preserves the original behavior. Clean keeps Balanced separation and adds conservative FFmpeg high-pass/low-pass cleanup. Max Isolation uses the finetuned `htdemucs_ft` model with higher shifts and overlap; it is slower and requires that model to be available locally.
 
-Processed results are candidates, not automatic voice-library entries. Sample Processing never refines, overwrites, or replaces the selected saved voice. Preview the result first, then choose Add To Voice Library to store it under `assets/voices/` through the same local Voice Library path as uploaded samples. This creates a new voice whose `filePath`, `contentType`, and `sha256` point at the processed active sample, and includes `processingSteps` metadata for traceability, including the selected isolation preset when one was used.
+Trim Aggressiveness offers three presets. Light trims only quieter or longer empty regions. Balanced is the default and preserves a small amount of room tone. Aggressive trims shorter or louder empty regions for tighter samples.
+
+Processed results are candidates, not automatic voice-library entries. Sample Processing never refines, overwrites, or replaces the selected saved voice. Preview the result first, then choose Add To Voice Library to store it under `assets/voices/` through the same local Voice Library path as uploaded samples. This creates a new voice whose `filePath`, `contentType`, and `sha256` point at the processed active sample, and includes `processingSteps` metadata for traceability, including the selected isolation or trim preset when one was used.
 
 Sample Processing shows a browser-observed elapsed timer while the current job runs and keeps the final time visible with the current preview or error. This timing is local to the Sample Processing section and is not saved to voice metadata.
 
-Runtime files are written under ignored `storage/sample-processing/`. Demucs output folders and intermediate stems are job-local. Heavy model files are runtime data; the Docker stack routes them to ignored `storage/model-cache/`. Future speaker-separation work will use the same operation registry and will likely require FFmpeg plus Hugging Face access for `pyannote.audio` models.
+Runtime files are written under ignored `storage/sample-processing/`. Demucs output folders and intermediate stems are job-local. Heavy model files are runtime data; the Docker stack routes them to ignored `storage/model-cache/`. Future Speaker Separation work will use the same operation registry and will likely require FFmpeg plus Hugging Face access for `pyannote.audio` models.

@@ -36,7 +36,9 @@ export function SampleProcessingPanel({
   voicePresets,
 }: SampleProcessingPanelProps) {
   const operationOptions = processing.operations.map((operation) => ({
-    label: operation.enabled ? operation.label : `${operation.label} Unavailable`,
+    label: operation.enabled
+      ? operationDisplayLabel(operation.id, operation.label)
+      : `${operationDisplayLabel(operation.id, operation.label)} Unavailable`,
     value: operation.id,
   }))
   const voiceOptions = processing.voiceOptions.length > 0 ? processing.voiceOptions : [{ label: "No Voices", value: "" }]
@@ -387,6 +389,13 @@ function presetControlLabel(operationId: SampleProcessingOperationId) {
     return "Trim Aggressiveness"
   }
   return "Processing Preset"
+}
+
+function operationDisplayLabel(operationId: SampleProcessingOperationId, label: string) {
+  if (operationId === "separateSpeakers") {
+    return "Speaker Separation"
+  }
+  return label
 }
 
 function isSampleProcessingOperationId(value: string): value is SampleProcessingOperationId {
