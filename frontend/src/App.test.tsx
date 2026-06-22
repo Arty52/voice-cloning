@@ -669,6 +669,26 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "Voices" })).not.toHaveAttribute("aria-current")
   })
 
+  it("links from the generate source row to voice selection", async () => {
+    window.history.replaceState(null, "", "/#generate")
+    const user = userEvent.setup()
+    renderApp()
+
+    const generateSection = document.querySelector('[data-section-id="generate"]')
+    expect(generateSection).not.toHaveClass("hidden")
+    expect(await within(generateSection as HTMLElement).findByText("Default voice")).toBeInTheDocument()
+
+    const changeVoiceLink = await screen.findByRole("link", { name: "Change Voice" })
+    expect(changeVoiceLink).toHaveAttribute("href", "#voices")
+
+    await user.click(changeVoiceLink)
+
+    await waitFor(() => expect(window.location.hash).toBe("#voices"))
+    expect(screen.getByRole("button", { name: "Voices" })).toHaveAttribute("aria-current", "page")
+    expect(document.querySelector('[data-section-id="voices"]')).not.toHaveClass("hidden")
+    expect(document.querySelector('[data-section-id="generate"]')).toHaveClass("hidden")
+  })
+
   it("closes mobile workflow navigation after selecting a section", async () => {
     mockWorkflowViewport(true)
     const user = userEvent.setup()
