@@ -17,7 +17,6 @@ function App() {
   const {
     activeSectionId,
     archiveStorageError,
-    archivedGeneratedAudioItems,
     canGenerate,
     characterCount,
     confirmation,
@@ -160,7 +159,7 @@ function App() {
         <WorkflowSectionPanel activeSectionId={activeSectionId} id="archive">
           <GeneratedAudioPanel
             allItems={generatedAudio.generatedAudioItems}
-            items={archivedGeneratedAudioItems}
+            items={generatedAudio.generatedAudioItems}
             libraryStatus={generatedAudio.generatedAudioStatus}
             mutationStatus={generatedAudio.generatedAudioMutation}
             onClear={requestClearGeneratedAudio}

@@ -68,12 +68,6 @@ export function useVoiceStudioController() {
     }
     return generatedAudio.generatedAudioItems.find((item) => item.id === latestGeneratedAudioId) ?? null
   }, [generatedAudio.generatedAudioItems, latestGeneratedAudioId])
-  const archivedGeneratedAudioItems = useMemo(() => {
-    if (!latestGeneratedAudioId) {
-      return generatedAudio.generatedAudioItems
-    }
-    return generatedAudio.generatedAudioItems.filter((item) => item.id !== latestGeneratedAudioId)
-  }, [generatedAudio.generatedAudioItems, latestGeneratedAudioId])
   const latestStorageError =
     latestGeneratedAudioItem && isTemporaryGeneratedAudioId(latestGeneratedAudioItem.id)
       ? generatedAudio.generatedAudioStorageError
@@ -208,7 +202,6 @@ export function useVoiceStudioController() {
   return {
     activeSectionId: workflowNavigation.activeSectionId,
     archiveStorageError,
-    archivedGeneratedAudioItems,
     canGenerate,
     characterCount,
     confirmation,

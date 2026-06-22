@@ -437,6 +437,14 @@ function voiceTuningPanel() {
   return scopedPanelByHeading("Voice Tuning")
 }
 
+function latestGeneratedAudioPanel() {
+  return scopedPanelByHeading("Latest Generated Audio")
+}
+
+function generatedAudioArchivePanel() {
+  return scopedPanelByHeading("Generated Audio Archive")
+}
+
 function uploadedVoiceFrom(init?: RequestInit) {
   const voicePresetId = init?.body instanceof FormData ? init.body.get("voicePresetId") : null
   return {
@@ -1538,7 +1546,7 @@ describe("App", () => {
       })
     )
 
-    expect(await screen.findByLabelText(/generated voice playback/i)).toBeInTheDocument()
+    expect(await latestGeneratedAudioPanel().findByLabelText(/generated voice playback/i)).toBeInTheDocument()
     expect(screen.queryByText(/Generation canceled in this browser/i)).not.toBeInTheDocument()
   })
 
@@ -2460,14 +2468,13 @@ describe("App", () => {
     expect(body.get("modelId")).toBe("eleven_flash_v2_5")
     const formattedCharacterCount = formatTestNumber(54)
     expect(await screen.findAllByText(formattedCharacterCount)).toHaveLength(1)
-    expect(screen.getByText(new RegExp(`${formattedCharacterCount} chars`))).toBeInTheDocument()
-    expect(screen.getAllByText(/req_test_123/)).toHaveLength(2)
-    const latestPanel = screen.getByRole("heading", { name: "Latest Generated Audio" }).closest("section")
-    expect(latestPanel).not.toBeNull()
-    expect(within(latestPanel as HTMLElement).getByLabelText("Generated Audio Metadata")).toBeInTheDocument()
-    expect(within(latestPanel as HTMLElement).getByText("ElevenLabs")).toBeInTheDocument()
-    expect(within(latestPanel as HTMLElement).getByText("Preset: Standard Narration")).toBeInTheDocument()
-    expect(within(latestPanel as HTMLElement).getByText("Default Settings")).toBeInTheDocument()
+    const latestPanel = latestGeneratedAudioPanel()
+    expect(latestPanel.getByText(new RegExp(`${formattedCharacterCount} chars`))).toBeInTheDocument()
+    expect(latestPanel.getByText(/req_test_123/)).toBeInTheDocument()
+    expect(latestPanel.getByLabelText("Generated Audio Metadata")).toBeInTheDocument()
+    expect(latestPanel.getByText("ElevenLabs")).toBeInTheDocument()
+    expect(latestPanel.getByText("Preset: Standard Narration")).toBeInTheDocument()
+    expect(latestPanel.getByText("Default Settings")).toBeInTheDocument()
   })
 
   it("persists browser-observed generation elapsed time", async () => {
@@ -2489,7 +2496,7 @@ describe("App", () => {
     await screen.findByText("default/default-voice.mp3")
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
 
-    expect(await screen.findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
+    expect(await latestGeneratedAudioPanel().findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
     expect((await listGeneratedAudio())[0]).toMatchObject({
       generationElapsedMs: 1234,
       requestId: "req_test_123",
@@ -2538,7 +2545,7 @@ describe("App", () => {
     await screen.findByText("default/default-voice.mp3")
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
 
-    expect(await screen.findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
+    expect(await latestGeneratedAudioPanel().findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
     expect(screen.getByText("1 saved")).toBeInTheDocument()
     unmount()
 
@@ -2563,20 +2570,20 @@ describe("App", () => {
 
     await screen.findByText("default/default-voice.mp3")
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
-    expect(await screen.findAllByLabelText(/generated voice playback for default voice/i)).toHaveLength(1)
+    expect(await latestGeneratedAudioPanel().findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
+    expect(await generatedAudioArchivePanel().findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
-    await waitFor(() => expect(screen.getAllByLabelText(/generated voice playback for default voice/i)).toHaveLength(2))
-    const latestPanel = screen.getByRole("heading", { name: "Latest Generated Audio" }).closest("section")
-    const archivePanel = screen.getByRole("heading", { name: "Generated Audio Archive" }).closest("section")
-    expect(latestPanel).not.toBeNull()
-    expect(archivePanel).not.toBeNull()
-    expect(within(latestPanel as HTMLElement).getAllByLabelText(/generated voice playback for default voice/i)).toHaveLength(1)
-    expect(within(archivePanel as HTMLElement).getAllByLabelText(/generated voice playback for default voice/i)).toHaveLength(1)
+    const latestPanel = latestGeneratedAudioPanel()
+    const archivePanel = generatedAudioArchivePanel()
+    await waitFor(() => expect(latestPanel.getAllByLabelText(/generated voice playback for default voice/i)).toHaveLength(1))
+    await waitFor(() => expect(archivePanel.getAllByLabelText(/generated voice playback for default voice/i)).toHaveLength(2))
 
-    await user.click(screen.getAllByRole("button", { name: /remove generated audio for default voice/i })[0])
-    await waitFor(() => expect(screen.getAllByLabelText(/generated voice playback for default voice/i)).toHaveLength(1))
+    await user.click(archivePanel.getAllByRole("button", { name: /remove generated audio for default voice/i })[0])
+    await waitFor(() =>
+      expect(archivePanel.getAllByLabelText(/generated voice playback for default voice/i)).toHaveLength(1)
+    )
 
-    await user.click(screen.getByRole("button", { name: /clear all/i }))
+    await user.click(archivePanel.getByRole("button", { name: /clear all/i }))
     const dialog = screen.getByRole("dialog", { name: /clear generated audio/i })
     await user.click(within(dialog).getByRole("button", { name: /clear all/i }))
 
@@ -2592,9 +2599,11 @@ describe("App", () => {
     await screen.findByText("default/default-voice.mp3")
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
     expect(await screen.findByRole("heading", { name: "Latest Generated Audio" })).toBeInTheDocument()
-    expect(await screen.findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
+    expect(await latestGeneratedAudioPanel().findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
+    const archivePanel = generatedAudioArchivePanel()
+    expect(await archivePanel.findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
 
-    await user.click(screen.getByRole("button", { name: /clear all/i }))
+    await user.click(archivePanel.getByRole("button", { name: /clear all/i }))
     const dialog = screen.getByRole("dialog", { name: /clear generated audio/i })
     await user.click(within(dialog).getByRole("button", { name: /clear all/i }))
 
@@ -2622,17 +2631,15 @@ describe("App", () => {
 
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
 
-    expect(await screen.findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
-    const latestPanel = screen.getByRole("heading", { name: "Latest Generated Audio" }).closest("section")
-    const archivePanel = screen.getByRole("heading", { name: "Generated Audio Archive" }).closest("section")
-    expect(latestPanel).not.toBeNull()
-    expect(archivePanel).not.toBeNull()
+    const latestPanel = latestGeneratedAudioPanel()
+    const archivePanel = generatedAudioArchivePanel()
+    expect(await latestPanel.findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
     expect(screen.getByText("1 unsaved")).toBeInTheDocument()
     expect(screen.queryByText("1 saved")).not.toBeInTheDocument()
-    expect(within(latestPanel as HTMLElement).getByText(/browser storage could not save it/i)).toBeInTheDocument()
-    expect(within(archivePanel as HTMLElement).queryByText(/browser storage could not save it/i)).not.toBeInTheDocument()
+    expect(latestPanel.getByText(/browser storage could not save it/i)).toBeInTheDocument()
+    expect(archivePanel.queryByText(/browser storage could not save it/i)).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole("button", { name: /remove generated audio for default voice/i }))
+    await user.click(latestPanel.getByRole("button", { name: /remove generated audio for default voice/i }))
 
     await waitFor(() => expect(screen.queryByLabelText(/generated voice playback for default voice/i)).not.toBeInTheDocument())
     expect(screen.queryByRole("heading", { name: "Latest Generated Audio" })).not.toBeInTheDocument()
@@ -2645,9 +2652,10 @@ describe("App", () => {
 
     await screen.findByText("default/default-voice.mp3")
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
-    expect(await screen.findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
+    const archivePanel = generatedAudioArchivePanel()
+    expect(await archivePanel.findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
 
-    const clearAllButton = screen.getByRole("button", { name: /clear all/i })
+    const clearAllButton = archivePanel.getByRole("button", { name: /clear all/i })
     await user.click(clearAllButton)
     const dialog = screen.getByRole("dialog", { name: /clear generated audio/i })
     const cancelButton = within(dialog).getByRole("button", { name: /cancel/i })
@@ -2665,7 +2673,7 @@ describe("App", () => {
 
     await waitFor(() => expect(screen.queryByRole("dialog", { name: /clear generated audio/i })).not.toBeInTheDocument())
     expect(clearAllButton).toHaveFocus()
-    expect(screen.getByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
+    expect(archivePanel.getByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
   })
 
   it("confirms before lowering the storage cap when saved audio would be pruned", async () => {
@@ -2704,7 +2712,8 @@ describe("App", () => {
 
     await screen.findByText("default/default-voice.mp3")
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
-    expect(await screen.findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
+    const archivePanel = generatedAudioArchivePanel()
+    expect(await archivePanel.findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
     expect(await screen.findByText((_, element) => element?.textContent === "30 MB / 100 MB")).toBeInTheDocument()
 
     await user.click(screen.getByRole("button", { name: /cap: 100 mb/i }))
@@ -2714,7 +2723,7 @@ describe("App", () => {
     expect(within(dialog).getByText(/remove the oldest saved generated audio/i)).toBeInTheDocument()
     await user.click(within(dialog).getByRole("button", { name: /cancel/i }))
     expect(screen.getByRole("button", { name: /cap: 100 mb/i })).toBeInTheDocument()
-    expect(screen.getByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
+    expect(archivePanel.getByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
 
     await user.click(screen.getByRole("button", { name: /cap: 100 mb/i }))
     await user.click(screen.getByRole("menuitemradio", { name: /25 mb/i }))
@@ -2763,8 +2772,9 @@ describe("App", () => {
     )
     const body = speechCall?.[1]?.body as FormData
     expect(body.has("modelId")).toBe(false)
-    expect(await screen.findByText(/Model eleven_turbo_v2_5/)).toBeInTheDocument()
-    expect(screen.queryByText(/Model eleven_multilingual_v2/)).not.toBeInTheDocument()
+    const latestPanel = latestGeneratedAudioPanel()
+    expect(await latestPanel.findByText(/Model eleven_turbo_v2_5/)).toBeInTheDocument()
+    expect(latestPanel.queryByText(/Model eleven_multilingual_v2/)).not.toBeInTheDocument()
 
     resolveModels(
       new Response(
