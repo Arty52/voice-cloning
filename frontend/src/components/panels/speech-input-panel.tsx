@@ -53,8 +53,13 @@ export function SpeechInputPanel({
         value={text}
       />
       <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="text-sm text-muted-foreground">
-          Source: <span className="text-foreground">{selectedVoice?.name || "No voice selected"}</span>
+        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          <span>
+            Source: <span className="text-foreground">{selectedVoice?.name || "No voice selected"}</span>
+          </span>
+          <Button asChild size="sm" variant="ghost">
+            <a href="#voices">Change Voice</a>
+          </Button>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button disabled={!canGenerate} type="submit">

@@ -1,5 +1,6 @@
 import { AppHeader } from "@/components/app-header"
 import { ConfirmationDialog } from "@/components/dialogs/confirmation-dialog"
+import { VoiceStudioShell, WorkflowSectionPanel } from "@/components/layout/voice-studio-shell"
 import { RenameVoiceDialog } from "@/components/dialogs/rename-voice-dialog"
 import { AddVoicePanel } from "@/components/panels/add-voice-panel"
 import { CostQuotaPanel } from "@/components/panels/cost-quota-panel"
@@ -14,8 +15,8 @@ import { useVoiceStudioController } from "@/hooks/use-voice-studio-controller"
 
 function App() {
   const {
+    activeSectionId,
     archiveStorageError,
-    archivedGeneratedAudioItems,
     canGenerate,
     characterCount,
     confirmation,
@@ -24,21 +25,21 @@ function App() {
     handleGenerate,
     handleStorageLimitChange,
     hasModelRate,
-    isCostQuotaExpanded,
-    isSampleProcessingExpanded,
+    isVoiceTuningExpanded,
     latestGeneratedAudioItem,
     latestStorageError,
     metadata,
+    navigateToSection,
     providerKeys,
     providerTuning,
     requestClearGeneratedAudio,
     requestDeleteVoice,
     result,
     sampleProcessing,
+    sectionStatuses,
     selectedModel,
     selectedTuningPresetId,
-    setIsCostQuotaExpanded,
-    setIsSampleProcessingExpanded,
+    setIsVoiceTuningExpanded,
     setText,
     speech,
     text,
@@ -47,157 +48,170 @@ function App() {
     voiceInput,
     voiceLibrary,
     voiceTuning,
+    workflowSections,
   } = useVoiceStudioController()
 
   return (
-    <main className="min-h-svh px-4 py-6 text-foreground sm:px-6 lg:px-8">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
-        <AppHeader />
+    <>
+      <VoiceStudioShell
+        activeSectionId={activeSectionId}
+        header={<AppHeader />}
+        onSectionChange={navigateToSection}
+        sectionStatuses={sectionStatuses}
+        sections={workflowSections}
+      >
+        <WorkflowSectionPanel activeSectionId={activeSectionId} id="prepare">
+          <SampleProcessingPanel
+            isCollapsible={false}
+            isExpanded
+            onToggleExpanded={() => undefined}
+            processing={sampleProcessing}
+            voicePresets={providerKeys.voicePresets}
+          />
+        </WorkflowSectionPanel>
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(23rem,0.85fr)]">
-          <section className="flex flex-col gap-4">
-            <SpeechInputPanel
-              canGenerate={canGenerate}
-              characterCount={characterCount}
-              isGenerating={speech.isGenerating}
-              onCancelGeneration={speech.cancelGeneration}
-              onGenerate={handleGenerate}
-              onTextChange={setText}
-              selectedVoice={voiceLibrary.selectedVoice}
-              text={text}
-              textRef={textRef}
-            />
+        <WorkflowSectionPanel activeSectionId={activeSectionId} className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]" id="voices">
+          <VoiceLibraryPanel
+            canSetDefault={voiceLibrary.canSetDefault}
+            defaultVoiceId={voiceLibrary.defaultVoiceId}
+            isGenerating={speech.isGenerating}
+            isSettingDefault={voiceLibrary.isSettingDefault}
+            isUpdatingVoice={voiceLibrary.isUpdatingVoice}
+            onDeleteRequest={requestDeleteVoice}
+            onPlayVoice={voiceLibrary.playVoice}
+            onPresetChange={(voice, voicePresetId) => void voiceLibrary.updateVoicePreset(voice, voicePresetId)}
+            onRenameRequest={voiceLibrary.requestRename}
+            onSelectVoice={voiceLibrary.setSelectedVoiceId}
+            onSetDefault={() => void voiceLibrary.setDefault()}
+            selectedVoice={voiceLibrary.selectedVoice}
+            selectedVoiceId={voiceLibrary.selectedVoiceId}
+            voiceError={voiceLibrary.voiceError}
+            voicePresets={providerKeys.voicePresets}
+            voices={voiceLibrary.voices}
+            voiceStatus={voiceLibrary.voiceStatus}
+          />
 
-            <LatestGeneratedAudioPanel
-              error={speech.error}
-              isDeleteDisabled={generatedAudio.generatedAudioMutation === "delete"}
-              item={latestGeneratedAudioItem}
-              onDelete={(id) => void generatedAudio.handleDeleteGeneratedAudio(id)}
-              status={speech.status}
-              storageError={latestStorageError}
-            />
+          <AddVoicePanel
+            canUpload={voiceInput.canUpload}
+            handleDiscardRecording={() => void voiceInput.handleDiscardRecording()}
+            handleStartRecording={() => void voiceInput.handleStartRecording()}
+            handleStopRecording={() => void voiceInput.handleStopRecording()}
+            handleSampleModeChange={voiceInput.handleSampleModeChange}
+            handleSampleWindowChange={voiceInput.handleSampleWindowChange}
+            handleUpload={voiceInput.handleUpload}
+            handleUploadFileChange={voiceInput.handleUploadFileChange}
+            handleVoiceSampleInputModeChange={voiceInput.handleVoiceSampleInputModeChange}
+            isRecorderBusy={voiceInput.isRecorderBusy}
+            isRecording={voiceInput.isRecording}
+            isPreparingSample={voiceInput.isPreparingSample}
+            isUploading={voiceInput.isUploading}
+            recorderError={voiceInput.recorderError}
+            recorderStatus={voiceInput.recorderStatus}
+            recordingDurationSeconds={voiceInput.recordingDurationSeconds}
+            sampleLimits={voiceInput.sampleLimits}
+            sampleMode={voiceInput.sampleMode}
+            setUploadName={voiceInput.setUploadName}
+            setUploadVoicePresetId={voiceInput.setUploadVoicePresetId}
+            uploadDurationSeconds={voiceInput.uploadDurationSeconds}
+            uploadError={voiceInput.uploadError}
+            uploadFile={voiceInput.uploadFile}
+            uploadName={voiceInput.uploadName}
+            uploadPreviewUrl={voiceInput.uploadPreviewUrl}
+            uploadVoicePresetId={voiceInput.uploadVoicePresetId}
+            uploadWindow={voiceInput.uploadWindow}
+            voicePresets={providerKeys.voicePresets}
+            voiceSampleInputMode={voiceInput.voiceSampleInputMode}
+          />
+        </WorkflowSectionPanel>
 
-            <VoiceTuningPanel
-              controls={providerTuning.controls}
-              isGenerating={speech.isGenerating}
-              isLoading={providerKeys.providerStatus === "idle" || providerKeys.providerStatus === "loading"}
-              onPresetApply={voiceTuning.handlePresetApply}
-              onTuningValueChange={voiceTuning.handleTuningValueChange}
-              presets={providerTuning.presets}
-              selectedTuningPresetId={selectedTuningPresetId}
-              tuning={tuning}
-            />
+        <WorkflowSectionPanel activeSectionId={activeSectionId} id="generate">
+          <SpeechInputPanel
+            canGenerate={canGenerate}
+            characterCount={characterCount}
+            isGenerating={speech.isGenerating}
+            onCancelGeneration={speech.cancelGeneration}
+            onGenerate={handleGenerate}
+            onTextChange={setText}
+            selectedVoice={voiceLibrary.selectedVoice}
+            text={text}
+            textRef={textRef}
+          />
 
-            <GeneratedAudioPanel
-              allItems={generatedAudio.generatedAudioItems}
-              items={archivedGeneratedAudioItems}
-              libraryStatus={generatedAudio.generatedAudioStatus}
-              mutationStatus={generatedAudio.generatedAudioMutation}
-              onClear={requestClearGeneratedAudio}
-              onDelete={(id) => void generatedAudio.handleDeleteGeneratedAudio(id)}
-              onStorageLimitChange={handleStorageLimitChange}
-              storageError={archiveStorageError}
-              storageLimitBytes={generatedAudio.storageLimitBytes}
-              usage={generatedAudio.generatedAudioUsage}
-            />
-          </section>
+          <LatestGeneratedAudioPanel
+            error={speech.error}
+            isDeleteDisabled={generatedAudio.generatedAudioMutation === "delete"}
+            item={latestGeneratedAudioItem}
+            onDelete={(id) => void generatedAudio.handleDeleteGeneratedAudio(id)}
+            status={speech.status}
+            storageError={latestStorageError}
+          />
 
-          <aside className="flex flex-col gap-4">
-            <VoiceLibraryPanel
-              canSetDefault={voiceLibrary.canSetDefault}
-              defaultVoiceId={voiceLibrary.defaultVoiceId}
-              isGenerating={speech.isGenerating}
-              isSettingDefault={voiceLibrary.isSettingDefault}
-              isUpdatingVoice={voiceLibrary.isUpdatingVoice}
-              onDeleteRequest={requestDeleteVoice}
-              onPlayVoice={voiceLibrary.playVoice}
-              onPresetChange={(voice, voicePresetId) => void voiceLibrary.updateVoicePreset(voice, voicePresetId)}
-              onRenameRequest={voiceLibrary.requestRename}
-              onSelectVoice={voiceLibrary.setSelectedVoiceId}
-              onSetDefault={() => void voiceLibrary.setDefault()}
-              selectedVoice={voiceLibrary.selectedVoice}
-              selectedVoiceId={voiceLibrary.selectedVoiceId}
-              voiceError={voiceLibrary.voiceError}
-              voicePresets={providerKeys.voicePresets}
-              voices={voiceLibrary.voices}
-              voiceStatus={voiceLibrary.voiceStatus}
-            />
+          <VoiceTuningPanel
+            controls={providerTuning.controls}
+            isExpanded={isVoiceTuningExpanded}
+            isGenerating={speech.isGenerating}
+            isLoading={providerKeys.providerStatus === "idle" || providerKeys.providerStatus === "loading"}
+            onExpandedChange={setIsVoiceTuningExpanded}
+            onPresetApply={voiceTuning.handlePresetApply}
+            onTuningValueChange={voiceTuning.handleTuningValueChange}
+            presets={providerTuning.presets}
+            selectedTuningPresetId={selectedTuningPresetId}
+            tuning={tuning}
+          />
+        </WorkflowSectionPanel>
 
-            <SampleProcessingPanel
-              isExpanded={isSampleProcessingExpanded}
-              onToggleExpanded={() => setIsSampleProcessingExpanded((current) => !current)}
-              processing={sampleProcessing}
-              voicePresets={providerKeys.voicePresets}
-            />
+        <WorkflowSectionPanel activeSectionId={activeSectionId} id="archive">
+          <GeneratedAudioPanel
+            allItems={generatedAudio.generatedAudioItems}
+            items={generatedAudio.generatedAudioItems}
+            libraryStatus={generatedAudio.generatedAudioStatus}
+            mutationStatus={generatedAudio.generatedAudioMutation}
+            onClear={requestClearGeneratedAudio}
+            onDelete={(id) => void generatedAudio.handleDeleteGeneratedAudio(id)}
+            onStorageLimitChange={handleStorageLimitChange}
+            storageError={archiveStorageError}
+            storageLimitBytes={generatedAudio.storageLimitBytes}
+            usage={generatedAudio.generatedAudioUsage}
+          />
+        </WorkflowSectionPanel>
 
-            <AddVoicePanel
-              canUpload={voiceInput.canUpload}
-              handleDiscardRecording={() => void voiceInput.handleDiscardRecording()}
-              handleStartRecording={() => void voiceInput.handleStartRecording()}
-              handleStopRecording={() => void voiceInput.handleStopRecording()}
-              handleSampleModeChange={voiceInput.handleSampleModeChange}
-              handleSampleWindowChange={voiceInput.handleSampleWindowChange}
-              handleUpload={voiceInput.handleUpload}
-              handleUploadFileChange={voiceInput.handleUploadFileChange}
-              handleVoiceSampleInputModeChange={voiceInput.handleVoiceSampleInputModeChange}
-              isRecorderBusy={voiceInput.isRecorderBusy}
-              isRecording={voiceInput.isRecording}
-              isPreparingSample={voiceInput.isPreparingSample}
-              isUploading={voiceInput.isUploading}
-              recorderError={voiceInput.recorderError}
-              recorderStatus={voiceInput.recorderStatus}
-              recordingDurationSeconds={voiceInput.recordingDurationSeconds}
-              sampleLimits={voiceInput.sampleLimits}
-              sampleMode={voiceInput.sampleMode}
-              setUploadName={voiceInput.setUploadName}
-              setUploadVoicePresetId={voiceInput.setUploadVoicePresetId}
-              uploadDurationSeconds={voiceInput.uploadDurationSeconds}
-              uploadError={voiceInput.uploadError}
-              uploadFile={voiceInput.uploadFile}
-              uploadName={voiceInput.uploadName}
-              uploadPreviewUrl={voiceInput.uploadPreviewUrl}
-              uploadVoicePresetId={voiceInput.uploadVoicePresetId}
-              uploadWindow={voiceInput.uploadWindow}
-              voicePresets={providerKeys.voicePresets}
-              voiceSampleInputMode={voiceInput.voiceSampleInputMode}
-            />
+        <WorkflowSectionPanel activeSectionId={activeSectionId} className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]" id="provider">
+          <ProviderKeysPanel
+            activeProvider={providerKeys.activeProvider}
+            activeProviderKey={providerKeys.activeProviderKey}
+            keySource={providerKeys.keySource}
+            onClearProviderKey={providerKeys.clearProviderKey}
+            onSaveProviderKey={providerKeys.saveProviderKey}
+            providerError={providerKeys.providerError}
+            providerStatus={providerKeys.providerStatus}
+          />
 
-            <ProviderKeysPanel
-              activeProvider={providerKeys.activeProvider}
-              activeProviderKey={providerKeys.activeProviderKey}
-              keySource={providerKeys.keySource}
-              onClearProviderKey={providerKeys.clearProviderKey}
-              onSaveProviderKey={providerKeys.saveProviderKey}
-              providerError={providerKeys.providerError}
-              providerStatus={providerKeys.providerStatus}
-            />
-
-            <CostQuotaPanel
-              characterCount={characterCount}
-              estimatedCredits={estimatedCredits}
-              hasModelRate={hasModelRate}
-              isExpanded={isCostQuotaExpanded}
-              isGenerating={speech.isGenerating}
-              modelError={metadata.modelError}
-              modelStatus={metadata.modelStatus}
-              models={metadata.models}
-              onModelChange={metadata.setSelectedModelId}
-              onRefresh={() => {
-                void metadata.loadSubscription()
-                void metadata.loadModels()
-              }}
-              onToggleExpanded={() => setIsCostQuotaExpanded((current) => !current)}
-              providerLinks={providerKeys.activeProvider?.links ?? []}
-              result={result}
-              selectedModel={selectedModel}
-              selectedModelId={metadata.selectedModelId}
-              subscription={metadata.subscription}
-              subscriptionError={metadata.subscriptionError}
-              subscriptionStatus={metadata.subscriptionStatus}
-            />
-          </aside>
-        </div>
-      </div>
+          <CostQuotaPanel
+            characterCount={characterCount}
+            estimatedCredits={estimatedCredits}
+            hasModelRate={hasModelRate}
+            isCollapsible={false}
+            isExpanded
+            isGenerating={speech.isGenerating}
+            modelError={metadata.modelError}
+            modelStatus={metadata.modelStatus}
+            models={metadata.models}
+            onModelChange={metadata.setSelectedModelId}
+            onRefresh={() => {
+              void metadata.loadSubscription()
+              void metadata.loadModels()
+            }}
+            onToggleExpanded={() => undefined}
+            providerLinks={providerKeys.activeProvider?.links ?? []}
+            result={result}
+            selectedModel={selectedModel}
+            selectedModelId={metadata.selectedModelId}
+            subscription={metadata.subscription}
+            subscriptionError={metadata.subscriptionError}
+            subscriptionStatus={metadata.subscriptionStatus}
+          />
+        </WorkflowSectionPanel>
+      </VoiceStudioShell>
       <RenameVoiceDialog
         error={voiceLibrary.renameError}
         isSaving={voiceLibrary.isUpdatingVoice}
@@ -208,7 +222,7 @@ function App() {
         voice={voiceLibrary.renameVoice}
       />
       <ConfirmationDialog confirmation={confirmation.confirmation} onCancel={confirmation.clearConfirmation} />
-    </main>
+    </>
   )
 }
 

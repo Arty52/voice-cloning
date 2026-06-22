@@ -1,4 +1,8 @@
+import { ChevronDown } from "lucide-react"
+
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { TuningInfo } from "@/components/tuning-info"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
@@ -11,8 +15,10 @@ import type {
 
 type VoiceTuningPanelProps = {
   controls: ProviderTuningControl[]
+  isExpanded: boolean
   isGenerating: boolean
   isLoading: boolean
+  onExpandedChange: (isExpanded: boolean) => void
   onPresetApply: (preset: ProviderTuningPreset) => void
   onTuningValueChange: (control: ProviderTuningControl, value: ProviderTuningValue) => void
   presets: ProviderTuningPreset[]
@@ -22,8 +28,10 @@ type VoiceTuningPanelProps = {
 
 export function VoiceTuningPanel({
   controls,
+  isExpanded,
   isGenerating,
   isLoading,
+  onExpandedChange,
   onPresetApply,
   onTuningValueChange,
   presets,
@@ -34,62 +42,81 @@ export function VoiceTuningPanel({
     return isLoading ? <VoiceTuningSkeleton /> : null
   }
 
+  const controlsId = "voice-tuning-controls"
+
   return (
-    <section aria-busy={isLoading} className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div>
-          <h2 className="text-base font-medium">Voice Tuning</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Adjust provider voice settings before generating.</p>
-        </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {selectedTuningPresetId === "custom" ? <Badge>Custom</Badge> : null}
-          <Badge>Per Request</Badge>
-        </div>
-      </div>
-      {presets.length > 0 ? (
-        <div className="mb-4 space-y-2">
-          <div className="text-sm font-medium">Preset</div>
-          <div
-            aria-label="Voice tuning presets"
-            className="grid gap-1 rounded-md border border-border bg-background/60 p-1 sm:grid-cols-2"
-            role="group"
-          >
-            {presets.map((preset) => {
-              const isSelected = selectedTuningPresetId === preset.id
-              return (
-                <button
-                  aria-pressed={isSelected}
-                  className={cn(
-                    "rounded px-3 py-2 text-left text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    isSelected
-                      ? "bg-secondary text-secondary-foreground shadow-sm"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                  )}
-                  disabled={isGenerating}
-                  key={preset.id}
-                  onClick={() => onPresetApply(preset)}
-                  type="button"
-                >
-                  <span className="block font-medium">{preset.label}</span>
-                  <span className="mt-1 block text-xs leading-5">{preset.description}</span>
-                </button>
-              )
-            })}
+    <Collapsible asChild onOpenChange={onExpandedChange} open={isExpanded}>
+      <section aria-busy={isLoading} className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-base font-medium">Voice Tuning</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Adjust provider voice settings before generating.</p>
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {selectedTuningPresetId === "custom" ? <Badge>Custom</Badge> : null}
+            <Badge>Per Request</Badge>
+            <CollapsibleTrigger asChild>
+              <Button aria-controls={controlsId} size="sm" type="button" variant="secondary">
+                {isExpanded ? "Hide Controls" : "Show Controls"}
+                <ChevronDown
+                  aria-hidden="true"
+                  className={cn("transition-transform", isExpanded && "rotate-180")}
+                  data-icon="inline-end"
+                />
+              </Button>
+            </CollapsibleTrigger>
           </div>
         </div>
-      ) : null}
-      <div className="grid gap-4 sm:grid-cols-2">
-        {controls.map((control) => (
-          <TuningControl
-            control={control}
-            disabled={isGenerating}
-            key={control.id}
-            onChange={onTuningValueChange}
-            value={tuning[control.id] ?? control.defaultValue}
-          />
-        ))}
-      </div>
-    </section>
+
+        <CollapsibleContent id={controlsId}>
+          <div className="mt-4 flex flex-col gap-4">
+            {presets.length > 0 ? (
+              <div className="flex flex-col gap-2">
+                <div className="text-sm font-medium">Preset</div>
+                <div
+                  aria-label="Voice tuning presets"
+                  className="grid gap-1 rounded-md border border-border bg-background/60 p-1 sm:grid-cols-2"
+                  role="group"
+                >
+                  {presets.map((preset) => {
+                    const isSelected = selectedTuningPresetId === preset.id
+                    return (
+                      <button
+                        aria-pressed={isSelected}
+                        className={cn(
+                          "rounded px-3 py-2 text-left text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                          isSelected
+                            ? "bg-secondary text-secondary-foreground shadow-sm"
+                            : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                        )}
+                        disabled={isGenerating}
+                        key={preset.id}
+                        onClick={() => onPresetApply(preset)}
+                        type="button"
+                      >
+                        <span className="block font-medium">{preset.label}</span>
+                        <span className="mt-1 block text-xs leading-5">{preset.description}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ) : null}
+            <div className="grid gap-4 sm:grid-cols-2">
+              {controls.map((control) => (
+                <TuningControl
+                  control={control}
+                  disabled={isGenerating}
+                  key={control.id}
+                  onChange={onTuningValueChange}
+                  value={tuning[control.id] ?? control.defaultValue}
+                />
+              ))}
+            </div>
+          </div>
+        </CollapsibleContent>
+      </section>
+    </Collapsible>
   )
 }
 

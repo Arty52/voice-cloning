@@ -388,6 +388,24 @@ function renderApp() {
   )
 }
 
+function mockWorkflowViewport(isMobile: boolean) {
+  Object.defineProperty(window, "innerWidth", {
+    configurable: true,
+    value: isMobile ? 390 : 1024,
+  })
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      addEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+      matches: isMobile,
+      media: query,
+      onchange: null,
+      removeEventListener: vi.fn(),
+    })),
+  })
+}
+
 function scopedPanelByHeading(name: string) {
   const heading = screen.getByRole("heading", { name })
   const panel = heading.closest("section, form")
@@ -417,6 +435,20 @@ function expectVoicePresetSelection(control: HTMLElement, selected: boolean) {
 
 function voiceTuningPanel() {
   return scopedPanelByHeading("Voice Tuning")
+}
+
+function openVoiceTuningPanel() {
+  const panel = voiceTuningPanel()
+  fireEvent.click(panel.getByRole("button", { name: "Show Controls" }))
+  return voiceTuningPanel()
+}
+
+function latestGeneratedAudioPanel() {
+  return scopedPanelByHeading("Latest Generated Audio")
+}
+
+function generatedAudioArchivePanel() {
+  return scopedPanelByHeading("Generated Audio Archive")
 }
 
 function uploadedVoiceFrom(init?: RequestInit) {
@@ -590,6 +622,8 @@ describe("App", () => {
   beforeEach(async () => {
     await deleteDatabase(GENERATED_AUDIO_DB_NAME)
     localStorage.clear()
+    window.history.replaceState(null, "", window.location.pathname)
+    mockWorkflowViewport(false)
     Object.defineProperty(HTMLTextAreaElement.prototype, "scrollHeight", {
       configurable: true,
       value: 320,
@@ -615,6 +649,68 @@ describe("App", () => {
 
     await waitFor(() => expect(textarea).toHaveStyle({ height: "320px" }))
     expect(await screen.findByText("default/default-voice.mp3")).toBeInTheDocument()
+  })
+
+  it("lands on voices with the desktop workflow sidebar active", async () => {
+    renderApp()
+
+    expect(await screen.findByRole("heading", { name: "Voices" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Voices" })).toHaveAttribute("aria-current", "page")
+    expect(screen.getByRole("complementary", { name: "Workflow Sidebar" })).toBeInTheDocument()
+    const workflowNav = within(screen.getByRole("navigation", { name: "Workflow Sections" }))
+    expect((await workflowNav.findAllByText("Ready")).length).toBeGreaterThan(0)
+    expect(document.querySelector('[data-section-id="voices"]')).not.toHaveClass("hidden")
+    expect(document.querySelector('[data-section-id="provider"]')).toHaveClass("hidden")
+  })
+
+  it("switches desktop workflow sections through stable hashes", async () => {
+    const user = userEvent.setup()
+    renderApp()
+
+    await user.click(await screen.findByRole("button", { name: "Generate Speech" }))
+
+    expect(window.location.hash).toBe("#generate")
+    expect(screen.getByRole("button", { name: "Generate Speech" })).toHaveAttribute("aria-current", "page")
+    expect(screen.getByRole("heading", { name: "Generate Speech" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Voices" })).not.toHaveAttribute("aria-current")
+  })
+
+  it("links from the generate source row to voice selection", async () => {
+    window.history.replaceState(null, "", "/#generate")
+    const user = userEvent.setup()
+    renderApp()
+
+    const generateSection = document.querySelector('[data-section-id="generate"]')
+    expect(generateSection).not.toHaveClass("hidden")
+    expect(await within(generateSection as HTMLElement).findByText("Default voice")).toBeInTheDocument()
+
+    const changeVoiceLink = await screen.findByRole("link", { name: "Change Voice" })
+    expect(changeVoiceLink).toHaveAttribute("href", "#voices")
+
+    await user.click(changeVoiceLink)
+
+    await waitFor(() => expect(window.location.hash).toBe("#voices"))
+    expect(screen.getByRole("button", { name: "Voices" })).toHaveAttribute("aria-current", "page")
+    expect(document.querySelector('[data-section-id="voices"]')).not.toHaveClass("hidden")
+    expect(document.querySelector('[data-section-id="generate"]')).toHaveClass("hidden")
+  })
+
+  it("closes mobile workflow navigation after selecting a section", async () => {
+    mockWorkflowViewport(true)
+    const user = userEvent.setup()
+    renderApp()
+
+    await user.click(screen.getByRole("button", { name: "Toggle Workflow Navigation" }))
+
+    expect(await screen.findByRole("dialog", { name: "Workflow Navigation" })).toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: "Provider & Usage" }))
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Workflow Navigation" })).not.toBeInTheDocument()
+    )
+    expect(window.location.hash).toBe("#provider")
+    expect(screen.getByRole("heading", { name: "Provider & Usage" })).toBeInTheDocument()
   })
 
   it("shows missing key state and uses a saved browser key for provider requests", async () => {
@@ -652,6 +748,7 @@ describe("App", () => {
     renderApp()
 
     const keyInput = await screen.findByLabelText(/ElevenLabs API Key/i)
+    expect((await screen.findAllByText("Needs Key")).length).toBeGreaterThan(0)
     expect(screen.getAllByText("Missing Key")).toHaveLength(2)
     expect(screen.getByRole("button", { name: /^Generate$/ })).toBeDisabled()
 
@@ -819,7 +916,6 @@ describe("App", () => {
       )
     )
     expect(await screen.findByText(`${formatTestNumber(1234)} remaining`)).toBeInTheDocument()
-    await user.click(screen.getByRole("button", { name: /expand/i }))
     expect(screen.getByLabelText(/model/i)).toHaveValue("browser_model")
 
     staleSubscription.resolve(
@@ -849,29 +945,22 @@ describe("App", () => {
     expect(screen.getByLabelText(/model/i)).toHaveValue("browser_model")
   })
 
-  it("places cost quota under add voice and expands details", async () => {
-    const user = userEvent.setup()
+  it("shows provider usage details expanded", async () => {
     renderApp()
 
     const costHeading = await screen.findByText("Cost & Quota")
-    const addVoiceHeading = screen.getByText("Add Voice")
-    expect(addVoiceHeading.compareDocumentPosition(costHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const providerKeysHeading = screen.getByText("Provider Keys")
+    expect(providerKeysHeading.compareDocumentPosition(costHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(await screen.findByText(`${formatTestNumber(9000)} remaining`)).toBeInTheDocument()
     expect(screen.getByText(`~${formatTestNumber(97)}`)).toBeInTheDocument()
     expect(screen.getByText("No run")).toBeInTheDocument()
     const costQuotaDetails = document.querySelector("#cost-quota-details")
     expect(costQuotaDetails).toBeInTheDocument()
-    expect(costQuotaDetails).not.toBeVisible()
-    expect(screen.getByLabelText(/model/i)).not.toBeVisible()
-    expect(screen.getByText(`${formatTestNumber(1000)} / ${formatTestNumber(10000)}`)).not.toBeVisible()
-
-    const expandButton = screen.getByRole("button", { name: /expand/i })
-    expect(expandButton).toHaveAttribute("aria-expanded", "false")
-    await user.click(expandButton)
-
-    expect(screen.getByRole("button", { name: /collapse/i })).toHaveAttribute("aria-expanded", "true")
+    expect(costQuotaDetails).not.toHaveAttribute("hidden")
+    expect(screen.queryByRole("button", { name: /expand/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /collapse/i })).not.toBeInTheDocument()
     expect(screen.getByLabelText(/model/i)).toHaveValue("eleven_multilingual_v2")
-    expect(screen.getByText(`${formatTestNumber(1000)} / ${formatTestNumber(10000)}`)).toBeVisible()
+    expect(screen.getByText(`${formatTestNumber(1000)} / ${formatTestNumber(10000)}`)).toBeInTheDocument()
     expect(screen.getByRole("link", { name: /api requests/i })).toHaveAttribute(
       "href",
       "https://elevenlabs.io/app/developers/analytics/api-requests"
@@ -882,20 +971,16 @@ describe("App", () => {
     )
   })
 
-  it("keeps sample processing separate between voice library and add voice", async () => {
+  it("keeps sample processing in its own prepare section", async () => {
     renderApp()
 
     const voiceLibraryHeading = await screen.findByText("Voice Library")
     const sampleProcessingHeading = screen.getByText("Sample Processing")
     const addVoiceHeading = screen.getByText("Add Voice")
 
-    expect(voiceLibraryHeading.compareDocumentPosition(sampleProcessingHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(sampleProcessingHeading.compareDocumentPosition(addVoiceHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" })).toHaveAttribute(
-      "aria-expanded",
-      "false"
-    )
-    expect(sampleProcessingPanel().queryByRole("button", { name: "Start Processing" })).not.toBeInTheDocument()
+    expect(sampleProcessingHeading.compareDocumentPosition(voiceLibraryHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(voiceLibraryHeading.compareDocumentPosition(addVoiceHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(sampleProcessingPanel().getByRole("button", { name: "Start Processing" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /^Generate$/ })).toBeInTheDocument()
   })
 
@@ -914,11 +999,9 @@ describe("App", () => {
         return baseFetch(input, init)
       })
     )
-    const user = userEvent.setup()
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
 
     expect(await sampleProcessingPanel().findByText("Sample Processing Unavailable")).toBeInTheDocument()
     expect(sampleProcessingPanel().getByRole("button", { name: "Start Processing" })).toBeDisabled()
@@ -929,7 +1012,6 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
     await user.click(await sampleProcessingPanel().findByRole("button", { name: "Sample Processing Operation: Isolate Voice" }))
 
     expect(screen.getByRole("menuitemradio", { name: "Speaker Separation Unavailable" })).toBeInTheDocument()
@@ -963,7 +1045,6 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
     expect(await sampleProcessingPanel().findByRole("button", { name: "Sample Processing Operation: Trim Silence" })).toBeInTheDocument()
     const trimAggressiveness = within(sampleProcessingPanel().getByRole("radiogroup", { name: "Trim Aggressiveness" }))
     expect(trimAggressiveness.getByRole("radio", { name: "Balanced" })).toHaveAttribute("aria-checked", "true")
@@ -987,7 +1068,6 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
 
     const sourcePreferenceHelp = await sampleProcessingPanel().findByRole("button", {
       name: "Explain Source Preference",
@@ -1030,7 +1110,6 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
     const startButton = await sampleProcessingPanel().findByRole("button", { name: "Start Processing" })
     await waitFor(() => expect(startButton).toBeEnabled())
     const isolationStrength = within(sampleProcessingPanel().getByRole("radiogroup", { name: "Isolation Strength" }))
@@ -1095,7 +1174,6 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
     const startButton = await sampleProcessingPanel().findByRole("button", { name: "Start Processing" })
     await waitFor(() => expect(startButton).toBeEnabled())
     await user.click(startButton)
@@ -1120,7 +1198,6 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
     const isolationStrength = within(sampleProcessingPanel().getByRole("radiogroup", { name: "Isolation Strength" }))
     await user.click(isolationStrength.getByRole("radio", { name: "Clean" }))
     expect(isolationStrength.getByRole("radio", { name: "Clean" })).toHaveAttribute("aria-checked", "true")
@@ -1142,7 +1219,6 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
     expect(sampleProcessingPanel().getByRole("radiogroup", { name: "Isolation Strength" })).toBeInTheDocument()
     await user.click(sampleProcessingPanel().getByRole("button", { name: "Sample Processing Operation: Isolate Voice" }))
     await user.click(sampleProcessingPanel().getByRole("menuitemradio", { name: "Trim Silence" }))
@@ -1172,7 +1248,6 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
     const startButton = await sampleProcessingPanel().findByRole("button", { name: "Start Processing" })
     await waitFor(() => expect(startButton).toBeEnabled())
     await user.click(startButton)
@@ -1202,7 +1277,6 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
     const startButton = await sampleProcessingPanel().findByRole("button", { name: "Start Processing" })
     await waitFor(() => expect(startButton).toBeEnabled())
     await user.click(startButton)
@@ -1223,7 +1297,6 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
     const startButton = await sampleProcessingPanel().findByRole("button", { name: "Start Processing" })
     await waitFor(() => expect(startButton).toBeEnabled())
     await user.click(startButton)
@@ -1254,7 +1327,6 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
     await user.click(sampleProcessingPanel().getByRole("button", { name: "Sample Processing Operation: Isolate Voice" }))
     await user.click(sampleProcessingPanel().getByRole("menuitemradio", { name: "Trim Silence" }))
     const startButton = await sampleProcessingPanel().findByRole("button", { name: "Start Processing" })
@@ -1289,7 +1361,6 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
     await user.click(sampleProcessingPanel().getByRole("button", { name: "Audio File" }))
     expect(sampleProcessingPanel().queryByText("Source Preference")).not.toBeInTheDocument()
     expect(sampleProcessingPanel().queryByRole("button", { name: "Explain Source Preference" })).not.toBeInTheDocument()
@@ -1341,7 +1412,6 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
     const startButton = await sampleProcessingPanel().findByRole("button", { name: "Start Processing" })
     await waitFor(() => expect(startButton).toBeEnabled())
     await user.click(startButton)
@@ -1351,20 +1421,15 @@ describe("App", () => {
     expect(sampleProcessingPanel().getByText("demucs command was not found.")).toBeInTheDocument()
   })
 
-  it("collapses cost quota details while keeping the overview", async () => {
-    const user = userEvent.setup()
+  it("keeps provider usage details available", async () => {
     renderApp()
 
     await screen.findByText(`${formatTestNumber(9000)} remaining`)
-    await user.click(screen.getByRole("button", { name: /expand/i }))
-    expect(screen.getByLabelText(/model/i)).toBeVisible()
-
-    await user.click(screen.getByRole("button", { name: /collapse/i }))
-
     expect(screen.getByText(`${formatTestNumber(9000)} remaining`)).toBeInTheDocument()
     expect(screen.getByText(`~${formatTestNumber(97)}`)).toBeInTheDocument()
-    expect(screen.getByLabelText(/model/i)).not.toBeVisible()
-    expect(screen.queryByRole("link", { name: /api requests/i })).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/model/i)).toHaveValue("eleven_multilingual_v2")
+    expect(screen.getByRole("link", { name: /api requests/i })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /collapse/i })).not.toBeInTheDocument()
   })
 
   it("shows pending state while generating speech", async () => {
@@ -1507,7 +1572,7 @@ describe("App", () => {
       })
     )
 
-    expect(await screen.findByLabelText(/generated voice playback/i)).toBeInTheDocument()
+    expect(await latestGeneratedAudioPanel().findByLabelText(/generated voice playback/i)).toBeInTheDocument()
     expect(screen.queryByText(/Generation canceled in this browser/i)).not.toBeInTheDocument()
   })
 
@@ -1889,6 +1954,7 @@ describe("App", () => {
     )
     expectVoicePresetSelection(currentStandardPreset(), false)
     expectVoicePresetSelection(currentAnimatedPreset(), true)
+    openVoiceTuningPanel()
     expect(screen.getByRole("slider", { name: /stability/i })).toHaveValue("0.4")
     expect(screen.getByRole("slider", { name: /style/i })).toHaveValue("0.35")
   })
@@ -2039,6 +2105,7 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
+    openVoiceTuningPanel()
 
     expect(screen.getByRole("button", { name: /stability help/i })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /similarity help/i })).toBeInTheDocument()
@@ -2055,6 +2122,33 @@ describe("App", () => {
     expect(screen.getByRole("slider", { name: /style/i })).toHaveValue("0")
     expect(screen.getByRole("slider", { name: /speed/i })).toHaveValue("1")
     expect(screen.queryByText("Custom")).not.toBeInTheDocument()
+  })
+
+  it("collapses voice tuning controls by default and preserves changed values", async () => {
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    const showControls = voiceTuningPanel().getByRole("button", { name: "Show Controls" })
+
+    expect(showControls).toHaveAttribute("aria-expanded", "false")
+    expect(screen.queryByRole("slider", { name: /stability/i })).not.toBeInTheDocument()
+
+    fireEvent.click(showControls)
+
+    const hideControls = voiceTuningPanel().getByRole("button", { name: "Hide Controls" })
+    expect(hideControls).toHaveAttribute("aria-expanded", "true")
+    expect(screen.getByRole("slider", { name: /stability/i })).toHaveValue("0.5")
+
+    fireEvent.change(screen.getByRole("slider", { name: /stability/i }), { target: { value: "0.42" } })
+    expect(screen.getByText("Custom")).toBeInTheDocument()
+
+    fireEvent.click(hideControls)
+    expect(voiceTuningPanel().getByRole("button", { name: "Show Controls" })).toHaveAttribute("aria-expanded", "false")
+    expect(screen.queryByRole("slider", { name: /stability/i })).not.toBeInTheDocument()
+
+    openVoiceTuningPanel()
+
+    expect(screen.getByRole("slider", { name: /stability/i })).toHaveValue("0.42")
   })
 
   it("hides voice tuning when the active provider has no controls", async () => {
@@ -2147,6 +2241,7 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
+    openVoiceTuningPanel()
     fireEvent.change(screen.getByRole("slider", { name: /stability/i }), { target: { value: "0.9" } })
     expect(screen.getByText("Custom")).toBeInTheDocument()
 
@@ -2213,6 +2308,7 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
+    openVoiceTuningPanel()
     expect(screen.getByText("Voice Tuning")).toBeInTheDocument()
     expect(screen.queryByText("Preset")).not.toBeInTheDocument()
     expect(screen.getByRole("slider", { name: /warmth/i })).toHaveValue("0.2")
@@ -2264,6 +2360,7 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
+    openVoiceTuningPanel()
     await user.selectOptions(screen.getByRole("combobox", { name: "Mode" }), "2")
     await user.selectOptions(screen.getByRole("combobox", { name: "Enhanced" }), "true")
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
@@ -2315,6 +2412,7 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
+    openVoiceTuningPanel()
     const checkbox = screen.getByRole("checkbox", { name: "Expressive" })
     expect(checkbox).not.toBeChecked()
 
@@ -2342,6 +2440,7 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
+    openVoiceTuningPanel()
     await user.click(voiceTuningPanel().getByRole("button", { name: /animated dialogue/i }))
 
     expect(voiceTuningPanel().getByRole("button", { name: /standard narration/i })).toHaveAttribute("aria-pressed", "false")
@@ -2363,6 +2462,7 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
+    openVoiceTuningPanel()
     expect(voiceTuningPanel().getByRole("button", { name: /standard narration/i })).toHaveAttribute("aria-pressed", "true")
 
     await user.click(screen.getByRole("checkbox", { name: /Speaker boost/i }))
@@ -2376,6 +2476,7 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
+    openVoiceTuningPanel()
     fireEvent.change(screen.getByRole("slider", { name: /stability/i }), { target: { value: "0.42" } })
     fireEvent.change(screen.getByRole("slider", { name: /similarity/i }), { target: { value: "0.84" } })
     fireEvent.change(screen.getByRole("slider", { name: /style/i }), { target: { value: "0.2" } })
@@ -2417,7 +2518,6 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(screen.getByRole("button", { name: /expand/i }))
     await user.selectOptions(screen.getByLabelText(/model/i), "eleven_flash_v2_5")
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
 
@@ -2430,14 +2530,13 @@ describe("App", () => {
     expect(body.get("modelId")).toBe("eleven_flash_v2_5")
     const formattedCharacterCount = formatTestNumber(54)
     expect(await screen.findAllByText(formattedCharacterCount)).toHaveLength(1)
-    expect(screen.getByText(new RegExp(`${formattedCharacterCount} chars`))).toBeInTheDocument()
-    expect(screen.getAllByText(/req_test_123/)).toHaveLength(2)
-    const latestPanel = screen.getByRole("heading", { name: "Latest Generated Audio" }).closest("section")
-    expect(latestPanel).not.toBeNull()
-    expect(within(latestPanel as HTMLElement).getByLabelText("Generated Audio Metadata")).toBeInTheDocument()
-    expect(within(latestPanel as HTMLElement).getByText("ElevenLabs")).toBeInTheDocument()
-    expect(within(latestPanel as HTMLElement).getByText("Preset: Standard Narration")).toBeInTheDocument()
-    expect(within(latestPanel as HTMLElement).getByText("Default Settings")).toBeInTheDocument()
+    const latestPanel = latestGeneratedAudioPanel()
+    expect(latestPanel.getByText(new RegExp(`${formattedCharacterCount} chars`))).toBeInTheDocument()
+    expect(latestPanel.getByText(/req_test_123/)).toBeInTheDocument()
+    expect(latestPanel.getByLabelText("Generated Audio Metadata")).toBeInTheDocument()
+    expect(latestPanel.getByText("ElevenLabs")).toBeInTheDocument()
+    expect(latestPanel.getByText("Preset: Standard Narration")).toBeInTheDocument()
+    expect(latestPanel.getByText("Default Settings")).toBeInTheDocument()
   })
 
   it("persists browser-observed generation elapsed time", async () => {
@@ -2459,7 +2558,7 @@ describe("App", () => {
     await screen.findByText("default/default-voice.mp3")
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
 
-    expect(await screen.findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
+    expect(await latestGeneratedAudioPanel().findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
     expect((await listGeneratedAudio())[0]).toMatchObject({
       generationElapsedMs: 1234,
       requestId: "req_test_123",
@@ -2508,7 +2607,7 @@ describe("App", () => {
     await screen.findByText("default/default-voice.mp3")
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
 
-    expect(await screen.findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
+    expect(await latestGeneratedAudioPanel().findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
     expect(screen.getByText("1 saved")).toBeInTheDocument()
     unmount()
 
@@ -2533,20 +2632,20 @@ describe("App", () => {
 
     await screen.findByText("default/default-voice.mp3")
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
-    expect(await screen.findAllByLabelText(/generated voice playback for default voice/i)).toHaveLength(1)
+    expect(await latestGeneratedAudioPanel().findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
+    expect(await generatedAudioArchivePanel().findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
-    await waitFor(() => expect(screen.getAllByLabelText(/generated voice playback for default voice/i)).toHaveLength(2))
-    const latestPanel = screen.getByRole("heading", { name: "Latest Generated Audio" }).closest("section")
-    const archivePanel = screen.getByRole("heading", { name: "Generated Audio Archive" }).closest("section")
-    expect(latestPanel).not.toBeNull()
-    expect(archivePanel).not.toBeNull()
-    expect(within(latestPanel as HTMLElement).getAllByLabelText(/generated voice playback for default voice/i)).toHaveLength(1)
-    expect(within(archivePanel as HTMLElement).getAllByLabelText(/generated voice playback for default voice/i)).toHaveLength(1)
+    const latestPanel = latestGeneratedAudioPanel()
+    const archivePanel = generatedAudioArchivePanel()
+    await waitFor(() => expect(latestPanel.getAllByLabelText(/generated voice playback for default voice/i)).toHaveLength(1))
+    await waitFor(() => expect(archivePanel.getAllByLabelText(/generated voice playback for default voice/i)).toHaveLength(2))
 
-    await user.click(screen.getAllByRole("button", { name: /remove generated audio for default voice/i })[0])
-    await waitFor(() => expect(screen.getAllByLabelText(/generated voice playback for default voice/i)).toHaveLength(1))
+    await user.click(archivePanel.getAllByRole("button", { name: /remove generated audio for default voice/i })[0])
+    await waitFor(() =>
+      expect(archivePanel.getAllByLabelText(/generated voice playback for default voice/i)).toHaveLength(1)
+    )
 
-    await user.click(screen.getByRole("button", { name: /clear all/i }))
+    await user.click(archivePanel.getByRole("button", { name: /clear all/i }))
     const dialog = screen.getByRole("dialog", { name: /clear generated audio/i })
     await user.click(within(dialog).getByRole("button", { name: /clear all/i }))
 
@@ -2562,9 +2661,11 @@ describe("App", () => {
     await screen.findByText("default/default-voice.mp3")
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
     expect(await screen.findByRole("heading", { name: "Latest Generated Audio" })).toBeInTheDocument()
-    expect(await screen.findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
+    expect(await latestGeneratedAudioPanel().findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
+    const archivePanel = generatedAudioArchivePanel()
+    expect(await archivePanel.findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
 
-    await user.click(screen.getByRole("button", { name: /clear all/i }))
+    await user.click(archivePanel.getByRole("button", { name: /clear all/i }))
     const dialog = screen.getByRole("dialog", { name: /clear generated audio/i })
     await user.click(within(dialog).getByRole("button", { name: /clear all/i }))
 
@@ -2592,17 +2693,15 @@ describe("App", () => {
 
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
 
-    expect(await screen.findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
-    const latestPanel = screen.getByRole("heading", { name: "Latest Generated Audio" }).closest("section")
-    const archivePanel = screen.getByRole("heading", { name: "Generated Audio Archive" }).closest("section")
-    expect(latestPanel).not.toBeNull()
-    expect(archivePanel).not.toBeNull()
+    const latestPanel = latestGeneratedAudioPanel()
+    const archivePanel = generatedAudioArchivePanel()
+    expect(await latestPanel.findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
     expect(screen.getByText("1 unsaved")).toBeInTheDocument()
     expect(screen.queryByText("1 saved")).not.toBeInTheDocument()
-    expect(within(latestPanel as HTMLElement).getByText(/browser storage could not save it/i)).toBeInTheDocument()
-    expect(within(archivePanel as HTMLElement).queryByText(/browser storage could not save it/i)).not.toBeInTheDocument()
+    expect(latestPanel.getByText(/browser storage could not save it/i)).toBeInTheDocument()
+    expect(archivePanel.queryByText(/browser storage could not save it/i)).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole("button", { name: /remove generated audio for default voice/i }))
+    await user.click(latestPanel.getByRole("button", { name: /remove generated audio for default voice/i }))
 
     await waitFor(() => expect(screen.queryByLabelText(/generated voice playback for default voice/i)).not.toBeInTheDocument())
     expect(screen.queryByRole("heading", { name: "Latest Generated Audio" })).not.toBeInTheDocument()
@@ -2615,9 +2714,10 @@ describe("App", () => {
 
     await screen.findByText("default/default-voice.mp3")
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
-    expect(await screen.findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
+    const archivePanel = generatedAudioArchivePanel()
+    expect(await archivePanel.findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
 
-    const clearAllButton = screen.getByRole("button", { name: /clear all/i })
+    const clearAllButton = archivePanel.getByRole("button", { name: /clear all/i })
     await user.click(clearAllButton)
     const dialog = screen.getByRole("dialog", { name: /clear generated audio/i })
     const cancelButton = within(dialog).getByRole("button", { name: /cancel/i })
@@ -2635,7 +2735,7 @@ describe("App", () => {
 
     await waitFor(() => expect(screen.queryByRole("dialog", { name: /clear generated audio/i })).not.toBeInTheDocument())
     expect(clearAllButton).toHaveFocus()
-    expect(screen.getByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
+    expect(archivePanel.getByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
   })
 
   it("confirms before lowering the storage cap when saved audio would be pruned", async () => {
@@ -2674,7 +2774,8 @@ describe("App", () => {
 
     await screen.findByText("default/default-voice.mp3")
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
-    expect(await screen.findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
+    const archivePanel = generatedAudioArchivePanel()
+    expect(await archivePanel.findByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
     expect(await screen.findByText((_, element) => element?.textContent === "30 MB / 100 MB")).toBeInTheDocument()
 
     await user.click(screen.getByRole("button", { name: /cap: 100 mb/i }))
@@ -2684,7 +2785,7 @@ describe("App", () => {
     expect(within(dialog).getByText(/remove the oldest saved generated audio/i)).toBeInTheDocument()
     await user.click(within(dialog).getByRole("button", { name: /cancel/i }))
     expect(screen.getByRole("button", { name: /cap: 100 mb/i })).toBeInTheDocument()
-    expect(screen.getByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
+    expect(archivePanel.getByLabelText(/generated voice playback for default voice/i)).toBeInTheDocument()
 
     await user.click(screen.getByRole("button", { name: /cap: 100 mb/i }))
     await user.click(screen.getByRole("menuitemradio", { name: /25 mb/i }))
@@ -2733,8 +2834,9 @@ describe("App", () => {
     )
     const body = speechCall?.[1]?.body as FormData
     expect(body.has("modelId")).toBe(false)
-    expect(await screen.findByText(/Model eleven_turbo_v2_5/)).toBeInTheDocument()
-    expect(screen.queryByText(/Model eleven_multilingual_v2/)).not.toBeInTheDocument()
+    const latestPanel = latestGeneratedAudioPanel()
+    expect(await latestPanel.findByText(/Model eleven_turbo_v2_5/)).toBeInTheDocument()
+    expect(latestPanel.queryByText(/Model eleven_multilingual_v2/)).not.toBeInTheDocument()
 
     resolveModels(
       new Response(

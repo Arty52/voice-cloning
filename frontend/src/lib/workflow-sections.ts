@@ -192,7 +192,7 @@ function providerStatus(input: WorkflowSectionStatusInput): WorkflowSectionStatu
     return busyStatus("Loading")
   }
   if (input.keySource === "missing") {
-    return attentionStatus("Missing Key")
+    return attentionStatus("Needs Key")
   }
   if (input.providerStatus === "error" || input.providerError !== null) {
     return attentionStatus("Limited")

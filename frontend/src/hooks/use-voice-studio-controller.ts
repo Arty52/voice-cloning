@@ -26,6 +26,7 @@ export function useVoiceStudioController() {
   const [text, setText] = useState(DEFAULT_TEXT)
   const [isCostQuotaExpanded, setIsCostQuotaExpanded] = useState(false)
   const [isSampleProcessingExpanded, setIsSampleProcessingExpanded] = useState(false)
+  const [isVoiceTuningExpanded, setIsVoiceTuningExpanded] = useState(false)
   const [latestGeneratedAudioId, setLatestGeneratedAudioId] = useState<string | null>(null)
   const textRef = useRef<HTMLTextAreaElement | null>(null)
   const confirmation = useConfirmation()
@@ -67,12 +68,6 @@ export function useVoiceStudioController() {
       return null
     }
     return generatedAudio.generatedAudioItems.find((item) => item.id === latestGeneratedAudioId) ?? null
-  }, [generatedAudio.generatedAudioItems, latestGeneratedAudioId])
-  const archivedGeneratedAudioItems = useMemo(() => {
-    if (!latestGeneratedAudioId) {
-      return generatedAudio.generatedAudioItems
-    }
-    return generatedAudio.generatedAudioItems.filter((item) => item.id !== latestGeneratedAudioId)
   }, [generatedAudio.generatedAudioItems, latestGeneratedAudioId])
   const latestStorageError =
     latestGeneratedAudioItem && isTemporaryGeneratedAudioId(latestGeneratedAudioItem.id)
@@ -208,7 +203,6 @@ export function useVoiceStudioController() {
   return {
     activeSectionId: workflowNavigation.activeSectionId,
     archiveStorageError,
-    archivedGeneratedAudioItems,
     canGenerate,
     characterCount,
     confirmation,
@@ -219,6 +213,7 @@ export function useVoiceStudioController() {
     hasModelRate,
     isCostQuotaExpanded,
     isSampleProcessingExpanded,
+    isVoiceTuningExpanded,
     latestGeneratedAudioItem,
     latestStorageError,
     metadata,
@@ -234,6 +229,7 @@ export function useVoiceStudioController() {
     selectedTuningPresetId,
     setIsCostQuotaExpanded,
     setIsSampleProcessingExpanded,
+    setIsVoiceTuningExpanded,
     setText,
     speech,
     text,

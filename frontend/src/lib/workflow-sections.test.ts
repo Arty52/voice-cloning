@@ -70,7 +70,7 @@ describe("workflow sections", () => {
     expect(statuses.voices).toMatchObject({ label: "Select Voice", tone: "attention" })
     expect(statuses.generate).toMatchObject({ label: "Error", tone: "error" })
     expect(statuses.archive).toMatchObject({ label: "Error", tone: "error" })
-    expect(statuses.provider).toMatchObject({ label: "Missing Key", tone: "attention" })
+    expect(statuses.provider).toMatchObject({ label: "Needs Key", tone: "attention" })
   })
 
   it("derives error statuses without relying on truthy error messages", () => {
