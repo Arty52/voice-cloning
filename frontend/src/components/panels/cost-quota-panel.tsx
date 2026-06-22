@@ -12,6 +12,7 @@ type CostQuotaPanelProps = {
   characterCount: number
   estimatedCredits: number
   hasModelRate: boolean
+  isCollapsible?: boolean
   isExpanded: boolean
   isGenerating: boolean
   modelError: string | null
@@ -33,6 +34,7 @@ export function CostQuotaPanel({
   characterCount,
   estimatedCredits,
   hasModelRate,
+  isCollapsible = true,
   isExpanded,
   isGenerating,
   modelError,
@@ -52,6 +54,7 @@ export function CostQuotaPanel({
   const isLoading = subscriptionStatus === "loading" || modelStatus === "loading"
   const isSubscriptionLoading = subscriptionStatus === "loading"
   const detailsId = "cost-quota-details"
+  const areDetailsVisible = isExpanded || !isCollapsible
   const quotaStatus =
     isSubscriptionLoading
       ? <Loading text="Loading Quota" size="sm" variant="secondary" />
@@ -70,17 +73,19 @@ export function CostQuotaPanel({
           <h2 className="text-base font-medium">Cost & Quota</h2>
           <p className="mt-1 text-sm text-muted-foreground">Estimate, quota, and last run usage.</p>
         </div>
-        <Button
-          aria-controls={detailsId}
-          aria-expanded={isExpanded}
-          onClick={onToggleExpanded}
-          size="sm"
-          type="button"
-          variant="secondary"
-        >
-          {isExpanded ? "Collapse" : "Expand"}
-          <ChevronDown aria-hidden="true" className={cn("size-4 transition-transform", isExpanded && "rotate-180")} />
-        </Button>
+        {isCollapsible ? (
+          <Button
+            aria-controls={detailsId}
+            aria-expanded={isExpanded}
+            onClick={onToggleExpanded}
+            size="sm"
+            type="button"
+            variant="secondary"
+          >
+            {isExpanded ? "Collapse" : "Expand"}
+            <ChevronDown aria-hidden="true" className={cn("size-4 transition-transform", isExpanded && "rotate-180")} />
+          </Button>
+        ) : null}
       </div>
 
       <div className="grid gap-3 border-y border-border py-3 sm:grid-cols-3 sm:divide-x sm:divide-border">
@@ -101,7 +106,7 @@ export function CostQuotaPanel({
         />
       </div>
 
-      <div aria-hidden={!isExpanded} className="mt-4 space-y-4" hidden={!isExpanded} id={detailsId}>
+      <div aria-hidden={!areDetailsVisible} className="mt-4 space-y-4" hidden={!areDetailsVisible} id={detailsId}>
         <div className="flex items-center justify-between gap-3 border-b border-border pb-3">
           <div className="flex items-center gap-2 text-sm font-medium">
             <span>Details</span>

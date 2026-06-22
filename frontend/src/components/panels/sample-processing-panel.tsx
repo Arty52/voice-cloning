@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils"
 import type { SampleProcessingOperationId, SampleProcessingPresetId, VoicePresetId } from "@/types"
 
 type SampleProcessingPanelProps = {
+  isCollapsible?: boolean
   isExpanded: boolean
   onToggleExpanded: () => void
   processing: SampleProcessingController
@@ -30,6 +31,7 @@ const SOURCE_PREFERENCE_SAVE_DESCRIPTION =
   "Processing creates a preview only. Add To Voice Library saves that preview as a new voice and does not replace the selected voice."
 
 export function SampleProcessingPanel({
+  isCollapsible = true,
   isExpanded,
   onToggleExpanded,
   processing,
@@ -49,6 +51,7 @@ export function SampleProcessingPanel({
   const statusLabel = panelStatusLabel(processing)
   const elapsedTimeLabel = panelElapsedTimeLabel(processing)
   const presetLabel = presetControlLabel(processing.operationId)
+  const isDetailsVisible = isExpanded || !isCollapsible
 
   return (
     <section aria-busy={processing.isProcessing} className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5">
@@ -67,19 +70,21 @@ export function SampleProcessingPanel({
           </div>
           <p className="mt-1 text-sm text-muted-foreground">Prepare samples before adding them to the Voice Library.</p>
         </div>
-        <Button
-          aria-expanded={isExpanded}
-          aria-label={isExpanded ? "Close Sample Processing" : "Open Sample Processing"}
-          onClick={onToggleExpanded}
-          size="icon"
-          type="button"
-          variant="secondary"
-        >
-          <ChevronDown aria-hidden="true" className={cn("size-4 transition-transform", isExpanded && "rotate-180")} />
-        </Button>
+        {isCollapsible ? (
+          <Button
+            aria-expanded={isExpanded}
+            aria-label={isExpanded ? "Close Sample Processing" : "Open Sample Processing"}
+            onClick={onToggleExpanded}
+            size="icon"
+            type="button"
+            variant="secondary"
+          >
+            <ChevronDown aria-hidden="true" className={cn("size-4 transition-transform", isExpanded && "rotate-180")} />
+          </Button>
+        ) : null}
       </div>
 
-      {isExpanded ? (
+      {isDetailsVisible ? (
         <div className="mt-4 space-y-4">
           {processing.optionsStatus === "loading" ? (
             <div className="rounded-md border border-border bg-background/60 p-3">
