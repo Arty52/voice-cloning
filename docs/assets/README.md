@@ -8,8 +8,8 @@ Follow the canonical [Public Media Guidelines](../PUBLIC_MEDIA.md) before adding
 
 ## Current Assets
 
-- `voice-studio-desktop.png`: desktop capture of the Voice Studio `Voices` section with mocked demo data, workflow sidebar, voice preset controls, and Add Voice controls, 1440 x 1000, about 131 KB.
-- `voice-studio-mobile.png`: mobile capture of the public-safe workflow navigation sheet, 390 x 1000, about 39 KB.
+- `voice-studio-desktop.png`: desktop capture of the Voice Studio `Overview` section with public-safe workflow map cards and local workspace notes, 1440 x 1000.
+- `voice-studio-mobile.png`: mobile capture of the public-safe workflow navigation sheet with the Overview section active, 390 x 1000.
 
 ## Refresh Checklist
 

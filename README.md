@@ -2,7 +2,7 @@
 
 Voice Clone Lab is a local-first voice studio for experimenting with provider-backed voice cloning from your own browser. It gives you a sidebar workflow for preparing samples, managing voices, generating speech, reviewing generated audio, and keeping provider keys plus usage controls in one local workspace.
 
-![Screenshot of the Voice Clone Lab desktop Voice Studio showing the workflow sidebar, the Voices section, Demo Narrator and Demo Dialogue sample cards, voice preset controls, and the Add Voice panel.](docs/assets/voice-studio-desktop.png)
+![Screenshot of the Voice Clone Lab desktop Voice Studio showing the workflow sidebar, the Overview landing section, intro copy, workflow map cards, and local workspace notes.](docs/assets/voice-studio-desktop.png)
 
 Public-safe demo screenshot: this capture uses mocked data and does not include real API keys, voice samples, generated audio files, or account details. A mobile workflow navigation capture is available in [docs/assets/voice-studio-mobile.png](docs/assets/voice-studio-mobile.png).
 

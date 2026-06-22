@@ -4,7 +4,8 @@ This repository is public-safe by default. Screenshots and other documentation m
 
 ## Good Screenshot Subjects
 
-- The Voice Studio `Voices` landing section with sanitized demo voice names.
+- The Voice Studio `Overview` landing section with public-safe workflow map cards.
+- The Voice Studio `Voices` section with sanitized demo voice names.
 - The mobile workflow sheet showing sidebar navigation labels and status indicators.
 - Provider key controls with masked or empty values only.
 - Cost and quota panels using demo quota numbers, not a real account.
