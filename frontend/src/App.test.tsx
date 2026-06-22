@@ -651,16 +651,41 @@ describe("App", () => {
     expect(await screen.findByText("default/default-voice.mp3")).toBeInTheDocument()
   })
 
-  it("lands on voices with the desktop workflow sidebar active", async () => {
+  it("lands on overview with the desktop workflow sidebar active", async () => {
     renderApp()
 
-    expect(await screen.findByRole("heading", { name: "Voices" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Voices" })).toHaveAttribute("aria-current", "page")
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Overview" })).toHaveAttribute("aria-current", "page")
     expect(screen.getByRole("complementary", { name: "Workflow Sidebar" })).toBeInTheDocument()
     const workflowNav = within(screen.getByRole("navigation", { name: "Workflow Sections" }))
+    expect(await workflowNav.findByText("Start Here")).toBeInTheDocument()
     expect((await workflowNav.findAllByText("Ready")).length).toBeGreaterThan(0)
-    expect(document.querySelector('[data-section-id="voices"]')).not.toHaveClass("hidden")
+    expect(document.querySelector('[data-section-id="overview"]')).not.toHaveClass("hidden")
+    expect(document.querySelector('[data-section-id="voices"]')).toHaveClass("hidden")
     expect(document.querySelector('[data-section-id="provider"]')).toHaveClass("hidden")
+  })
+
+  it("navigates from overview workflow cards to active sections", async () => {
+    const user = userEvent.setup()
+    renderApp()
+
+    const workflowMap = await screen.findByRole("list", { name: "Voice Studio Workflow" })
+
+    await user.click(within(workflowMap).getByRole("link", { name: /Voices/i }))
+
+    await waitFor(() => expect(window.location.hash).toBe("#voices"))
+    expect(screen.getByRole("button", { name: "Voices" })).toHaveAttribute("aria-current", "page")
+    expect(document.querySelector('[data-section-id="voices"]')).not.toHaveClass("hidden")
+    expect(document.querySelector('[data-section-id="overview"]')).toHaveClass("hidden")
+
+    await user.click(screen.getByRole("button", { name: "Overview" }))
+    const refreshedWorkflowMap = await screen.findByRole("list", { name: "Voice Studio Workflow" })
+    await user.click(within(refreshedWorkflowMap).getByRole("link", { name: /Generate Speech/i }))
+
+    await waitFor(() => expect(window.location.hash).toBe("#generate"))
+    expect(screen.getByRole("button", { name: "Generate Speech" })).toHaveAttribute("aria-current", "page")
+    expect(document.querySelector('[data-section-id="generate"]')).not.toHaveClass("hidden")
+    expect(document.querySelector('[data-section-id="overview"]')).toHaveClass("hidden")
   })
 
   it("switches desktop workflow sections through stable hashes", async () => {
@@ -671,7 +696,7 @@ describe("App", () => {
 
     expect(window.location.hash).toBe("#generate")
     expect(screen.getByRole("button", { name: "Generate Speech" })).toHaveAttribute("aria-current", "page")
-    expect(screen.getByRole("heading", { name: "Generate Speech" })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { level: 2, name: "Generate Speech" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Voices" })).not.toHaveAttribute("aria-current")
   })
 
@@ -710,7 +735,7 @@ describe("App", () => {
       expect(screen.queryByRole("dialog", { name: "Workflow Navigation" })).not.toBeInTheDocument()
     )
     expect(window.location.hash).toBe("#provider")
-    expect(screen.getByRole("heading", { name: "Provider & Usage" })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { level: 2, name: "Provider & Usage" })).toBeInTheDocument()
   })
 
   it("shows missing key state and uses a saved browser key for provider requests", async () => {
@@ -948,24 +973,27 @@ describe("App", () => {
   it("shows provider usage details expanded", async () => {
     renderApp()
 
-    const costHeading = await screen.findByText("Cost & Quota")
-    const providerKeysHeading = screen.getByText("Provider Keys")
+    const providerSection = document.querySelector('[data-section-id="provider"]')
+    expect(providerSection).not.toBeNull()
+    const providerPanel = within(providerSection as HTMLElement)
+    const costHeading = await providerPanel.findByText("Cost & Quota")
+    const providerKeysHeading = providerPanel.getByRole("heading", { level: 2, name: "Provider Keys" })
     expect(providerKeysHeading.compareDocumentPosition(costHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(await screen.findByText(`${formatTestNumber(9000)} remaining`)).toBeInTheDocument()
-    expect(screen.getByText(`~${formatTestNumber(97)}`)).toBeInTheDocument()
-    expect(screen.getByText("No run")).toBeInTheDocument()
+    expect(await providerPanel.findByText(`${formatTestNumber(9000)} remaining`)).toBeInTheDocument()
+    expect(providerPanel.getByText(`~${formatTestNumber(97)}`)).toBeInTheDocument()
+    expect(providerPanel.getByText("No run")).toBeInTheDocument()
     const costQuotaDetails = document.querySelector("#cost-quota-details")
     expect(costQuotaDetails).toBeInTheDocument()
     expect(costQuotaDetails).not.toHaveAttribute("hidden")
-    expect(screen.queryByRole("button", { name: /expand/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: /collapse/i })).not.toBeInTheDocument()
-    expect(screen.getByLabelText(/model/i)).toHaveValue("eleven_multilingual_v2")
-    expect(screen.getByText(`${formatTestNumber(1000)} / ${formatTestNumber(10000)}`)).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: /api requests/i })).toHaveAttribute(
+    expect(providerPanel.queryByRole("button", { name: /expand/i })).not.toBeInTheDocument()
+    expect(providerPanel.queryByRole("button", { name: /collapse/i })).not.toBeInTheDocument()
+    expect(providerPanel.getByLabelText(/model/i)).toHaveValue("eleven_multilingual_v2")
+    expect(providerPanel.getByText(`${formatTestNumber(1000)} / ${formatTestNumber(10000)}`)).toBeInTheDocument()
+    expect(providerPanel.getByRole("link", { name: /api requests/i })).toHaveAttribute(
       "href",
       "https://elevenlabs.io/app/developers/analytics/api-requests"
     )
-    expect(screen.getByRole("link", { name: /models/i })).toHaveAttribute(
+    expect(providerPanel.getByRole("link", { name: /models/i })).toHaveAttribute(
       "href",
       "https://elevenlabs.io/docs/api-reference/models/list"
     )

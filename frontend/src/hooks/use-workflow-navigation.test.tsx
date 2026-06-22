@@ -9,12 +9,12 @@ describe("useWorkflowNavigation", () => {
     window.history.replaceState(null, "", "/")
   })
 
-  it("defaults invalid or empty hashes to Voices", () => {
+  it("defaults invalid or empty hashes to Overview", () => {
     window.history.replaceState(null, "", "/#not-real")
 
     render(<NavigationProbe />)
 
-    expect(screen.getByTestId("active-section")).toHaveTextContent("voices")
+    expect(screen.getByTestId("active-section")).toHaveTextContent("overview")
   })
 
   it("tracks hash changes from browser navigation", () => {
