@@ -8,7 +8,7 @@ Follow the canonical [Public Media Guidelines](../PUBLIC_MEDIA.md) before adding
 
 ## Current Assets
 
-- `voice-studio-desktop.png`: desktop capture of the Voice Studio `Overview` section with public-safe workflow map cards and local workspace notes, 1440 x 1000.
+- `voice-studio-desktop.png`: desktop capture of the Voice Studio `Overview` section with public-safe workflow map cards and local workspace notes, 1280 x 720.
 - `voice-studio-mobile.png`: mobile capture of the public-safe workflow navigation sheet with the Overview section active, 390 x 1000.
 
 ## Refresh Checklist
