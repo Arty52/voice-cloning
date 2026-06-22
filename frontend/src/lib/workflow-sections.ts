@@ -60,7 +60,7 @@ export const DEFAULT_WORKFLOW_SECTION_ID: WorkflowSectionId = "overview"
 
 export const WORKFLOW_SECTIONS: WorkflowSection[] = [
   {
-    description: "Start here for a quick map of the voice clone workflow.",
+    description: "Choose a voice, generate a short preview, and manage local setup from one workspace.",
     hash: "#overview",
     icon: Compass,
     id: "overview",

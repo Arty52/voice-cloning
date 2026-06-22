@@ -655,6 +655,9 @@ describe("App", () => {
     renderApp()
 
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument()
+    expect(
+      screen.getByText("Choose a voice, generate a short preview, and manage local setup from one workspace.")
+    ).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Overview" })).toHaveAttribute("aria-current", "page")
     expect(screen.getByRole("complementary", { name: "Workflow Sidebar" })).toBeInTheDocument()
     const workflowNav = within(screen.getByRole("navigation", { name: "Workflow Sections" }))
