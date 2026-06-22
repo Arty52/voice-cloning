@@ -78,7 +78,7 @@ export function VoiceStudioShell({
 
 export function WorkflowSectionPanel({ activeSectionId, children, className, id }: WorkflowSectionPanelProps) {
   return (
-    <section className={cn("flex flex-col gap-4", activeSectionId !== id && "hidden", className)} data-section-id={id}>
+    <section className={cn("flex flex-col gap-4", className, activeSectionId !== id && "hidden")} data-section-id={id}>
       {children}
     </section>
   )

@@ -644,7 +644,9 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "Voices" })).toHaveAttribute("aria-current", "page")
     expect(screen.getByRole("complementary", { name: "Workflow Sidebar" })).toBeInTheDocument()
     const workflowNav = within(screen.getByRole("navigation", { name: "Workflow Sections" }))
-    expect(workflowNav.getAllByText("Ready").length).toBeGreaterThan(0)
+    expect((await workflowNav.findAllByText("Ready")).length).toBeGreaterThan(0)
+    expect(document.querySelector('[data-section-id="voices"]')).not.toHaveClass("hidden")
+    expect(document.querySelector('[data-section-id="provider"]')).toHaveClass("hidden")
   })
 
   it("switches desktop workflow sections through stable hashes", async () => {
