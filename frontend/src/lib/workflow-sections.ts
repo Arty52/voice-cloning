@@ -3,6 +3,7 @@ import {
   CircleAlert,
   CircleCheck,
   CircleDashed,
+  Compass,
   FileAudio,
   KeyRound,
   Loader2,
@@ -15,7 +16,7 @@ import type { AsyncStatus, ProviderKeySource, RequestStatus } from "@/types"
 import type { GeneratedAudioMutation } from "@/hooks/use-generated-audio-library"
 import type { SampleProcessingStatus } from "@/hooks/use-sample-processing"
 
-export type WorkflowSectionId = "prepare" | "voices" | "generate" | "archive" | "provider"
+export type WorkflowSectionId = "overview" | "prepare" | "voices" | "generate" | "archive" | "provider"
 
 export type WorkflowSection = {
   description: string
@@ -55,9 +56,18 @@ export type WorkflowSectionStatusInput = {
   voiceStatus: AsyncStatus
 }
 
-export const DEFAULT_WORKFLOW_SECTION_ID: WorkflowSectionId = "voices"
+export const DEFAULT_WORKFLOW_SECTION_ID: WorkflowSectionId = "overview"
 
 export const WORKFLOW_SECTIONS: WorkflowSection[] = [
+  {
+    description: "Start here for a quick map of the voice clone workflow.",
+    hash: "#overview",
+    icon: Compass,
+    id: "overview",
+    label: "Overview",
+    optional: false,
+    stepLabel: "Start",
+  },
   {
     description: "Prepare or clean source audio before saving it as a voice.",
     hash: "#prepare",
@@ -119,10 +129,15 @@ export function buildWorkflowSectionStatuses(input: WorkflowSectionStatusInput):
   return {
     archive: archiveStatus(input),
     generate: generateStatus(input),
+    overview: overviewStatus(),
     prepare: prepareStatus(input),
     provider: providerStatus(input),
     voices: voicesStatus(input),
   }
+}
+
+function overviewStatus(): WorkflowSectionStatus {
+  return neutralStatus("Start Here")
 }
 
 function prepareStatus(input: WorkflowSectionStatusInput): WorkflowSectionStatus {
