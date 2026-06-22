@@ -240,7 +240,7 @@ const sampleProcessingOptions = {
       id: "trimSilence" as const,
       label: "Trim Silence",
       description: "Remove leading, trailing, and long interior empty sections with FFmpeg.",
-      enabled: false,
+      enabled: true,
       defaultProcessingPresetId: "trimBalanced" as const,
       processingPresets: [
         {
@@ -924,6 +924,17 @@ describe("App", () => {
     expect(sampleProcessingPanel().getByRole("button", { name: "Start Processing" })).toBeDisabled()
   })
 
+  it("labels deferred speaker work as speaker separation", async () => {
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
+    await user.click(await sampleProcessingPanel().findByRole("button", { name: "Sample Processing Operation: Isolate Voice" }))
+
+    expect(screen.getByRole("menuitemradio", { name: "Speaker Separation Unavailable" })).toBeInTheDocument()
+  })
+
   it("switches to an enabled sample processing operation and names the result for that operation", async () => {
     const baseFetch = mockFetch()
     vi.stubGlobal(
@@ -954,10 +965,8 @@ describe("App", () => {
     await screen.findByText("default/default-voice.mp3")
     await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
     expect(await sampleProcessingPanel().findByRole("button", { name: "Sample Processing Operation: Trim Silence" })).toBeInTheDocument()
-    const trimPresets = within(sampleProcessingPanel().getByRole("radiogroup", { name: "Trim Aggressiveness" }))
-    expect(trimPresets.getByRole("radio", { name: "Balanced" })).toHaveAttribute("aria-checked", "true")
-    await user.click(trimPresets.getByRole("radio", { name: "Aggressive" }))
-    expect(trimPresets.getByRole("radio", { name: "Aggressive" })).toHaveAttribute("aria-checked", "true")
+    const trimAggressiveness = within(sampleProcessingPanel().getByRole("radiogroup", { name: "Trim Aggressiveness" }))
+    expect(trimAggressiveness.getByRole("radio", { name: "Balanced" })).toHaveAttribute("aria-checked", "true")
     const startButton = sampleProcessingPanel().getByRole("button", { name: "Start Processing" })
     await waitFor(() => expect(startButton).toBeEnabled())
 
@@ -968,7 +977,7 @@ describe("App", () => {
     )
     const jobBody = jobCall?.[1]?.body as FormData
     expect(jobBody.get("operationId")).toBe("trimSilence")
-    expect(jobBody.get("processingPresetId")).toBe("trimAggressive")
+    expect(jobBody.get("processingPresetId")).toBe("trimBalanced")
     expect(await sampleProcessingPanel().findByLabelText("Processed sample preview")).toBeInTheDocument()
     expect(sampleProcessingPanel().getByLabelText("Voice Name")).toHaveValue("Default voice Trimmed")
   })
@@ -1128,6 +1137,36 @@ describe("App", () => {
     expect(jobBody.get("processingPresetId")).toBe("clean")
   })
 
+  it("sends the selected trim aggressiveness preset", async () => {
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
+    expect(sampleProcessingPanel().getByRole("radiogroup", { name: "Isolation Strength" })).toBeInTheDocument()
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Sample Processing Operation: Isolate Voice" }))
+    await user.click(sampleProcessingPanel().getByRole("menuitemradio", { name: "Trim Silence" }))
+
+    const trimAggressiveness = within(await sampleProcessingPanel().findByRole("radiogroup", { name: "Trim Aggressiveness" }))
+    expect(trimAggressiveness.getByRole("radio", { name: "Balanced" })).toHaveAttribute("aria-checked", "true")
+    await user.click(trimAggressiveness.getByRole("radio", { name: "Aggressive" }))
+    expect(trimAggressiveness.getByRole("radio", { name: "Aggressive" })).toHaveAttribute("aria-checked", "true")
+    expect(sampleProcessingPanel().getByText("Tighter trimming for shorter or louder empty regions.")).toBeInTheDocument()
+
+    const startButton = await sampleProcessingPanel().findByRole("button", { name: "Start Processing" })
+    await waitFor(() => expect(startButton).toBeEnabled())
+    await user.click(startButton)
+
+    const jobCall = vi.mocked(fetch).mock.calls.find(
+      ([url, init]) => String(url) === "/api/sample-processing/jobs" && init?.method === "POST"
+    )
+    const jobBody = jobCall?.[1]?.body as FormData
+    expect(jobBody.get("operationId")).toBe("trimSilence")
+    expect(jobBody.get("processingPresetId")).toBe("trimAggressive")
+    expect(await sampleProcessingPanel().findByLabelText("Processed sample preview")).toBeInTheDocument()
+    expect(sampleProcessingPanel().getByLabelText("Voice Name")).toHaveValue("Default voice Trimmed")
+  })
+
   it("clears a processed preview when sample processing inputs change", async () => {
     const user = userEvent.setup()
     renderApp()
@@ -1171,7 +1210,7 @@ describe("App", () => {
     expect(sampleProcessingPanel().getByLabelText("Sample Processing Elapsed Time")).toHaveTextContent("Finished In")
 
     await user.click(sampleProcessingPanel().getByRole("button", { name: "Sample Processing Operation: Isolate Voice" }))
-    await user.click(sampleProcessingPanel().getByRole("menuitemradio", { name: "Trim Silence Unavailable" }))
+    await user.click(sampleProcessingPanel().getByRole("menuitemradio", { name: "Trim Silence" }))
 
     await waitFor(() => {
       expect(sampleProcessingPanel().queryByLabelText("Processed sample preview")).not.toBeInTheDocument()
@@ -1208,6 +1247,40 @@ describe("App", () => {
     expect(jobCalls).toHaveLength(2)
     const nextJobBody = jobCalls[1]?.[1]?.body as FormData
     expect(nextJobBody.get("processingPresetId")).toBe("maxIsolation")
+  })
+
+  it("clears a processed preview when trim aggressiveness changes", async () => {
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Open Sample Processing" }))
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Sample Processing Operation: Isolate Voice" }))
+    await user.click(sampleProcessingPanel().getByRole("menuitemradio", { name: "Trim Silence" }))
+    const startButton = await sampleProcessingPanel().findByRole("button", { name: "Start Processing" })
+    await waitFor(() => expect(startButton).toBeEnabled())
+    await user.click(startButton)
+    expect(await sampleProcessingPanel().findByLabelText("Processed sample preview")).toBeInTheDocument()
+    expect(sampleProcessingPanel().getByLabelText("Sample Processing Elapsed Time")).toHaveTextContent("Finished In")
+
+    const trimAggressiveness = within(sampleProcessingPanel().getByRole("radiogroup", { name: "Trim Aggressiveness" }))
+    await user.click(trimAggressiveness.getByRole("radio", { name: "Aggressive" }))
+
+    await waitFor(() => {
+      expect(sampleProcessingPanel().queryByLabelText("Processed sample preview")).not.toBeInTheDocument()
+    })
+    expect(sampleProcessingPanel().queryByLabelText("Sample Processing Elapsed Time")).not.toBeInTheDocument()
+    expect(sampleProcessingPanel().queryByRole("button", { name: "Add To Voice Library" })).not.toBeInTheDocument()
+
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Start Processing" }))
+
+    const jobCalls = vi
+      .mocked(fetch)
+      .mock.calls.filter(([url, init]) => String(url) === "/api/sample-processing/jobs" && init?.method === "POST")
+    expect(jobCalls).toHaveLength(2)
+    const nextJobBody = jobCalls[1]?.[1]?.body as FormData
+    expect(nextJobBody.get("operationId")).toBe("trimSilence")
+    expect(nextJobBody.get("processingPresetId")).toBe("trimAggressive")
   })
 
   it("creates a sample processing job from an uploaded file", async () => {
