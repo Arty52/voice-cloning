@@ -85,7 +85,10 @@ export function useVoiceSampleInput({ onVoiceSaved, providerSample }: UseVoiceSa
   }, [])
 
   function handleUploadFileChange(event: ChangeEvent<HTMLInputElement>) {
-    const nextFile = event.target.files?.[0] ?? null
+    handleUploadFileSelect(event.target.files?.[0] ?? null)
+  }
+
+  function handleUploadFileSelect(nextFile: File | null) {
     setVoiceSampleInputMode("upload")
     setUploadFile(nextFile)
     setUploadPreviewUrl(nextFile ? URL.createObjectURL(nextFile) : null)
@@ -240,6 +243,7 @@ export function useVoiceSampleInput({ onVoiceSaved, providerSample }: UseVoiceSa
     handleSampleWindowChange: setUploadWindow,
     handleUpload,
     handleUploadFileChange,
+    handleUploadFileSelect,
     handleVoiceSampleInputModeChange,
     isRecorderBusy,
     isRecording,

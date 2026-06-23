@@ -217,7 +217,11 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
   }
 
   function handleSourceFileChange(event: ChangeEvent<HTMLInputElement>) {
-    setSourceFile(event.currentTarget.files?.[0] ?? null)
+    handleSourceFileSelect(event.currentTarget.files?.[0] ?? null)
+  }
+
+  function handleSourceFileSelect(nextFile: File | null) {
+    setSourceFile(nextFile)
     resetProcessedCandidate()
   }
 
@@ -565,6 +569,7 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
     handleSpeakerSaveSelectionChange,
     handleSpeakerVoicePresetChange,
     handleSourceFileChange,
+    handleSourceFileSelect,
     handleSourceModeChange,
     handleStartProcessing,
     handleTranscriptSelectionChange,
