@@ -423,7 +423,7 @@ export function SampleProcessingPanel({
                 </Button>
               </div>
 
-              <div className="grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+              <div className="grid items-stretch gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
                 <div className="flex flex-col gap-3">
                   {speakerResult.speakers.map((speaker, index) => {
                     const checkboxId = `speaker-save-${speaker.id}`
@@ -474,14 +474,14 @@ export function SampleProcessingPanel({
                   })}
                 </div>
 
-                <div className="flex min-h-0 flex-col gap-2 rounded-md border border-border bg-card/70 p-3">
+                <div className="flex min-h-72 flex-col gap-2 rounded-md border border-border bg-card/70 p-3">
                   <div className="flex items-center justify-between gap-2">
                     <div className="text-sm font-medium">Transcript</div>
                     {processing.selectedTranscriptItemIds.length > 0 ? (
                       <Badge variant="secondary">{processing.selectedTranscriptItemIds.length} Selected</Badge>
                     ) : null}
                   </div>
-                  <ScrollArea className="h-72 rounded-md border border-border bg-background/70 p-3">
+                  <ScrollArea className="min-h-72 flex-1 rounded-md border border-border bg-background/70 p-3 lg:min-h-0">
                     <div className="flex flex-wrap gap-2" onPointerLeave={() => setDragStartItemId(null)}>
                       {speakerResult.transcript.items.map((item) => {
                         const speakerIndex = speakerIndexForItem(speakerResult, item)
