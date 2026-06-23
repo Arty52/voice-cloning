@@ -5,6 +5,10 @@ import {
   createSampleProcessingJob,
   providerHeaders,
   saveProcessedVoice,
+  saveSpeakerVoices,
+  sampleProcessingSourceUrl,
+  sampleProcessingSpeakerResultUrl,
+  updateSampleProcessingSpeakerAssignments,
   updateVoice,
   VOICE_PROVIDER_KEY_HEADER,
 } from "./api"
@@ -116,6 +120,59 @@ describe("voice API helpers", () => {
       "/api/sample-processing/jobs/job-1/voice",
       expect.objectContaining({
         body: JSON.stringify({ name: "Vegeta Isolated", voicePresetId: "animatedDialogue" }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      })
+    )
+  })
+
+  it("builds speaker separation playback URLs", () => {
+    expect(sampleProcessingSourceUrl("job 1")).toBe("/api/sample-processing/jobs/job%201/source")
+    expect(sampleProcessingSpeakerResultUrl("job 1", "speaker/1")).toBe(
+      "/api/sample-processing/jobs/job%201/speakers/speaker%2F1/result"
+    )
+  })
+
+  it("patches speaker assignments", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => okJson({ job: { id: "job-1", status: "success" } })))
+
+    await updateSampleProcessingSpeakerAssignments("job-1", {
+      speakerNames: [{ speakerId: "speaker-1", name: "Morgan" }],
+      transcriptAssignments: [{ itemId: "item-2", speakerId: "speaker-1" }],
+    })
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/sample-processing/jobs/job-1/speaker-assignments",
+      expect.objectContaining({
+        body: JSON.stringify({
+          speakerNames: [{ speakerId: "speaker-1", name: "Morgan" }],
+          transcriptAssignments: [{ itemId: "item-2", speakerId: "speaker-1" }],
+        }),
+        headers: { "Content-Type": "application/json" },
+        method: "PATCH",
+      })
+    )
+  })
+
+  it("saves selected speaker voices", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => okJson({ voices: [{ id: "morgan", name: "Morgan" }] })))
+
+    await saveSpeakerVoices("job-1", {
+      voices: [
+        { speakerId: "speaker-1", name: "Morgan", voicePresetId: "standardNarration" },
+        { speakerId: "speaker-2", name: "Riley", voicePresetId: "animatedDialogue" },
+      ],
+    })
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/sample-processing/jobs/job-1/speaker-voices",
+      expect.objectContaining({
+        body: JSON.stringify({
+          voices: [
+            { speakerId: "speaker-1", name: "Morgan", voicePresetId: "standardNarration" },
+            { speakerId: "speaker-2", name: "Riley", voicePresetId: "animatedDialogue" },
+          ],
+        }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
       })

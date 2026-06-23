@@ -48,6 +48,31 @@ export type SaveProcessedVoiceRequest = {
   voicePresetId?: VoicePresetId
 }
 
+export type SpeakerNameAssignmentRequest = {
+  speakerId: string
+  name?: string | null
+}
+
+export type SpeakerTranscriptAssignmentRequest = {
+  itemId: string
+  speakerId: string
+}
+
+export type UpdateSpeakerAssignmentsRequest = {
+  speakerNames?: SpeakerNameAssignmentRequest[]
+  transcriptAssignments?: SpeakerTranscriptAssignmentRequest[]
+}
+
+export type SaveSpeakerVoiceRequest = {
+  speakerId: string
+  name: string
+  voicePresetId?: VoicePresetId
+}
+
+export type SaveSpeakerVoicesRequest = {
+  voices: SaveSpeakerVoiceRequest[]
+}
+
 export type SpeechApiRequest = {
   modelId: string | null
   providerId: string | null
@@ -178,12 +203,42 @@ export function sampleProcessingResultUrl(jobId: string) {
   return `/api/sample-processing/jobs/${encodeURIComponent(jobId)}/result`
 }
 
+export function sampleProcessingSourceUrl(jobId: string) {
+  return `/api/sample-processing/jobs/${encodeURIComponent(jobId)}/source`
+}
+
+export function sampleProcessingSpeakerResultUrl(jobId: string, speakerId: string) {
+  return `/api/sample-processing/jobs/${encodeURIComponent(jobId)}/speakers/${encodeURIComponent(speakerId)}/result`
+}
+
+export async function updateSampleProcessingSpeakerAssignments(jobId: string, request: UpdateSpeakerAssignmentsRequest) {
+  return fetchJson<SampleProcessingJobResponse>(
+    `/api/sample-processing/jobs/${encodeURIComponent(jobId)}/speaker-assignments`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    }
+  )
+}
+
 export async function saveProcessedVoice(jobId: string, request: SaveProcessedVoiceRequest) {
   return fetchJson<{ voice: VoiceAsset }>(`/api/sample-processing/jobs/${encodeURIComponent(jobId)}/voice`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
   })
+}
+
+export async function saveSpeakerVoices(jobId: string, request: SaveSpeakerVoicesRequest) {
+  return fetchJson<{ voices: VoiceAsset[] }>(
+    `/api/sample-processing/jobs/${encodeURIComponent(jobId)}/speaker-voices`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    }
+  )
 }
 
 export async function createSpeech({
