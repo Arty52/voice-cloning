@@ -367,6 +367,8 @@ class SampleProcessingService:
         result = self._speaker_separation_result(job)
         source_path = self.source_path(job_id)
         _validate_speaker_assignments(result, speaker_names, transcript_assignments)
+        if not speaker_names and not transcript_assignments:
+            return job
         update_assignments = getattr(self.processor, "update_speaker_assignments", None)
         if update_assignments is None:
             raise SampleProcessingServiceError("Speaker assignment updates are not available for this processor.", 503)
@@ -523,12 +525,19 @@ class SampleProcessingService:
             unknown_items = set(speaker.transcript_item_ids) - item_ids
             if unknown_items:
                 raise SampleProcessingServiceError("Speaker separation speaker references invalid transcript items.", 500)
+            if len(speaker.transcript_item_ids) != len(set(speaker.transcript_item_ids)):
+                raise SampleProcessingServiceError("Speaker separation speaker references duplicate transcript items.", 500)
             for item_id in speaker.transcript_item_ids:
                 if speaker_id_by_item_id[item_id] != speaker.id:
                     raise SampleProcessingServiceError(
                         "Speaker separation speaker references transcript items assigned to another speaker.",
                         500,
                     )
+            assigned_item_ids = {
+                item_id for item_id, speaker_id in speaker_id_by_item_id.items() if speaker_id == speaker.id
+            }
+            if set(speaker.transcript_item_ids) != assigned_item_ids:
+                raise SampleProcessingServiceError("Speaker separation speaker transcript items are incomplete.", 500)
             if speaker.result is not None:
                 self._result_path(speaker.result)
 

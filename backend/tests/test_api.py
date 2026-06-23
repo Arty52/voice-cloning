@@ -349,6 +349,30 @@ class InvalidSpeakerTranscriptOwnershipProcessor(FakeSpeakerSeparationProcessor)
         )
 
 
+class IncompleteSpeakerTranscriptItemsProcessor(FakeSpeakerSeparationProcessor):
+    async def process(self, request: SampleProcessingRequest) -> SpeakerSeparationResult:
+        result = await super().process(request)
+        return replace(
+            result,
+            speakers=(
+                replace(result.speakers[0], transcript_item_ids=("item-1",)),
+                result.speakers[1],
+            ),
+        )
+
+
+class DuplicateSpeakerTranscriptItemsProcessor(FakeSpeakerSeparationProcessor):
+    async def process(self, request: SampleProcessingRequest) -> SpeakerSeparationResult:
+        result = await super().process(request)
+        return replace(
+            result,
+            speakers=(
+                replace(result.speakers[0], transcript_item_ids=("item-1", "item-1", "item-3")),
+                result.speakers[1],
+            ),
+        )
+
+
 def make_settings(
     tmp_path: Path,
     api_key: str = "test-key",
@@ -1107,6 +1131,26 @@ def test_sample_processing_speaker_assignments_validate_ids_and_duplicates(tmp_p
     assert duplicate_item.json()["detail"] == "Transcript item can only be assigned once."
 
 
+def test_sample_processing_empty_speaker_assignment_patch_is_noop(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    processor = FakeSpeakerSeparationProcessor()
+    app = create_app(settings=settings, sample_processor=processor)
+    client = TestClient(app)
+    create = client.post(
+        "/api/sample-processing/jobs",
+        data={"operationId": "separateSpeakers"},
+        files={"sourceFile": ("conversation.wav", b"speaker-source", "audio/wav")},
+    )
+    job_id = create.json()["job"]["id"]
+    original_job = wait_for_processing_job(client, job_id)
+
+    response = client.patch(f"/api/sample-processing/jobs/{job_id}/speaker-assignments", json={})
+
+    assert response.status_code == 200
+    assert response.json()["job"] == original_job
+    assert processor.assignment_requests == []
+
+
 def test_sample_processing_speaker_voice_save_validates_payload(tmp_path: Path) -> None:
     settings = make_settings(tmp_path)
     app = create_app(settings=settings, sample_processor=FakeSpeakerSeparationProcessor())
@@ -1166,6 +1210,40 @@ def test_sample_processing_speaker_separation_rejects_mismatched_speaker_transcr
     assert create.status_code == 202
     assert job["status"] == "error"
     assert job["error"] == "Speaker separation speaker references transcript items assigned to another speaker."
+
+
+def test_sample_processing_speaker_separation_rejects_incomplete_speaker_transcript_items(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    app = create_app(settings=settings, sample_processor=IncompleteSpeakerTranscriptItemsProcessor())
+    client = TestClient(app)
+
+    create = client.post(
+        "/api/sample-processing/jobs",
+        data={"operationId": "separateSpeakers"},
+        files={"sourceFile": ("conversation.wav", b"speaker-source", "audio/wav")},
+    )
+    job = wait_for_processing_job(client, create.json()["job"]["id"], status="error")
+
+    assert create.status_code == 202
+    assert job["status"] == "error"
+    assert job["error"] == "Speaker separation speaker transcript items are incomplete."
+
+
+def test_sample_processing_speaker_separation_rejects_duplicate_speaker_transcript_items(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    app = create_app(settings=settings, sample_processor=DuplicateSpeakerTranscriptItemsProcessor())
+    client = TestClient(app)
+
+    create = client.post(
+        "/api/sample-processing/jobs",
+        data={"operationId": "separateSpeakers"},
+        files={"sourceFile": ("conversation.wav", b"speaker-source", "audio/wav")},
+    )
+    job = wait_for_processing_job(client, create.json()["job"]["id"], status="error")
+
+    assert create.status_code == 202
+    assert job["status"] == "error"
+    assert job["error"] == "Speaker separation speaker references duplicate transcript items."
 
 
 def test_sample_processing_speaker_voice_save_rolls_back_partial_batch(tmp_path: Path) -> None:
