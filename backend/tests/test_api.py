@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import replace
 import json
+import os
 from pathlib import Path
 import sys
 import time
@@ -525,6 +526,7 @@ def ffmpeg_fake_command(
     sleep_seconds: float = 0,
     *,
     args_path: Path | None = None,
+    args_log_path: Path | None = None,
     exit_code: int = 0,
     stderr: str = "ffmpeg failed in test",
 ) -> Path:
@@ -547,6 +549,12 @@ import sys
 args_path = {optional_path_literal(args_path)}
 if args_path:
     Path(args_path).write_text(json.dumps(sys.argv[1:]), encoding="utf-8")
+args_log_path = {optional_path_literal(args_log_path)}
+if args_log_path:
+    log_path = Path(args_log_path)
+    entries = json.loads(log_path.read_text(encoding="utf-8")) if log_path.exists() else []
+    entries.append(sys.argv[1:])
+    log_path.write_text(json.dumps(entries), encoding="utf-8")
 time.sleep({sleep_seconds!r})
 Path(sys.argv[-1]).write_bytes({output!r})
 """,
@@ -575,6 +583,21 @@ class FakeDiarizationOutput:
     speaker_diarization = FakeDiarizationAnnotation()
 
 
+class FakeUntranscribedTurnDiarizationAnnotation:
+    def itertracks(self, yield_label: bool = False):
+        assert yield_label is True
+        return iter(
+            (
+                (FakeDiarizationSegment(0.0, 1.0), None, "SPEAKER_00"),
+                (FakeDiarizationSegment(1.0, 2.0), None, "SPEAKER_01"),
+            )
+        )
+
+
+class FakeUntranscribedTurnDiarizationOutput:
+    speaker_diarization = FakeUntranscribedTurnDiarizationAnnotation()
+
+
 class FakePyannotePipeline:
     loaded: list[tuple[str, str]] = []
 
@@ -585,6 +608,19 @@ class FakePyannotePipeline:
 
     def __call__(self, path: str) -> FakeDiarizationOutput:
         assert path.endswith("normalized-source.wav")
+        return FakeDiarizationOutput()
+
+
+class FakeUntranscribedTurnPyannotePipeline(FakePyannotePipeline):
+    def __call__(self, path: str) -> FakeUntranscribedTurnDiarizationOutput:
+        assert path.endswith("normalized-source.wav")
+        return FakeUntranscribedTurnDiarizationOutput()
+
+
+class SlowPyannotePipeline(FakePyannotePipeline):
+    def __call__(self, path: str) -> FakeDiarizationOutput:
+        assert path.endswith("normalized-source.wav")
+        time.sleep(1.0)
         return FakeDiarizationOutput()
 
 
@@ -618,6 +654,23 @@ class FakeWhisperModel:
                         FakeWhisperWord("General", 1.3, 1.6),
                         FakeWhisperWord("Kenobi.", 1.65, 2.0),
                         FakeWhisperWord("Again.", 2.6, 3.0),
+                    ]
+                )
+            ],
+            object(),
+        )
+
+
+class FakePartialWhisperModel(FakeWhisperModel):
+    def transcribe(self, path: str, *, word_timestamps: bool):
+        assert path.endswith("normalized-source.wav")
+        assert word_timestamps is True
+        return (
+            [
+                FakeWhisperSegment(
+                    [
+                        FakeWhisperWord("Only", 0.1, 0.3),
+                        FakeWhisperWord("speaker.", 0.35, 0.7),
                     ]
                 )
             ],
@@ -1458,6 +1511,122 @@ def test_diarization_processor_reports_missing_dependencies(
 
     assert create.status_code == 202
     assert job["error"] == "Speaker diarization dependencies are not installed. Install backend[diarization]."
+
+
+def test_diarization_processor_disables_pyannote_metrics_before_dependency_import(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("PYANNOTE_METRICS_ENABLED", raising=False)
+
+    def load_dependencies_with_metrics_assertion():
+        assert os.environ["PYANNOTE_METRICS_ENABLED"] == "0"
+        return sample_processors_module._DiarizationDependencies(
+            pipeline_class=FakePyannotePipeline,
+            whisper_model_class=FakeWhisperModel,
+        )
+
+    monkeypatch.setattr(
+        sample_processors_module,
+        "_load_diarization_dependencies",
+        load_dependencies_with_metrics_assertion,
+    )
+    settings = replace(
+        make_settings(tmp_path),
+        sample_processing_enable_diarization=True,
+        sample_processing_hf_token="hf_test",
+        sample_processing_ffmpeg_command=str(ffmpeg_fake_command(tmp_path / "ffmpeg-fake", output=b"fake-wav")),
+    )
+    app = create_app(settings=settings)
+    with TestClient(app) as client:
+        create = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "separateSpeakers"},
+            files={"sourceFile": ("conversation.wav", b"speaker-source", "audio/wav")},
+        )
+        job = wait_for_processing_job(client, create.json()["job"]["id"])
+
+    assert create.status_code == 202
+    assert job["status"] == "success"
+
+
+def test_diarization_processor_times_out_model_steps(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        sample_processors_module,
+        "_load_diarization_dependencies",
+        lambda: sample_processors_module._DiarizationDependencies(
+            pipeline_class=SlowPyannotePipeline,
+            whisper_model_class=FakeWhisperModel,
+        ),
+    )
+    settings = replace(
+        make_settings(tmp_path),
+        sample_processing_enable_diarization=True,
+        sample_processing_hf_token="hf_test",
+        sample_processing_timeout_seconds=0.2,
+        sample_processing_ffmpeg_command=str(ffmpeg_fake_command(tmp_path / "ffmpeg-fake", output=b"fake-wav")),
+    )
+    app = create_app(settings=settings)
+    with TestClient(app) as client:
+        create = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "separateSpeakers"},
+            files={"sourceFile": ("conversation.wav", b"speaker-source", "audio/wav")},
+        )
+        job = wait_for_processing_job(client, create.json()["job"]["id"], status="error")
+
+    assert create.status_code == 202
+    assert job["error"] == "Speaker diarization timed out."
+
+
+def test_diarization_processor_uses_turns_for_untranscribed_speaker_streams(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args_log_path = tmp_path / "ffmpeg-args.json"
+    monkeypatch.setattr(
+        sample_processors_module,
+        "_load_diarization_dependencies",
+        lambda: sample_processors_module._DiarizationDependencies(
+            pipeline_class=FakeUntranscribedTurnPyannotePipeline,
+            whisper_model_class=FakePartialWhisperModel,
+        ),
+    )
+    settings = replace(
+        make_settings(tmp_path),
+        sample_processing_enable_diarization=True,
+        sample_processing_hf_token="hf_test",
+        sample_processing_ffmpeg_command=str(
+            ffmpeg_fake_command(
+                tmp_path / "ffmpeg-fake",
+                output=b"fake-wav",
+                args_log_path=args_log_path,
+            )
+        ),
+    )
+    app = create_app(settings=settings)
+    with TestClient(app) as client:
+        create = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "separateSpeakers"},
+            files={"sourceFile": ("conversation.wav", b"speaker-source", "audio/wav")},
+        )
+        job = wait_for_processing_job(client, create.json()["job"]["id"])
+
+    ffmpeg_calls = json.loads(args_log_path.read_text(encoding="utf-8"))
+    segment_calls = [call for call in ffmpeg_calls if "-ss" in call]
+
+    assert create.status_code == 202
+    assert job["status"] == "success"
+    assert job["result"]["speakers"][0]["transcriptItemIds"] == ["item-1"]
+    assert job["result"]["speakers"][1]["transcriptItemIds"] == []
+    assert any(
+        call[call.index("-ss") + 1] == "1.000" and call[call.index("-t") + 1] == "1.000"
+        for call in segment_calls
+    )
 
 
 def test_diarization_processor_maps_transcript_and_regenerates_speaker_streams(

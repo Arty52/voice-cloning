@@ -5,7 +5,7 @@ from dataclasses import dataclass, replace
 import importlib
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Awaitable, TypeVar
 
 from .config import Settings
 from .models import (
@@ -52,6 +52,8 @@ TRIM_SILENCE_FILTERS = {
         "detection=peak"
     ),
 }
+
+_T = TypeVar("_T")
 
 
 class DemucsSampleProcessor:
@@ -211,6 +213,7 @@ class CompositeSampleProcessor:
 class DiarizationSampleProcessor:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
+        os.environ.setdefault("PYANNOTE_METRICS_ENABLED", "0")
         self._lock = asyncio.Lock()
         self._pipeline: Any | None = None
         self._whisper_model: Any | None = None
@@ -236,10 +239,23 @@ class DiarizationSampleProcessor:
         async with self._lock:
             normalized_path = request.job_dir / "normalized-source.wav"
             await _normalize_audio(request.source_path, normalized_path, self.settings)
-            turns = await asyncio.to_thread(self._diarize, normalized_path)
-            words = await asyncio.to_thread(self._transcribe, normalized_path)
+            turns = await _run_model_step_with_timeout(
+                asyncio.to_thread(self._diarize, normalized_path),
+                "Speaker diarization",
+                self.settings.sample_processing_timeout_seconds,
+            )
+            words = await _run_model_step_with_timeout(
+                asyncio.to_thread(self._transcribe, normalized_path),
+                "Whisper transcription",
+                self.settings.sample_processing_timeout_seconds,
+            )
             result = _speaker_separation_result_from_words(turns, words)
-            return await self._attach_speaker_streams(normalized_path, request.job_dir, result)
+            return await self._attach_speaker_streams(
+                normalized_path,
+                request.job_dir,
+                result,
+                speaker_ranges_by_id=_speaker_turn_ranges_by_id(turns),
+            )
 
     async def update_speaker_assignments(self, request: SpeakerAssignmentRequest) -> SpeakerSeparationResult:
         async with self._lock:
@@ -256,8 +272,8 @@ class DiarizationSampleProcessor:
     def _diarize(self, normalized_path: Path) -> tuple["_DiarizationTurn", ...]:
         if not self.settings.sample_processing_hf_token:
             raise SampleProcessingServiceError("Hugging Face token is required for speaker diarization.", 503)
-        dependencies = _load_diarization_dependencies()
         os.environ.setdefault("PYANNOTE_METRICS_ENABLED", "0")
+        dependencies = _load_diarization_dependencies()
         if self._pipeline is None:
             try:
                 self._pipeline = dependencies.pipeline_class.from_pretrained(
@@ -308,14 +324,20 @@ class DiarizationSampleProcessor:
         normalized_path: Path,
         job_dir: Path,
         result: SpeakerSeparationResult,
+        *,
+        speaker_ranges_by_id: dict[str, list[tuple[float, float]]] | None = None,
     ) -> SpeakerSeparationResult:
         speakers: list[SpeakerSeparationSpeaker] = []
         for speaker in result.speakers:
-            ranges = [
-                (item.start_seconds, item.end_seconds)
-                for item in result.transcript.items
-                if item.speaker_id == speaker.id
-            ]
+            ranges = (
+                speaker_ranges_by_id.get(speaker.id, [])
+                if speaker_ranges_by_id is not None
+                else [
+                    (item.start_seconds, item.end_seconds)
+                    for item in result.transcript.items
+                    if item.speaker_id == speaker.id
+                ]
+            )
             speaker_path = job_dir / f"{speaker.id}.wav"
             await _write_speaker_stream(normalized_path, ranges, speaker_path, job_dir, self.settings)
             sample = load_sample_file(speaker_path, RESULT_CONTENT_TYPE)
@@ -415,6 +437,13 @@ async def _normalize_audio(source_path: Path, output_path: Path, settings: Setti
     )
     if not output_path.exists():
         raise SampleProcessingServiceError("FFmpeg did not produce a normalized sample.", 502)
+
+
+async def _run_model_step_with_timeout(awaitable: Awaitable[_T], label: str, timeout_seconds: float) -> _T:
+    try:
+        return await asyncio.wait_for(awaitable, timeout=timeout_seconds)
+    except TimeoutError as exc:
+        raise SampleProcessingServiceError(f"{label} timed out.", 504) from exc
 
 
 async def _write_speaker_stream(
@@ -618,19 +647,14 @@ def _speaker_separation_result_from_words(
     turns: tuple[_DiarizationTurn, ...],
     words: tuple[_TranscribedWord, ...],
 ) -> SpeakerSeparationResult:
-    speaker_ids: dict[str, str] = {}
-    speaker_labels: dict[str, str] = {}
+    speaker_ids = _speaker_ids_by_diarization_label(turns)
+    speaker_labels = {
+        speaker_id: f"Speaker {index + 1}"
+        for index, speaker_id in enumerate(speaker_ids.values())
+    }
 
     def resolve_speaker(original_label: str) -> str:
-        if original_label not in speaker_ids:
-            speaker_number = len(speaker_ids) + 1
-            speaker_id = f"speaker-{speaker_number}"
-            speaker_ids[original_label] = speaker_id
-            speaker_labels[speaker_id] = f"Speaker {speaker_number}"
         return speaker_ids[original_label]
-
-    for turn in turns:
-        resolve_speaker(turn.speaker_label)
 
     items = _transcript_items_from_words(words, turns, resolve_speaker)
     if not items:
@@ -653,6 +677,22 @@ def _speaker_separation_result_from_words(
         speakers=speakers,
         transcript=SpeakerSeparationTranscript(items=tuple(items)),
     )
+
+
+def _speaker_ids_by_diarization_label(turns: tuple[_DiarizationTurn, ...]) -> dict[str, str]:
+    speaker_ids: dict[str, str] = {}
+    for turn in turns:
+        if turn.speaker_label not in speaker_ids:
+            speaker_ids[turn.speaker_label] = f"speaker-{len(speaker_ids) + 1}"
+    return speaker_ids
+
+
+def _speaker_turn_ranges_by_id(turns: tuple[_DiarizationTurn, ...]) -> dict[str, list[tuple[float, float]]]:
+    speaker_ids = _speaker_ids_by_diarization_label(turns)
+    ranges: dict[str, list[tuple[float, float]]] = {speaker_id: [] for speaker_id in speaker_ids.values()}
+    for turn in turns:
+        ranges[speaker_ids[turn.speaker_label]].append((turn.start_seconds, turn.end_seconds))
+    return ranges
 
 
 def _transcript_items_from_words(
