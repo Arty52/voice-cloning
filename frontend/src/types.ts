@@ -187,8 +187,8 @@ export type SampleProcessingJob = {
   processingPresetId: SampleProcessingPresetId | null
   processingPresetLabel: string | null
   sourceName: string
-  sourceFilename?: string
-  sourceContentType?: string
+  sourceFilename?: string | null
+  sourceContentType?: string | null
   sourceSha256: string
   sourcePreference: SampleProcessingSourcePreference
   engine: string

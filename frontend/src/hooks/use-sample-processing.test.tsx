@@ -224,7 +224,7 @@ describe("useSampleProcessing speaker separation state", () => {
     expect(result.current.selectedSpeakerIds).toEqual(["speaker-1", "speaker-2"])
 
     await act(async () => {
-      await result.current.assignTranscriptItemsToSpeaker(["item-2"], "speaker-1")
+      await result.current.assignTranscriptItemsToSpeaker([" item-2 ", "item-2", " "], "speaker-1")
     })
 
     const patchCall = vi
@@ -342,5 +342,56 @@ describe("useSampleProcessing speaker separation state", () => {
     expect(result.current.speakerSeparationResult).toBeNull()
     expect(result.current.selectedSpeakerIds).toEqual([])
     expect(result.current.speakerNameAssignments).toEqual({})
+  })
+
+  it("ignores stale speaker save responses after reset", async () => {
+    let resolveSave: (response: Response) => void = () => undefined
+    const saveResponse = new Promise<Response>((resolve) => {
+      resolveSave = resolve
+    })
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path === "/api/sample-processing/options" && !init) {
+          return okJson(sampleProcessingOptions)
+        }
+        if (path === "/api/sample-processing/jobs" && init?.method === "POST") {
+          return okJson(speakerJob, 202)
+        }
+        if (path === "/api/sample-processing/jobs/job-1/speaker-voices" && init?.method === "POST") {
+          return saveResponse
+        }
+        return okJson({})
+      })
+    )
+    const onVoiceSaved = vi.fn()
+    const { result } = renderHook(() =>
+      useSampleProcessing({ onVoiceSaved, selectedVoice: sourceVoice, voices: [sourceVoice] })
+    )
+
+    await waitFor(() => expect(result.current.optionsStatus).toBe("success"))
+    await act(async () => {
+      result.current.setOperationId("separateSpeakers")
+      await result.current.handleStartProcessing(formEvent())
+    })
+
+    let savePromise: Promise<void> = Promise.resolve()
+    act(() => {
+      savePromise = result.current.handleSaveSpeakerVoices()
+    })
+    await waitFor(() => expect(result.current.speakerSaveStatus).toBe("loading"))
+
+    act(() => {
+      result.current.setOperationId("isolateVoice")
+    })
+    await act(async () => {
+      resolveSave(jsonResponse({ voices: [{ ...sourceVoice, id: "morgan", name: "Morgan" }] }, 201))
+      await savePromise
+    })
+
+    expect(onVoiceSaved).not.toHaveBeenCalled()
+    expect(result.current.speakerSaveStatus).toBe("idle")
+    expect(result.current.speakerSeparationResult).toBeNull()
   })
 })

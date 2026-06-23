@@ -59,6 +59,7 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
   const activeJobIdRef = useRef<string | null>(null)
   const speakerStateJobIdRef = useRef<string | null>(null)
   const assignmentRequestIdRef = useRef(0)
+  const speakerSaveRequestIdRef = useRef(0)
 
   const operations = useMemo(() => options?.operations ?? [], [options])
   const enabledOperations = useMemo(() => operations.filter((operation) => operation.enabled), [operations])
@@ -445,6 +446,8 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
     if (!job || job.status !== "success" || !isSpeakerSeparationResult(job.result)) {
       return
     }
+    const activeJobId = job.id
+    const activeRunId = runIdRef.current
     if (selectedSpeakerIds.length === 0) {
       setSpeakerSaveStatus("error")
       setSpeakerSaveError("Choose at least one speaker.")
@@ -461,17 +464,19 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
       return
     }
 
+    const speakerSaveRequestId = speakerSaveRequestIdRef.current + 1
+    speakerSaveRequestIdRef.current = speakerSaveRequestId
     setSpeakerSaveStatus("loading")
     setSpeakerSaveError(null)
     try {
-      const payload = await api.saveSpeakerVoices(job.id, { voices: voicesToSave })
-      if (!mountedRef.current) {
+      const payload = await api.saveSpeakerVoices(activeJobId, { voices: voicesToSave })
+      if (!isActiveSpeakerSave(activeJobId, activeRunId, speakerSaveRequestId)) {
         return
       }
       payload.voices.forEach((voice) => onVoiceSaved(voice))
       setSpeakerSaveStatus("success")
     } catch (caught) {
-      if (!mountedRef.current) {
+      if (!isActiveSpeakerSave(activeJobId, activeRunId, speakerSaveRequestId)) {
         return
       }
       setSpeakerSaveStatus("error")
@@ -481,6 +486,7 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
 
   function clearSpeakerSeparationState() {
     assignmentRequestIdRef.current += 1
+    speakerSaveRequestIdRef.current += 1
     speakerStateJobIdRef.current = null
     setSelectedTranscriptItemIds([])
     setSpeakerNameAssignments({})
@@ -502,6 +508,15 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
       runIdRef.current === runId &&
       activeJobIdRef.current === jobId &&
       assignmentRequestIdRef.current === requestId
+    )
+  }
+
+  function isActiveSpeakerSave(jobId: string, runId: number, requestId: number) {
+    return (
+      mountedRef.current &&
+      runIdRef.current === runId &&
+      activeJobIdRef.current === jobId &&
+      speakerSaveRequestIdRef.current === requestId
     )
   }
 
@@ -648,7 +663,7 @@ function isSpeakerSeparationResult(result: SampleProcessingJob["result"]): resul
 }
 
 function uniqueIds(ids: string[]) {
-  return Array.from(new Set(ids.filter((id) => id.trim().length > 0)))
+  return Array.from(new Set(ids.map((id) => id.trim()).filter((id) => id.length > 0)))
 }
 
 function delay(ms: number) {
