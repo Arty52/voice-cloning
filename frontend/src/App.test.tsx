@@ -1432,6 +1432,20 @@ describe("App", () => {
     const speakerCheckboxes = sampleProcessingPanel().getAllByRole("checkbox")
     await user.click(speakerCheckboxes[1])
     await user.click(sampleProcessingPanel().getByRole("button", { name: "Add Selected Voices" }))
+    const saveDialog = await screen.findByRole("dialog", { name: "Add Selected Voices To Voice Library" })
+    expect(
+      within(saveDialog).getByText("These selected speaker streams will be added to the Voice Library as separate voices.")
+    ).toBeInTheDocument()
+    expect(within(saveDialog).getByText("Mina")).toBeInTheDocument()
+    expect(within(saveDialog).getByText("Standard Narration")).toBeInTheDocument()
+    expect(
+      vi
+        .mocked(fetch)
+        .mock.calls.some(
+          ([url, init]) => String(url) === "/api/sample-processing/jobs/job-1/speaker-voices" && init?.method === "POST"
+        )
+    ).toBe(false)
+    await user.click(within(saveDialog).getByRole("button", { name: "Add To Voice Library" }))
     const saveSpeakersCall = vi.mocked(fetch).mock.calls.find(
       ([url, init]) => String(url) === "/api/sample-processing/jobs/job-1/speaker-voices" && init?.method === "POST"
     )

@@ -6,6 +6,16 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Loading } from "@/components/ui/loading"
@@ -59,6 +69,7 @@ export function SampleProcessingPanel({
   const playbackEndRef = useRef<number | null>(null)
   const [dragStartItemId, setDragStartItemId] = useState<string | null>(null)
   const [hoveredSpeakerId, setHoveredSpeakerId] = useState<string | null>(null)
+  const [isSpeakerSaveDialogOpen, setSpeakerSaveDialogOpen] = useState(false)
   const operationOptions = processing.operations.map((operation) => ({
     label: operation.enabled
       ? operationDisplayLabel(operation.id, operation.label)
@@ -75,6 +86,7 @@ export function SampleProcessingPanel({
   const presetLabel = presetControlLabel(processing.operationId)
   const isDetailsVisible = isExpanded || !isCollapsible
   const speakerResult = processing.speakerSeparationResult
+  const selectedSpeakers = speakerResult?.speakers.filter((speaker) => processing.selectedSpeakerIds.includes(speaker.id)) ?? []
 
   useEffect(() => {
     const audio = sourceAudioRef.current
@@ -119,6 +131,11 @@ export function SampleProcessingPanel({
     }
     const [from, to] = startIndex < endIndex ? [startIndex, endIndex] : [endIndex, startIndex]
     processing.handleTranscriptSelectionChange(itemIds.slice(from, to + 1))
+  }
+
+  function handleConfirmSaveSpeakerVoices() {
+    setSpeakerSaveDialogOpen(false)
+    void processing.handleSaveSpeakerVoices()
   }
 
   return (
@@ -418,10 +435,47 @@ export function SampleProcessingPanel({
                   <div className="text-sm font-medium">Speaker Streams</div>
                   <div className="text-xs text-muted-foreground">{speakerResult.speakers.length} Voices Detected</div>
                 </div>
-                <Button disabled={!processing.canSaveSelectedSpeakers} onClick={() => void processing.handleSaveSpeakerVoices()} type="button">
-                  {processing.speakerSaveStatus === "loading" ? <Loading aria-hidden="true" size="sm" /> : <Save aria-hidden="true" className="size-4" />}
-                  {processing.speakerSaveStatus === "loading" ? "Adding Speakers" : "Add Selected Voices"}
-                </Button>
+                <Dialog open={isSpeakerSaveDialogOpen} onOpenChange={setSpeakerSaveDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button disabled={!processing.canSaveSelectedSpeakers} type="button">
+                      {processing.speakerSaveStatus === "loading" ? <Loading aria-hidden="true" size="sm" /> : <Save aria-hidden="true" className="size-4" />}
+                      {processing.speakerSaveStatus === "loading" ? "Adding Speakers" : "Add Selected Voices"}
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Add Selected Voices To Voice Library</DialogTitle>
+                      <DialogDescription>
+                        These selected speaker streams will be added to the Voice Library as separate voices.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <ul className="flex max-h-60 flex-col gap-2 overflow-auto rounded-md border border-border bg-card/70 p-3">
+                      {selectedSpeakers.map((speaker) => {
+                        const speakerIndex = speakerResult.speakers.findIndex((candidate) => candidate.id === speaker.id)
+                        const voiceName = (processing.speakerNameAssignments[speaker.id] ?? "").trim() || speaker.assignedName || speaker.label
+                        const voicePresetId = processing.speakerVoicePresetIds[speaker.id] ?? voicePresets[0]?.id ?? "standardNarration"
+                        const voicePresetLabel = voicePresets.find((voicePreset) => voicePreset.id === voicePresetId)?.label ?? voicePresetId
+                        return (
+                          <li className="flex items-start justify-between gap-3 text-sm" key={speaker.id} style={speakerStyle(speakerIndex >= 0 ? speakerIndex : 0)}>
+                            <span className="min-w-0 truncate font-medium text-[var(--speaker-color)]">{voiceName}</span>
+                            <span className="shrink-0 text-muted-foreground">{voicePresetLabel}</span>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                    <DialogFooter>
+                      <DialogClose asChild>
+                        <Button type="button" variant="secondary">
+                          Cancel
+                        </Button>
+                      </DialogClose>
+                      <Button disabled={!processing.canSaveSelectedSpeakers} onClick={handleConfirmSaveSpeakerVoices} type="button">
+                        <Save aria-hidden="true" className="size-4" />
+                        Add To Voice Library
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
               </div>
 
               <div className="grid items-stretch gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
