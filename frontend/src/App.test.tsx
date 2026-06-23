@@ -563,6 +563,10 @@ function voiceLibraryPanel() {
   return scopedPanelByHeading("Voice Library")
 }
 
+function voiceLibraryRow(name: string) {
+  return within(voiceLibraryPanel().getByRole("group", { name: `${name} Voice` }))
+}
+
 function sampleProcessingPanel() {
   return scopedPanelByHeading("Sample Processing")
 }
@@ -876,12 +880,34 @@ describe("App", () => {
 
   it("links from the voice library to speech generation", async () => {
     window.history.replaceState(null, "", "/#voices")
+    const baseFetch = mockFetch()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "default", voices: [defaultVoice, voiceCloneVoice] })
+        }
+        return baseFetch(input, init)
+      })
+    )
     const user = userEvent.setup()
     renderApp()
 
     expect(await screen.findByText("default/default-voice.mp3")).toBeInTheDocument()
+    expect(voiceLibraryPanel().queryByText("Selected Preview")).not.toBeInTheDocument()
+    expect(voiceLibraryPanel().queryByRole("radiogroup", { name: "Voice Preset" })).not.toBeInTheDocument()
 
-    const generateLink = voiceLibraryPanel().getByRole("link", { name: "Generate Speech" })
+    const defaultVoiceRow = voiceLibraryRow("Default voice")
+    expect(defaultVoiceRow.getByRole("group", { name: "Voice sample preview for Default voice" })).toBeInTheDocument()
+    expect(defaultVoiceRow.getByRole("link", { name: "Generate Speech" })).toHaveAttribute("href", "#generate")
+    expect(voiceLibraryRow("Voice_Clone_01").queryByRole("link", { name: "Generate Speech" })).not.toBeInTheDocument()
+
+    await user.click(voiceLibraryPanel().getByRole("button", { name: /^Voice_Clone_01/i }))
+    expect(voiceLibraryRow("Default voice").queryByRole("group", { name: /Voice sample preview/i })).not.toBeInTheDocument()
+    const selectedCloneRow = voiceLibraryRow("Voice_Clone_01")
+    expect(selectedCloneRow.getByRole("group", { name: "Voice sample preview for Voice_Clone_01" })).toBeInTheDocument()
+    const generateLink = selectedCloneRow.getByRole("link", { name: "Generate Speech" })
     expect(generateLink).toHaveAttribute("href", "#generate")
 
     await user.click(generateLink)
@@ -2323,53 +2349,14 @@ describe("App", () => {
     expect(await screen.findByRole("button", { name: /^Narration Take 01/i })).toBeInTheDocument()
   })
 
-  it("updates the selected voice preset from the library", async () => {
-    const animatedDefaultVoice = { ...defaultVoice, voicePresetId: "animatedDialogue" as const }
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-        const url = String(input)
-        if (url === "/api/providers" && !init) {
-          return okJson(providersResponse)
-        }
-        if (url === "/api/voices" && !init) {
-          return okJson({ defaultVoiceId: "default", voices: [defaultVoice, voiceCloneVoice] })
-        }
-        if (url === "/api/voices/default" && init?.method === "PATCH") {
-          return okJson({ defaultVoiceId: "default", voices: [animatedDefaultVoice, voiceCloneVoice] })
-        }
-        if (url === "/api/speech" && init?.method === "POST") {
-          return okAudio()
-        }
-        return okJson({})
-      })
-    )
-    const user = userEvent.setup()
+  it("shows voice presets as library labels without library editing controls", async () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    const currentPresetGroup = () => within(voiceLibraryPanel().getByRole("radiogroup", { name: "Voice Preset" }))
-    const currentStandardPreset = () => currentPresetGroup().getByRole("radio", { name: /standard narration/i })
-    const currentAnimatedPreset = () => currentPresetGroup().getByRole("radio", { name: /animated dialogue/i })
-    expectVoicePresetSelection(currentStandardPreset(), true)
-    expectVoicePresetSelection(currentAnimatedPreset(), false)
 
-    await user.click(currentAnimatedPreset())
-
-    await waitFor(() =>
-      expect(fetch).toHaveBeenCalledWith(
-        "/api/voices/default",
-        expect.objectContaining({
-          body: JSON.stringify({ voicePresetId: "animatedDialogue" }),
-          method: "PATCH",
-        })
-      )
-    )
-    expectVoicePresetSelection(currentStandardPreset(), false)
-    expectVoicePresetSelection(currentAnimatedPreset(), true)
-    openVoiceTuningPanel()
-    expect(screen.getByRole("slider", { name: /stability/i })).toHaveValue("0.4")
-    expect(screen.getByRole("slider", { name: /style/i })).toHaveValue("0.35")
+    expect(voiceLibraryPanel().getByText("Standard Narration")).toBeInTheDocument()
+    expect(voiceLibraryPanel().queryByRole("radiogroup", { name: "Voice Preset" })).not.toBeInTheDocument()
+    expect(addVoicePanel().getByRole("radiogroup", { name: "Voice Preset" })).toBeInTheDocument()
   })
 
   it("deletes the last voice and shows the empty voice state", async () => {

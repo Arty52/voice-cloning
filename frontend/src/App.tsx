@@ -83,11 +83,9 @@ function App() {
             isUpdatingVoice={voiceLibrary.isUpdatingVoice}
             onDeleteRequest={requestDeleteVoice}
             onPlayVoice={voiceLibrary.playVoice}
-            onPresetChange={(voice, voicePresetId) => void voiceLibrary.updateVoicePreset(voice, voicePresetId)}
             onRenameRequest={voiceLibrary.requestRename}
             onSelectVoice={voiceLibrary.setSelectedVoiceId}
             onSetDefault={(voice) => void voiceLibrary.setDefault(voice.id)}
-            selectedVoice={voiceLibrary.selectedVoice}
             selectedVoiceId={voiceLibrary.selectedVoiceId}
             voiceError={voiceLibrary.voiceError}
             voicePresets={providerKeys.voicePresets}
