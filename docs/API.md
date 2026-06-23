@@ -18,7 +18,11 @@ The FastAPI service is available at `http://localhost:6420` when the Docker stac
 - `POST /api/sample-processing/jobs`
 - `GET /api/sample-processing/jobs/{jobId}`
 - `GET /api/sample-processing/jobs/{jobId}/result`
+- `GET /api/sample-processing/jobs/{jobId}/source`
+- `GET /api/sample-processing/jobs/{jobId}/speakers/{speakerId}/result`
+- `PATCH /api/sample-processing/jobs/{jobId}/speaker-assignments`
 - `POST /api/sample-processing/jobs/{jobId}/voice`
+- `POST /api/sample-processing/jobs/{jobId}/speaker-voices`
 - `POST /api/speech`
 
 Provider-backed routes accept an optional `providerId` request value and an optional `X-Voice-Provider-Key` header. When `providerId` is omitted, the backend uses `defaultProviderId`. When the header is present and non-empty, the browser-provided key overrides the selected provider's backend fallback key; otherwise the backend falls back to `.env`. The API never returns either key.
@@ -167,7 +171,7 @@ Both fields are optional, but at least one of `name` or `voicePresetId` is requi
 
 ## Sample Processing
 
-Sample Processing prepares local samples without changing the normal generation flow. Enabled operations depend on local processor configuration: `SAMPLE_PROCESSING_ENGINE=demucs` enables `isolateVoice` and `trimSilence`, `SAMPLE_PROCESSING_ENGINE=ffmpeg` enables only `trimSilence`, and `separateSpeakers` remains reserved for future speaker-separation work.
+Sample Processing prepares local samples without changing the normal generation flow. Enabled operations depend on local processor configuration: `SAMPLE_PROCESSING_ENGINE=demucs` enables `isolateVoice` and `trimSilence`, `SAMPLE_PROCESSING_ENGINE=ffmpeg` enables only `trimSilence`, and diarization-capable processors enable `separateSpeakers`.
 
 `GET /api/sample-processing/options` returns the operation registry for the configured processor:
 
@@ -233,7 +237,7 @@ Sample Processing prepares local samples without changing the normal generation 
 
 `POST /api/sample-processing/jobs` accepts multipart form fields:
 
-- `operationId`: required operation id, currently `isolateVoice` or `trimSilence` when the matching local processor is enabled
+- `operationId`: required operation id, currently `isolateVoice`, `trimSilence`, or `separateSpeakers` when the matching local processor is enabled
 - `processingPresetId`: optional operation preset id; Isolate Voice defaults to `balanced`, and Trim Silence defaults to `trimBalanced`
 - `sourceVoiceId`: optional saved local voice id
 - `sourcePreference`: optional, either `original` or `active`; `original` uses the retained full upload/source file when one exists and falls back to the active provider-facing sample when none exists; `active` always uses the provider-facing sample currently stored for the selected voice
@@ -262,7 +266,7 @@ Exactly one of `sourceVoiceId` or `sourceFile` is required. The endpoint returns
 }
 ```
 
-`GET /api/sample-processing/jobs/{jobId}` returns the same job shape while polling. A successful job includes a normalized mono 32 kHz WAV result:
+`GET /api/sample-processing/jobs/{jobId}` returns the same job shape while polling. A successful single-audio job includes a normalized mono 32 kHz WAV result:
 
 ```json
 {
@@ -289,6 +293,79 @@ For `trimSilence`, the job `engine` is `ffmpeg`, and the saved `processingSteps`
 ```
 
 The response is `201` with `{ "voice": { ... } }`. The saved voice is persisted through `VoiceLibrary` as a new local voice. This endpoint does not mutate, refine, overwrite, or replace the source voice. The new voice uses the processed sample as its active `filePath` and includes `processingSteps` metadata with the operation id, engine, source hash, result hash, and selected processing preset when present.
+
+Speaker Separation jobs return a structured result instead of a single audio file:
+
+```json
+{
+  "job": {
+    "id": "sample-job-id",
+    "operationId": "separateSpeakers",
+    "status": "success",
+    "engine": "pyannote-community-1+faster-whisper",
+    "result": {
+      "kind": "speakerSeparation",
+      "speakers": [
+        {
+          "id": "speaker-1",
+          "label": "Speaker 1",
+          "assignedName": "Morgan",
+          "transcriptItemIds": ["item-1", "item-3"],
+          "result": {
+            "path": "sample-job-id/speaker-1.wav",
+            "filename": "speaker-1.wav",
+            "contentType": "audio/wav",
+            "sha256": "speakerhash"
+          }
+        }
+      ],
+      "transcript": {
+        "items": [
+          {
+            "id": "item-1",
+            "text": "Hello there.",
+            "startSeconds": 0.0,
+            "endSeconds": 1.2,
+            "speakerId": "speaker-1"
+          }
+        ]
+      }
+    }
+  }
+}
+```
+
+`GET /api/sample-processing/jobs/{jobId}/source` streams the local source audio for successful Speaker Separation jobs so the frontend can seek and play transcript-selected ranges. It is not used by single-audio jobs.
+
+`GET /api/sample-processing/jobs/{jobId}/speakers/{speakerId}/result` streams one generated speaker WAV for a successful Speaker Separation job. `GET /api/sample-processing/jobs/{jobId}/result` remains reserved for single-audio jobs and returns `409` for Speaker Separation jobs.
+
+`PATCH /api/sample-processing/jobs/{jobId}/speaker-assignments` updates optional speaker names and transcript-item speaker assignments, then asks the configured processor to regenerate affected speaker streams:
+
+```json
+{
+  "speakerNames": [
+    { "speakerId": "speaker-1", "name": "Morgan" }
+  ],
+  "transcriptAssignments": [
+    { "itemId": "item-2", "speakerId": "speaker-1" }
+  ]
+}
+```
+
+The response is `200` with `{ "job": { ... } }` and the updated Speaker Separation result. Unknown speaker ids, unknown transcript item ids, duplicate item assignments, and blank assigned names are rejected.
+
+`POST /api/sample-processing/jobs/{jobId}/speaker-voices` saves any subset of generated speakers to the local Voice Library:
+
+```json
+{
+  "voices": [
+    { "speakerId": "speaker-1", "name": "Morgan", "voicePresetId": "standardNarration" },
+    { "speakerId": "speaker-2", "name": "Riley", "voicePresetId": "animatedDialogue" }
+  ]
+}
+```
+
+The response is `201` with `{ "voices": [ ... ] }`. Each saved voice receives a normal `voicePresetId` and `processingSteps` entry, plus optional `speakerId` and `speakerLabel` metadata for traceability. The available `voicePresetId` values are the top-level `/api/providers.voicePresets` values used by normal uploads. Provider authors should map provider-specific tuning controls and presets to those shared semantic presets in [How To Add A Provider](ADDING_PROVIDER.md).
 
 ## Speech
 

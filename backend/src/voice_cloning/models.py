@@ -54,6 +54,8 @@ class VoiceProcessingStep:
     engine: str | None = None
     processing_preset_id: SampleProcessingPresetId | None = None
     processing_preset_label: str | None = None
+    speaker_id: str | None = None
+    speaker_label: str | None = None
 
 
 @dataclass(frozen=True)
@@ -156,6 +158,39 @@ class SampleProcessingResult:
 
 
 @dataclass(frozen=True)
+class SpeakerTranscriptItem:
+    id: str
+    text: str
+    start_seconds: float
+    end_seconds: float
+    speaker_id: str
+
+
+@dataclass(frozen=True)
+class SpeakerSeparationTranscript:
+    items: tuple[SpeakerTranscriptItem, ...]
+
+
+@dataclass(frozen=True)
+class SpeakerSeparationSpeaker:
+    id: str
+    label: str
+    transcript_item_ids: tuple[str, ...]
+    assigned_name: str | None = None
+    result: SampleProcessingResult | None = None
+
+
+@dataclass(frozen=True)
+class SpeakerSeparationResult:
+    kind: Literal["speakerSeparation"]
+    speakers: tuple[SpeakerSeparationSpeaker, ...]
+    transcript: SpeakerSeparationTranscript
+
+
+SampleProcessingJobResult = SampleProcessingResult | SpeakerSeparationResult
+
+
+@dataclass(frozen=True)
 class SampleProcessingJob:
     id: str
     operation_id: SampleProcessingOperationId
@@ -168,7 +203,7 @@ class SampleProcessingJob:
     created_at: str
     updated_at: str
     error: str | None = None
-    result: SampleProcessingResult | None = None
+    result: SampleProcessingJobResult | None = None
     engine: str | None = None
     processing_preset_id: SampleProcessingPresetId | None = None
     processing_preset_label: str | None = None

@@ -5,7 +5,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 import shutil
-from typing import Protocol
+from typing import Protocol, cast
 from uuid import uuid4
 
 from fastapi import UploadFile
@@ -13,17 +13,22 @@ from fastapi import UploadFile
 from ..config import Settings
 from ..models import (
     SampleProcessingJob,
+    SampleProcessingJobResult,
     SampleProcessingOperation,
     SampleProcessingOperationId,
     SampleProcessingPreset,
     SampleProcessingPresetId,
     SampleProcessingResult,
     SampleProcessingSourcePreference,
+    SpeakerSeparationResult,
+    SpeakerSeparationSpeaker,
+    SpeakerSeparationTranscript,
+    VOICE_PRESET_IDS,
     VoiceAsset,
     VoiceProcessingStep,
     VoiceSample,
 )
-from ..samples import load_sample_file, load_uploaded_sample, save_sample_file
+from ..samples import load_sample_file, load_uploaded_sample, save_sample_file, slugify_voice_name
 from ..voice_library import VoiceLibrary
 
 
@@ -115,6 +120,35 @@ class SampleProcessingRequest:
     processing_preset_label: str | None = None
 
 
+@dataclass(frozen=True)
+class SpeakerNameAssignment:
+    speaker_id: str
+    name: str | None = None
+
+
+@dataclass(frozen=True)
+class SpeakerTranscriptAssignment:
+    item_id: str
+    speaker_id: str
+
+
+@dataclass(frozen=True)
+class SpeakerAssignmentRequest:
+    job_id: str
+    job_dir: Path
+    source_path: Path
+    result: SpeakerSeparationResult
+    speaker_names: tuple[SpeakerNameAssignment, ...] = ()
+    transcript_assignments: tuple[SpeakerTranscriptAssignment, ...] = ()
+
+
+@dataclass(frozen=True)
+class SpeakerVoiceSelection:
+    speaker_id: str
+    name: str
+    voice_preset_id: str | None = None
+
+
 class SampleProcessor(Protocol):
     @property
     def engine_name(self) -> str: ...
@@ -123,7 +157,11 @@ class SampleProcessor(Protocol):
 
     def operations(self) -> tuple[SampleProcessingOperation, ...]: ...
 
-    async def process(self, request: SampleProcessingRequest) -> None: ...
+    async def process(self, request: SampleProcessingRequest) -> SampleProcessingJobResult | None: ...
+
+
+class SpeakerAssignmentProcessor(Protocol):
+    async def update_speaker_assignments(self, request: SpeakerAssignmentRequest) -> SpeakerSeparationResult: ...
 
 
 class UnavailableSampleProcessor:
@@ -155,6 +193,7 @@ class SampleProcessingService:
         self.processing_dir.mkdir(parents=True, exist_ok=True)
         self._jobs: dict[str, SampleProcessingJob] = {}
         self._tasks: dict[str, asyncio.Task[None]] = {}
+        self._source_paths: dict[str, Path] = {}
 
     def operations(self) -> tuple[SampleProcessingOperation, ...]:
         processor_operations = {operation.id: operation for operation in self.processor.operations()}
@@ -228,6 +267,7 @@ class SampleProcessingService:
                 processing_preset_label=resolved_processing_preset_label,
             )
             self._jobs[job_id] = job
+            self._source_paths[job_id] = source_path
             request = SampleProcessingRequest(
                 job_id=job_id,
                 operation_id=operation.id,
@@ -243,6 +283,7 @@ class SampleProcessingService:
         except Exception:
             self._jobs.pop(job_id, None)
             self._tasks.pop(job_id, None)
+            self._source_paths.pop(job_id, None)
             if job_dir_created:
                 shutil.rmtree(job_dir, ignore_errors=True)
             raise
@@ -257,11 +298,33 @@ class SampleProcessingService:
         job = self.get_job(job_id)
         if job.status != "success" or job.result is None:
             raise SampleProcessingServiceError("Sample processing result is not ready.", 409)
-        path = (self.processing_dir / job.result.path).resolve()
-        _require_relative_path(path, self.processing_dir)
-        if not path.exists():
-            raise SampleProcessingServiceError("Sample processing result is missing.", 404)
-        return path
+        if not isinstance(job.result, SampleProcessingResult):
+            raise SampleProcessingServiceError(
+                "Speaker separation jobs expose per-speaker audio results.",
+                409,
+            )
+        return self._result_path(job.result)
+
+    def source_path(self, job_id: str) -> Path:
+        job = self.get_job(job_id)
+        if job.status != "success" or not isinstance(job.result, SpeakerSeparationResult):
+            raise SampleProcessingServiceError("Speaker separation source is not ready.", 409)
+        path = self._source_paths.get(job_id)
+        if path is None:
+            raise SampleProcessingServiceError("Speaker separation source is missing.", 404)
+        resolved_path = path.resolve()
+        _require_allowed_source_path(resolved_path, self.processing_dir, self.voice_library.assets_dir)
+        if not resolved_path.exists():
+            raise SampleProcessingServiceError("Speaker separation source is missing.", 404)
+        return resolved_path
+
+    def speaker_result_path(self, job_id: str, speaker_id: str) -> Path:
+        job = self.get_job(job_id)
+        result = self._speaker_separation_result(job)
+        speaker = _speaker_by_id(result, speaker_id)
+        if speaker.result is None:
+            raise SampleProcessingServiceError("Speaker result is not ready.", 409)
+        return self._result_path(speaker.result)
 
     def save_result_as_voice(
         self,
@@ -293,17 +356,90 @@ class SampleProcessingService:
             voice_preset_id=voice_preset_id,
         )
 
+    async def update_speaker_assignments(
+        self,
+        job_id: str,
+        *,
+        speaker_names: tuple[SpeakerNameAssignment, ...] = (),
+        transcript_assignments: tuple[SpeakerTranscriptAssignment, ...] = (),
+    ) -> SampleProcessingJob:
+        job = self.get_job(job_id)
+        result = self._speaker_separation_result(job)
+        source_path = self.source_path(job_id)
+        _validate_speaker_assignments(result, speaker_names, transcript_assignments)
+        update_assignments = getattr(self.processor, "update_speaker_assignments", None)
+        if update_assignments is None:
+            raise SampleProcessingServiceError("Speaker assignment updates are not available for this processor.", 503)
+        assignment_processor = cast(SpeakerAssignmentProcessor, self.processor)
+
+        updated_result = await assignment_processor.update_speaker_assignments(
+            SpeakerAssignmentRequest(
+                job_id=job.id,
+                job_dir=self._job_dir(job.id),
+                source_path=source_path,
+                result=result,
+                speaker_names=speaker_names,
+                transcript_assignments=transcript_assignments,
+            )
+        )
+        self._validate_speaker_separation_result(updated_result)
+        self._update_job(job_id, result=updated_result)
+        return self.get_job(job_id)
+
+    def save_speaker_results_as_voices(
+        self,
+        job_id: str,
+        *,
+        voices: tuple[SpeakerVoiceSelection, ...],
+    ) -> tuple[VoiceAsset, ...]:
+        job = self.get_job(job_id)
+        result = self._speaker_separation_result(job)
+        normalized = self._validate_speaker_voice_selections(result, voices)
+        saved: list[VoiceAsset] = []
+        for selection, speaker in normalized:
+            if speaker.result is None:
+                raise SampleProcessingServiceError("Speaker result is not ready.", 409)
+            result_path = self._result_path(speaker.result)
+            sample = load_sample_file(result_path, speaker.result.content_type)
+            step = VoiceProcessingStep(
+                id=job.id,
+                label=self._operation_label(job.operation_id),
+                operation_id=job.operation_id,
+                created_at=_utc_now(),
+                source_sha256=job.source_sha256,
+                result_sha256=sample.sha256,
+                engine=job.engine,
+                processing_preset_id=job.processing_preset_id,
+                processing_preset_label=job.processing_preset_label,
+                speaker_id=speaker.id,
+                speaker_label=speaker.label,
+            )
+            saved.append(
+                self.voice_library.add_processed_sample(
+                    selection.name,
+                    sample,
+                    processing_steps=(step,),
+                    voice_preset_id=selection.voice_preset_id,
+                )
+            )
+        return tuple(saved)
+
     async def _run_job(self, job_id: str, request: SampleProcessingRequest) -> None:
         self._update_job(job_id, status="running")
         try:
-            await self.processor.process(request)
-            sample = load_sample_file(request.output_path, RESULT_CONTENT_TYPE)
-            result = SampleProcessingResult(
-                path=request.output_path.relative_to(self.processing_dir).as_posix(),
-                filename=request.output_path.name,
-                content_type=sample.content_type,
-                sha256=sample.sha256,
-            )
+            processed_result = await self.processor.process(request)
+            if processed_result is None:
+                sample = load_sample_file(request.output_path, RESULT_CONTENT_TYPE)
+                result: SampleProcessingJobResult = SampleProcessingResult(
+                    path=request.output_path.relative_to(self.processing_dir).as_posix(),
+                    filename=request.output_path.name,
+                    content_type=sample.content_type,
+                    sha256=sample.sha256,
+                )
+            else:
+                result = processed_result
+                if isinstance(result, SpeakerSeparationResult):
+                    self._validate_speaker_separation_result(result)
             self._update_job(job_id, status="success", result=result)
         except SampleProcessingServiceError as exc:
             self._update_job(job_id, status="error", error=exc.detail)
@@ -332,6 +468,86 @@ class SampleProcessingService:
             if operation.id == operation_id:
                 return operation.label
         return operation_id
+
+    def _speaker_separation_result(self, job: SampleProcessingJob) -> SpeakerSeparationResult:
+        if job.status != "success" or job.result is None:
+            raise SampleProcessingServiceError("Speaker separation result is not ready.", 409)
+        if not isinstance(job.result, SpeakerSeparationResult):
+            raise SampleProcessingServiceError("Sample processing job is not a speaker separation result.", 409)
+        return job.result
+
+    def _result_path(self, result: SampleProcessingResult) -> Path:
+        path = (self.processing_dir / result.path).resolve()
+        _require_relative_path(path, self.processing_dir)
+        if not path.exists():
+            raise SampleProcessingServiceError("Sample processing result is missing.", 404)
+        return path
+
+    def _validate_speaker_separation_result(self, result: SpeakerSeparationResult) -> None:
+        if result.kind != "speakerSeparation":
+            raise SampleProcessingServiceError("Speaker separation result kind is invalid.", 500)
+        speaker_ids = [speaker.id for speaker in result.speakers]
+        if not speaker_ids or len(speaker_ids) != len(set(speaker_ids)):
+            raise SampleProcessingServiceError("Speaker separation result has invalid speakers.", 500)
+        known_speaker_ids = set(speaker_ids)
+        item_ids: set[str] = set()
+        for item in result.transcript.items:
+            if not item.id or item.id in item_ids or item.speaker_id not in known_speaker_ids:
+                raise SampleProcessingServiceError("Speaker separation transcript is invalid.", 500)
+            if item.start_seconds < 0 or item.end_seconds <= item.start_seconds:
+                raise SampleProcessingServiceError("Speaker separation transcript timing is invalid.", 500)
+            item_ids.add(item.id)
+        for speaker in result.speakers:
+            if not speaker.id or not speaker.label:
+                raise SampleProcessingServiceError("Speaker separation result has invalid speakers.", 500)
+            unknown_items = set(speaker.transcript_item_ids) - item_ids
+            if unknown_items:
+                raise SampleProcessingServiceError("Speaker separation speaker references invalid transcript items.", 500)
+            if speaker.result is not None:
+                self._result_path(speaker.result)
+
+    def _validate_speaker_voice_selections(
+        self,
+        result: SpeakerSeparationResult,
+        voices: tuple[SpeakerVoiceSelection, ...],
+    ) -> tuple[tuple[SpeakerVoiceSelection, SpeakerSeparationSpeaker], ...]:
+        if not voices:
+            raise SampleProcessingServiceError("Choose at least one speaker to save.", 422)
+        existing_assets = self.voice_library.list_assets()
+        existing_ids = {asset.id for asset in existing_assets}
+        existing_names = {slugify_voice_name(asset.name) for asset in existing_assets}
+        seen_speaker_ids: set[str] = set()
+        seen_names: set[str] = set()
+        normalized: list[tuple[SpeakerVoiceSelection, SpeakerSeparationSpeaker]] = []
+        for selection in voices:
+            if selection.speaker_id in seen_speaker_ids:
+                raise SampleProcessingServiceError("Speaker can only be selected once.", 422)
+            seen_speaker_ids.add(selection.speaker_id)
+            speaker = _speaker_by_id(result, selection.speaker_id)
+            display_name = selection.name.strip()
+            if not display_name:
+                raise SampleProcessingServiceError("Voice name is required.", 422)
+            normalized_name = slugify_voice_name(display_name)
+            if normalized_name in seen_names:
+                raise SampleProcessingServiceError("Speaker voice names must be unique.", 409)
+            if normalized_name in existing_ids or normalized_name in existing_names:
+                raise SampleProcessingServiceError("A voice with that name already exists.", 409)
+            if selection.voice_preset_id not in (None, "", *VOICE_PRESET_IDS):
+                raise SampleProcessingServiceError("Voice preset must be standardNarration or animatedDialogue.", 422)
+            if speaker.result is None:
+                raise SampleProcessingServiceError("Speaker result is not ready.", 409)
+            seen_names.add(normalized_name)
+            normalized.append(
+                (
+                    SpeakerVoiceSelection(
+                        speaker_id=selection.speaker_id,
+                        name=display_name,
+                        voice_preset_id=selection.voice_preset_id,
+                    ),
+                    speaker,
+                )
+            )
+        return tuple(normalized)
 
     async def _source_from_upload(
         self,
@@ -420,6 +636,85 @@ def _require_relative_path(path: Path, parent: Path) -> None:
         path.relative_to(parent.resolve())
     except ValueError as exc:
         raise SampleProcessingServiceError("Sample processing path is invalid.", 500) from exc
+
+
+def _require_allowed_source_path(path: Path, processing_dir: Path, assets_dir: Path) -> None:
+    for parent in (processing_dir, assets_dir):
+        try:
+            path.relative_to(parent.resolve())
+            return
+        except ValueError:
+            continue
+    raise SampleProcessingServiceError("Sample processing source path is invalid.", 500)
+
+
+def _speaker_by_id(result: SpeakerSeparationResult, speaker_id: str) -> SpeakerSeparationSpeaker:
+    for speaker in result.speakers:
+        if speaker.id == speaker_id:
+            return speaker
+    raise SampleProcessingServiceError("Speaker was not found.", 404)
+
+
+def _validate_speaker_assignments(
+    result: SpeakerSeparationResult,
+    speaker_names: tuple[SpeakerNameAssignment, ...],
+    transcript_assignments: tuple[SpeakerTranscriptAssignment, ...],
+) -> None:
+    speaker_ids = {speaker.id for speaker in result.speakers}
+    transcript_item_ids = {item.id for item in result.transcript.items}
+    seen_name_speakers: set[str] = set()
+    for assignment in speaker_names:
+        if assignment.speaker_id not in speaker_ids:
+            raise SampleProcessingServiceError("Speaker was not found.", 404)
+        if assignment.speaker_id in seen_name_speakers:
+            raise SampleProcessingServiceError("Speaker name can only be assigned once.", 422)
+        seen_name_speakers.add(assignment.speaker_id)
+        if assignment.name is not None and not assignment.name.strip():
+            raise SampleProcessingServiceError("Speaker name is required.", 422)
+    seen_items: set[str] = set()
+    for assignment in transcript_assignments:
+        if assignment.item_id not in transcript_item_ids:
+            raise SampleProcessingServiceError("Transcript item was not found.", 404)
+        if assignment.speaker_id not in speaker_ids:
+            raise SampleProcessingServiceError("Speaker was not found.", 404)
+        if assignment.item_id in seen_items:
+            raise SampleProcessingServiceError("Transcript item can only be assigned once.", 422)
+        seen_items.add(assignment.item_id)
+
+
+def apply_speaker_assignment_metadata(
+    result: SpeakerSeparationResult,
+    *,
+    speaker_names: tuple[SpeakerNameAssignment, ...] = (),
+    transcript_assignments: tuple[SpeakerTranscriptAssignment, ...] = (),
+) -> SpeakerSeparationResult:
+    names_by_speaker_id = {assignment.speaker_id: assignment.name for assignment in speaker_names}
+    speaker_by_item_id = {assignment.item_id: assignment.speaker_id for assignment in transcript_assignments}
+    updated_items = tuple(
+        replace(item, speaker_id=speaker_by_item_id.get(item.id, item.speaker_id))
+        for item in result.transcript.items
+    )
+    item_ids_by_speaker_id: dict[str, list[str]] = {speaker.id: [] for speaker in result.speakers}
+    for item in updated_items:
+        item_ids_by_speaker_id[item.speaker_id].append(item.id)
+    updated_speakers: list[SpeakerSeparationSpeaker] = []
+    for speaker in result.speakers:
+        assigned_name = speaker.assigned_name
+        if speaker.id in names_by_speaker_id:
+            name = names_by_speaker_id[speaker.id]
+            assigned_name = name.strip() if name is not None else None
+        updated_speakers.append(
+            replace(
+                speaker,
+                assigned_name=assigned_name,
+                transcript_item_ids=tuple(item_ids_by_speaker_id[speaker.id]),
+            )
+        )
+    return SpeakerSeparationResult(
+        kind="speakerSeparation",
+        speakers=tuple(updated_speakers),
+        transcript=SpeakerSeparationTranscript(items=updated_items),
+    )
 
 
 def _utc_now() -> str:
