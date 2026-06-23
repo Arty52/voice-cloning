@@ -32,6 +32,7 @@ import type {
   SampleProcessingOperationId,
   SampleProcessingPresetId,
   SpeakerSeparationResult,
+  SpeakerSeparationSpeaker,
   SpeakerTranscriptItem,
   VoicePresetId,
 } from "@/types"
@@ -136,6 +137,14 @@ export function SampleProcessingPanel({
   function handleConfirmSaveSpeakerVoices() {
     setSpeakerSaveDialogOpen(false)
     void processing.handleSaveSpeakerVoices()
+  }
+
+  function handleSpeakerNameBlur(speaker: SpeakerSeparationSpeaker) {
+    const nextName = processing.speakerNameAssignments[speaker.id] ?? ""
+    const currentName = speaker.assignedName ?? speaker.label
+    if (nextName.trim() !== currentName.trim()) {
+      void processing.assignSpeakerName(speaker.id, nextName)
+    }
   }
 
   return (
@@ -513,7 +522,7 @@ export function SampleProcessingPanel({
                             <FieldLabel htmlFor={nameInputId}>Voice Name</FieldLabel>
                             <Input
                               id={nameInputId}
-                              onBlur={() => void processing.assignSpeakerName(speaker.id, processing.speakerNameAssignments[speaker.id] ?? "")}
+                              onBlur={() => handleSpeakerNameBlur(speaker)}
                               onChange={(event) => processing.handleSpeakerNameChange(speaker.id, event.target.value)}
                               value={processing.speakerNameAssignments[speaker.id] ?? ""}
                             />

@@ -1382,6 +1382,17 @@ describe("App", () => {
     await user.unhover(speakerOneCard)
     expect(helloText).not.toHaveClass("lg:-translate-y-0.5")
 
+    const firstSpeakerNameInput = sampleProcessingPanel().getAllByLabelText("Voice Name")[0]
+    await user.click(firstSpeakerNameInput)
+    await user.tab()
+    expect(
+      vi
+        .mocked(fetch)
+        .mock.calls.some(
+          ([url, init]) => String(url) === "/api/sample-processing/jobs/job-1/speaker-assignments" && init?.method === "PATCH"
+        )
+    ).toBe(false)
+
     await user.click(helloText)
     const playPopover = screen.getByText("Assign Text To Speaker").closest("[data-slot='popover-content']") as HTMLElement
     expect(playPopover).toHaveClass("border-border/70")
