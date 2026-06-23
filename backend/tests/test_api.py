@@ -9,6 +9,7 @@ import time
 from typing import get_args
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 import voice_cloning.voice_library as voice_library_module
@@ -35,6 +36,7 @@ from voice_cloning.models import (
     SpeechResult,
     SubscriptionSummary,
     VoiceClone,
+    VoiceProcessingStep,
     VoiceSample,
 )
 from voice_cloning.providers import (
@@ -332,6 +334,18 @@ class FakeSpeakerSeparationProcessor:
             kind="speakerSeparation",
             speakers=tuple(speakers),
             transcript=updated.transcript,
+        )
+
+
+class InvalidSpeakerTranscriptOwnershipProcessor(FakeSpeakerSeparationProcessor):
+    async def process(self, request: SampleProcessingRequest) -> SpeakerSeparationResult:
+        result = await super().process(request)
+        return replace(
+            result,
+            speakers=(
+                replace(result.speakers[0], transcript_item_ids=("item-1", "item-2", "item-3")),
+                result.speakers[1],
+            ),
         )
 
 
@@ -1135,6 +1149,72 @@ def test_sample_processing_speaker_voice_save_validates_payload(tmp_path: Path) 
     assert invalid_preset.json()["detail"] == "Voice preset must be standardNarration or animatedDialogue."
     assert no_selection.status_code == 422
     assert no_selection.json()["detail"] == "Choose at least one speaker to save."
+
+
+def test_sample_processing_speaker_separation_rejects_mismatched_speaker_transcript_items(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    app = create_app(settings=settings, sample_processor=InvalidSpeakerTranscriptOwnershipProcessor())
+    client = TestClient(app)
+
+    create = client.post(
+        "/api/sample-processing/jobs",
+        data={"operationId": "separateSpeakers"},
+        files={"sourceFile": ("conversation.wav", b"speaker-source", "audio/wav")},
+    )
+    job = wait_for_processing_job(client, create.json()["job"]["id"], status="error")
+
+    assert create.status_code == 202
+    assert job["status"] == "error"
+    assert job["error"] == "Speaker separation speaker references transcript items assigned to another speaker."
+
+
+def test_sample_processing_speaker_voice_save_rolls_back_partial_batch(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    voice_library = VoiceLibrary(settings)
+    processor = FakeSpeakerSeparationProcessor()
+    app = create_app(settings=settings, voice_library=voice_library, sample_processor=processor)
+    client = TestClient(app)
+
+    create = client.post(
+        "/api/sample-processing/jobs",
+        data={"operationId": "separateSpeakers"},
+        files={"sourceFile": ("conversation.wav", b"speaker-source", "audio/wav")},
+    )
+    job_id = create.json()["job"]["id"]
+    wait_for_processing_job(client, job_id)
+
+    original_add_processed_sample = voice_library.add_processed_sample
+    save_calls = 0
+
+    def add_processed_sample_with_failure(
+        name: str,
+        sample: VoiceSample,
+        processing_steps: tuple[VoiceProcessingStep, ...],
+        voice_preset_id: str | None = None,
+    ) -> VoiceAsset:
+        nonlocal save_calls
+        save_calls += 1
+        if save_calls == 2:
+            raise HTTPException(status_code=500, detail="Simulated save failure.")
+        return original_add_processed_sample(name, sample, processing_steps, voice_preset_id)
+
+    voice_library.add_processed_sample = add_processed_sample_with_failure  # type: ignore[method-assign]
+
+    save = client.post(
+        f"/api/sample-processing/jobs/{job_id}/speaker-voices",
+        json={
+            "voices": [
+                {"speakerId": "speaker-1", "name": "Morgan"},
+                {"speakerId": "speaker-2", "name": "Riley"},
+            ]
+        },
+    )
+
+    assert save.status_code == 500
+    assert save.json()["detail"] == "Simulated save failure."
+    assert [voice.id for voice in voice_library.list_assets()] == ["default"]
+    assert not (settings.voice_assets_dir / "morgan.wav").exists()
+    assert not (settings.voice_assets_dir / "riley.wav").exists()
 
 
 def test_sample_processing_job_accepts_uploaded_source(tmp_path: Path) -> None:

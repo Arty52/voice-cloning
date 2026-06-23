@@ -395,33 +395,51 @@ class SampleProcessingService:
         job = self.get_job(job_id)
         result = self._speaker_separation_result(job)
         normalized = self._validate_speaker_voice_selections(result, voices)
-        saved: list[VoiceAsset] = []
+        prepared: list[tuple[SpeakerVoiceSelection, VoiceSample, VoiceProcessingStep]] = []
+        created_at = _utc_now()
         for selection, speaker in normalized:
             if speaker.result is None:
                 raise SampleProcessingServiceError("Speaker result is not ready.", 409)
             result_path = self._result_path(speaker.result)
             sample = load_sample_file(result_path, speaker.result.content_type)
-            step = VoiceProcessingStep(
-                id=job.id,
-                label=self._operation_label(job.operation_id),
-                operation_id=job.operation_id,
-                created_at=_utc_now(),
-                source_sha256=job.source_sha256,
-                result_sha256=sample.sha256,
-                engine=job.engine,
-                processing_preset_id=job.processing_preset_id,
-                processing_preset_label=job.processing_preset_label,
-                speaker_id=speaker.id,
-                speaker_label=speaker.label,
-            )
-            saved.append(
-                self.voice_library.add_processed_sample(
-                    selection.name,
+            prepared.append(
+                (
+                    selection,
                     sample,
-                    processing_steps=(step,),
-                    voice_preset_id=selection.voice_preset_id,
+                    VoiceProcessingStep(
+                        id=job.id,
+                        label=self._operation_label(job.operation_id),
+                        operation_id=job.operation_id,
+                        created_at=created_at,
+                        source_sha256=job.source_sha256,
+                        result_sha256=sample.sha256,
+                        engine=job.engine,
+                        processing_preset_id=job.processing_preset_id,
+                        processing_preset_label=job.processing_preset_label,
+                        speaker_id=speaker.id,
+                        speaker_label=speaker.label,
+                    ),
                 )
             )
+
+        saved: list[VoiceAsset] = []
+        try:
+            for selection, sample, step in prepared:
+                saved.append(
+                    self.voice_library.add_processed_sample(
+                        selection.name,
+                        sample,
+                        processing_steps=(step,),
+                        voice_preset_id=selection.voice_preset_id,
+                    )
+                )
+        except Exception:
+            for voice in saved:
+                try:
+                    self.voice_library.delete_asset(voice.id)
+                except Exception:
+                    pass
+            raise
         return tuple(saved)
 
     async def _run_job(self, job_id: str, request: SampleProcessingRequest) -> None:
@@ -491,18 +509,26 @@ class SampleProcessingService:
             raise SampleProcessingServiceError("Speaker separation result has invalid speakers.", 500)
         known_speaker_ids = set(speaker_ids)
         item_ids: set[str] = set()
+        speaker_id_by_item_id: dict[str, str] = {}
         for item in result.transcript.items:
             if not item.id or item.id in item_ids or item.speaker_id not in known_speaker_ids:
                 raise SampleProcessingServiceError("Speaker separation transcript is invalid.", 500)
             if item.start_seconds < 0 or item.end_seconds <= item.start_seconds:
                 raise SampleProcessingServiceError("Speaker separation transcript timing is invalid.", 500)
             item_ids.add(item.id)
+            speaker_id_by_item_id[item.id] = item.speaker_id
         for speaker in result.speakers:
             if not speaker.id or not speaker.label:
                 raise SampleProcessingServiceError("Speaker separation result has invalid speakers.", 500)
             unknown_items = set(speaker.transcript_item_ids) - item_ids
             if unknown_items:
                 raise SampleProcessingServiceError("Speaker separation speaker references invalid transcript items.", 500)
+            for item_id in speaker.transcript_item_ids:
+                if speaker_id_by_item_id[item_id] != speaker.id:
+                    raise SampleProcessingServiceError(
+                        "Speaker separation speaker references transcript items assigned to another speaker.",
+                        500,
+                    )
             if speaker.result is not None:
                 self._result_path(speaker.result)
 
