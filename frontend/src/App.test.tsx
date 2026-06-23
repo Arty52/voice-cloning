@@ -1990,8 +1990,12 @@ describe("App", () => {
 
     await screen.findByText("default/default-voice.mp3")
     await user.type(screen.getByLabelText(/voice name/i), "Dropped_Voice")
+    const dropZone = addVoicePanel().getByRole("group", { name: "Audio Drop Zone" })
+    expect(addVoicePanel().queryByRole("group", { name: /voice sample source/i })).not.toBeInTheDocument()
+    expect(within(dropZone).getByRole("button", { name: /choose audio/i })).toBeInTheDocument()
+    expect(within(dropZone).getByRole("button", { name: /^record$/i })).toBeInTheDocument()
     const file = new File(["sample"], "dropped-voice.wav", { type: "audio/wav" })
-    fireEvent.drop(addVoicePanel().getByRole("group", { name: "Audio Drop Zone" }), {
+    fireEvent.drop(dropZone, {
       dataTransfer: { files: [file] },
     })
 
@@ -2418,8 +2422,7 @@ describe("App", () => {
     renderApp()
 
     await user.type(await screen.findByLabelText(/voice name/i), "Voice_Clone_01")
-    await user.click(screen.getByRole("button", { name: /^Record$/ }))
-    await user.click(screen.getByRole("button", { name: /start recording/i }))
+    await user.click(addVoicePanel().getByRole("button", { name: /^Record$/ }))
     await waitFor(() => expect(getUserMedia).toHaveBeenCalledWith({ audio: true }))
     processor.onaudioprocess?.({
       inputBuffer: {
@@ -2442,7 +2445,7 @@ describe("App", () => {
     expect(stopTrack).toHaveBeenCalled()
   })
 
-  it("clears a recorded sample when switching back to upload", async () => {
+  it("replaces a recorded sample when choosing an upload", async () => {
     type AudioProcessHandler = (event: { inputBuffer: { getChannelData: (channel: number) => Float32Array } }) => void
     const getUserMedia = vi.fn().mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] })
     const source = { connect: vi.fn(), disconnect: vi.fn() }
@@ -2469,8 +2472,7 @@ describe("App", () => {
     renderApp()
 
     await user.type(await screen.findByLabelText(/voice name/i), "Voice_Clone_01")
-    await user.click(screen.getByRole("button", { name: /^Record$/ }))
-    await user.click(screen.getByRole("button", { name: /start recording/i }))
+    await user.click(addVoicePanel().getByRole("button", { name: /^Record$/ }))
     await waitFor(() => expect(getUserMedia).toHaveBeenCalledWith({ audio: true }))
     processor.onaudioprocess?.({
       inputBuffer: {
@@ -2480,10 +2482,12 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: /^Stop$/ }))
     expect(await screen.findByLabelText(/recorded voice sample preview/i)).toBeInTheDocument()
 
-    await user.click(screen.getByRole("button", { name: /^Upload$/ }))
+    stubDecodedAudio(2)
+    await user.upload(screen.getByLabelText(/sample file/i), new File(["sample"], "replacement.wav", { type: "audio/wav" }))
 
-    expect(screen.getByText(/no upload selected/i)).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: /save voice/i })).toBeDisabled()
+    expect(await screen.findByLabelText(/uploaded voice sample preview/i)).toBeInTheDocument()
+    expect(screen.queryByLabelText(/recorded voice sample preview/i)).not.toBeInTheDocument()
+    expect(screen.getByText("replacement.wav")).toBeInTheDocument()
   })
 
   it("reports unsupported recording and keeps upload available", async () => {
@@ -2492,12 +2496,11 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(screen.getByRole("button", { name: /^Record$/ }))
-    await user.click(screen.getByRole("button", { name: /start recording/i }))
+    await user.click(addVoicePanel().getByRole("button", { name: /^Record$/ }))
 
     expect(await screen.findByText(/microphone recording is not supported/i)).toBeInTheDocument()
-    await user.click(screen.getByRole("button", { name: /^Upload$/ }))
     expect(screen.getByLabelText(/sample file/i)).toBeInTheDocument()
+    expect(addVoicePanel().getByRole("button", { name: /choose audio/i })).toBeEnabled()
   })
 
   it("shows tuning help and selects standard narration by default", async () => {

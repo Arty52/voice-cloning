@@ -104,7 +104,6 @@ function App() {
             handleSampleWindowChange={voiceInput.handleSampleWindowChange}
             handleUpload={voiceInput.handleUpload}
             handleUploadFileSelect={voiceInput.handleUploadFileSelect}
-            handleVoiceSampleInputModeChange={voiceInput.handleVoiceSampleInputModeChange}
             isRecorderBusy={voiceInput.isRecorderBusy}
             isRecording={voiceInput.isRecording}
             isPreparingSample={voiceInput.isPreparingSample}

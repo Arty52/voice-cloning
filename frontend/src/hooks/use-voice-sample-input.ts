@@ -90,12 +90,18 @@ export function useVoiceSampleInput({ onVoiceSaved, providerSample }: UseVoiceSa
 
   function handleUploadFileSelect(nextFile: File | null) {
     setVoiceSampleInputMode("upload")
+    clearRecordingTimers(recordingTimerRef, recordingAutoStopTimerRef)
+    void recordingSessionRef.current?.discard()
+    recordingSessionRef.current = null
     setUploadFile(nextFile)
     setUploadPreviewUrl(nextFile ? URL.createObjectURL(nextFile) : null)
     setUploadError(null)
     setSampleMode("excerpt")
     setUploadDurationSeconds(null)
     setUploadWindow(null)
+    setRecorderStatus("idle")
+    setRecorderError(null)
+    setRecordingDurationSeconds(0)
     if (nextFile) {
       void prepareUploadWindow(nextFile)
     } else {

@@ -1,5 +1,5 @@
 import { Upload } from "lucide-react"
-import { type DragEvent, useRef, useState } from "react"
+import { type DragEvent, type ReactNode, useRef, useState } from "react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils"
 const AUDIO_ACCEPT = "audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac"
 
 type AudioFileDropZoneProps = {
+  children?: ReactNode
   disabled?: boolean
   id: string
   label: string
@@ -18,6 +19,7 @@ type AudioFileDropZoneProps = {
 }
 
 export function AudioFileDropZone({
+  children,
   disabled = false,
   id,
   label,
@@ -86,10 +88,15 @@ export function AudioFileDropZone({
           </FieldDescription>
         </div>
         {selectedFileName ? <Badge variant="secondary">{selectedFileName}</Badge> : null}
-        <Button disabled={disabled} onClick={() => inputRef.current?.click()} size="sm" type="button" variant="secondary">
-          <Upload aria-hidden="true" data-icon="inline-start" />
-          Choose Audio
-        </Button>
+        <div className="flex w-full flex-col items-center gap-3">
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <Button disabled={disabled} onClick={() => inputRef.current?.click()} size="sm" type="button" variant="secondary">
+              <Upload aria-hidden="true" data-icon="inline-start" />
+              Choose Audio
+            </Button>
+            {children}
+          </div>
+        </div>
       </div>
     </Field>
   )
