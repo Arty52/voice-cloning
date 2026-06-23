@@ -802,6 +802,7 @@ describe("App", () => {
     ).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Overview" })).toHaveAttribute("aria-current", "page")
     expect(screen.getByRole("complementary", { name: "Workflow Sidebar" })).toBeInTheDocument()
+    expect(screen.queryByText("Friend-Friendly Tour")).not.toBeInTheDocument()
     const workflowNav = within(screen.getByRole("navigation", { name: "Workflow Sections" }))
     expect(await workflowNav.findByText("Start Here")).toBeInTheDocument()
     expect((await workflowNav.findAllByText("Ready")).length).toBeGreaterThan(0)
