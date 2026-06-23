@@ -21,7 +21,7 @@ Voice Clone Lab is a small local app, but changes should still keep clear bounda
 - Voice asset APIs must keep `filePath`, `contentType`, and `sha256` pointed at the active provider sample. Any retained original source file is metadata only and must not be used for provider cloning unless a later explicit workflow promotes a new excerpt.
 - `VoiceLibrary` owns local voice asset persistence, including `voicePresetId`. The current implementation is manifest-backed under ignored `assets/voices/` data, and it normalizes missing or invalid preset ids to `standardNarration` before writing.
 - Keep voice persistence behind the `VoiceLibrary` API and route/service contract. A future PostgreSQL-backed library should be able to replace the manifest implementation without changing frontend request shapes or provider adapter contracts.
-- Sample-processing routes should stay behind `SampleProcessingService`. The service owns job state, source selection, result path safety, and saving processed results through `VoiceLibrary`; processor adapters own external tool execution such as Demucs, FFmpeg, or future diarization engines. Runtime job data belongs under ignored `storage/sample-processing/`.
+- Sample-processing routes should stay behind `SampleProcessingService`. The service owns job state, source selection, result path safety, assignment updates, and saving processed results through `VoiceLibrary`; processor adapters own external tool execution such as Demucs, FFmpeg, and diarization engines. Runtime job data belongs under ignored `storage/sample-processing/`.
 
 ## Frontend Boundaries
 

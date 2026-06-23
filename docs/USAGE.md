@@ -68,9 +68,22 @@ SAMPLE_PROCESSING_DEMUCS_DEVICE=  # optional, such as cpu, cuda, or mps when sup
 SAMPLE_PROCESSING_TIMEOUT_SECONDS=900
 ```
 
-Leave `SAMPLE_PROCESSING_ENGINE` blank to keep Sample Processing unavailable. Leave `INSTALL_SAMPLE_PROCESSING=0` for the default lightweight Docker image. When you set `INSTALL_SAMPLE_PROCESSING=1`, rebuild the stack with `make recycle`; the backend image installs FFmpeg, CPU-only PyTorch/Torchaudio/TorchCodec wheels, and the optional `backend[sample-processing]` extra.
+To enable Speaker Separation, accept the Hugging Face model conditions for `pyannote/speaker-diarization-community-1`, create a Hugging Face access token, and set:
 
-Demucs model downloads, separated stems, normalized job output, and local caches are runtime data and should not be committed. Docker stores model caches under ignored `storage/model-cache/`.
+```sh
+INSTALL_DIARIZATION=1
+SAMPLE_PROCESSING_ENABLE_DIARIZATION=1
+SAMPLE_PROCESSING_PYANNOTE_MODEL=pyannote/speaker-diarization-community-1
+SAMPLE_PROCESSING_HF_TOKEN=hf_...
+SAMPLE_PROCESSING_WHISPER_MODEL=medium
+SAMPLE_PROCESSING_WHISPER_DEVICE=cpu
+SAMPLE_PROCESSING_WHISPER_COMPUTE_TYPE=int8
+PYANNOTE_METRICS_ENABLED=0
+```
+
+Leave `SAMPLE_PROCESSING_ENGINE` blank to keep Isolate Voice and Trim Silence unavailable. Leave `SAMPLE_PROCESSING_ENABLE_DIARIZATION=0` to keep Speaker Separation unavailable. Leave `INSTALL_SAMPLE_PROCESSING=0` and `INSTALL_DIARIZATION=0` for the default lightweight Docker image. When you change either install flag, rebuild the stack with `make recycle`; the backend image installs FFmpeg, CPU-only PyTorch/Torchaudio/TorchCodec wheels, and the requested optional backend extras.
+
+Demucs, pyannote, and faster-whisper model downloads, separated stems, normalized job output, and local caches are runtime data and should not be committed. Docker stores model caches under ignored `storage/model-cache/`.
 
 Start the app:
 
@@ -182,16 +195,18 @@ If the browser cannot decode the selected file type, choose a shorter browser-de
 
 ## Sample Processing
 
-`Prepare Samples` is a separate optional workflow from `Voices`. It is intended for preparing source samples before using them for generation. Current operations are Isolate Voice and Trim Silence, with Speaker Separation reserved for a later release.
+`Prepare Samples` is a separate optional workflow from `Voices`. It is intended for preparing source samples before using them for generation. Current operations are Isolate Voice, Trim Silence, and optional Speaker Separation.
 
-Set `SAMPLE_PROCESSING_ENGINE=ffmpeg` to enable only Trim Silence. Set `SAMPLE_PROCESSING_ENGINE=demucs` to enable Isolate Voice and Trim Silence together. When Demucs is enabled, Isolate Voice runs the configured Demucs command with the `htdemucs` model by default, extracts the vocals stem, then runs FFmpeg to normalize the result to mono 32 kHz WAV. Trim Silence runs FFmpeg `silenceremove`, trims leading, trailing, and long interior empty sections, then normalizes the result to mono 32 kHz WAV. Existing saved voices default to Original Source, which uses the retained full upload/source file when `sourceFilePath` exists and falls back to the active provider-facing sample when no retained source exists. Choose Active Sample to process the provider-facing sample currently stored for the selected voice. Uploaded files can also be processed without first saving them as voices.
+Set `SAMPLE_PROCESSING_ENGINE=ffmpeg` to enable only Trim Silence. Set `SAMPLE_PROCESSING_ENGINE=demucs` to enable Isolate Voice and Trim Silence together. Set `SAMPLE_PROCESSING_ENABLE_DIARIZATION=1` to add Speaker Separation alongside either engine, or by itself when `SAMPLE_PROCESSING_ENGINE` is blank. When Demucs is enabled, Isolate Voice runs the configured Demucs command with the `htdemucs` model by default, extracts the vocals stem, then runs FFmpeg to normalize the result to mono 32 kHz WAV. Trim Silence runs FFmpeg `silenceremove`, trims leading, trailing, and long interior empty sections, then normalizes the result to mono 32 kHz WAV. Speaker Separation normalizes the source with FFmpeg, runs pyannote Community-1 locally for speaker turns, runs faster-whisper locally with word timestamps, maps transcript text to speakers by time overlap, then generates one mono 32 kHz WAV per speaker. Existing saved voices default to Original Source, which uses the retained full upload/source file when `sourceFilePath` exists and falls back to the active provider-facing sample when no retained source exists. Choose Active Sample to process the provider-facing sample currently stored for the selected voice. Uploaded files can also be processed without first saving them as voices.
 
 Isolation Strength offers four presets. Fast uses fewer Demucs shifts for quick previews. Balanced is the default and preserves the original behavior. Clean keeps Balanced separation and adds conservative FFmpeg high-pass/low-pass cleanup. Max Isolation uses the finetuned `htdemucs_ft` model with higher shifts and overlap; it is slower and requires that model to be available locally.
 
 Trim Aggressiveness offers three presets. Light trims only quieter or longer empty regions. Balanced is the default and preserves a small amount of room tone. Aggressive trims shorter or louder empty regions for tighter samples.
 
-Processed results are candidates, not automatic voice-library entries. Sample Processing never refines, overwrites, or replaces the selected saved voice. Preview the result first, then choose Add To Voice Library to store it under `assets/voices/` through the same local Voice Library path as uploaded samples. This creates a new voice whose `filePath`, `contentType`, and `sha256` point at the processed active sample, and includes `processingSteps` metadata for traceability, including the selected isolation or trim preset when one was used.
+Speaker Separation is diarized speaker-turn extraction, not true neural unmixing of simultaneous speakers. If two people overlap, V1 assigns transcript text and retained time ranges to the best matching detected speaker rather than separating both voices from the same audio moment.
+
+Processed results are candidates, not automatic voice-library entries. Sample Processing never refines, overwrites, or replaces the selected saved voice. Preview the result first, then choose Add To Voice Library to store it under `assets/voices/` through the same local Voice Library path as uploaded samples. This creates a new voice whose `filePath`, `contentType`, and `sha256` point at the processed active sample, and includes `processingSteps` metadata for traceability, including the selected isolation or trim preset when one was used. Speaker Separation saves any selected speaker streams as independent voices, each with its own Voice Name and Voice Preset selection. The Voice Preset options come from `/api/providers.voicePresets`, the same semantic preset source used by normal voice uploads.
 
 Sample Processing shows a browser-observed elapsed timer while the current job runs and keeps the final time visible with the current preview or error. This timing is local to the Sample Processing section and is not saved to voice metadata.
 
-Runtime files are written under ignored `storage/sample-processing/`. Demucs output folders and intermediate stems are job-local. Heavy model files are runtime data; the Docker stack routes them to ignored `storage/model-cache/`. Future Speaker Separation work will use the same operation registry and will likely require FFmpeg plus Hugging Face access for `pyannote.audio` models.
+Runtime files are written under ignored `storage/sample-processing/`. Demucs output folders, diarization transcripts, generated speaker streams, and intermediate stems are job-local. Heavy model files are runtime data; the Docker stack routes them to ignored `storage/model-cache/`. For offline use, run once while the machine can reach Hugging Face and faster-whisper model storage so the model files are present in the local cache before disconnecting.

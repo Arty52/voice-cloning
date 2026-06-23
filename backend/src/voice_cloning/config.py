@@ -25,6 +25,16 @@ def _float_env(name: str, default: float) -> float:
     return float(normalized_value)
 
 
+def _bool_env(name: str, default: bool = False) -> bool:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    normalized_value = raw_value.strip().lower()
+    if not normalized_value:
+        return default
+    return normalized_value in {"1", "true", "yes", "on"}
+
+
 @dataclass(frozen=True)
 class Settings:
     app_root: Path
@@ -46,6 +56,12 @@ class Settings:
     sample_processing_demucs_model: str = "htdemucs"
     sample_processing_demucs_device: str = ""
     sample_processing_timeout_seconds: float = 900
+    sample_processing_enable_diarization: bool = False
+    sample_processing_pyannote_model: str = "pyannote/speaker-diarization-community-1"
+    sample_processing_hf_token: str = ""
+    sample_processing_whisper_model: str = "medium"
+    sample_processing_whisper_device: str = "cpu"
+    sample_processing_whisper_compute_type: str = "int8"
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -88,6 +104,21 @@ class Settings:
             or "htdemucs",
             sample_processing_demucs_device=os.getenv("SAMPLE_PROCESSING_DEMUCS_DEVICE", "").strip(),
             sample_processing_timeout_seconds=_float_env("SAMPLE_PROCESSING_TIMEOUT_SECONDS", 900),
+            sample_processing_enable_diarization=_bool_env("SAMPLE_PROCESSING_ENABLE_DIARIZATION"),
+            sample_processing_pyannote_model=(
+                os.getenv("SAMPLE_PROCESSING_PYANNOTE_MODEL", "pyannote/speaker-diarization-community-1").strip()
+                or "pyannote/speaker-diarization-community-1"
+            ),
+            sample_processing_hf_token=(
+                os.getenv("SAMPLE_PROCESSING_HF_TOKEN", "").strip()
+                or os.getenv("HF_TOKEN", "").strip()
+            ),
+            sample_processing_whisper_model=os.getenv("SAMPLE_PROCESSING_WHISPER_MODEL", "medium").strip()
+            or "medium",
+            sample_processing_whisper_device=os.getenv("SAMPLE_PROCESSING_WHISPER_DEVICE", "cpu").strip()
+            or "cpu",
+            sample_processing_whisper_compute_type=os.getenv("SAMPLE_PROCESSING_WHISPER_COMPUTE_TYPE", "int8").strip()
+            or "int8",
         )
 
     def require_api_key(self) -> None:
