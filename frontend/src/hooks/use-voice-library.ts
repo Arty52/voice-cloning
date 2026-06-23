@@ -19,7 +19,6 @@ export function useVoiceLibrary() {
   const selectedVoice = voices.find((voice) => voice.id === selectedVoiceId) ?? null
   const isUpdatingVoice = voiceActionStatus === "loading"
   const isSettingDefault = defaultStatus === "loading"
-  const canSetDefault = selectedVoice !== null && selectedVoice.id !== defaultVoiceId && !isSettingDefault
 
   useEffect(() => {
     async function loadVoices() {
@@ -126,14 +125,14 @@ export function useVoiceLibrary() {
     }
   }
 
-  async function setDefault() {
-    if (!selectedVoice) {
+  async function setDefault(voiceId: string) {
+    if (!voiceId || voiceId === defaultVoiceId || isSettingDefault) {
       return
     }
     setDefaultStatus("loading")
     setVoiceError(null)
     try {
-      const payload = await voiceApi.setDefaultVoice(selectedVoice.id)
+      const payload = await voiceApi.setDefaultVoice(voiceId)
       setVoices(payload.voices)
       setDefaultVoiceId(payload.defaultVoiceId)
       setDefaultStatus("success")
@@ -161,7 +160,6 @@ export function useVoiceLibrary() {
 
   return {
     addSavedVoice,
-    canSetDefault,
     cancelRename,
     defaultVoiceId,
     defaultStatus,

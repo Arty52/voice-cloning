@@ -2121,7 +2121,7 @@ describe("App", () => {
     expect(screen.getByText("2:00 Max")).toBeInTheDocument()
   })
 
-  it("sets the selected voice as the local default", async () => {
+  it("sets a voice as the local default from the action menu", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -2144,8 +2144,14 @@ describe("App", () => {
     const user = userEvent.setup()
     renderApp()
 
-    await user.click(await screen.findByRole("button", { name: /^Voice_Clone_01/i }))
-    await user.click(screen.getByRole("button", { name: /set as default/i }))
+    await user.click(await screen.findByRole("button", { name: /open actions for default voice/i }))
+    expect(screen.getByRole("menuitem", { name: "Set As Default" })).toBeDisabled()
+    await user.keyboard("{Escape}")
+
+    await user.click(await screen.findByRole("button", { name: /open actions for voice_clone_01/i }))
+    const setDefaultItem = screen.getByRole("menuitem", { name: "Set As Default" })
+    expect(setDefaultItem).toBeEnabled()
+    await user.click(setDefaultItem)
 
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
