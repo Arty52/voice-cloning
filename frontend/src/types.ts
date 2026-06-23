@@ -120,6 +120,8 @@ export type VoiceProcessingStep = {
   engine: string
   processingPresetId?: SampleProcessingPresetId
   processingPresetLabel?: string | null
+  speakerId?: string
+  speakerLabel?: string | null
 }
 
 export type SampleProcessingOperation = {
@@ -142,11 +144,40 @@ export type SampleProcessingOptionsResponse = {
   operations: SampleProcessingOperation[]
 }
 
-export type SampleProcessingResult = {
+export type SampleProcessingAudioResult = {
+  path?: string
   filename: string
   contentType: string
   sha256: string
 }
+
+export type SpeakerTranscriptItem = {
+  id: string
+  text: string
+  startSeconds: number
+  endSeconds: number
+  speakerId: string
+}
+
+export type SpeakerSeparationSpeaker = {
+  id: string
+  label: string
+  assignedName: string | null
+  transcriptItemIds: string[]
+  result: SampleProcessingAudioResult | null
+}
+
+export type SpeakerSeparationTranscript = {
+  items: SpeakerTranscriptItem[]
+}
+
+export type SpeakerSeparationResult = {
+  kind: "speakerSeparation"
+  speakers: SpeakerSeparationSpeaker[]
+  transcript: SpeakerSeparationTranscript
+}
+
+export type SampleProcessingResult = SampleProcessingAudioResult | SpeakerSeparationResult
 
 export type SampleProcessingJob = {
   id: string
@@ -156,6 +187,8 @@ export type SampleProcessingJob = {
   processingPresetId: SampleProcessingPresetId | null
   processingPresetLabel: string | null
   sourceName: string
+  sourceFilename?: string | null
+  sourceContentType?: string | null
   sourceSha256: string
   sourcePreference: SampleProcessingSourcePreference
   engine: string
