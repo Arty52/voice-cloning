@@ -865,6 +865,24 @@ describe("App", () => {
     expect(document.querySelector('[data-section-id="generate"]')).toHaveClass("hidden")
   })
 
+  it("links from the voice library to speech generation", async () => {
+    window.history.replaceState(null, "", "/#voices")
+    const user = userEvent.setup()
+    renderApp()
+
+    expect(await screen.findByText("default/default-voice.mp3")).toBeInTheDocument()
+
+    const generateLink = voiceLibraryPanel().getByRole("link", { name: "Generate Speech" })
+    expect(generateLink).toHaveAttribute("href", "#generate")
+
+    await user.click(generateLink)
+
+    await waitFor(() => expect(window.location.hash).toBe("#generate"))
+    expect(screen.getByRole("button", { name: "Generate Speech" })).toHaveAttribute("aria-current", "page")
+    expect(document.querySelector('[data-section-id="generate"]')).not.toHaveClass("hidden")
+    expect(document.querySelector('[data-section-id="voices"]')).toHaveClass("hidden")
+  })
+
   it("closes mobile workflow navigation after selecting a section", async () => {
     mockWorkflowViewport(true)
     const user = userEvent.setup()

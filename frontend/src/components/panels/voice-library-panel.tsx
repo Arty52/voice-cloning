@@ -1,8 +1,9 @@
-import { Check, FileAudio, Pencil, Star, Trash2, Volume2 } from "lucide-react"
+import { ArrowRight, Check, FileAudio, Pencil, Star, Trash2, Volume2 } from "lucide-react"
 
 import { AudioPlayer } from "@/components/audio-player"
 import { ActionMenu } from "@/components/ui/action-menu"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { VoicePresetToggleGroup } from "@/components/voice-preset-toggle-group"
 import { cn } from "@/lib/utils"
@@ -158,6 +159,12 @@ export function VoiceLibraryPanel({
         )}
       </div>
 
+      <Button asChild className="mt-4 w-full">
+        <a href="#generate">
+          Generate Speech
+          <ArrowRight aria-hidden="true" data-icon="inline-end" />
+        </a>
+      </Button>
     </section>
   )
 }
