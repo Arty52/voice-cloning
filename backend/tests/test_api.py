@@ -9,6 +9,7 @@ import time
 from typing import get_args
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 import voice_cloning.voice_library as voice_library_module
@@ -28,9 +29,14 @@ from voice_cloning.models import (
     SampleProcessingOperation,
     SampleProcessingPresetId,
     SampleProcessingResult,
+    SpeakerSeparationResult,
+    SpeakerSeparationSpeaker,
+    SpeakerSeparationTranscript,
+    SpeakerTranscriptItem,
     SpeechResult,
     SubscriptionSummary,
     VoiceClone,
+    VoiceProcessingStep,
     VoiceSample,
 )
 from voice_cloning.providers import (
@@ -49,9 +55,11 @@ from voice_cloning.services.sample_processing import (
     DEFAULT_ISOLATION_PROCESSING_PRESET_ID,
     DEFAULT_TRIM_SILENCE_PROCESSING_PRESET_ID,
     ISOLATION_PROCESSING_PRESETS,
+    SpeakerAssignmentRequest,
     SampleProcessingRequest,
     SampleProcessingService,
     TRIM_SILENCE_PROCESSING_PRESETS,
+    apply_speaker_assignment_metadata,
 )
 from voice_cloning.services.speech import SpeechServiceError, generate_speech
 from voice_cloning.voice_library import VoiceLibrary
@@ -225,6 +233,144 @@ class FakeSampleProcessor:
     async def process(self, request: SampleProcessingRequest) -> None:
         self.requests.append(request)
         request.output_path.write_bytes(self.output)
+
+
+class FakeSpeakerSeparationProcessor:
+    engine_name = "fake-diarization"
+
+    def __init__(self) -> None:
+        self.requests: list[SampleProcessingRequest] = []
+        self.assignment_requests: list[SpeakerAssignmentRequest] = []
+
+    def operations(self) -> tuple[SampleProcessingOperation, ...]:
+        return (
+            SampleProcessingOperation(
+                id="separateSpeakers",
+                label="Separate Speakers",
+                description="Split a source track into individual speaker samples.",
+                enabled=True,
+            ),
+        )
+
+    def engine_name_for_operation(self, operation_id: str) -> str:
+        return self.engine_name
+
+    async def process(self, request: SampleProcessingRequest) -> SpeakerSeparationResult:
+        self.requests.append(request)
+        speaker_one_path = request.job_dir / "speaker-1.wav"
+        speaker_two_path = request.job_dir / "speaker-2.wav"
+        speaker_one_path.write_bytes(b"speaker-one")
+        speaker_two_path.write_bytes(b"speaker-two")
+        return SpeakerSeparationResult(
+            kind="speakerSeparation",
+            speakers=(
+                SpeakerSeparationSpeaker(
+                    id="speaker-1",
+                    label="Speaker 1",
+                    transcript_item_ids=("item-1", "item-3"),
+                    result=SampleProcessingResult(
+                        path=speaker_one_path.relative_to(request.job_dir.parent).as_posix(),
+                        filename=speaker_one_path.name,
+                        content_type="audio/wav",
+                        sha256=sample_hash(b"speaker-one"),
+                    ),
+                ),
+                SpeakerSeparationSpeaker(
+                    id="speaker-2",
+                    label="Speaker 2",
+                    transcript_item_ids=("item-2",),
+                    result=SampleProcessingResult(
+                        path=speaker_two_path.relative_to(request.job_dir.parent).as_posix(),
+                        filename=speaker_two_path.name,
+                        content_type="audio/wav",
+                        sha256=sample_hash(b"speaker-two"),
+                    ),
+                ),
+            ),
+            transcript=SpeakerSeparationTranscript(
+                items=(
+                    SpeakerTranscriptItem(
+                        id="item-1",
+                        text="Hello there.",
+                        start_seconds=0.0,
+                        end_seconds=1.2,
+                        speaker_id="speaker-1",
+                    ),
+                    SpeakerTranscriptItem(
+                        id="item-2",
+                        text="General Kenobi.",
+                        start_seconds=1.3,
+                        end_seconds=2.4,
+                        speaker_id="speaker-2",
+                    ),
+                    SpeakerTranscriptItem(
+                        id="item-3",
+                        text="You are a bold one.",
+                        start_seconds=2.6,
+                        end_seconds=4.0,
+                        speaker_id="speaker-1",
+                    ),
+                ),
+            ),
+        )
+
+    async def update_speaker_assignments(self, request: SpeakerAssignmentRequest) -> SpeakerSeparationResult:
+        self.assignment_requests.append(request)
+        updated = apply_speaker_assignment_metadata(
+            request.result,
+            speaker_names=request.speaker_names,
+            transcript_assignments=request.transcript_assignments,
+        )
+        speakers: list[SpeakerSeparationSpeaker] = []
+        for speaker in updated.speakers:
+            if speaker.result is None:
+                speakers.append(speaker)
+                continue
+            content = f"{speaker.id}:{','.join(speaker.transcript_item_ids)}".encode("utf-8")
+            path = request.job_dir.parent / speaker.result.path
+            path.write_bytes(content)
+            speakers.append(replace(speaker, result=replace(speaker.result, sha256=sample_hash(content))))
+        return SpeakerSeparationResult(
+            kind="speakerSeparation",
+            speakers=tuple(speakers),
+            transcript=updated.transcript,
+        )
+
+
+class InvalidSpeakerTranscriptOwnershipProcessor(FakeSpeakerSeparationProcessor):
+    async def process(self, request: SampleProcessingRequest) -> SpeakerSeparationResult:
+        result = await super().process(request)
+        return replace(
+            result,
+            speakers=(
+                replace(result.speakers[0], transcript_item_ids=("item-1", "item-2", "item-3")),
+                result.speakers[1],
+            ),
+        )
+
+
+class IncompleteSpeakerTranscriptItemsProcessor(FakeSpeakerSeparationProcessor):
+    async def process(self, request: SampleProcessingRequest) -> SpeakerSeparationResult:
+        result = await super().process(request)
+        return replace(
+            result,
+            speakers=(
+                replace(result.speakers[0], transcript_item_ids=("item-1",)),
+                result.speakers[1],
+            ),
+        )
+
+
+class DuplicateSpeakerTranscriptItemsProcessor(FakeSpeakerSeparationProcessor):
+    async def process(self, request: SampleProcessingRequest) -> SpeakerSeparationResult:
+        result = await super().process(request)
+        return replace(
+            result,
+            speakers=(
+                replace(result.speakers[0], transcript_item_ids=("item-1", "item-1", "item-3")),
+                result.speakers[1],
+            ),
+        )
 
 
 def make_settings(
@@ -814,6 +960,339 @@ def test_sample_processing_job_uses_original_voice_source_and_saves_result_as_vo
     ]
     assert (settings.voice_assets_dir / "voice-clone-01-isolated.wav").read_bytes() == b"isolated-voice"
     assert speech.status_code == 200
+
+
+def test_sample_processing_speaker_separation_contract_updates_and_saves_speakers(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    processor = FakeSpeakerSeparationProcessor()
+    app = create_app(settings=settings, sample_processor=processor)
+    client = TestClient(app)
+
+    create = client.post(
+        "/api/sample-processing/jobs",
+        data={"operationId": "separateSpeakers"},
+        files={"sourceFile": ("conversation.wav", b"speaker-source", "audio/wav")},
+    )
+    job_id = create.json()["job"]["id"]
+    job = wait_for_processing_job(client, job_id)
+    source = client.get(f"/api/sample-processing/jobs/{job_id}/source")
+    speaker_stream = client.get(f"/api/sample-processing/jobs/{job_id}/speakers/speaker-1/result")
+    single_result = client.get(f"/api/sample-processing/jobs/{job_id}/result")
+
+    patch = client.patch(
+        f"/api/sample-processing/jobs/{job_id}/speaker-assignments",
+        json={
+            "speakerNames": [{"speakerId": "speaker-1", "name": "Morgan"}],
+            "transcriptAssignments": [{"itemId": "item-2", "speakerId": "speaker-1"}],
+        },
+    )
+    updated_job = patch.json()["job"]
+    updated_speaker_stream = client.get(f"/api/sample-processing/jobs/{job_id}/speakers/speaker-1/result")
+    save = client.post(
+        f"/api/sample-processing/jobs/{job_id}/speaker-voices",
+        json={
+            "voices": [
+                {"speakerId": "speaker-1", "name": "Morgan", "voicePresetId": "animatedDialogue"},
+                {"speakerId": "speaker-2", "name": "Riley", "voicePresetId": "standardNarration"},
+            ]
+        },
+    )
+
+    assert create.status_code == 202
+    assert processor.requests[0].operation_id == "separateSpeakers"
+    assert processor.requests[0].source.content == b"speaker-source"
+    assert job["status"] == "success"
+    assert job["engine"] == "fake-diarization"
+    assert job["result"] == {
+        "kind": "speakerSeparation",
+        "speakers": [
+            {
+                "id": "speaker-1",
+                "label": "Speaker 1",
+                "assignedName": None,
+                "transcriptItemIds": ["item-1", "item-3"],
+                "result": {
+                    "path": f"{job_id}/speaker-1.wav",
+                    "filename": "speaker-1.wav",
+                    "contentType": "audio/wav",
+                    "sha256": sample_hash(b"speaker-one"),
+                },
+            },
+            {
+                "id": "speaker-2",
+                "label": "Speaker 2",
+                "assignedName": None,
+                "transcriptItemIds": ["item-2"],
+                "result": {
+                    "path": f"{job_id}/speaker-2.wav",
+                    "filename": "speaker-2.wav",
+                    "contentType": "audio/wav",
+                    "sha256": sample_hash(b"speaker-two"),
+                },
+            },
+        ],
+        "transcript": {
+            "items": [
+                {
+                    "id": "item-1",
+                    "text": "Hello there.",
+                    "startSeconds": 0.0,
+                    "endSeconds": 1.2,
+                    "speakerId": "speaker-1",
+                },
+                {
+                    "id": "item-2",
+                    "text": "General Kenobi.",
+                    "startSeconds": 1.3,
+                    "endSeconds": 2.4,
+                    "speakerId": "speaker-2",
+                },
+                {
+                    "id": "item-3",
+                    "text": "You are a bold one.",
+                    "startSeconds": 2.6,
+                    "endSeconds": 4.0,
+                    "speakerId": "speaker-1",
+                },
+            ],
+        },
+    }
+    assert source.status_code == 200
+    assert source.content == b"speaker-source"
+    assert speaker_stream.status_code == 200
+    assert speaker_stream.content == b"speaker-one"
+    assert single_result.status_code == 409
+    assert single_result.json()["detail"] == "Speaker separation jobs expose per-speaker audio results."
+
+    assert patch.status_code == 200
+    assert processor.assignment_requests[0].speaker_names[0].name == "Morgan"
+    assert updated_job["result"]["speakers"][0]["assignedName"] == "Morgan"
+    assert updated_job["result"]["speakers"][0]["transcriptItemIds"] == ["item-1", "item-2", "item-3"]
+    assert updated_job["result"]["speakers"][1]["transcriptItemIds"] == []
+    assert updated_job["result"]["transcript"]["items"][1]["speakerId"] == "speaker-1"
+    assert updated_speaker_stream.content == b"speaker-1:item-1,item-2,item-3"
+
+    assert save.status_code == 201
+    voices = save.json()["voices"]
+    assert [voice["id"] for voice in voices] == ["morgan", "riley"]
+    assert [voice["voicePresetId"] for voice in voices] == ["animatedDialogue", "standardNarration"]
+    assert voices[0]["processingSteps"] == [
+        {
+            "id": job_id,
+            "label": "Separate Speakers",
+            "operationId": "separateSpeakers",
+            "createdAt": voices[0]["processingSteps"][0]["createdAt"],
+            "sourceSha256": sample_hash(b"speaker-source"),
+            "resultSha256": sample_hash(b"speaker-1:item-1,item-2,item-3"),
+            "engine": "fake-diarization",
+            "speakerId": "speaker-1",
+            "speakerLabel": "Speaker 1",
+        }
+    ]
+    assert (settings.voice_assets_dir / "morgan.wav").read_bytes() == b"speaker-1:item-1,item-2,item-3"
+    assert (settings.voice_assets_dir / "riley.wav").read_bytes() == b"speaker-2:"
+
+
+def test_sample_processing_speaker_assignments_validate_ids_and_duplicates(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    app = create_app(settings=settings, sample_processor=FakeSpeakerSeparationProcessor())
+    client = TestClient(app)
+    create = client.post(
+        "/api/sample-processing/jobs",
+        data={"operationId": "separateSpeakers"},
+        files={"sourceFile": ("conversation.wav", b"speaker-source", "audio/wav")},
+    )
+    job_id = create.json()["job"]["id"]
+    wait_for_processing_job(client, job_id)
+
+    missing_speaker = client.patch(
+        f"/api/sample-processing/jobs/{job_id}/speaker-assignments",
+        json={"speakerNames": [{"speakerId": "missing", "name": "Morgan"}]},
+    )
+    missing_item = client.patch(
+        f"/api/sample-processing/jobs/{job_id}/speaker-assignments",
+        json={"transcriptAssignments": [{"itemId": "missing", "speakerId": "speaker-1"}]},
+    )
+    duplicate_item = client.patch(
+        f"/api/sample-processing/jobs/{job_id}/speaker-assignments",
+        json={
+            "transcriptAssignments": [
+                {"itemId": "item-1", "speakerId": "speaker-1"},
+                {"itemId": "item-1", "speakerId": "speaker-2"},
+            ]
+        },
+    )
+
+    assert missing_speaker.status_code == 404
+    assert missing_speaker.json()["detail"] == "Speaker was not found."
+    assert missing_item.status_code == 404
+    assert missing_item.json()["detail"] == "Transcript item was not found."
+    assert duplicate_item.status_code == 422
+    assert duplicate_item.json()["detail"] == "Transcript item can only be assigned once."
+
+
+def test_sample_processing_empty_speaker_assignment_patch_is_noop(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    processor = FakeSpeakerSeparationProcessor()
+    app = create_app(settings=settings, sample_processor=processor)
+    client = TestClient(app)
+    create = client.post(
+        "/api/sample-processing/jobs",
+        data={"operationId": "separateSpeakers"},
+        files={"sourceFile": ("conversation.wav", b"speaker-source", "audio/wav")},
+    )
+    job_id = create.json()["job"]["id"]
+    original_job = wait_for_processing_job(client, job_id)
+
+    response = client.patch(f"/api/sample-processing/jobs/{job_id}/speaker-assignments", json={})
+
+    assert response.status_code == 200
+    assert response.json()["job"] == original_job
+    assert processor.assignment_requests == []
+
+
+def test_sample_processing_speaker_voice_save_validates_payload(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    app = create_app(settings=settings, sample_processor=FakeSpeakerSeparationProcessor())
+    client = TestClient(app)
+    create = client.post(
+        "/api/sample-processing/jobs",
+        data={"operationId": "separateSpeakers"},
+        files={"sourceFile": ("conversation.wav", b"speaker-source", "audio/wav")},
+    )
+    job_id = create.json()["job"]["id"]
+    wait_for_processing_job(client, job_id)
+
+    invalid_speaker = client.post(
+        f"/api/sample-processing/jobs/{job_id}/speaker-voices",
+        json={"voices": [{"speakerId": "missing", "name": "Missing Speaker"}]},
+    )
+    duplicate_names = client.post(
+        f"/api/sample-processing/jobs/{job_id}/speaker-voices",
+        json={
+            "voices": [
+                {"speakerId": "speaker-1", "name": "Same Name"},
+                {"speakerId": "speaker-2", "name": "Same Name"},
+            ]
+        },
+    )
+    invalid_preset = client.post(
+        f"/api/sample-processing/jobs/{job_id}/speaker-voices",
+        json={"voices": [{"speakerId": "speaker-1", "name": "Invalid Preset", "voicePresetId": "cinematic"}]},
+    )
+    no_selection = client.post(
+        f"/api/sample-processing/jobs/{job_id}/speaker-voices",
+        json={"voices": []},
+    )
+
+    assert invalid_speaker.status_code == 404
+    assert invalid_speaker.json()["detail"] == "Speaker was not found."
+    assert duplicate_names.status_code == 409
+    assert duplicate_names.json()["detail"] == "Speaker voice names must be unique."
+    assert invalid_preset.status_code == 422
+    assert invalid_preset.json()["detail"] == "Voice preset must be standardNarration or animatedDialogue."
+    assert no_selection.status_code == 422
+    assert no_selection.json()["detail"] == "Choose at least one speaker to save."
+
+
+def test_sample_processing_speaker_separation_rejects_mismatched_speaker_transcript_items(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    app = create_app(settings=settings, sample_processor=InvalidSpeakerTranscriptOwnershipProcessor())
+    client = TestClient(app)
+
+    create = client.post(
+        "/api/sample-processing/jobs",
+        data={"operationId": "separateSpeakers"},
+        files={"sourceFile": ("conversation.wav", b"speaker-source", "audio/wav")},
+    )
+    job = wait_for_processing_job(client, create.json()["job"]["id"], status="error")
+
+    assert create.status_code == 202
+    assert job["status"] == "error"
+    assert job["error"] == "Speaker separation speaker references transcript items assigned to another speaker."
+
+
+def test_sample_processing_speaker_separation_rejects_incomplete_speaker_transcript_items(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    app = create_app(settings=settings, sample_processor=IncompleteSpeakerTranscriptItemsProcessor())
+    client = TestClient(app)
+
+    create = client.post(
+        "/api/sample-processing/jobs",
+        data={"operationId": "separateSpeakers"},
+        files={"sourceFile": ("conversation.wav", b"speaker-source", "audio/wav")},
+    )
+    job = wait_for_processing_job(client, create.json()["job"]["id"], status="error")
+
+    assert create.status_code == 202
+    assert job["status"] == "error"
+    assert job["error"] == "Speaker separation speaker transcript items are incomplete."
+
+
+def test_sample_processing_speaker_separation_rejects_duplicate_speaker_transcript_items(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    app = create_app(settings=settings, sample_processor=DuplicateSpeakerTranscriptItemsProcessor())
+    client = TestClient(app)
+
+    create = client.post(
+        "/api/sample-processing/jobs",
+        data={"operationId": "separateSpeakers"},
+        files={"sourceFile": ("conversation.wav", b"speaker-source", "audio/wav")},
+    )
+    job = wait_for_processing_job(client, create.json()["job"]["id"], status="error")
+
+    assert create.status_code == 202
+    assert job["status"] == "error"
+    assert job["error"] == "Speaker separation speaker references duplicate transcript items."
+
+
+def test_sample_processing_speaker_voice_save_rolls_back_partial_batch(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    voice_library = VoiceLibrary(settings)
+    processor = FakeSpeakerSeparationProcessor()
+    app = create_app(settings=settings, voice_library=voice_library, sample_processor=processor)
+    client = TestClient(app)
+
+    create = client.post(
+        "/api/sample-processing/jobs",
+        data={"operationId": "separateSpeakers"},
+        files={"sourceFile": ("conversation.wav", b"speaker-source", "audio/wav")},
+    )
+    job_id = create.json()["job"]["id"]
+    wait_for_processing_job(client, job_id)
+
+    original_add_processed_sample = voice_library.add_processed_sample
+    save_calls = 0
+
+    def add_processed_sample_with_failure(
+        name: str,
+        sample: VoiceSample,
+        processing_steps: tuple[VoiceProcessingStep, ...],
+        voice_preset_id: str | None = None,
+    ) -> VoiceAsset:
+        nonlocal save_calls
+        save_calls += 1
+        if save_calls == 2:
+            raise HTTPException(status_code=500, detail="Simulated save failure.")
+        return original_add_processed_sample(name, sample, processing_steps, voice_preset_id)
+
+    voice_library.add_processed_sample = add_processed_sample_with_failure  # type: ignore[method-assign]
+
+    save = client.post(
+        f"/api/sample-processing/jobs/{job_id}/speaker-voices",
+        json={
+            "voices": [
+                {"speakerId": "speaker-1", "name": "Morgan"},
+                {"speakerId": "speaker-2", "name": "Riley"},
+            ]
+        },
+    )
+
+    assert save.status_code == 500
+    assert save.json()["detail"] == "Simulated save failure."
+    assert [voice.id for voice in voice_library.list_assets()] == ["default"]
+    assert not (settings.voice_assets_dir / "morgan.wav").exists()
+    assert not (settings.voice_assets_dir / "riley.wav").exists()
 
 
 def test_sample_processing_job_accepts_uploaded_source(tmp_path: Path) -> None:

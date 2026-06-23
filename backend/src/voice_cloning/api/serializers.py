@@ -6,9 +6,14 @@ from ..models import (
     CachedVoice,
     ModelSummary,
     SampleProcessingJob,
+    SampleProcessingJobResult,
     SampleProcessingOperation,
     SampleProcessingPreset,
     SampleProcessingResult,
+    SpeakerSeparationResult,
+    SpeakerSeparationSpeaker,
+    SpeakerSeparationTranscript,
+    SpeakerTranscriptItem,
     SubscriptionSummary,
     VoiceAsset,
     VoicePreset,
@@ -175,6 +180,9 @@ def voice_processing_step_payload(step: VoiceProcessingStep) -> dict[str, object
     if step.processing_preset_id is not None:
         payload["processingPresetId"] = step.processing_preset_id
         payload["processingPresetLabel"] = step.processing_preset_label
+    if step.speaker_id is not None:
+        payload["speakerId"] = step.speaker_id
+        payload["speakerLabel"] = step.speaker_label
     return payload
 
 
@@ -225,12 +233,56 @@ def sample_processing_job_payload(job: SampleProcessingJob) -> dict[str, object]
     }
 
 
-def sample_processing_result_payload(result: SampleProcessingResult) -> dict[str, object]:
+def sample_processing_result_payload(result: SampleProcessingJobResult) -> dict[str, object]:
+    if isinstance(result, SpeakerSeparationResult):
+        return speaker_separation_result_payload(result)
+    return sample_processing_audio_result_payload(result)
+
+
+def sample_processing_audio_result_payload(result: SampleProcessingResult) -> dict[str, object]:
     return {
         "path": result.path,
         "filename": result.filename,
         "contentType": result.content_type,
         "sha256": result.sha256,
+    }
+
+
+def speaker_separation_result_payload(result: SpeakerSeparationResult) -> dict[str, object]:
+    return {
+        "kind": result.kind,
+        "speakers": [speaker_separation_speaker_payload(speaker) for speaker in result.speakers],
+        "transcript": speaker_separation_transcript_payload(result.transcript),
+    }
+
+
+def speaker_separation_speaker_payload(speaker: SpeakerSeparationSpeaker) -> dict[str, object]:
+    return {
+        "id": speaker.id,
+        "label": speaker.label,
+        "assignedName": speaker.assigned_name,
+        "transcriptItemIds": list(speaker.transcript_item_ids),
+        "result": (
+            sample_processing_audio_result_payload(speaker.result)
+            if speaker.result is not None
+            else None
+        ),
+    }
+
+
+def speaker_separation_transcript_payload(transcript: SpeakerSeparationTranscript) -> dict[str, object]:
+    return {
+        "items": [speaker_transcript_item_payload(item) for item in transcript.items],
+    }
+
+
+def speaker_transcript_item_payload(item: SpeakerTranscriptItem) -> dict[str, object]:
+    return {
+        "id": item.id,
+        "text": item.text,
+        "startSeconds": item.start_seconds,
+        "endSeconds": item.end_seconds,
+        "speakerId": item.speaker_id,
     }
 
 

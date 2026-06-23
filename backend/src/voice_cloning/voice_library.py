@@ -461,6 +461,8 @@ def _processing_steps_from_payload(value: Any) -> tuple[VoiceProcessingStep, ...
                 processing_preset_label=(
                     _optional_str(item.get("processingPresetLabel")) if processing_preset_id is not None else None
                 ),
+                speaker_id=_optional_str(item.get("speakerId")),
+                speaker_label=_optional_str(item.get("speakerLabel")),
             )
         )
     return tuple(steps)
@@ -479,6 +481,9 @@ def _processing_step_to_payload(step: VoiceProcessingStep) -> dict[str, object]:
     if step.processing_preset_id is not None:
         payload["processingPresetId"] = step.processing_preset_id
         payload["processingPresetLabel"] = step.processing_preset_label
+    if step.speaker_id is not None:
+        payload["speakerId"] = step.speaker_id
+        payload["speakerLabel"] = step.speaker_label
     return payload
 
 
