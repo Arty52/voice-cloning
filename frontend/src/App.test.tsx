@@ -1320,7 +1320,7 @@ describe("App", () => {
 
   it("edits speaker separation transcripts and saves selected speakers", async () => {
     const playSpy = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined)
-    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined)
+    const pauseSpy = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined)
     const baseFetch = mockFetch()
     vi.stubGlobal(
       "fetch",
@@ -1380,6 +1380,9 @@ describe("App", () => {
     const sourceAudio = document.querySelector('audio[src="/api/sample-processing/jobs/job-1/source"]') as HTMLAudioElement
     expect(sourceAudio.currentTime).toBe(0)
     expect(playSpy).toHaveBeenCalled()
+    sourceAudio.currentTime = 1.1
+    fireEvent.timeUpdate(sourceAudio)
+    expect(pauseSpy).toHaveBeenCalled()
 
     const assignNameInput = within(playPopover).getByLabelText("Assign Name")
     await user.clear(assignNameInput)
@@ -1399,7 +1402,7 @@ describe("App", () => {
     fireEvent.pointerDown(helloText, { buttons: 1 })
     fireEvent.pointerEnter(hiText, { buttons: 1 })
     fireEvent.pointerUp(hiText)
-    fireEvent.click(hiText)
+    await user.click(hiText)
     const assignPopover = screen.getByText("Assign Text To Speaker").closest("[data-slot='popover-content']") as HTMLElement
     await user.click(within(assignPopover).getByRole("button", { name: "Speaker 1" }))
     await waitFor(() => expect(sampleProcessingPanel().getAllByText("2 Segments")).toHaveLength(1))

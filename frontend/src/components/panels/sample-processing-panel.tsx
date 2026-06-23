@@ -90,7 +90,7 @@ export function SampleProcessingPanel({
     }
     audioElement.addEventListener("timeupdate", handleTimeUpdate)
     return () => audioElement.removeEventListener("timeupdate", handleTimeUpdate)
-  }, [])
+  }, [processing.speakerSourceUrl])
 
   function playTranscriptItem(item: SpeakerTranscriptItem) {
     const audio = sourceAudioRef.current
@@ -497,7 +497,9 @@ export function SampleProcessingPanel({
                                 )}
                                 onPointerDown={() => {
                                   setDragStartItemId(item.id)
-                                  processing.handleTranscriptSelectionChange([item.id])
+                                  if (!isSelected) {
+                                    processing.handleTranscriptSelectionChange([item.id])
+                                  }
                                 }}
                                 onPointerEnter={(event) => {
                                   if (event.buttons === 1) {
