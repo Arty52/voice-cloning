@@ -72,12 +72,6 @@ export function SampleProcessingPanel({
   const [dragStartItemId, setDragStartItemId] = useState<string | null>(null)
   const [hoveredSpeakerId, setHoveredSpeakerId] = useState<string | null>(null)
   const [isSpeakerSaveDialogOpen, setSpeakerSaveDialogOpen] = useState(false)
-  const operationOptions = processing.operations.map((operation) => ({
-    label: operation.enabled
-      ? operationDisplayLabel(operation.id, operation.label)
-      : `${operationDisplayLabel(operation.id, operation.label)} Unavailable`,
-    value: operation.id,
-  }))
   const voiceOptions = processing.voiceOptions.length > 0 ? processing.voiceOptions : [{ label: "No Voices", value: "" }]
   const isUnavailable =
     processing.optionsStatus === "success" &&
@@ -205,20 +199,40 @@ export function SampleProcessingPanel({
             <FieldGroup>
               <Field>
                 <FieldLabel id="sample-processing-operation-label">Operation</FieldLabel>
-                <MenuSelect
-                  ariaLabel="Sample Processing Operation"
+                <ToggleGroup
+                  aria-labelledby="sample-processing-operation-label"
+                  className="grid w-full grid-cols-1 gap-2 md:grid-cols-3"
                   disabled={processing.optionsStatus !== "success" || processing.operations.length === 0 || processing.isProcessing}
-                  onChange={(value) => {
+                  onValueChange={(value) => {
                     if (isSampleProcessingOperationId(value)) {
                       processing.setOperationId(value)
                     }
                   }}
-                  options={operationOptions}
+                  type="single"
                   value={processing.operationId}
-                />
-                {processing.selectedOperation ? (
-                  <FieldDescription>{processing.selectedOperation.description}</FieldDescription>
-                ) : null}
+                >
+                  {processing.operations.map((operation) => {
+                    const operationCopy = operationCardCopy(operation.id)
+                    const descriptionId = `sample-processing-operation-${operation.id}-description`
+                    return (
+                      <ToggleGroupItem
+                        aria-describedby={descriptionId}
+                        className="h-auto min-h-32 w-full flex-col items-start justify-start gap-3 whitespace-normal rounded-md border border-border bg-background/60 p-4 text-left text-muted-foreground aria-checked:border-primary aria-checked:bg-primary/10 aria-checked:text-foreground disabled:opacity-50"
+                        disabled={!operation.enabled}
+                        key={operation.id}
+                        value={operation.id}
+                      >
+                        <span className="flex w-full items-start justify-between gap-2">
+                          <span className="text-sm font-medium text-foreground">{operationCopy.title}</span>
+                          {!operation.enabled ? <Badge variant="secondary">Unavailable</Badge> : null}
+                        </span>
+                        <span className="text-xs leading-5 text-muted-foreground" id={descriptionId}>
+                          {operationCopy.description}
+                        </span>
+                      </ToggleGroupItem>
+                    )
+                  })}
+                </ToggleGroup>
               </Field>
 
               {processing.selectedOperation?.enabled === true && processing.processingPresets.length > 0 ? (
@@ -715,11 +729,23 @@ function presetControlLabel(operationId: SampleProcessingOperationId) {
   return "Processing Preset"
 }
 
-function operationDisplayLabel(operationId: SampleProcessingOperationId, label: string) {
-  if (operationId === "separateSpeakers") {
-    return "Speaker Separation"
+function operationCardCopy(operationId: SampleProcessingOperationId) {
+  if (operationId === "isolateVoice") {
+    return {
+      description: "Pull the spoken voice forward and reduce background audio.",
+      title: "Clean Up Voice",
+    }
   }
-  return label
+  if (operationId === "trimSilence") {
+    return {
+      description: "Remove long quiet stretches so the sample starts, ends, and flows cleanly.",
+      title: "Tighten Pauses",
+    }
+  }
+  return {
+    description: "Find each speaker in a conversation and create separate voice streams.",
+    title: "Split Speakers",
+  }
 }
 
 function isSampleProcessingOperationId(value: string): value is SampleProcessingOperationId {

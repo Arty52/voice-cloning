@@ -1200,13 +1200,18 @@ describe("App", () => {
   })
 
   it("labels deferred speaker work as speaker separation", async () => {
-    const user = userEvent.setup()
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(await sampleProcessingPanel().findByRole("button", { name: "Sample Processing Operation: Isolate Voice" }))
 
-    expect(screen.getByRole("menuitemradio", { name: "Speaker Separation Unavailable" })).toBeInTheDocument()
+    expect(await sampleProcessingPanel().findByRole("radio", { name: /Clean Up Voice/i })).toHaveAttribute(
+      "aria-checked",
+      "true"
+    )
+    expect(sampleProcessingPanel().getByText("Pull the spoken voice forward and reduce background audio.")).toBeInTheDocument()
+    expect(sampleProcessingPanel().getByRole("radio", { name: /Tighten Pauses/i })).toBeInTheDocument()
+    expect(await sampleProcessingPanel().findByRole("radio", { name: /Split Speakers/i })).toBeDisabled()
+    expect(sampleProcessingPanel().getAllByText("Unavailable").length).toBeGreaterThan(0)
   })
 
   it("switches to an enabled sample processing operation and names the result for that operation", async () => {
@@ -1237,7 +1242,10 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    expect(await sampleProcessingPanel().findByRole("button", { name: "Sample Processing Operation: Trim Silence" })).toBeInTheDocument()
+    expect(await sampleProcessingPanel().findByRole("radio", { name: /Tighten Pauses/i })).toHaveAttribute(
+      "aria-checked",
+      "true"
+    )
     const trimAggressiveness = within(sampleProcessingPanel().getByRole("radiogroup", { name: "Trim Aggressiveness" }))
     expect(trimAggressiveness.getByRole("radio", { name: "Balanced" })).toHaveAttribute("aria-checked", "true")
     const startButton = sampleProcessingPanel().getByRole("button", { name: "Start Processing" })
@@ -1383,8 +1391,7 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(await sampleProcessingPanel().findByRole("button", { name: "Sample Processing Operation: Isolate Voice" }))
-    await user.click(sampleProcessingPanel().getByRole("menuitemradio", { name: "Speaker Separation" }))
+    await user.click(await sampleProcessingPanel().findByRole("radio", { name: /Split Speakers/i }))
     await user.click(sampleProcessingPanel().getByRole("button", { name: "Start Processing" }))
 
     expect(await sampleProcessingPanel().findByText("Speaker Streams")).toBeInTheDocument()
@@ -1560,8 +1567,7 @@ describe("App", () => {
 
     await screen.findByText("default/default-voice.mp3")
     expect(sampleProcessingPanel().getByRole("radiogroup", { name: "Isolation Strength" })).toBeInTheDocument()
-    await user.click(sampleProcessingPanel().getByRole("button", { name: "Sample Processing Operation: Isolate Voice" }))
-    await user.click(sampleProcessingPanel().getByRole("menuitemradio", { name: "Trim Silence" }))
+    await user.click(sampleProcessingPanel().getByRole("radio", { name: /Tighten Pauses/i }))
 
     const trimAggressiveness = within(await sampleProcessingPanel().findByRole("radiogroup", { name: "Trim Aggressiveness" }))
     expect(trimAggressiveness.getByRole("radio", { name: "Balanced" })).toHaveAttribute("aria-checked", "true")
@@ -1623,8 +1629,7 @@ describe("App", () => {
     expect(await sampleProcessingPanel().findByLabelText("Processed sample preview")).toBeInTheDocument()
     expect(sampleProcessingPanel().getByLabelText("Sample Processing Elapsed Time")).toHaveTextContent("Finished In")
 
-    await user.click(sampleProcessingPanel().getByRole("button", { name: "Sample Processing Operation: Isolate Voice" }))
-    await user.click(sampleProcessingPanel().getByRole("menuitemradio", { name: "Trim Silence" }))
+    await user.click(sampleProcessingPanel().getByRole("radio", { name: /Tighten Pauses/i }))
 
     await waitFor(() => {
       expect(sampleProcessingPanel().queryByLabelText("Processed sample preview")).not.toBeInTheDocument()
@@ -1667,8 +1672,7 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(sampleProcessingPanel().getByRole("button", { name: "Sample Processing Operation: Isolate Voice" }))
-    await user.click(sampleProcessingPanel().getByRole("menuitemradio", { name: "Trim Silence" }))
+    await user.click(sampleProcessingPanel().getByRole("radio", { name: /Tighten Pauses/i }))
     const startButton = await sampleProcessingPanel().findByRole("button", { name: "Start Processing" })
     await waitFor(() => expect(startButton).toBeEnabled())
     await user.click(startButton)
@@ -1736,7 +1740,7 @@ describe("App", () => {
 
     await screen.findByText("default/default-voice.mp3")
     await user.click(sampleProcessingPanel().getByRole("button", { name: "Audio File" }))
-    fireEvent.drop(sampleProcessingPanel().getByRole("group", { name: "Audio File" }), {
+    fireEvent.drop(sampleProcessingPanel().getByRole("group", { name: "Audio Drop Zone" }), {
       dataTransfer: { files: [sourceFile] },
     })
     const startButton = sampleProcessingPanel().getByRole("button", { name: "Start Processing" })
@@ -1987,7 +1991,7 @@ describe("App", () => {
     await screen.findByText("default/default-voice.mp3")
     await user.type(screen.getByLabelText(/voice name/i), "Dropped_Voice")
     const file = new File(["sample"], "dropped-voice.wav", { type: "audio/wav" })
-    fireEvent.drop(addVoicePanel().getByRole("group", { name: "Sample File" }), {
+    fireEvent.drop(addVoicePanel().getByRole("group", { name: "Audio Drop Zone" }), {
       dataTransfer: { files: [file] },
     })
 

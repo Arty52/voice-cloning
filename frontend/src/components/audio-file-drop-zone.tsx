@@ -57,8 +57,8 @@ export function AudioFileDropZone({
         {label}
       </FieldLabel>
       <div
+        aria-label="Audio Drop Zone"
         aria-describedby={descriptionId}
-        aria-labelledby={labelId}
         className={cn(
           "flex flex-col items-center gap-3 rounded-md border border-dashed border-border bg-background/60 p-4 text-center transition",
           isDragging && "border-primary bg-primary/10",
