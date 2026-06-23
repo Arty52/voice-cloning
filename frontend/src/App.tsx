@@ -77,7 +77,6 @@ function App() {
 
         <WorkflowSectionPanel activeSectionId={activeSectionId} className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]" id="voices">
           <VoiceLibraryPanel
-            canSetDefault={voiceLibrary.canSetDefault}
             defaultVoiceId={voiceLibrary.defaultVoiceId}
             isGenerating={speech.isGenerating}
             isSettingDefault={voiceLibrary.isSettingDefault}
@@ -87,7 +86,7 @@ function App() {
             onPresetChange={(voice, voicePresetId) => void voiceLibrary.updateVoicePreset(voice, voicePresetId)}
             onRenameRequest={voiceLibrary.requestRename}
             onSelectVoice={voiceLibrary.setSelectedVoiceId}
-            onSetDefault={() => void voiceLibrary.setDefault()}
+            onSetDefault={(voice) => void voiceLibrary.setDefault(voice.id)}
             selectedVoice={voiceLibrary.selectedVoice}
             selectedVoiceId={voiceLibrary.selectedVoiceId}
             voiceError={voiceLibrary.voiceError}

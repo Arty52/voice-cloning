@@ -1,10 +1,9 @@
-import { Check, FileAudio, Pencil, Star, Trash2, Volume2 } from "lucide-react"
+import { ArrowRight, Check, FileAudio, Pencil, Star, Trash2, Volume2 } from "lucide-react"
 
 import { AudioPlayer } from "@/components/audio-player"
 import { ActionMenu } from "@/components/ui/action-menu"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Loading } from "@/components/ui/loading"
 import { Skeleton } from "@/components/ui/skeleton"
 import { VoicePresetToggleGroup } from "@/components/voice-preset-toggle-group"
 import { cn } from "@/lib/utils"
@@ -12,7 +11,6 @@ import { voicePresetLabel } from "@/lib/voice-presets"
 import type { AsyncStatus, VoiceAsset, VoicePreset, VoicePresetId } from "@/types"
 
 type VoiceLibraryPanelProps = {
-  canSetDefault: boolean
   defaultVoiceId: string
   isGenerating: boolean
   isSettingDefault: boolean
@@ -22,7 +20,7 @@ type VoiceLibraryPanelProps = {
   onPresetChange: (voice: VoiceAsset, voicePresetId: VoicePresetId) => void
   onRenameRequest: (voice: VoiceAsset) => void
   onSelectVoice: (voiceId: string) => void
-  onSetDefault: () => void
+  onSetDefault: (voice: VoiceAsset) => void
   selectedVoice: VoiceAsset | null
   selectedVoiceId: string
   voiceError: string | null
@@ -32,7 +30,6 @@ type VoiceLibraryPanelProps = {
 }
 
 export function VoiceLibraryPanel({
-  canSetDefault,
   defaultVoiceId,
   isGenerating,
   isSettingDefault,
@@ -116,6 +113,12 @@ export function VoiceLibraryPanel({
                     onSelect: () => onPlayVoice(voice),
                   },
                   {
+                    disabled: isDefault || isSettingDefault,
+                    icon: <Star aria-hidden="true" className="size-4" />,
+                    label: "Set As Default",
+                    onSelect: () => onSetDefault(voice),
+                  },
+                  {
                     icon: <Pencil aria-hidden="true" className="size-4" />,
                     label: "Rename",
                     onSelect: () => onRenameRequest(voice),
@@ -156,13 +159,11 @@ export function VoiceLibraryPanel({
         )}
       </div>
 
-      <Button className="mt-4 w-full" disabled={!canSetDefault} onClick={onSetDefault} variant="secondary">
-        {isSettingDefault ? (
-          <Loading aria-hidden="true" size="sm" />
-        ) : (
-          <Star aria-hidden="true" className="size-4" />
-        )}
-        {isSettingDefault ? "Setting Default Voice" : selectedVoice?.id === defaultVoiceId ? "Default Voice" : "Set as Default"}
+      <Button asChild className="mt-4 w-full">
+        <a href="#generate">
+          Generate Speech
+          <ArrowRight aria-hidden="true" data-icon="inline-end" />
+        </a>
       </Button>
     </section>
   )

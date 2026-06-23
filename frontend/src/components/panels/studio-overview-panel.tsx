@@ -20,7 +20,6 @@ export function StudioOverviewPanel({ sections }: StudioOverviewPanelProps) {
         <CardHeader>
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="accent">Local Workspace</Badge>
-            <Badge>Friend-Friendly Tour</Badge>
           </div>
           <CardTitle>Clone A Voice, Then Try It With Your Own Text</CardTitle>
           <CardDescription>

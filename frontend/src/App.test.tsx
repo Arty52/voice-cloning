@@ -802,6 +802,7 @@ describe("App", () => {
     ).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Overview" })).toHaveAttribute("aria-current", "page")
     expect(screen.getByRole("complementary", { name: "Workflow Sidebar" })).toBeInTheDocument()
+    expect(screen.queryByText("Friend-Friendly Tour")).not.toBeInTheDocument()
     const workflowNav = within(screen.getByRole("navigation", { name: "Workflow Sections" }))
     expect(await workflowNav.findByText("Start Here")).toBeInTheDocument()
     expect((await workflowNav.findAllByText("Ready")).length).toBeGreaterThan(0)
@@ -863,6 +864,24 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "Voices" })).toHaveAttribute("aria-current", "page")
     expect(document.querySelector('[data-section-id="voices"]')).not.toHaveClass("hidden")
     expect(document.querySelector('[data-section-id="generate"]')).toHaveClass("hidden")
+  })
+
+  it("links from the voice library to speech generation", async () => {
+    window.history.replaceState(null, "", "/#voices")
+    const user = userEvent.setup()
+    renderApp()
+
+    expect(await screen.findByText("default/default-voice.mp3")).toBeInTheDocument()
+
+    const generateLink = voiceLibraryPanel().getByRole("link", { name: "Generate Speech" })
+    expect(generateLink).toHaveAttribute("href", "#generate")
+
+    await user.click(generateLink)
+
+    await waitFor(() => expect(window.location.hash).toBe("#generate"))
+    expect(screen.getByRole("button", { name: "Generate Speech" })).toHaveAttribute("aria-current", "page")
+    expect(document.querySelector('[data-section-id="generate"]')).not.toHaveClass("hidden")
+    expect(document.querySelector('[data-section-id="voices"]')).toHaveClass("hidden")
   })
 
   it("closes mobile workflow navigation after selecting a section", async () => {
@@ -2121,7 +2140,7 @@ describe("App", () => {
     expect(screen.getByText("2:00 Max")).toBeInTheDocument()
   })
 
-  it("sets the selected voice as the local default", async () => {
+  it("sets a voice as the local default from the action menu", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -2144,8 +2163,14 @@ describe("App", () => {
     const user = userEvent.setup()
     renderApp()
 
-    await user.click(await screen.findByRole("button", { name: /^Voice_Clone_01/i }))
-    await user.click(screen.getByRole("button", { name: /set as default/i }))
+    await user.click(await screen.findByRole("button", { name: /open actions for default voice/i }))
+    expect(screen.getByRole("menuitem", { name: "Set As Default" })).toBeDisabled()
+    await user.keyboard("{Escape}")
+
+    await user.click(await screen.findByRole("button", { name: /open actions for voice_clone_01/i }))
+    const setDefaultItem = screen.getByRole("menuitem", { name: "Set As Default" })
+    expect(setDefaultItem).toBeEnabled()
+    await user.click(setDefaultItem)
 
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
