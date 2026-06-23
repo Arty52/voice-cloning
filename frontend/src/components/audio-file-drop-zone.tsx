@@ -78,6 +78,7 @@ export function AudioFileDropZone({
           id={id}
           onChange={(event) => onFileSelect(event.currentTarget.files?.[0] ?? null)}
           ref={inputRef}
+          tabIndex={-1}
           type="file"
         />
         <Upload aria-hidden="true" className="size-5 text-primary" />
