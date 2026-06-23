@@ -294,6 +294,118 @@ const successfulSampleProcessingJob = {
   },
 }
 
+const successfulSpeakerSeparationJob = {
+  job: {
+    id: "job-1",
+    operationId: "separateSpeakers" as const,
+    operationLabel: "Separate Speakers",
+    status: "success" as const,
+    processingPresetId: null,
+    processingPresetLabel: null,
+    sourceName: "Default voice",
+    sourceFilename: "source.wav",
+    sourceContentType: "audio/wav",
+    sourceSha256: "source-hash",
+    sourcePreference: "original" as const,
+    engine: "pyannote-community-1+faster-whisper",
+    createdAt: "2026-06-23T00:00:00+00:00",
+    updatedAt: "2026-06-23T00:00:01+00:00",
+    error: null,
+    result: {
+      kind: "speakerSeparation" as const,
+      speakers: [
+        {
+          id: "speaker-1",
+          label: "Speaker 1",
+          assignedName: "Morgan",
+          transcriptItemIds: ["item-1"],
+          result: {
+            path: "job-1/speaker-1.wav",
+            filename: "speaker-1.wav",
+            contentType: "audio/wav",
+            sha256: "speaker-1-hash",
+          },
+        },
+        {
+          id: "speaker-2",
+          label: "Speaker 2",
+          assignedName: null,
+          transcriptItemIds: ["item-2"],
+          result: {
+            path: "job-1/speaker-2.wav",
+            filename: "speaker-2.wav",
+            contentType: "audio/wav",
+            sha256: "speaker-2-hash",
+          },
+        },
+      ],
+      transcript: {
+        items: [
+          {
+            id: "item-1",
+            text: "Hello.",
+            startSeconds: 0,
+            endSeconds: 1,
+            speakerId: "speaker-1",
+          },
+          {
+            id: "item-2",
+            text: "Hi.",
+            startSeconds: 1.2,
+            endSeconds: 2,
+            speakerId: "speaker-2",
+          },
+        ],
+      },
+    },
+  },
+}
+
+const renamedSpeakerSeparationJob = {
+  job: {
+    ...successfulSpeakerSeparationJob.job,
+    result: {
+      ...successfulSpeakerSeparationJob.job.result,
+      speakers: [
+        {
+          ...successfulSpeakerSeparationJob.job.result.speakers[0],
+          assignedName: "Mina",
+        },
+        successfulSpeakerSeparationJob.job.result.speakers[1],
+      ],
+    },
+  },
+}
+
+const reassignedSpeakerSeparationJob = {
+  job: {
+    ...successfulSpeakerSeparationJob.job,
+    result: {
+      ...successfulSpeakerSeparationJob.job.result,
+      speakers: [
+        {
+          ...successfulSpeakerSeparationJob.job.result.speakers[0],
+          assignedName: "Mina",
+          transcriptItemIds: ["item-1", "item-2"],
+        },
+        {
+          ...successfulSpeakerSeparationJob.job.result.speakers[1],
+          transcriptItemIds: [],
+        },
+      ],
+      transcript: {
+        items: [
+          successfulSpeakerSeparationJob.job.result.transcript.items[0],
+          {
+            ...successfulSpeakerSeparationJob.job.result.transcript.items[1],
+            speakerId: "speaker-1",
+          },
+        ],
+      },
+    },
+  },
+}
+
 function processedVoiceFrom(init?: RequestInit) {
   const payload = typeof init?.body === "string" ? (JSON.parse(init.body) as { name?: string; voicePresetId?: string }) : {}
   return {
@@ -313,6 +425,36 @@ function processedVoiceFrom(init?: RequestInit) {
         sourceSha256: "default-hash",
         resultSha256: "processed-hash",
         engine: "demucs",
+      },
+    ],
+  }
+}
+
+function savedSpeakerVoiceFrom(init?: RequestInit) {
+  const payload =
+    typeof init?.body === "string"
+      ? (JSON.parse(init.body) as { voices?: { name?: string; speakerId?: string; voicePresetId?: string }[] })
+      : {}
+  const voice = payload.voices?.[0]
+  return {
+    ...voiceCloneVoice,
+    id: "speaker-voice-01",
+    name: voice?.name || "Speaker 1",
+    filePath: "speaker-1.wav",
+    contentType: "audio/wav",
+    sha256: "speaker-1-hash",
+    voicePresetId: voice?.voicePresetId === "animatedDialogue" ? ("animatedDialogue" as const) : ("standardNarration" as const),
+    processingSteps: [
+      {
+        id: "job-1",
+        label: "Separate Speakers",
+        operationId: "separateSpeakers" as const,
+        createdAt: "2026-06-23T00:00:01+00:00",
+        sourceSha256: "source-hash",
+        resultSha256: "speaker-1-hash",
+        engine: "pyannote-community-1+faster-whisper",
+        speakerId: voice?.speakerId || "speaker-1",
+        speakerLabel: "Speaker 1",
       },
     ],
   }
@@ -1174,6 +1316,154 @@ describe("App", () => {
       voicePresetId: "standardNarration",
     })
     expect(await voiceLibraryPanel().findByText("Default voice Isolated")).toBeInTheDocument()
+  })
+
+  it("edits speaker separation transcripts and saves selected speakers", async () => {
+    const playSpy = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined)
+    const pauseSpy = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined)
+    const baseFetch = mockFetch()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/sample-processing/options" && !init) {
+          return okJson({
+            engine: "pyannote-community-1+faster-whisper",
+            operations: sampleProcessingOptions.operations.map((operation) =>
+              operation.id === "separateSpeakers" ? { ...operation, enabled: true } : operation
+            ),
+          })
+        }
+        if (path === "/api/sample-processing/jobs" && init?.method === "POST") {
+          return Promise.resolve(
+            new Response(JSON.stringify(successfulSpeakerSeparationJob), {
+              status: 202,
+              headers: { "Content-Type": "application/json" },
+            })
+          )
+        }
+        if (path === "/api/sample-processing/jobs/job-1/speaker-assignments" && init?.method === "PATCH") {
+          const body = JSON.parse(String(init.body)) as {
+            speakerNames?: { speakerId: string; name?: string | null }[]
+            transcriptAssignments?: { itemId: string; speakerId: string }[]
+          }
+          return okJson(body.transcriptAssignments ? reassignedSpeakerSeparationJob : renamedSpeakerSeparationJob)
+        }
+        if (path === "/api/sample-processing/jobs/job-1/speaker-voices" && init?.method === "POST") {
+          return Promise.resolve(
+            new Response(JSON.stringify({ voices: [savedSpeakerVoiceFrom(init)] }), {
+              status: 201,
+              headers: { "Content-Type": "application/json" },
+            })
+          )
+        }
+        return baseFetch(input, init)
+      })
+    )
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.click(await sampleProcessingPanel().findByRole("button", { name: "Sample Processing Operation: Isolate Voice" }))
+    await user.click(sampleProcessingPanel().getByRole("menuitemradio", { name: "Speaker Separation" }))
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Start Processing" }))
+
+    expect(await sampleProcessingPanel().findByText("Speaker Streams")).toBeInTheDocument()
+    expect(sampleProcessingPanel().getByText("2 Voices Detected")).toBeInTheDocument()
+    const helloText = await sampleProcessingPanel().findByRole("button", { name: "Hello." })
+    const hiText = sampleProcessingPanel().getByRole("button", { name: "Hi." })
+    expect(helloText.getAttribute("style")).toContain("--speaker-color")
+    const speakerOneCard = sampleProcessingPanel().getByLabelText("Speaker 1").closest("article") as HTMLElement
+    await user.hover(speakerOneCard)
+    expect(helloText.parentElement).toHaveClass("py-1")
+    expect(helloText).toHaveClass("lg:-translate-y-0.5")
+    expect(helloText).toHaveClass("lg:border-[var(--speaker-color)]")
+    expect(hiText).not.toHaveClass("lg:-translate-y-0.5")
+    await user.unhover(speakerOneCard)
+    expect(helloText).not.toHaveClass("lg:-translate-y-0.5")
+
+    const firstSpeakerNameInput = sampleProcessingPanel().getAllByLabelText("Voice Name")[0]
+    await user.click(firstSpeakerNameInput)
+    await user.tab()
+    expect(
+      vi
+        .mocked(fetch)
+        .mock.calls.some(
+          ([url, init]) => String(url) === "/api/sample-processing/jobs/job-1/speaker-assignments" && init?.method === "PATCH"
+        )
+    ).toBe(false)
+
+    await user.click(helloText)
+    const playPopover = screen.getByText("Assign Text To Speaker").closest("[data-slot='popover-content']") as HTMLElement
+    expect(playPopover).toHaveClass("border-border/70")
+    await user.click(within(playPopover).getByRole("button", { name: "Play" }))
+    const sourceAudio = document.querySelector('audio[src="/api/sample-processing/jobs/job-1/source"]') as HTMLAudioElement
+    expect(sourceAudio.currentTime).toBe(0)
+    expect(playSpy).toHaveBeenCalled()
+    sourceAudio.currentTime = 1.1
+    fireEvent.timeUpdate(sourceAudio)
+    expect(pauseSpy).toHaveBeenCalled()
+
+    const assignNameInput = within(playPopover).getByLabelText("Assign Name")
+    await user.clear(assignNameInput)
+    await user.type(assignNameInput, "Mina")
+    await user.click(within(playPopover).getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(sampleProcessingPanel().getAllByLabelText("Voice Name")[0]).toHaveValue("Mina"))
+    const namePatchCall = vi
+      .mocked(fetch)
+      .mock.calls.find(
+        ([url, init]) => String(url) === "/api/sample-processing/jobs/job-1/speaker-assignments" && init?.method === "PATCH"
+      )
+    expect(JSON.parse(namePatchCall?.[1]?.body as string)).toEqual({
+      speakerNames: [{ speakerId: "speaker-1", name: "Mina" }],
+    })
+
+    await user.keyboard("{Escape}")
+    fireEvent.pointerDown(helloText, { buttons: 1 })
+    fireEvent.pointerEnter(hiText, { buttons: 1 })
+    fireEvent.pointerUp(hiText)
+    await user.click(hiText)
+    const assignPopover = screen.getByText("Assign Text To Speaker").closest("[data-slot='popover-content']") as HTMLElement
+    await user.click(within(assignPopover).getByRole("button", { name: "Speaker 1" }))
+    await waitFor(() => expect(sampleProcessingPanel().getAllByText("2 Segments")).toHaveLength(1))
+    const assignmentPatchCall = vi
+      .mocked(fetch)
+      .mock.calls.filter(
+        ([url, init]) => String(url) === "/api/sample-processing/jobs/job-1/speaker-assignments" && init?.method === "PATCH"
+      )
+      .find(([, init]) => String(init?.body).includes("transcriptAssignments"))
+    expect(JSON.parse(assignmentPatchCall?.[1]?.body as string)).toEqual({
+      transcriptAssignments: [
+        { itemId: "item-1", speakerId: "speaker-1" },
+        { itemId: "item-2", speakerId: "speaker-1" },
+      ],
+    })
+
+    await user.keyboard("{Escape}")
+    const speakerCheckboxes = sampleProcessingPanel().getAllByRole("checkbox")
+    await user.click(speakerCheckboxes[1])
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Add Selected Voices" }))
+    const saveDialog = await screen.findByRole("dialog", { name: "Add Selected Voices To Voice Library" })
+    expect(
+      within(saveDialog).getByText("These selected speaker streams will be added to the Voice Library as separate voices.")
+    ).toBeInTheDocument()
+    expect(within(saveDialog).getByText("Mina")).toBeInTheDocument()
+    expect(within(saveDialog).getByText("Standard Narration")).toBeInTheDocument()
+    expect(
+      vi
+        .mocked(fetch)
+        .mock.calls.some(
+          ([url, init]) => String(url) === "/api/sample-processing/jobs/job-1/speaker-voices" && init?.method === "POST"
+        )
+    ).toBe(false)
+    await user.click(within(saveDialog).getByRole("button", { name: "Add To Voice Library" }))
+    const saveSpeakersCall = vi.mocked(fetch).mock.calls.find(
+      ([url, init]) => String(url) === "/api/sample-processing/jobs/job-1/speaker-voices" && init?.method === "POST"
+    )
+    expect(JSON.parse(saveSpeakersCall?.[1]?.body as string)).toEqual({
+      voices: [{ speakerId: "speaker-1", name: "Mina", voicePresetId: "standardNarration" }],
+    })
+    expect(await voiceLibraryPanel().findByText("Mina")).toBeInTheDocument()
   })
 
   it("shows live and final sample processing elapsed time", async () => {
