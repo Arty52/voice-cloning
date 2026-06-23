@@ -568,10 +568,18 @@ function sampleProcessingPanel() {
 }
 
 function expectVoicePresetSelection(control: HTMLElement, selected: boolean) {
+  expectSubtleSelectorSelection(control, selected)
+}
+
+function expectSubtleSelectorSelection(control: HTMLElement, selected: boolean) {
   expect(control).toHaveAttribute("aria-checked", String(selected))
   if (selected) {
-    expect(control).toHaveClass("aria-checked:bg-primary")
-    expect(control).toHaveClass("aria-checked:text-primary-foreground")
+    expect(control).toHaveClass("aria-checked:border-primary/60")
+    expect(control).toHaveClass("aria-checked:bg-primary/10")
+    expect(control).toHaveClass("aria-checked:text-foreground")
+    expect(control).toHaveClass("aria-checked:ring-primary/30")
+    expect(control).not.toHaveClass("aria-checked:bg-primary")
+    expect(control).not.toHaveClass("aria-checked:text-primary-foreground")
   }
 }
 
@@ -1547,7 +1555,7 @@ describe("App", () => {
     await screen.findByText("default/default-voice.mp3")
     const isolationStrength = within(sampleProcessingPanel().getByRole("radiogroup", { name: "Isolation Strength" }))
     await user.click(isolationStrength.getByRole("radio", { name: "Clean" }))
-    expect(isolationStrength.getByRole("radio", { name: "Clean" })).toHaveAttribute("aria-checked", "true")
+    expectSubtleSelectorSelection(isolationStrength.getByRole("radio", { name: "Clean" }), true)
     expect(sampleProcessingPanel().getByText("Balanced isolation with conservative cleanup for background residue.")).toBeInTheDocument()
 
     const startButton = await sampleProcessingPanel().findByRole("button", { name: "Start Processing" })
@@ -1572,7 +1580,7 @@ describe("App", () => {
     const trimAggressiveness = within(await sampleProcessingPanel().findByRole("radiogroup", { name: "Trim Aggressiveness" }))
     expect(trimAggressiveness.getByRole("radio", { name: "Balanced" })).toHaveAttribute("aria-checked", "true")
     await user.click(trimAggressiveness.getByRole("radio", { name: "Aggressive" }))
-    expect(trimAggressiveness.getByRole("radio", { name: "Aggressive" })).toHaveAttribute("aria-checked", "true")
+    expectSubtleSelectorSelection(trimAggressiveness.getByRole("radio", { name: "Aggressive" }), true)
     expect(sampleProcessingPanel().getByText("Tighter trimming for shorter or louder empty regions.")).toBeInTheDocument()
 
     const startButton = await sampleProcessingPanel().findByRole("button", { name: "Start Processing" })

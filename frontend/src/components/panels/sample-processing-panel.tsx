@@ -252,7 +252,7 @@ export function SampleProcessingPanel({
                   >
                     {processing.processingPresets.map((preset) => (
                       <ToggleGroupItem
-                        className="h-9 min-w-0 rounded px-2 text-center text-xs font-medium text-muted-foreground aria-checked:bg-primary aria-checked:text-primary-foreground aria-checked:shadow-sm"
+                        className="h-9 min-w-0 rounded border border-transparent px-2 text-center text-xs font-medium text-muted-foreground aria-checked:border-primary/60 aria-checked:bg-primary/10 aria-checked:text-foreground aria-checked:shadow-sm aria-checked:ring-1 aria-checked:ring-primary/30"
                         key={preset.id}
                         value={preset.id}
                       >
