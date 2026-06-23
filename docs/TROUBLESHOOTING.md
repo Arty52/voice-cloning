@@ -36,7 +36,7 @@ Some ElevenLabs keys are scoped. Use the permission error to update the key in t
 
 ## Sample Processing Unavailable
 
-Sample Processing is disabled unless `.env` sets `SAMPLE_PROCESSING_ENGINE=ffmpeg` or `SAMPLE_PROCESSING_ENGINE=demucs` and the backend runtime can execute the configured commands. `ffmpeg` enables Trim Silence only. `demucs` enables Isolate Voice and Trim Silence. If `/api/sample-processing/options` shows disabled operations, confirm the engine setting and restart the backend.
+Sample Processing is disabled unless `.env` sets `SAMPLE_PROCESSING_ENGINE=ffmpeg`, `SAMPLE_PROCESSING_ENGINE=demucs`, or `SAMPLE_PROCESSING_ENABLE_DIARIZATION=1` and the backend runtime can execute the configured commands. `ffmpeg` enables Trim Silence only. `demucs` enables Isolate Voice and Trim Silence. `SAMPLE_PROCESSING_ENABLE_DIARIZATION=1` enables Speaker Separation. If `/api/sample-processing/options` shows disabled operations, confirm the engine and diarization settings, rebuild when install flags changed, and restart the backend.
 
 ## Demucs Or FFmpeg Command Was Not Found
 
@@ -49,21 +49,37 @@ SAMPLE_PROCESSING_FFMPEG_COMMAND=/path/to/ffmpeg
 
 The backend invokes external tools with argument arrays and no shell, so shell aliases and interactive-only PATH changes may not apply.
 
+## Speaker Diarization Dependencies Are Missing
+
+Speaker Separation requires the optional backend `diarization` extra. For Docker, set `INSTALL_DIARIZATION=1` and rebuild with `make recycle`. For host development, install the extra in the backend environment:
+
+```sh
+.venv/bin/python -m pip install -e "backend[diarization]"
+```
+
+FFmpeg must also be available because the backend normalizes source audio and writes per-speaker WAV streams through the configured `SAMPLE_PROCESSING_FFMPEG_COMMAND`.
+
+## Hugging Face Token Or Model Access Fails
+
+Speaker Separation uses `pyannote/speaker-diarization-community-1`. Accept the model conditions on Hugging Face, then set either `SAMPLE_PROCESSING_HF_TOKEN` or `HF_TOKEN` in `.env`. If the backend reports that the pyannote model could not be loaded, verify the token, model access acceptance, and local network/cache state.
+
+The Docker runtime stores pyannote and faster-whisper caches under ignored `storage/model-cache/`. The first run may need network access to download model files; later runs can use the local cache when the requested model files are already present. Set `PYANNOTE_METRICS_ENABLED=0` to keep pyannote telemetry disabled.
+
 ## Sample Processing Is Slow Or Times Out
 
-Trim Silence is usually much faster than Isolate Voice, but long files or slow disks can still hit the command timeout. The first Demucs run may download model weights and can take longer than later runs. Increase the timeout if the machine is slow or a GPU backend is warming up:
+Trim Silence is usually much faster than Isolate Voice or Speaker Separation, but long files or slow disks can still hit the command timeout. The first Demucs, pyannote, or faster-whisper run may download model weights and can take longer than later runs. Increase the timeout if the machine is slow or a model backend is warming up:
 
 ```sh
 SAMPLE_PROCESSING_TIMEOUT_SECONDS=1800
 ```
 
-You can also choose a supported device with `SAMPLE_PROCESSING_DEMUCS_DEVICE`, such as `cpu`, `cuda`, or `mps`, depending on the local Demucs installation.
+You can also choose a supported Demucs device with `SAMPLE_PROCESSING_DEMUCS_DEVICE`, such as `cpu`, `cuda`, or `mps`, depending on the local Demucs installation. Speaker Separation defaults to `SAMPLE_PROCESSING_WHISPER_DEVICE=cpu` and `SAMPLE_PROCESSING_WHISPER_COMPUTE_TYPE=int8`, which are conservative Mac defaults. Change them only when the local faster-whisper install supports the target device and compute type.
 
 Max Isolation uses the finetuned `htdemucs_ft` model. The first run may download additional model weights. If the model is unavailable in the local Demucs install or cache, the job reports the Demucs model error instead of falling back to a weaker preset.
 
 ## Sample Processing Output Is Missing Or Too Large
 
-If Demucs finishes but no `vocals.wav` stem exists, the job fails with a sanitized error and leaves the job directory under ignored `storage/sample-processing/` for inspection. If FFmpeg does not produce the normalized Isolate Voice or Trim Silence result, the job reports an FFmpeg failure. If FFmpeg writes a result larger than the active sample cap, the backend deletes that result and reports the size limit. Shorten the source, choose a smaller retained source window, or raise the local upload cap only for trusted local work.
+If Demucs finishes but no `vocals.wav` stem exists, the job fails with a sanitized error and leaves the job directory under ignored `storage/sample-processing/` for inspection. If FFmpeg does not produce the normalized Isolate Voice, Trim Silence, or Speaker Separation result, the job reports an FFmpeg failure. If pyannote detects no speakers, Speaker Separation reports that no speakers were detected. If FFmpeg writes a result or speaker stream larger than the active sample cap, the backend deletes that result and reports the size limit. Shorten the source, choose a smaller retained source window, or raise the local upload cap only for trusted local work.
 
 ## Reset Local Runtime Data
 
@@ -73,7 +89,7 @@ Remove backend cache data:
 make clean-cache
 ```
 
-Sample-processing jobs and intermediate stems live under ignored `storage/sample-processing/`. Docker-routed Demucs model caches live under ignored `storage/model-cache/`. Remove either directory when you want to clear local processing artifacts or force model downloads again.
+Sample-processing jobs, diarization transcripts, generated speaker streams, and intermediate stems live under ignored `storage/sample-processing/`. Docker-routed Demucs, pyannote, and faster-whisper model caches live under ignored `storage/model-cache/`. Remove either directory when you want to clear local processing artifacts or force model downloads again.
 
 Generated audio saved in the browser can be removed from `Generated Audio` with Remove or Clear All. The section also lets you choose a browser storage cap of 25 MB, 50 MB, 100 MB, or 250 MB. Lowering the cap prompts before pruning older saved audio. Saved generated audio metadata includes model, provider request metadata when returned, tuning snapshot metadata when available, and browser-measured generation elapsed time for new generations.
 

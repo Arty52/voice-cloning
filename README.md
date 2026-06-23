@@ -98,7 +98,19 @@ SAMPLE_PROCESSING_DEMUCS_MODEL=htdemucs
 SAMPLE_PROCESSING_FFMPEG_COMMAND=ffmpeg
 ```
 
-The Docker build uses CPU-only PyTorch, Torchaudio, and TorchCodec wheels when `INSTALL_SAMPLE_PROCESSING=1`, then installs the optional backend `sample-processing` extra and FFmpeg. Rebuild with `make recycle` after changing that flag. The backend calls those tools as external commands, normalizes successful results to mono 32 kHz WAV, and stores job output under ignored `storage/sample-processing/`. Demucs model files and caches are runtime data under ignored `storage/model-cache/`. Isolate Voice includes Fast, Balanced, Clean, and Max Isolation strength presets; Balanced preserves the default behavior. Trim Silence includes Light, Balanced, and Aggressive trim presets; Balanced is the default.
+To enable Speaker Separation, install the diarization extra and FFmpeg, accept the Hugging Face model conditions for `pyannote/speaker-diarization-community-1`, and provide a Hugging Face token:
+
+```sh
+INSTALL_DIARIZATION=1
+SAMPLE_PROCESSING_ENABLE_DIARIZATION=1
+SAMPLE_PROCESSING_HF_TOKEN=hf_...
+SAMPLE_PROCESSING_WHISPER_MODEL=medium
+SAMPLE_PROCESSING_WHISPER_DEVICE=cpu
+SAMPLE_PROCESSING_WHISPER_COMPUTE_TYPE=int8
+PYANNOTE_METRICS_ENABLED=0
+```
+
+The Docker build uses CPU-only PyTorch, Torchaudio, and TorchCodec wheels when `INSTALL_SAMPLE_PROCESSING=1` or `INSTALL_DIARIZATION=1`, then installs the requested optional backend extras and FFmpeg. Rebuild with `make recycle` after changing either flag. The backend calls FFmpeg as an external command, normalizes successful results to mono 32 kHz WAV, and stores job output under ignored `storage/sample-processing/`. Demucs, pyannote, and faster-whisper model files and caches are runtime data under ignored `storage/model-cache/`. Isolate Voice includes Fast, Balanced, Clean, and Max Isolation strength presets; Balanced preserves the default behavior. Trim Silence includes Light, Balanced, and Aggressive trim presets; Balanced is the default. Speaker Separation is V1 diarized speaker-turn extraction, not neural unmixing of simultaneous speakers.
 
 ## Documentation
 
