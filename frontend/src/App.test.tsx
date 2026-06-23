@@ -1375,6 +1375,7 @@ describe("App", () => {
     expect(helloText.getAttribute("style")).toContain("--speaker-color")
     const speakerOneCard = sampleProcessingPanel().getByLabelText("Speaker 1").closest("article") as HTMLElement
     await user.hover(speakerOneCard)
+    expect(helloText.parentElement).toHaveClass("py-1")
     expect(helloText).toHaveClass("lg:-translate-y-0.5")
     expect(helloText).toHaveClass("lg:border-[var(--speaker-color)]")
     expect(hiText).not.toHaveClass("lg:-translate-y-0.5")
@@ -1383,6 +1384,7 @@ describe("App", () => {
 
     await user.click(helloText)
     const playPopover = screen.getByText("Assign Text To Speaker").closest("[data-slot='popover-content']") as HTMLElement
+    expect(playPopover).toHaveClass("border-border/70")
     await user.click(within(playPopover).getByRole("button", { name: "Play" }))
     const sourceAudio = document.querySelector('audio[src="/api/sample-processing/jobs/job-1/source"]') as HTMLAudioElement
     expect(sourceAudio.currentTime).toBe(0)

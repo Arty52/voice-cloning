@@ -485,7 +485,7 @@ export function SampleProcessingPanel({
                     ) : null}
                   </div>
                   <ScrollArea className="min-h-72 flex-1 rounded-md border border-border bg-background/70 p-3 lg:min-h-0">
-                    <div className="flex flex-wrap gap-2" onPointerLeave={() => setDragStartItemId(null)}>
+                    <div className="flex flex-wrap gap-2 py-1" onPointerLeave={() => setDragStartItemId(null)}>
                       {speakerResult.transcript.items.map((item) => {
                         const speakerIndex = speakerIndexForItem(speakerResult, item)
                         const speaker = speakerResult.speakers[speakerIndex]
