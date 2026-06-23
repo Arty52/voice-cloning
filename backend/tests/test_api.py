@@ -1513,6 +1513,29 @@ def test_diarization_processor_reports_missing_dependencies(
     assert job["error"] == "Speaker diarization dependencies are not installed. Install backend[diarization]."
 
 
+def test_diarization_dependency_loader_reports_missing_symbols(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakePyannoteModule:
+        pass
+
+    class FakeWhisperModule:
+        WhisperModel = object
+
+    def import_module(name: str):
+        if name == "pyannote.audio":
+            return FakePyannoteModule()
+        if name == "faster_whisper":
+            return FakeWhisperModule()
+        raise AssertionError(f"Unexpected import: {name}")
+
+    monkeypatch.setattr(sample_processors_module.importlib, "import_module", import_module)
+
+    with pytest.raises(SampleProcessingServiceError) as exc_info:
+        sample_processors_module._load_diarization_dependencies()
+
+    assert exc_info.value.detail == "Speaker diarization dependencies are not installed. Install backend[diarization]."
+    assert exc_info.value.status_code == 503
+
+
 def test_diarization_processor_disables_pyannote_metrics_before_dependency_import(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1548,6 +1571,13 @@ def test_diarization_processor_disables_pyannote_metrics_before_dependency_impor
 
     assert create.status_code == 202
     assert job["status"] == "success"
+
+
+def test_ffconcat_path_escapes_single_quotes_inside_quoted_path(tmp_path: Path) -> None:
+    escaped = sample_processors_module._escape_ffconcat_path(tmp_path / "speaker's segment.wav")
+
+    assert "speaker\\'s segment.wav" in escaped
+    assert "'\\''" not in escaped
 
 
 def test_diarization_processor_times_out_model_steps(

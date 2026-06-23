@@ -579,9 +579,19 @@ def _load_diarization_dependencies() -> _DiarizationDependencies:
             503,
         ) from exc
     return _DiarizationDependencies(
-        pipeline_class=getattr(pyannote_audio, "Pipeline"),
-        whisper_model_class=getattr(faster_whisper, "WhisperModel"),
+        pipeline_class=_required_diarization_symbol(pyannote_audio, "Pipeline"),
+        whisper_model_class=_required_diarization_symbol(faster_whisper, "WhisperModel"),
     )
+
+
+def _required_diarization_symbol(module: Any, name: str) -> Any:
+    try:
+        return getattr(module, name)
+    except AttributeError as exc:
+        raise SampleProcessingServiceError(
+            "Speaker diarization dependencies are not installed. Install backend[diarization].",
+            503,
+        ) from exc
 
 
 def _diarization_turns(diarization: Any) -> tuple[_DiarizationTurn, ...]:
@@ -792,7 +802,7 @@ def _seconds_arg(value: float) -> str:
 
 
 def _escape_ffconcat_path(path: Path) -> str:
-    return str(path).replace("\\", "\\\\").replace("'", "'\\''")
+    return str(path).replace("\\", "\\\\").replace("'", "\\'")
 
 
 def _optional_float(value: object) -> float | None:
