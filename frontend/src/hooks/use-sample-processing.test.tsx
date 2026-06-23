@@ -3,7 +3,12 @@ import type { FormEvent } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { DEFAULT_VOICE_PRESET_ID } from "@/lib/voice-presets"
-import type { SampleProcessingJobResponse, SampleProcessingOptionsResponse, VoiceAsset } from "@/types"
+import type {
+  SampleProcessingJobResponse,
+  SampleProcessingOptionsResponse,
+  SpeakerSeparationResult,
+  VoiceAsset,
+} from "@/types"
 
 import { useSampleProcessing } from "./use-sample-processing"
 
@@ -53,6 +58,54 @@ const sampleProcessingOptions: SampleProcessingOptionsResponse = {
   ],
 }
 
+const speakerSeparationResult: SpeakerSeparationResult = {
+  kind: "speakerSeparation",
+  speakers: [
+    {
+      id: "speaker-1",
+      label: "Speaker 1",
+      assignedName: "Morgan",
+      transcriptItemIds: ["item-1"],
+      result: {
+        path: "job-1/speaker-1.wav",
+        filename: "speaker-1.wav",
+        contentType: "audio/wav",
+        sha256: "speaker-1-hash",
+      },
+    },
+    {
+      id: "speaker-2",
+      label: "Speaker 2",
+      assignedName: null,
+      transcriptItemIds: ["item-2"],
+      result: {
+        path: "job-1/speaker-2.wav",
+        filename: "speaker-2.wav",
+        contentType: "audio/wav",
+        sha256: "speaker-2-hash",
+      },
+    },
+  ],
+  transcript: {
+    items: [
+      {
+        id: "item-1",
+        text: "Hello.",
+        startSeconds: 0,
+        endSeconds: 1,
+        speakerId: "speaker-1",
+      },
+      {
+        id: "item-2",
+        text: "Hi.",
+        startSeconds: 1.2,
+        endSeconds: 2,
+        speakerId: "speaker-2",
+      },
+    ],
+  },
+}
+
 const speakerJob: SampleProcessingJobResponse = {
   job: {
     id: "job-1",
@@ -70,53 +123,7 @@ const speakerJob: SampleProcessingJobResponse = {
     createdAt: "2026-06-23T00:00:00+00:00",
     updatedAt: "2026-06-23T00:00:01+00:00",
     error: null,
-    result: {
-      kind: "speakerSeparation",
-      speakers: [
-        {
-          id: "speaker-1",
-          label: "Speaker 1",
-          assignedName: "Morgan",
-          transcriptItemIds: ["item-1"],
-          result: {
-            path: "job-1/speaker-1.wav",
-            filename: "speaker-1.wav",
-            contentType: "audio/wav",
-            sha256: "speaker-1-hash",
-          },
-        },
-        {
-          id: "speaker-2",
-          label: "Speaker 2",
-          assignedName: null,
-          transcriptItemIds: ["item-2"],
-          result: {
-            path: "job-1/speaker-2.wav",
-            filename: "speaker-2.wav",
-            contentType: "audio/wav",
-            sha256: "speaker-2-hash",
-          },
-        },
-      ],
-      transcript: {
-        items: [
-          {
-            id: "item-1",
-            text: "Hello.",
-            startSeconds: 0,
-            endSeconds: 1,
-            speakerId: "speaker-1",
-          },
-          {
-            id: "item-2",
-            text: "Hi.",
-            startSeconds: 1.2,
-            endSeconds: 2,
-            speakerId: "speaker-2",
-          },
-        ],
-      },
-    },
+    result: speakerSeparationResult,
   },
 }
 
@@ -124,22 +131,22 @@ const reassignedSpeakerJob: SampleProcessingJobResponse = {
   job: {
     ...speakerJob.job,
     result: {
-      ...speakerJob.job.result,
+      ...speakerSeparationResult,
       speakers: [
         {
-          ...speakerJob.job.result.speakers[0],
+          ...speakerSeparationResult.speakers[0],
           transcriptItemIds: ["item-1", "item-2"],
         },
         {
-          ...speakerJob.job.result.speakers[1],
+          ...speakerSeparationResult.speakers[1],
           transcriptItemIds: [],
         },
       ],
       transcript: {
         items: [
-          speakerJob.job.result.transcript.items[0],
+          speakerSeparationResult.transcript.items[0],
           {
-            ...speakerJob.job.result.transcript.items[1],
+            ...speakerSeparationResult.transcript.items[1],
             speakerId: "speaker-1",
           },
         ],
@@ -149,12 +156,14 @@ const reassignedSpeakerJob: SampleProcessingJobResponse = {
 }
 
 function okJson(payload: unknown, status = 200) {
-  return Promise.resolve(
-    new Response(JSON.stringify(payload), {
-      status,
-      headers: { "Content-Type": "application/json" },
-    })
-  )
+  return Promise.resolve(jsonResponse(payload, status))
+}
+
+function jsonResponse(payload: unknown, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  })
 }
 
 function formEvent() {
@@ -227,6 +236,59 @@ describe("useSampleProcessing speaker separation state", () => {
     expect(result.current.assignmentStatus).toBe("success")
     expect(result.current.selectedTranscriptItemIds).toEqual(["item-2"])
     expect(result.current.speakerSeparationResult?.transcript.items[1].speakerId).toBe("speaker-1")
+  })
+
+  it("ignores stale speaker assignment responses after reset", async () => {
+    let resolvePatch: (response: Response) => void = () => undefined
+    const patchResponse = new Promise<Response>((resolve) => {
+      resolvePatch = resolve
+    })
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path === "/api/sample-processing/options" && !init) {
+          return okJson(sampleProcessingOptions)
+        }
+        if (path === "/api/sample-processing/jobs" && init?.method === "POST") {
+          return okJson(speakerJob, 202)
+        }
+        if (path === "/api/sample-processing/jobs/job-1/speaker-assignments" && init?.method === "PATCH") {
+          return patchResponse
+        }
+        return okJson({})
+      })
+    )
+    const onVoiceSaved = vi.fn()
+    const { result } = renderHook(() =>
+      useSampleProcessing({ onVoiceSaved, selectedVoice: sourceVoice, voices: [sourceVoice] })
+    )
+
+    await waitFor(() => expect(result.current.optionsStatus).toBe("success"))
+    await act(async () => {
+      result.current.setOperationId("separateSpeakers")
+    })
+    await act(async () => {
+      await result.current.handleStartProcessing(formEvent())
+    })
+
+    let assignmentPromise: Promise<void> = Promise.resolve()
+    act(() => {
+      assignmentPromise = result.current.assignTranscriptItemsToSpeaker(["item-2"], "speaker-1")
+    })
+    await waitFor(() => expect(result.current.assignmentStatus).toBe("loading"))
+
+    act(() => {
+      result.current.setOperationId("isolateVoice")
+    })
+    await act(async () => {
+      resolvePatch(jsonResponse(reassignedSpeakerJob))
+      await assignmentPromise
+    })
+
+    expect(result.current.speakerSeparationResult).toBeNull()
+    expect(result.current.assignmentStatus).toBe("idle")
+    expect(result.current.selectedTranscriptItemIds).toEqual([])
   })
 
   it("saves selected speakers and clears stale speaker state on a new run", async () => {
