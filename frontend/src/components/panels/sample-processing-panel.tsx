@@ -58,6 +58,7 @@ export function SampleProcessingPanel({
   const sourceAudioRef = useRef<HTMLAudioElement | null>(null)
   const playbackEndRef = useRef<number | null>(null)
   const [dragStartItemId, setDragStartItemId] = useState<string | null>(null)
+  const [hoveredSpeakerId, setHoveredSpeakerId] = useState<string | null>(null)
   const operationOptions = processing.operations.map((operation) => ({
     label: operation.enabled
       ? operationDisplayLabel(operation.id, operation.label)
@@ -433,6 +434,8 @@ export function SampleProcessingPanel({
                       <article
                         className="flex flex-col gap-3 rounded-md border border-border bg-card/70 p-3"
                         key={speaker.id}
+                        onMouseEnter={() => setHoveredSpeakerId(speaker.id)}
+                        onMouseLeave={() => setHoveredSpeakerId((current) => (current === speaker.id ? null : current))}
                         style={speakerStyle(index)}
                       >
                         <div className="flex items-start justify-between gap-3">
@@ -487,12 +490,14 @@ export function SampleProcessingPanel({
                         const speakerIndex = speakerIndexForItem(speakerResult, item)
                         const speaker = speakerResult.speakers[speakerIndex]
                         const isSelected = processing.selectedTranscriptItemIds.includes(item.id)
+                        const isHoveredSpeaker = hoveredSpeakerId === item.speakerId
                         return (
                           <Popover key={item.id}>
                             <PopoverTrigger asChild>
                               <button
                                 className={cn(
                                   "rounded-md border border-transparent bg-transparent px-2 py-1 text-left text-sm leading-6 text-[var(--speaker-color)] outline-none transition hover:border-border hover:bg-muted/60 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/40",
+                                  isHoveredSpeaker && "lg:-translate-y-0.5 lg:border-[var(--speaker-color)] lg:bg-muted/70 lg:shadow-sm",
                                   isSelected && "border-primary/50 bg-primary/10"
                                 )}
                                 onPointerDown={() => {

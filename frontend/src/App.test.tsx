@@ -1373,6 +1373,13 @@ describe("App", () => {
     const helloText = await sampleProcessingPanel().findByRole("button", { name: "Hello." })
     const hiText = sampleProcessingPanel().getByRole("button", { name: "Hi." })
     expect(helloText.getAttribute("style")).toContain("--speaker-color")
+    const speakerOneCard = sampleProcessingPanel().getByLabelText("Speaker 1").closest("article") as HTMLElement
+    await user.hover(speakerOneCard)
+    expect(helloText).toHaveClass("lg:-translate-y-0.5")
+    expect(helloText).toHaveClass("lg:border-[var(--speaker-color)]")
+    expect(hiText).not.toHaveClass("lg:-translate-y-0.5")
+    await user.unhover(speakerOneCard)
+    expect(helloText).not.toHaveClass("lg:-translate-y-0.5")
 
     await user.click(helloText)
     const playPopover = screen.getByText("Assign Text To Speaker").closest("[data-slot='popover-content']") as HTMLElement
