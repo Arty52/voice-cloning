@@ -1,6 +1,7 @@
 import { Mic, RotateCcw, Save, Square, Upload } from "lucide-react"
-import type { ChangeEvent, FormEvent } from "react"
+import type { FormEvent } from "react"
 
+import { AudioFileDropZone } from "@/components/audio-file-drop-zone"
 import { AudioWindowCropper } from "@/components/audio-window-cropper"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -26,7 +27,7 @@ type AddVoicePanelProps = {
   handleStartRecording: () => void
   handleStopRecording: () => void
   handleUpload: (event: FormEvent<HTMLFormElement>) => void
-  handleUploadFileChange: (event: ChangeEvent<HTMLInputElement>) => void
+  handleUploadFileSelect: (file: File | null) => void
   handleVoiceSampleInputModeChange: (mode: VoiceSampleInputMode) => void
   isRecorderBusy: boolean
   isRecording: boolean
@@ -58,7 +59,7 @@ export function AddVoicePanel({
   handleStartRecording,
   handleStopRecording,
   handleUpload,
-  handleUploadFileChange,
+  handleUploadFileSelect,
   handleVoiceSampleInputModeChange,
   isRecorderBusy,
   isRecording,
@@ -151,16 +152,13 @@ export function AddVoicePanel({
 
         {voiceSampleInputMode === "upload" ? (
           <div className="flex flex-col gap-3">
-            <label className="block space-y-2 text-sm font-medium" htmlFor="sample-upload">
-              <span>Sample File</span>
-              <Input
-                accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac"
-                disabled={isUploading || isPreparingSample}
-                id="sample-upload"
-                onChange={handleUploadFileChange}
-                type="file"
-              />
-            </label>
+            <AudioFileDropZone
+              disabled={isUploading || isPreparingSample}
+              id="sample-upload"
+              label="Sample File"
+              onFileSelect={handleUploadFileSelect}
+              selectedFileName={uploadFile?.name ?? null}
+            />
             {isPreparingSample ? (
               <div className="rounded-md border border-border bg-background/60 p-3">
                 <Loading text="Preparing Sample" variant="secondary" />

@@ -1729,6 +1729,30 @@ describe("App", () => {
     expect(sampleProcessingPanel().queryByLabelText("Sample Processing Elapsed Time")).not.toBeInTheDocument()
   })
 
+  it("creates a sample processing job from a dropped audio file", async () => {
+    const user = userEvent.setup()
+    const sourceFile = new File(["source"], "dropped-source.wav", { type: "audio/wav" })
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Audio File" }))
+    fireEvent.drop(sampleProcessingPanel().getByRole("group", { name: "Audio File" }), {
+      dataTransfer: { files: [sourceFile] },
+    })
+    const startButton = sampleProcessingPanel().getByRole("button", { name: "Start Processing" })
+    await waitFor(() => expect(startButton).toBeEnabled())
+
+    await user.click(startButton)
+
+    const jobCall = vi.mocked(fetch).mock.calls.find(
+      ([url, init]) => String(url) === "/api/sample-processing/jobs" && init?.method === "POST"
+    )
+    const jobBody = jobCall?.[1]?.body as FormData
+    expect(jobBody.get("operationId")).toBe("isolateVoice")
+    expect(jobBody.get("sourceFile")).toBe(sourceFile)
+    expect(jobBody.get("sourceVoiceId")).toBeNull()
+  })
+
   it("shows sample processing job errors", async () => {
     const baseFetch = mockFetch()
     vi.stubGlobal(
@@ -1953,6 +1977,31 @@ describe("App", () => {
     expect(body.get("sourceFile")).toBeNull()
     expect(await screen.findByRole("button", { name: /^Voice_Clone_01/i })).toBeInTheDocument()
     expect(voiceLibraryPanel().getAllByText("Animated Dialogue").length).toBeGreaterThan(0)
+  })
+
+  it("accepts a dropped audio file when adding a voice", async () => {
+    stubDecodedAudio(3)
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.type(screen.getByLabelText(/voice name/i), "Dropped_Voice")
+    const file = new File(["sample"], "dropped-voice.wav", { type: "audio/wav" })
+    fireEvent.drop(addVoicePanel().getByRole("group", { name: "Sample File" }), {
+      dataTransfer: { files: [file] },
+    })
+
+    await screen.findByRole("group", { name: /saved sample mode/i })
+    await user.click(screen.getByRole("button", { name: /save voice/i }))
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/voices", expect.objectContaining({ method: "POST" })))
+    const uploadCall = vi.mocked(fetch).mock.calls.find(
+      ([url, init]) => String(url) === "/api/voices" && init?.method === "POST"
+    )
+    const body = uploadCall?.[1]?.body as FormData
+    expect(body.get("name")).toBe("Dropped_Voice")
+    expect(body.get("sampleFile")).toBeInstanceOf(File)
+    expect(body.get("windowDurationSeconds")).toBe("3")
   })
 
   it("defaults long uploads to the provider maximum window", async () => {

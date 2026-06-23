@@ -1,6 +1,7 @@
 import { type CSSProperties, useEffect, useRef, useState } from "react"
 import { AudioLines, ChevronDown, FileAudio, Info, Play, Save, Upload, Wand2 } from "lucide-react"
 
+import { AudioFileDropZone } from "@/components/audio-file-drop-zone"
 import { AudioPlayer } from "@/components/audio-player"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -362,16 +363,13 @@ export function SampleProcessingPanel({
                   </Field>
                 </>
               ) : (
-                <Field>
-                  <FieldLabel htmlFor="sample-processing-file">Audio File</FieldLabel>
-                  <Input
-                    accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac"
-                    disabled={processing.isProcessing}
-                    id="sample-processing-file"
-                    onChange={processing.handleSourceFileChange}
-                    type="file"
-                  />
-                </Field>
+                <AudioFileDropZone
+                  disabled={processing.isProcessing}
+                  id="sample-processing-file"
+                  label="Audio File"
+                  onFileSelect={processing.handleSourceFileSelect}
+                  selectedFileName={processing.sourceFile?.name ?? null}
+                />
               )}
             </FieldGroup>
 
