@@ -4,6 +4,7 @@ import asyncio
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
+import re
 import shutil
 from typing import Any, Mapping
 from uuid import uuid4
@@ -24,6 +25,7 @@ from .speech_audio import (
 
 
 SEGMENTS_DIR_NAME = "segments"
+SEGMENT_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 class SpeechJobServiceError(Exception):
@@ -294,6 +296,7 @@ class SpeechJobService:
     async def _rebuild_result(self, job_id: str) -> None:
         job = self.get_job(job_id)
         segment_paths = tuple(self._segment_path(job_id, segment.id) for segment in job.segments)
+        self._update_job(job_id, active_segment_id=None)
         await self.audio_processor.concatenate(
             segment_paths,
             self._job_dir(job_id) / SPEECH_RESULT_FILENAME,
@@ -433,7 +436,7 @@ def _copy_voice_settings(voice_settings: Mapping[str, Any] | None) -> dict[str, 
 
 def _segment_id(candidate: str | None, existing_ids: set[str]) -> str:
     normalized = (candidate or "").strip()
-    if normalized and normalized not in existing_ids:
+    if normalized and normalized not in existing_ids and SEGMENT_ID_PATTERN.fullmatch(normalized):
         return normalized
     while True:
         generated = uuid4().hex

@@ -1103,6 +1103,45 @@ def test_speech_job_rejects_negative_segment_gap(tmp_path: Path) -> None:
     assert fake_provider.speech_requests == []
 
 
+def test_speech_job_maps_unsafe_client_segment_ids_to_safe_filenames(tmp_path: Path) -> None:
+    settings = replace(
+        make_settings(tmp_path),
+        sample_processing_ffmpeg_command=str(ffmpeg_fake_command(tmp_path / "ffmpeg-fake")),
+    )
+    fake_provider = FakeElevenLabsProvider().bind_settings(settings)
+    app = create_app(
+        settings=settings,
+        provider_registry=ProviderRegistry([fake_provider]),
+        voice_cache=VoiceCache(settings.storage_dir / "voice-cache.json"),
+        voice_library=VoiceLibrary(settings),
+    )
+    escaped_path = tmp_path / "escaped"
+    with TestClient(app) as client:
+        create = client.post(
+            "/api/speech/jobs",
+            json={
+                "text": "Hello there.",
+                "defaultVoiceId": "default",
+                "segments": [
+                    {"clientSegmentId": "../escaped", "text": "Hello ", "voiceId": "default"},
+                    {"clientSegmentId": escaped_path.as_posix(), "text": "there.", "voiceId": "default"},
+                ],
+            },
+        )
+        job = wait_for_speech_job(client, create.json()["job"]["id"])
+
+    assert create.status_code == 202
+    assert [segment["text"] for segment in job["segments"]] == ["Hello ", "there."]
+    assert all("/" not in segment["id"] and "." not in segment["id"] for segment in job["segments"])
+    assert not (tmp_path / "escaped.mp3").exists()
+    assert not escaped_path.with_suffix(".mp3").exists()
+    segment_dir = settings.speech_jobs_dir / job["id"] / "segments"
+    assert {path.name for path in segment_dir.glob("*.mp3")} == {
+        f"{job['segments'][0]['id']}.mp3",
+        f"{job['segments'][1]['id']}.mp3",
+    }
+
+
 def test_speech_job_rejects_non_object_segment_voice_settings(tmp_path: Path) -> None:
     settings = replace(
         make_settings(tmp_path),
@@ -1305,6 +1344,9 @@ def test_speech_job_reports_ffmpeg_errors(
         assert create.status_code == 202
         assert job["status"] == "error"
         assert job["error"] == expected_error
+        assert job["activeSegmentId"] is None
+        assert job["segments"][0]["status"] == "success"
+        assert client.get(f"/api/speech/jobs/{job['id']}/segments/{job['segments'][0]['id']}/result").status_code == 200
         assert client.get(f"/api/speech/jobs/{job['id']}/result").status_code == 409
 
 
