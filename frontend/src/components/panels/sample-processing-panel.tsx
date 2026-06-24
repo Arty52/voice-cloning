@@ -40,8 +40,8 @@ import { Loading } from "@/components/ui/loading"
 import { MenuSelect } from "@/components/ui/menu-select"
 import { Popover, PopoverContent, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Separator } from "@/components/ui/separator"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { VoicePresetToggleGroup } from "@/components/voice-preset-toggle-group"
 import type { SampleProcessingController } from "@/hooks/use-sample-processing"
 import { formatElapsedTime } from "@/lib/formatters"
@@ -213,11 +213,13 @@ function WorkflowStackSelection({ processing }: { processing: SampleProcessingCo
           const presetId = selectedStep?.processingPresetId ?? operation.defaultProcessingPresetId ?? operation.processingPresets[0]?.id
           const selectedPreset = operation.processingPresets.find((preset) => preset.id === presetId) ?? null
           const Icon = operationIcon(operation.id)
+          const hasPresetControls = isSelected && operation.processingPresets.length > 0
 
           return (
             <div
               className={cn(
-                "rounded-md border border-border bg-background/60 p-2 transition",
+                "flex h-full flex-col rounded-md border border-border bg-background/60 transition",
+                hasPresetControls ? "p-2" : "p-0",
                 isSelected && "border-primary/60 bg-primary/10 shadow-sm"
               )}
               key={operation.id}
@@ -226,7 +228,10 @@ function WorkflowStackSelection({ processing }: { processing: SampleProcessingCo
                 aria-describedby={descriptionId}
                 aria-label={operationCopy.title}
                 aria-pressed={isSelected}
-                className="flex min-h-28 w-full flex-col items-start justify-between gap-3 rounded p-2 text-left outline-none transition hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                className={cn(
+                  "flex min-h-28 w-full flex-col items-start justify-between gap-3 rounded text-left outline-none transition hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+                  hasPresetControls ? "p-2" : "flex-1 p-4"
+                )}
                 disabled={isDisabled || !operation.enabled}
                 onClick={() => processing.setWorkflowStepSelected(operation.id, !isSelected)}
                 type="button"
@@ -248,37 +253,29 @@ function WorkflowStackSelection({ processing }: { processing: SampleProcessingCo
                   {operationCopy.description}
                 </span>
               </button>
-              {isSelected && operation.processingPresets.length > 0 ? (
-                <div className="mt-2 border-t border-border/70 pt-2">
+              {hasPresetControls ? (
+                <Field className="mt-2" data-disabled={processing.isProcessing ? true : undefined}>
+                  <Separator className="bg-border/70" />
                   <FieldLabel className="text-xs" id={`sample-processing-preset-${operation.id}-label`}>
                     {presetControlLabel(operation.id)}
                   </FieldLabel>
-                  <ToggleGroup
-                    aria-labelledby={`sample-processing-preset-${operation.id}-label`}
-                    className="mt-2 grid w-full grid-cols-2 rounded-md border border-border bg-background/70 p-1"
+                  <MenuSelect
+                    ariaLabel={presetControlLabel(operation.id)}
+                    buttonClassName="w-full"
+                    className="w-full"
                     disabled={processing.isProcessing}
-                    onValueChange={(value) => {
+                    onChange={(value) => {
                       if (isSampleProcessingPresetId(value)) {
                         processing.setProcessingPresetIdForOperation(operation.id, value)
                       }
                     }}
-                    type="single"
-                    value={presetId}
-                  >
-                    {operation.processingPresets.map((preset) => (
-                      <ToggleGroupItem
-                        className="h-9 min-w-0 rounded border border-transparent px-2 text-center text-xs font-medium text-muted-foreground aria-checked:border-primary/60 aria-checked:bg-primary/10 aria-checked:text-foreground aria-checked:shadow-sm aria-checked:ring-1 aria-checked:ring-primary/30"
-                        key={preset.id}
-                        value={preset.id}
-                      >
-                        <span className="min-w-0 truncate">{preset.label}</span>
-                      </ToggleGroupItem>
-                    ))}
-                  </ToggleGroup>
+                    options={operation.processingPresets.map((preset) => ({ label: preset.label, value: preset.id }))}
+                    value={presetId ?? ""}
+                  />
                   {selectedPreset ? (
-                    <FieldDescription className="mt-2">{selectedPreset.description}</FieldDescription>
+                    <FieldDescription>{selectedPreset.description}</FieldDescription>
                   ) : null}
-                </div>
+                </Field>
               ) : null}
             </div>
           )

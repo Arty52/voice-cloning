@@ -615,6 +615,21 @@ function sampleProcessingPanel() {
   return scopedPanelByHeading("Sample Processing")
 }
 
+function sampleProcessingPresetSelect(label: string) {
+  return sampleProcessingPanel().getByRole("button", {
+    name: (accessibleName) => accessibleName.startsWith(`${label}:`),
+  })
+}
+
+async function chooseSampleProcessingPreset(
+  user: ReturnType<typeof userEvent.setup>,
+  label: string,
+  optionName: string
+) {
+  await user.click(sampleProcessingPresetSelect(label))
+  await user.click(screen.getByRole("menuitemradio", { name: optionName }))
+}
+
 function expectVoicePresetSelection(control: HTMLElement, selected: boolean) {
   expectSubtleSelectorSelection(control, selected)
 }
@@ -1366,8 +1381,10 @@ describe("App", () => {
       "true"
     )
     expect(sampleProcessingPanel().getByText("Pull the spoken voice forward and reduce background audio.")).toBeInTheDocument()
-    expect(sampleProcessingPanel().getByRole("button", { name: /Tighten Pauses/i })).toBeInTheDocument()
-    expect(await sampleProcessingPanel().findByRole("button", { name: /Split Speakers/i })).toBeDisabled()
+    expect(sampleProcessingPanel().getByRole("button", { name: /Tighten Pauses/i })).toHaveClass("flex-1")
+    const splitSpeakersButton = await sampleProcessingPanel().findByRole("button", { name: /Split Speakers/i })
+    expect(splitSpeakersButton).toHaveClass("flex-1")
+    expect(splitSpeakersButton).toBeDisabled()
     expect(sampleProcessingPanel().getAllByText("Unavailable").length).toBeGreaterThan(0)
   })
 
@@ -1403,8 +1420,7 @@ describe("App", () => {
       "aria-pressed",
       "true"
     )
-    const trimAggressiveness = within(sampleProcessingPanel().getByRole("radiogroup", { name: "Trim Aggressiveness" }))
-    expect(trimAggressiveness.getByRole("radio", { name: "Balanced" })).toHaveAttribute("aria-checked", "true")
+    expect(sampleProcessingPresetSelect("Trim Aggressiveness")).toHaveAccessibleName("Trim Aggressiveness: Balanced")
     const startButton = sampleProcessingPanel().getByRole("button", { name: "Start Processing" })
     await waitFor(() => expect(startButton).toBeEnabled())
 
@@ -1469,8 +1485,7 @@ describe("App", () => {
     await screen.findByText("default/default-voice.mp3")
     const startButton = await sampleProcessingPanel().findByRole("button", { name: "Start Processing" })
     await waitFor(() => expect(startButton).toBeEnabled())
-    const isolationStrength = within(sampleProcessingPanel().getByRole("radiogroup", { name: "Isolation Strength" }))
-    expect(isolationStrength.getByRole("radio", { name: "Balanced" })).toHaveAttribute("aria-checked", "true")
+    expect(sampleProcessingPresetSelect("Isolation Strength")).toHaveAccessibleName("Isolation Strength: Balanced")
 
     await user.click(startButton)
 
@@ -1796,9 +1811,8 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    const isolationStrength = within(sampleProcessingPanel().getByRole("radiogroup", { name: "Isolation Strength" }))
-    await user.click(isolationStrength.getByRole("radio", { name: "Clean" }))
-    expectSubtleSelectorSelection(isolationStrength.getByRole("radio", { name: "Clean" }), true)
+    await chooseSampleProcessingPreset(user, "Isolation Strength", "Clean")
+    expect(sampleProcessingPresetSelect("Isolation Strength")).toHaveAccessibleName("Isolation Strength: Clean")
     expect(sampleProcessingPanel().getByText("Balanced isolation with conservative cleanup for background residue.")).toBeInTheDocument()
 
     const startButton = await sampleProcessingPanel().findByRole("button", { name: "Start Processing" })
@@ -1817,13 +1831,12 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    expect(sampleProcessingPanel().getByRole("radiogroup", { name: "Isolation Strength" })).toBeInTheDocument()
+    expect(sampleProcessingPresetSelect("Isolation Strength")).toHaveAccessibleName("Isolation Strength: Balanced")
     await user.click(sampleProcessingPanel().getByRole("button", { name: /Tighten Pauses/i }))
 
-    const trimAggressiveness = within(await sampleProcessingPanel().findByRole("radiogroup", { name: "Trim Aggressiveness" }))
-    expect(trimAggressiveness.getByRole("radio", { name: "Balanced" })).toHaveAttribute("aria-checked", "true")
-    await user.click(trimAggressiveness.getByRole("radio", { name: "Aggressive" }))
-    expectSubtleSelectorSelection(trimAggressiveness.getByRole("radio", { name: "Aggressive" }), true)
+    expect(sampleProcessingPresetSelect("Trim Aggressiveness")).toHaveAccessibleName("Trim Aggressiveness: Balanced")
+    await chooseSampleProcessingPreset(user, "Trim Aggressiveness", "Aggressive")
+    expect(sampleProcessingPresetSelect("Trim Aggressiveness")).toHaveAccessibleName("Trim Aggressiveness: Aggressive")
     expect(sampleProcessingPanel().getByText("Tighter trimming for shorter or louder empty regions.")).toBeInTheDocument()
 
     const startButton = await sampleProcessingPanel().findByRole("button", { name: "Start Processing" })
@@ -1902,8 +1915,7 @@ describe("App", () => {
     expect(await sampleProcessingPanel().findByLabelText("Processed sample preview")).toBeInTheDocument()
     expect(sampleProcessingPanel().getByLabelText("Sample Processing Elapsed Time")).toHaveTextContent("Finished In")
 
-    const isolationStrength = within(sampleProcessingPanel().getByRole("radiogroup", { name: "Isolation Strength" }))
-    await user.click(isolationStrength.getByRole("radio", { name: "Max Isolation" }))
+    await chooseSampleProcessingPreset(user, "Isolation Strength", "Max Isolation")
 
     await waitFor(() => {
       expect(sampleProcessingPanel().queryByLabelText("Processed sample preview")).not.toBeInTheDocument()
@@ -1933,8 +1945,7 @@ describe("App", () => {
     expect(await sampleProcessingPanel().findByLabelText("Processed sample preview")).toBeInTheDocument()
     expect(sampleProcessingPanel().getByLabelText("Sample Processing Elapsed Time")).toHaveTextContent("Finished In")
 
-    const trimAggressiveness = within(sampleProcessingPanel().getByRole("radiogroup", { name: "Trim Aggressiveness" }))
-    await user.click(trimAggressiveness.getByRole("radio", { name: "Aggressive" }))
+    await chooseSampleProcessingPreset(user, "Trim Aggressiveness", "Aggressive")
 
     await waitFor(() => {
       expect(sampleProcessingPanel().queryByLabelText("Processed sample preview")).not.toBeInTheDocument()
