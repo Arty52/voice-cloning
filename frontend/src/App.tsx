@@ -60,6 +60,7 @@ function App() {
     voiceInput,
     voiceAssignmentError,
     voiceAssignments,
+    voiceAssignmentSpeechSegmentCount,
     voiceAssignmentsStale,
     updateVoiceAssignment,
     voiceLibrary,
@@ -150,6 +151,7 @@ function App() {
         <WorkflowSectionPanel activeSectionId={activeSectionId} id="generate">
           <SpeechInputPanel
             assignmentError={voiceAssignmentError}
+            assignmentSpeechSegmentCount={voiceAssignmentSpeechSegmentCount}
             assignments={voiceAssignments}
             assignmentsStale={voiceAssignmentsStale}
             canGenerate={canGenerate}

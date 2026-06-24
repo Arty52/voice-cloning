@@ -32,6 +32,7 @@ import type { VoiceAsset } from "@/types"
 
 type SpeechInputPanelProps = {
   assignmentError: string | null
+  assignmentSpeechSegmentCount: number | null
   assignments: VoiceTextAssignment[]
   assignmentsStale: boolean
   canGenerate: boolean
@@ -54,6 +55,7 @@ type SpeechInputPanelProps = {
 
 export function SpeechInputPanel({
   assignmentError,
+  assignmentSpeechSegmentCount,
   assignments,
   assignmentsStale,
   canGenerate,
@@ -136,6 +138,7 @@ export function SpeechInputPanel({
 
       {assignments.length > 0 ? (
         <VoiceAssignmentsList
+          assignmentSpeechSegmentCount={assignmentSpeechSegmentCount}
           assignments={assignments}
           isGenerating={isGenerating}
           onEditAssignmentVoice={onEditAssignmentVoice}
@@ -184,6 +187,7 @@ export function SpeechInputPanel({
 }
 
 type VoiceAssignmentsListProps = {
+  assignmentSpeechSegmentCount: number | null
   assignments: VoiceTextAssignment[]
   isGenerating: boolean
   onEditAssignmentVoice: (assignmentId: string, voice: VoiceAsset) => void
@@ -193,6 +197,7 @@ type VoiceAssignmentsListProps = {
 }
 
 function VoiceAssignmentsList({
+  assignmentSpeechSegmentCount,
   assignments,
   isGenerating,
   onEditAssignmentVoice,
@@ -203,9 +208,12 @@ function VoiceAssignmentsList({
   return (
     <section className="mt-4" aria-label="Voice Assignments">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <h3 className="text-sm font-medium">Voice Assignments</h3>
-          <Badge>{assignments.length} Segments</Badge>
+          <Badge>{formatCount(assignments.length, "Assignment")}</Badge>
+          {assignmentSpeechSegmentCount === null ? null : (
+            <Badge variant="secondary">{formatCount(assignmentSpeechSegmentCount, "Speech Segment")}</Badge>
+          )}
         </div>
         {stale ? <Badge className="border-destructive/40 bg-destructive/10 text-destructive">Stale</Badge> : null}
       </div>
@@ -359,4 +367,8 @@ function formatExcerpt(value: string, maxLength = 80) {
     return normalized
   }
   return `${normalized.slice(0, Math.max(0, maxLength - 1))}...`
+}
+
+function formatCount(count: number, singular: string) {
+  return `${count} ${singular}${count === 1 ? "" : "s"}`
 }

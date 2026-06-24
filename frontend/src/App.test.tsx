@@ -1053,18 +1053,24 @@ describe("App", () => {
 
     await screen.findByText("default/default-voice.mp3")
     const textarea = screen.getByLabelText(/text to speak/i) as HTMLTextAreaElement
-    fireEvent.change(textarea, { target: { value: "helloo world! how are you today?" } })
-    textarea.setSelectionRange(0, "helloo world!".length)
+    fireEvent.change(textarea, { target: { value: "say helloo world! now" } })
+    const assignmentStart = "say ".length
+    const assignmentEnd = assignmentStart + "helloo world!".length
+    textarea.setSelectionRange(assignmentStart, assignmentEnd)
     fireEvent.select(textarea)
 
     await user.click(screen.getByRole("button", { name: /^Assign Voice$/i }))
     await user.click(screen.getByRole("button", { name: "Voice_Clone_01" }))
     expect(screen.getByText("helloo world!")).toBeInTheDocument()
+    const assignmentsRegion = screen.getByRole("region", { name: /voice assignments/i })
+    expect(assignmentsRegion).toHaveTextContent("1 Assignment")
+    expect(assignmentsRegion).toHaveTextContent("3 Speech Segments")
 
-    fireEvent.change(textarea, { target: { value: "hello world! how are you today?" } })
+    fireEvent.change(textarea, { target: { value: "say hello world! now" } })
 
     expect(screen.queryByText(/could not be matched/i)).not.toBeInTheDocument()
     expect(screen.getByText("hello world!")).toBeInTheDocument()
+    expect(assignmentsRegion).toHaveTextContent("3 Speech Segments")
     await waitFor(() => expect(screen.getByRole("button", { name: /^Generate$/ })).toBeEnabled())
 
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
@@ -1073,17 +1079,22 @@ describe("App", () => {
     expect(createJobBody).toMatchObject({
       segments: [
         expect.objectContaining({
+          assignmentKind: "default",
+          text: "say ",
+          voiceId: "default",
+        }),
+        expect.objectContaining({
           assignmentKind: "assigned",
           text: "hello world!",
           voiceId: "voice-clone-01",
         }),
         expect.objectContaining({
           assignmentKind: "default",
-          text: " how are you today?",
+          text: " now",
           voiceId: "default",
         }),
       ],
-      text: "hello world! how are you today?",
+      text: "say hello world! now",
     })
   })
 

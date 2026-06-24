@@ -43,6 +43,7 @@ function voice(id: string, name: string): VoiceAsset {
 function renderPanel(overrides: Partial<Parameters<typeof SpeechInputPanel>[0]> = {}) {
   const props = {
     assignmentError: null,
+    assignmentSpeechSegmentCount: null,
     assignments: [],
     assignmentsStale: false,
     canGenerate: true,
@@ -105,6 +106,18 @@ describe("SpeechInputPanel voice assignments", () => {
     expect(props.onRemoveAssignment).toHaveBeenCalledWith("assignment-one")
   })
 
+  it("distinguishes assigned spans from generated speech segments", () => {
+    renderPanel({
+      assignmentSpeechSegmentCount: 3,
+      assignments: [assignment],
+    })
+
+    const assignmentsRegion = screen.getByRole("region", { name: /voice assignments/i })
+    expect(assignmentsRegion).toHaveTextContent("1 Assignment")
+    expect(assignmentsRegion).toHaveTextContent("3 Speech Segments")
+    expect(assignmentsRegion).not.toHaveTextContent("1 Segment")
+  })
+
   it("shows validation errors and clears all assignments", async () => {
     const user = userEvent.setup()
     const props = renderPanel({
@@ -113,6 +126,7 @@ describe("SpeechInputPanel voice assignments", () => {
     })
 
     expect(screen.getByRole("alert")).toHaveTextContent("Voice assignments cannot overlap.")
+    expect(screen.getByRole("region", { name: /voice assignments/i })).not.toHaveTextContent(/Speech Segments?/)
 
     await user.click(screen.getByRole("button", { name: /^Clear Assignments$/i }))
 

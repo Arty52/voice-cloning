@@ -108,6 +108,10 @@ export function useVoiceStudioController() {
     [text, voiceAssignments, voiceLibrary.selectedVoice]
   )
   const hasVoiceAssignments = voiceAssignments.length > 0
+  const voiceAssignmentSpeechSegmentCount =
+    hasVoiceAssignments && !assignmentSegments.stale && !assignmentSegments.error
+      ? assignmentSegments.segments.length
+      : null
   const isSpeechGenerating = speech.isGenerating || multiVoiceSpeech.isGenerating
   const activeSpeechStatus =
     latestGenerationMode === "multi" ? requestStatusFromMultiVoiceStatus(multiVoiceSpeech.status) : speech.status
@@ -403,6 +407,7 @@ export function useVoiceStudioController() {
     voiceAssignmentError: assignmentSegments.error,
     voiceAssignments,
     voiceAssignmentsStale: assignmentSegments.stale,
+    voiceAssignmentSpeechSegmentCount,
     voiceAssignmentSegments: assignmentSegments.segments,
     assignVoiceToSelection,
     clearVoiceAssignments,
