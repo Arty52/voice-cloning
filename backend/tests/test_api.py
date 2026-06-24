@@ -344,6 +344,107 @@ class FakeSpeakerSeparationProcessor:
         )
 
 
+class FakeStackSampleProcessor:
+    engine_name = "fake-stack"
+
+    def __init__(self, delay_seconds: float = 0) -> None:
+        self.delay_seconds = delay_seconds
+        self.requests: list[SampleProcessingRequest] = []
+
+    def operations(self) -> tuple[SampleProcessingOperation, ...]:
+        return (
+            SampleProcessingOperation(
+                id="isolateVoice",
+                label="Isolate Voice",
+                description="Separate the vocal stem from music or background audio.",
+                enabled=True,
+                processing_presets=ISOLATION_PROCESSING_PRESETS,
+                default_processing_preset_id=DEFAULT_ISOLATION_PROCESSING_PRESET_ID,
+            ),
+            SampleProcessingOperation(
+                id="trimSilence",
+                label="Trim Silence",
+                description="Remove leading, trailing, and long interior empty sections.",
+                enabled=True,
+                processing_presets=TRIM_SILENCE_PROCESSING_PRESETS,
+                default_processing_preset_id=DEFAULT_TRIM_SILENCE_PROCESSING_PRESET_ID,
+            ),
+            SampleProcessingOperation(
+                id="separateSpeakers",
+                label="Separate Speakers",
+                description="Split a source track into individual speaker samples.",
+                enabled=True,
+            ),
+        )
+
+    def engine_name_for_operation(self, operation_id: str) -> str:
+        return f"fake-{operation_id}"
+
+    async def process(self, request: SampleProcessingRequest) -> SampleProcessingResult | SpeakerSeparationResult | None:
+        self.requests.append(request)
+        if self.delay_seconds:
+            await asyncio.sleep(self.delay_seconds)
+        if request.operation_id == "isolateVoice":
+            request.output_path.write_bytes(b"isolated:" + request.source.content)
+            return None
+        if request.operation_id == "trimSilence":
+            request.output_path.write_bytes(b"trimmed:" + request.source.content)
+            return None
+        if request.operation_id == "separateSpeakers":
+            speaker_one_content = b"speaker-one:" + request.source.content
+            speaker_two_content = b"speaker-two:" + request.source.content
+            speaker_one_path = request.job_dir / "speaker-1.wav"
+            speaker_two_path = request.job_dir / "speaker-2.wav"
+            speaker_one_path.write_bytes(speaker_one_content)
+            speaker_two_path.write_bytes(speaker_two_content)
+            return SpeakerSeparationResult(
+                kind="speakerSeparation",
+                speakers=(
+                    SpeakerSeparationSpeaker(
+                        id="speaker-1",
+                        label="Speaker 1",
+                        transcript_item_ids=("item-1",),
+                        result=SampleProcessingResult(
+                            path=speaker_one_path.relative_to(request.job_dir.parent).as_posix(),
+                            filename=speaker_one_path.name,
+                            content_type="audio/wav",
+                            sha256=sample_hash(speaker_one_content),
+                        ),
+                    ),
+                    SpeakerSeparationSpeaker(
+                        id="speaker-2",
+                        label="Speaker 2",
+                        transcript_item_ids=("item-2",),
+                        result=SampleProcessingResult(
+                            path=speaker_two_path.relative_to(request.job_dir.parent).as_posix(),
+                            filename=speaker_two_path.name,
+                            content_type="audio/wav",
+                            sha256=sample_hash(speaker_two_content),
+                        ),
+                    ),
+                ),
+                transcript=SpeakerSeparationTranscript(
+                    items=(
+                        SpeakerTranscriptItem(
+                            id="item-1",
+                            text="Hello.",
+                            start_seconds=0.0,
+                            end_seconds=1.0,
+                            speaker_id="speaker-1",
+                        ),
+                        SpeakerTranscriptItem(
+                            id="item-2",
+                            text="Hi.",
+                            start_seconds=1.1,
+                            end_seconds=2.0,
+                            speaker_id="speaker-2",
+                        ),
+                    ),
+                ),
+            )
+        raise AssertionError(f"Unsupported operation: {request.operation_id}")
+
+
 class InvalidSpeakerTranscriptOwnershipProcessor(FakeSpeakerSeparationProcessor):
     async def process(self, request: SampleProcessingRequest) -> SpeakerSeparationResult:
         result = await super().process(request)
@@ -1037,6 +1138,19 @@ def test_sample_processor_combines_diarization_with_existing_engine(tmp_path: Pa
     assert processor.engine_name_for_operation("separateSpeakers") == "pyannote-community-1+faster-whisper"
 
 
+def test_sample_processing_options_include_engine_and_recommended_stack_order(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    app = create_app(settings=settings, sample_processor=FakeStackSampleProcessor())
+    client = TestClient(app)
+
+    response = client.get("/api/sample-processing/options")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["engine"] == "fake-stack"
+    assert payload["recommendedWorkflowOrder"] == ["isolateVoice", "separateSpeakers", "trimSilence"]
+
+
 def test_demucs_sample_processor_options_enable_isolation_and_trim_silence(tmp_path: Path) -> None:
     settings = demucs_processing_settings(
         tmp_path,
@@ -1053,6 +1167,93 @@ def test_demucs_sample_processor_options_enable_isolation_and_trim_silence(tmp_p
     assert operations[1]["id"] == "trimSilence"
     assert operations[1]["enabled"] is True
     assert operations[1]["defaultProcessingPresetId"] == "trimBalanced"
+
+
+def test_sample_processing_stack_runs_single_audio_steps_in_recommended_order_and_saves_metadata(
+    tmp_path: Path,
+) -> None:
+    settings = make_settings(tmp_path)
+    processor = FakeStackSampleProcessor()
+    app = create_app(settings=settings, sample_processor=processor)
+    client = TestClient(app)
+    workflow_steps = [
+        {"operationId": "trimSilence", "processingPresetId": "trimAggressive"},
+        {"operationId": "isolateVoice", "processingPresetId": "clean"},
+    ]
+
+    create = client.post(
+        "/api/sample-processing/jobs",
+        data={"workflowSteps": json.dumps(workflow_steps)},
+        files={"sourceFile": ("source.wav", b"raw-source", "audio/wav")},
+    )
+    job_id = create.json()["job"]["id"]
+    job = wait_for_processing_job(client, job_id)
+    result = client.get(f"/api/sample-processing/jobs/{job_id}/result")
+    save = client.post(
+        f"/api/sample-processing/jobs/{job_id}/voice",
+        json={"name": "Stacked Voice", "voicePresetId": "standardNarration"},
+    )
+
+    assert create.status_code == 202
+    assert [request.operation_id for request in processor.requests] == ["isolateVoice", "trimSilence"]
+    assert processor.requests[1].source.content == b"isolated:raw-source"
+    assert job["workflowMode"] == "stack"
+    assert job["operationId"] == "trimSilence"
+    assert job["activeStepId"] is None
+    assert [step["operationId"] for step in job["steps"]] == ["isolateVoice", "trimSilence"]
+    assert [step["status"] for step in job["steps"]] == ["success", "success"]
+    assert job["steps"][0]["processingPresetId"] == "clean"
+    assert job["steps"][1]["processingPresetId"] == "trimAggressive"
+    assert job["steps"][0]["sourceSha256"] == sample_hash(b"raw-source")
+    assert job["steps"][0]["resultSha256"] == sample_hash(b"isolated:raw-source")
+    assert job["steps"][1]["sourceSha256"] == sample_hash(b"isolated:raw-source")
+    assert job["steps"][1]["resultSha256"] == sample_hash(b"trimmed:isolated:raw-source")
+    assert result.status_code == 200
+    assert result.content == b"trimmed:isolated:raw-source"
+    assert save.status_code == 201
+    voice = save.json()["voice"]
+    assert [step["operationId"] for step in voice["processingSteps"]] == ["isolateVoice", "trimSilence"]
+    assert voice["processingSteps"][0]["sourceSha256"] == sample_hash(b"raw-source")
+    assert voice["processingSteps"][1]["resultSha256"] == sample_hash(b"trimmed:isolated:raw-source")
+
+
+def test_sample_processing_cancel_marks_running_stack_canceled(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    processor = FakeStackSampleProcessor(delay_seconds=5)
+    app = create_app(settings=settings, sample_processor=processor)
+    client = TestClient(app)
+
+    create = client.post(
+        "/api/sample-processing/jobs",
+        data={
+            "workflowSteps": json.dumps(
+                [
+                    {"operationId": "isolateVoice", "processingPresetId": "balanced"},
+                    {"operationId": "trimSilence", "processingPresetId": "trimBalanced"},
+                ]
+            )
+        },
+        files={"sourceFile": ("source.wav", b"raw-source", "audio/wav")},
+    )
+    job_id = create.json()["job"]["id"]
+
+    cancel = client.post(f"/api/sample-processing/jobs/{job_id}/cancel")
+    repeat_cancel = client.post(f"/api/sample-processing/jobs/{job_id}/cancel")
+    result = client.get(f"/api/sample-processing/jobs/{job_id}/result")
+
+    assert create.status_code == 202
+    assert cancel.status_code == 200
+    job = cancel.json()["job"]
+    assert job["status"] == "canceled"
+    assert job["error"] == "Sample processing was canceled."
+    assert job["activeStepId"] is None
+    assert [step["status"] for step in job["steps"]] in (
+        ["canceled", "canceled"],
+        ["canceled", "pending"],
+    )
+    assert repeat_cancel.status_code == 200
+    assert repeat_cancel.json()["job"]["status"] == "canceled"
+    assert result.status_code == 409
 
 
 def test_sample_processing_job_uses_original_voice_source_and_saves_result_as_voice(tmp_path: Path) -> None:
@@ -1260,6 +1461,62 @@ def test_sample_processing_speaker_separation_contract_updates_and_saves_speaker
     ]
     assert (settings.voice_assets_dir / "morgan.wav").read_bytes() == b"speaker-1:item-1,item-2,item-3"
     assert (settings.voice_assets_dir / "riley.wav").read_bytes() == b"speaker-2:"
+
+
+def test_sample_processing_stack_runs_speaker_split_then_trims_each_speaker(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    processor = FakeStackSampleProcessor()
+    app = create_app(settings=settings, sample_processor=processor)
+    client = TestClient(app)
+    workflow_steps = [
+        {"operationId": "trimSilence", "processingPresetId": "trimBalanced"},
+        {"operationId": "separateSpeakers"},
+        {"operationId": "isolateVoice", "processingPresetId": "balanced"},
+    ]
+
+    create = client.post(
+        "/api/sample-processing/jobs",
+        data={"workflowSteps": json.dumps(workflow_steps)},
+        files={"sourceFile": ("conversation.wav", b"conversation", "audio/wav")},
+    )
+    job_id = create.json()["job"]["id"]
+    job = wait_for_processing_job(client, job_id)
+    source = client.get(f"/api/sample-processing/jobs/{job_id}/source")
+    speaker_one = client.get(f"/api/sample-processing/jobs/{job_id}/speakers/speaker-1/result")
+    save = client.post(
+        f"/api/sample-processing/jobs/{job_id}/speaker-voices",
+        json={"voices": [{"speakerId": "speaker-1", "name": "Morgan", "voicePresetId": "animatedDialogue"}]},
+    )
+
+    assert create.status_code == 202
+    assert [request.operation_id for request in processor.requests] == [
+        "isolateVoice",
+        "separateSpeakers",
+        "trimSilence",
+        "trimSilence",
+    ]
+    assert processor.requests[1].source.content == b"isolated:conversation"
+    assert processor.requests[2].source.content == b"speaker-one:isolated:conversation"
+    assert processor.requests[3].source.content == b"speaker-two:isolated:conversation"
+    assert job["workflowMode"] == "stack"
+    assert job["operationId"] == "separateSpeakers"
+    assert [step["operationId"] for step in job["steps"]] == ["isolateVoice", "separateSpeakers", "trimSilence"]
+    assert [step["status"] for step in job["steps"]] == ["success", "success", "success"]
+    assert job["result"]["speakers"][0]["result"]["sha256"] == sample_hash(
+        b"trimmed:speaker-one:isolated:conversation"
+    )
+    assert source.status_code == 200
+    assert source.content == b"isolated:conversation"
+    assert speaker_one.status_code == 200
+    assert speaker_one.content == b"trimmed:speaker-one:isolated:conversation"
+    assert save.status_code == 201
+    processing_steps = save.json()["voices"][0]["processingSteps"]
+    assert [step["operationId"] for step in processing_steps] == ["isolateVoice", "separateSpeakers", "trimSilence"]
+    assert processing_steps[1]["speakerId"] == "speaker-1"
+    assert processing_steps[1]["resultSha256"] == sample_hash(b"speaker-one:isolated:conversation")
+    assert processing_steps[2]["speakerId"] == "speaker-1"
+    assert processing_steps[2]["sourceSha256"] == sample_hash(b"speaker-one:isolated:conversation")
+    assert processing_steps[2]["resultSha256"] == sample_hash(b"trimmed:speaker-one:isolated:conversation")
 
 
 def test_sample_processing_speaker_assignments_validate_ids_and_duplicates(tmp_path: Path) -> None:
