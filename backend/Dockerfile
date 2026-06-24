@@ -12,11 +12,9 @@ WORKDIR /app
 COPY backend/pyproject.toml /app/backend/pyproject.toml
 COPY backend/src /app/backend/src
 
-RUN if [ "$INSTALL_SAMPLE_PROCESSING" = "1" ] || [ "$INSTALL_DIARIZATION" = "1" ]; then \
-      apt-get update \
-      && apt-get install -y --no-install-recommends ffmpeg \
-      && rm -rf /var/lib/apt/lists/*; \
-    fi
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN python -m pip install --no-cache-dir --upgrade pip \
     && if [ "$INSTALL_SAMPLE_PROCESSING" = "1" ] || [ "$INSTALL_DIARIZATION" = "1" ]; then \

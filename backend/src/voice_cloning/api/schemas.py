@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any, Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -40,3 +42,26 @@ class SaveSpeakerVoiceRequest(BaseModel):
 
 class SaveSpeakerVoicesRequest(BaseModel):
     voices: list[SaveSpeakerVoiceRequest]
+
+
+class SpeechJobSegmentRequest(BaseModel):
+    clientSegmentId: str | None = None
+    text: str
+    voiceId: str
+    assignmentKind: Literal["assigned", "default"] = "assigned"
+    voiceSettings: dict[str, Any] | None = None
+
+
+class CreateSpeechJobRequest(BaseModel):
+    text: str
+    defaultVoiceId: str
+    providerId: str | None = None
+    modelId: str | None = None
+    segmentGapMs: int | None = Field(default=None, ge=0)
+    voiceSettings: dict[str, Any] | None = None
+    segments: list[SpeechJobSegmentRequest] = Field(min_length=1)
+
+
+class RegenerateSpeechSegmentRequest(BaseModel):
+    voiceId: str | None = None
+    voiceSettings: dict[str, Any] | None = None

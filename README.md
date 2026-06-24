@@ -66,7 +66,7 @@ http://localhost:6420
 - Local voice preset assignments are saved with the ignored voice manifest under `assets/voices/`.
 - Generated audio and provider cache data under `storage/` are ignored by git.
 - Browser-generated audio is stored in browser IndexedDB by default, not committed to the repository.
-- Optional sample-processing output, separated stems, and downloaded model data are runtime-only and must stay out of git.
+- Speech job output, optional sample-processing output, separated stems, and downloaded model data are runtime-only and must stay out of git.
 - The optional live smoke test calls ElevenLabs, may consume credits, and may create or reuse a cloned voice.
 
 ## Common Workflow
@@ -75,18 +75,19 @@ The Voice Studio opens on `Voices`. Use the sidebar to move between stable workf
 
 1. `Prepare Audio` (`#prepare`, optional step 0): process uploaded or saved source audio before adding it to the library.
 2. `Voices` (`#voices`, step 1): upload, record, select, preview, rename, and assign local voice presets.
-3. `Generate Speech` (`#generate`, step 2): enter text, tune the selected voice, choose model settings, generate speech, and review the latest result.
+3. `Generate Speech` (`#generate`, step 2): enter text, optionally assign selected text spans to saved voices, tune the request, choose model settings, generate speech, and review the latest result.
 4. `Generated Audio` (`#archive`, optional): review, download, remove, or clear browser-saved generated audio.
 5. `Provider & Usage` (`#provider`): add browser-local provider keys, confirm `.env` fallback, choose models, and review quota/cost metadata.
 
 ## Optional Sample Processing
 
-Sample Processing is disabled by default. To enable Trim Silence only, install FFmpeg in the backend runtime and set:
+The Docker backend includes FFmpeg because multi-voice speech jobs use it to assemble segment audio. Sample Processing is still disabled by default. To enable Trim Silence only, set:
 
 ```sh
 INSTALL_SAMPLE_PROCESSING=1
 SAMPLE_PROCESSING_ENGINE=ffmpeg
 SAMPLE_PROCESSING_FFMPEG_COMMAND=ffmpeg
+SPEECH_JOB_SEGMENT_GAP_MS=250
 ```
 
 To enable Isolate Voice and Trim Silence together, install Demucs and FFmpeg in the backend runtime and set:
@@ -110,7 +111,7 @@ SAMPLE_PROCESSING_WHISPER_COMPUTE_TYPE=int8
 PYANNOTE_METRICS_ENABLED=0
 ```
 
-The Docker build uses CPU-only PyTorch, Torchaudio, and TorchCodec wheels when `INSTALL_SAMPLE_PROCESSING=1` or `INSTALL_DIARIZATION=1`, then installs the requested optional backend extras and FFmpeg. Rebuild with `make recycle` after changing either flag. The backend calls FFmpeg as an external command, normalizes successful results to mono 32 kHz WAV, and stores job output under ignored `storage/sample-processing/`. Demucs, pyannote, and faster-whisper model files and caches are runtime data under ignored `storage/model-cache/`. Isolate Voice includes Fast, Balanced, Clean, and Max Isolation strength presets; Balanced preserves the default behavior. Trim Silence includes Light, Balanced, and Aggressive trim presets; Balanced is the default. Speaker Separation is V1 diarized speaker-turn extraction, not neural unmixing of simultaneous speakers.
+The Docker build uses CPU-only PyTorch, Torchaudio, and TorchCodec wheels when `INSTALL_SAMPLE_PROCESSING=1` or `INSTALL_DIARIZATION=1`, then installs the requested optional backend extras. Rebuild with `make recycle` after changing either flag. The backend calls FFmpeg as an external command, stores multi-voice speech job output under ignored `storage/speech-jobs/`, normalizes successful sample-processing results to mono 32 kHz WAV, and stores sample-processing job output under ignored `storage/sample-processing/`. Demucs, pyannote, and faster-whisper model files and caches are runtime data under ignored `storage/model-cache/`. Isolate Voice includes Fast, Balanced, Clean, and Max Isolation strength presets; Balanced preserves the default behavior. Trim Silence includes Light, Balanced, and Aggressive trim presets; Balanced is the default. Speaker Separation is V1 diarized speaker-turn extraction, not neural unmixing of simultaneous speakers.
 
 ## Documentation
 

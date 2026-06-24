@@ -9,8 +9,8 @@ This guide covers local setup, provider key handling, and the sidebar workflow f
 - Optional for host development:
   - Python 3.14+
   - Node.js 24+
+  - FFmpeg for multi-voice speech job assembly
 - Optional for local sample processing:
-  - FFmpeg
   - Demucs, when `SAMPLE_PROCESSING_ENGINE=demucs`
 
 ## ElevenLabs API Key Permissions
@@ -48,14 +48,17 @@ ELEVENLABS_API_KEY=your_key_here  # optional when you use Provider & Usage
 ELEVENLABS_MODEL_ID=eleven_multilingual_v2
 ```
 
-Optionally enable local sample processing for Trim Silence only:
+Docker includes FFmpeg for multi-voice speech job assembly. Optionally enable local sample processing for Trim Silence only:
 
 ```sh
 INSTALL_SAMPLE_PROCESSING=1
 SAMPLE_PROCESSING_ENGINE=ffmpeg
 SAMPLE_PROCESSING_FFMPEG_COMMAND=ffmpeg
 SAMPLE_PROCESSING_TIMEOUT_SECONDS=900
+SPEECH_JOB_SEGMENT_GAP_MS=250
 ```
+
+`SPEECH_JOB_SEGMENT_GAP_MS` is the default combined-result handoff gap for multi-voice speech jobs. The Generate Speech UI can opt a single job out of that default by sending `segmentGapMs: 0`.
 
 To also enable Isolate Voice through Demucs, use the Demucs engine and add the Demucs-specific settings:
 
@@ -66,6 +69,7 @@ SAMPLE_PROCESSING_DEMUCS_COMMAND=demucs
 SAMPLE_PROCESSING_DEMUCS_MODEL=htdemucs
 SAMPLE_PROCESSING_DEMUCS_DEVICE=  # optional, such as cpu, cuda, or mps when supported
 SAMPLE_PROCESSING_TIMEOUT_SECONDS=900
+SPEECH_JOB_SEGMENT_GAP_MS=250
 ```
 
 To enable Speaker Separation, accept the Hugging Face model conditions for `pyannote/speaker-diarization-community-1`, create a Hugging Face access token, and set:
@@ -81,9 +85,9 @@ SAMPLE_PROCESSING_WHISPER_COMPUTE_TYPE=int8
 PYANNOTE_METRICS_ENABLED=0
 ```
 
-Leave `SAMPLE_PROCESSING_ENGINE` blank to keep Isolate Voice and Trim Silence unavailable. Leave `SAMPLE_PROCESSING_ENABLE_DIARIZATION=0` to keep Speaker Separation unavailable. Leave `INSTALL_SAMPLE_PROCESSING=0` and `INSTALL_DIARIZATION=0` for the default lightweight Docker image. When you change either install flag, rebuild the stack with `make recycle`; the backend image installs FFmpeg, CPU-only PyTorch/Torchaudio/TorchCodec wheels, and the requested optional backend extras.
+Leave `SAMPLE_PROCESSING_ENGINE` blank to keep Isolate Voice and Trim Silence unavailable. Leave `SAMPLE_PROCESSING_ENABLE_DIARIZATION=0` to keep Speaker Separation unavailable. Leave `INSTALL_SAMPLE_PROCESSING=0` and `INSTALL_DIARIZATION=0` to skip the heavier optional model dependencies. When you change either install flag, rebuild the stack with `make recycle`; the backend image always includes FFmpeg and installs CPU-only PyTorch/Torchaudio/TorchCodec wheels plus the requested optional backend extras only when needed.
 
-Demucs, pyannote, and faster-whisper model downloads, separated stems, normalized job output, and local caches are runtime data and should not be committed. Docker stores model caches under ignored `storage/model-cache/`.
+Multi-voice speech job audio under `storage/speech-jobs/`, Demucs, pyannote, and faster-whisper model downloads, separated stems, normalized job output, and local caches are runtime data and should not be committed. Docker stores model caches under ignored `storage/model-cache/`.
 
 Start the app:
 
@@ -101,7 +105,7 @@ The UI opens on `Voices`. The sidebar is the top-level workflow map:
 
 1. `Prepare Audio` (`#prepare`, optional step 0): optionally process an uploaded file or saved source audio before creating a library voice.
 2. `Voices` (`#voices`, step 1): upload or record a voice sample, choose a local name such as `Voice_Clone_01`, choose Standard Narration or Animated Dialogue, save it, select it, and preview it.
-3. `Generate Speech` (`#generate`, step 2): enter text, review the latest result, and adjust Voice Tuning. Selecting a saved voice initializes tuning from that voice's assigned preset when the active provider maps it, otherwise from provider defaults.
+3. `Generate Speech` (`#generate`, step 2): enter text, optionally assign selected text spans to saved voices, review the latest result, and adjust Voice Tuning. Selecting a saved voice initializes tuning from that voice's assigned preset when the active provider maps it, otherwise from provider defaults. Multi-voice segment controls can regenerate one segment with a different voice or a segment-specific tuning snapshot without changing the rest of the result.
 4. `Generated Audio` (`#archive`, optional): play, download, remove, or clear saved generated MP3s from browser IndexedDB.
 5. `Provider & Usage` (`#provider`): add an ElevenLabs key if `.env` does not provide one, confirm `.env` fallback, check Cost & Quota, and choose a model if model metadata is available.
 
@@ -115,7 +119,7 @@ http://localhost:6420
 
 Each local voice has a provider-independent voice preset assignment. Choose Standard Narration for balanced reading, or Animated Dialogue for more expressive delivery, when saving a new voice or editing the selected voice in the Voice Library.
 
-The assignment is saved as local voice metadata and is not a provider clone id or provider secret. When you select a voice, Voice Tuning starts from the active provider preset mapped to that assignment. If the active provider has no matching mapped preset, Voice Tuning uses that provider's default values instead. Manual slider, toggle, or select changes are per-request only; they show as Custom and do not overwrite the saved assignment.
+The assignment is saved as local voice metadata and is not a provider clone id or provider secret. When you select a voice, Voice Tuning starts from the active provider preset mapped to that assignment. If the active provider has no matching mapped preset, Voice Tuning uses that provider's default values instead. Manual slider, toggle, or select changes are per-request only; they show as Custom and do not overwrite the saved assignment. Segment-level tuning for multi-voice regeneration is stored only with that runtime speech job and the browser's generated-audio metadata.
 
 Existing voices or older manifests without an assignment default to Standard Narration. This iteration persists only the preset id, not custom tuning overrides.
 
@@ -125,7 +129,7 @@ Provider keys can come from either `.env` on the FastAPI backend or the `Provide
 
 The backend never returns key material from `.env` or browser headers. Browser `localStorage` is local developer-tool storage, not encrypted secret storage; clear the key in `Provider & Usage` or browser site data to remove a saved GUI key.
 
-Voice samples and their local manifest metadata are stored under `assets/voices/` and are ignored by git. When a long upload is saved with its original source retained, the backend stores the original under `assets/voices/sources/` and still sends only the active excerpt sample to the provider. Cloned voice cache data is written under `storage/`, scoped by provider and key fingerprint, and ignored by git. Generated MP3 output is saved in your browser's IndexedDB by default, not on the backend; use `Generated Audio` to remove one item or clear all saved browser audio.
+Voice samples and their local manifest metadata are stored under `assets/voices/` and are ignored by git. When a long upload is saved with its original source retained, the backend stores the original under `assets/voices/sources/` and still sends only the active excerpt sample to the provider. Cloned voice cache data is written under `storage/`, scoped by provider and key fingerprint, and ignored by git. Multi-voice speech job segment and combined audio files are runtime-only under ignored `storage/speech-jobs/`. Generated MP3 output is saved in your browser's IndexedDB by default; use `Generated Audio` to remove one item or clear all saved browser audio.
 
 Text, voice samples, selected model id, and provider-specific tuning settings are sent to the active provider when you generate speech. Subscription and model metadata are fetched through the backend when the configured key has the required read permissions. Review the active provider's policies and obtain consent before cloning or generating with any voice.
 
@@ -141,7 +145,7 @@ The Cost & Quota panel in `Provider & Usage` shows a pre-run estimate and the re
 
 The optional live smoke test calls ElevenLabs and may consume credits.
 
-Canceling a generation aborts the browser request and lets the local API stop waiting on the in-flight operation. ElevenLabs does not currently expose a server-side cancel endpoint for text-to-speech requests, so a canceled generation may still consume credits.
+Canceling single-voice generation aborts the browser request and lets the local API stop waiting on the in-flight operation. Multi-voice speech jobs can also be canceled through the local job API while pending or running. ElevenLabs does not currently expose a server-side cancel endpoint for text-to-speech requests, so a canceled generation may still consume credits for provider work already in flight.
 
 ## Local Development
 

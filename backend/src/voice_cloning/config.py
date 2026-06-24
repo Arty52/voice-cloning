@@ -25,6 +25,22 @@ def _float_env(name: str, default: float) -> float:
     return float(normalized_value)
 
 
+def _non_negative_int_env(name: str, default: int) -> int:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    normalized_value = raw_value.strip()
+    if not normalized_value:
+        return default
+    try:
+        value = int(normalized_value)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a non-negative integer.") from exc
+    if value < 0:
+        raise ValueError(f"{name} must be non-negative.")
+    return value
+
+
 def _bool_env(name: str, default: bool = False) -> bool:
     raw_value = os.getenv(name)
     if raw_value is None:
@@ -46,7 +62,9 @@ class Settings:
     voice_manifest_path: Path
     storage_dir: Path
     sample_processing_dir: Path
+    speech_jobs_dir: Path
     cors_allowed_origins: list[str]
+    speech_job_segment_gap_ms: int = 250
     max_upload_bytes: int = 10 * 1024 * 1024
     max_source_upload_bytes: int = 50 * 1024 * 1024
     max_text_chars: int = 5000
@@ -77,6 +95,7 @@ class Settings:
         sample_processing_dir = Path(
             os.getenv("SAMPLE_PROCESSING_DIR", storage_dir / "sample-processing")
         )
+        speech_jobs_dir = Path(os.getenv("SPEECH_JOBS_DIR", storage_dir / "speech-jobs"))
         origins = os.getenv(
             "CORS_ALLOWED_ORIGINS",
             "http://localhost:4340,http://127.0.0.1:4340",
@@ -94,7 +113,9 @@ class Settings:
             voice_manifest_path=voice_manifest.resolve(),
             storage_dir=storage_dir.resolve(),
             sample_processing_dir=sample_processing_dir.resolve(),
+            speech_jobs_dir=speech_jobs_dir.resolve(),
             cors_allowed_origins=_split_csv(origins),
+            speech_job_segment_gap_ms=_non_negative_int_env("SPEECH_JOB_SEGMENT_GAP_MS", 250),
             sample_processing_engine=os.getenv("SAMPLE_PROCESSING_ENGINE", "").strip().lower(),
             sample_processing_demucs_command=os.getenv("SAMPLE_PROCESSING_DEMUCS_COMMAND", "demucs").strip()
             or "demucs",
