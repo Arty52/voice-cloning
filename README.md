@@ -87,6 +87,7 @@ The Docker backend includes FFmpeg because multi-voice speech jobs use it to ass
 INSTALL_SAMPLE_PROCESSING=1
 SAMPLE_PROCESSING_ENGINE=ffmpeg
 SAMPLE_PROCESSING_FFMPEG_COMMAND=ffmpeg
+SPEECH_JOB_SEGMENT_GAP_MS=250
 ```
 
 To enable Isolate Voice and Trim Silence together, install Demucs and FFmpeg in the backend runtime and set:

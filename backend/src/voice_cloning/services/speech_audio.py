@@ -8,6 +8,7 @@ from ..config import Settings
 
 SPEECH_RESULT_FILENAME = "result.mp3"
 SPEECH_RESULT_CONTENT_TYPE = "audio/mpeg"
+SPEECH_SEGMENT_GAP_PREFIX = "segment-gap"
 
 
 class SpeechAudioProcessorError(Exception):
@@ -26,9 +27,11 @@ class SpeechAudioProcessor:
             raise SpeechAudioProcessorError("Speech job has no generated segments.", 422)
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
+        gap_path = await self._prepare_gap_audio(segment_paths, output_path)
+        concat_paths = _interleave_gap_audio(segment_paths, gap_path)
         concat_path = output_path.parent / "concat.txt"
         concat_path.write_text(
-            "\n".join(["ffconcat version 1.0", *(f"file '{_escape_ffconcat_path(path)}'" for path in segment_paths)]),
+            "\n".join(["ffconcat version 1.0", *(f"file '{_escape_ffconcat_path(path)}'" for path in concat_paths)]),
             encoding="utf-8",
         )
 
@@ -54,6 +57,36 @@ class SpeechAudioProcessor:
         )
         if not output_path.exists():
             raise SpeechAudioProcessorError("FFmpeg did not produce combined speech audio.", 502)
+
+    async def _prepare_gap_audio(self, segment_paths: tuple[Path, ...], output_path: Path) -> Path | None:
+        gap_ms = self.settings.speech_job_segment_gap_ms
+        if gap_ms <= 0 or len(segment_paths) < 2:
+            return None
+
+        gap_path = output_path.parent / f"{SPEECH_SEGMENT_GAP_PREFIX}-{gap_ms}ms.mp3"
+        await _run_external_command(
+            [
+                self.settings.sample_processing_ffmpeg_command,
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "anullsrc=channel_layout=mono:sample_rate=44100",
+                "-t",
+                _format_gap_seconds(gap_ms),
+                "-vn",
+                "-c:a",
+                "libmp3lame",
+                "-f",
+                "mp3",
+                str(gap_path),
+            ],
+            "ffmpeg",
+            self.settings.sample_processing_timeout_seconds,
+        )
+        if not gap_path.exists():
+            raise SpeechAudioProcessorError("FFmpeg did not produce speech segment gap audio.", 502)
+        return gap_path
 
 
 async def _run_external_command(args: list[str], label: str, timeout_seconds: float) -> None:
@@ -94,6 +127,22 @@ def _kill_process(process: asyncio.subprocess.Process) -> None:
 
 def _clean_process_message(value: str) -> str:
     return " ".join(value.split())[-500:]
+
+
+def _interleave_gap_audio(segment_paths: tuple[Path, ...], gap_path: Path | None) -> tuple[Path, ...]:
+    if gap_path is None:
+        return segment_paths
+
+    concat_paths: list[Path] = []
+    for index, segment_path in enumerate(segment_paths):
+        if index > 0:
+            concat_paths.append(gap_path)
+        concat_paths.append(segment_path)
+    return tuple(concat_paths)
+
+
+def _format_gap_seconds(gap_ms: int) -> str:
+    return f"{gap_ms / 1000:.3f}"
 
 
 def _escape_ffconcat_path(path: Path) -> str:

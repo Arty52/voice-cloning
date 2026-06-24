@@ -510,4 +510,4 @@ The response is `202` with `{ "job": { ... } }`:
 { "voiceId": "another-local-voice" }
 ```
 
-Speech jobs keep runtime files under ignored `storage/speech-jobs/`. Segment generation reuses the normal provider clone cache. Final assembly requires FFmpeg through `SAMPLE_PROCESSING_FFMPEG_COMMAND`; Docker includes FFmpeg by default, and host development must have the command available on `PATH` or configured with an absolute path.
+Speech jobs keep runtime files under ignored `storage/speech-jobs/`. Segment generation reuses the normal provider clone cache. Final assembly requires FFmpeg through `SAMPLE_PROCESSING_FFMPEG_COMMAND`; Docker includes FFmpeg by default, and host development must have the command available on `PATH` or configured with an absolute path. Combined multi-voice results include a short inter-segment handoff gap, controlled by `SPEECH_JOB_SEGMENT_GAP_MS` and defaulting to `250`.

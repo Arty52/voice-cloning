@@ -55,6 +55,7 @@ INSTALL_SAMPLE_PROCESSING=1
 SAMPLE_PROCESSING_ENGINE=ffmpeg
 SAMPLE_PROCESSING_FFMPEG_COMMAND=ffmpeg
 SAMPLE_PROCESSING_TIMEOUT_SECONDS=900
+SPEECH_JOB_SEGMENT_GAP_MS=250
 ```
 
 To also enable Isolate Voice through Demucs, use the Demucs engine and add the Demucs-specific settings:
@@ -66,6 +67,7 @@ SAMPLE_PROCESSING_DEMUCS_COMMAND=demucs
 SAMPLE_PROCESSING_DEMUCS_MODEL=htdemucs
 SAMPLE_PROCESSING_DEMUCS_DEVICE=  # optional, such as cpu, cuda, or mps when supported
 SAMPLE_PROCESSING_TIMEOUT_SECONDS=900
+SPEECH_JOB_SEGMENT_GAP_MS=250
 ```
 
 To enable Speaker Separation, accept the Hugging Face model conditions for `pyannote/speaker-diarization-community-1`, create a Hugging Face access token, and set:

@@ -590,6 +590,18 @@ def test_settings_blank_sample_processing_timeout_uses_default(
     assert settings.sample_processing_timeout_seconds == 900
 
 
+def test_settings_reads_speech_job_segment_gap_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_ROOT", str(tmp_path))
+    monkeypatch.setenv("SPEECH_JOB_SEGMENT_GAP_MS", "125")
+
+    settings = Settings.from_env()
+
+    assert settings.speech_job_segment_gap_ms == 125
+
+
 def test_settings_reads_diarization_environment(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1058,9 +1070,15 @@ def test_speech_job_rejects_segments_that_do_not_match_text(tmp_path: Path) -> N
 
 
 def test_speech_job_regenerates_segment_and_rebuilds_result(tmp_path: Path) -> None:
+    args_log_path = tmp_path / "ffmpeg-calls.json"
+    ffmpeg_command = ffmpeg_fake_command(
+        tmp_path / "ffmpeg-fake",
+        output=b"combined-mp3",
+        args_log_path=args_log_path,
+    )
     settings = replace(
         make_settings(tmp_path),
-        sample_processing_ffmpeg_command=str(ffmpeg_fake_command(tmp_path / "ffmpeg-fake", output=b"combined-mp3")),
+        sample_processing_ffmpeg_command=str(ffmpeg_command),
     )
     voice_library = VoiceLibrary(settings)
     second_voice = voice_library.add_processed_sample(
@@ -1084,9 +1102,12 @@ def test_speech_job_regenerates_segment_and_rebuilds_result(tmp_path: Path) -> N
         create = client.post(
             "/api/speech/jobs",
             json={
-                "text": "Hello.",
+                "text": "Hello there.",
                 "defaultVoiceId": "default",
-                "segments": [{"clientSegmentId": "segment-one", "text": "Hello.", "voiceId": "default"}],
+                "segments": [
+                    {"clientSegmentId": "segment-one", "text": "Hello ", "voiceId": "default"},
+                    {"clientSegmentId": "segment-two", "text": "there.", "voiceId": "default"},
+                ],
             },
         )
         job_id = create.json()["job"]["id"]
@@ -1099,7 +1120,7 @@ def test_speech_job_regenerates_segment_and_rebuilds_result(tmp_path: Path) -> N
         result = client.get(f"/api/speech/jobs/{job_id}/result")
 
     assert regenerate.status_code == 202
-    assert len(fake_provider.speech_requests) == 2
+    assert len(fake_provider.speech_requests) == 3
     assert len(fake_provider.created_samples) == 2
     assert fake_provider.created_samples[1].sha256 == sample_hash(b"second-sample")
     assert job["status"] == "success"
@@ -1107,6 +1128,9 @@ def test_speech_job_regenerates_segment_and_rebuilds_result(tmp_path: Path) -> N
     assert job["segments"][0]["voiceName"] == "Second Voice"
     assert job["segments"][0]["generationCount"] == 2
     assert result.content == b"combined-mp3"
+    concat_manifest = (settings.speech_jobs_dir / job_id / "concat.txt").read_text(encoding="utf-8")
+    assert "segment-gap-250ms.mp3" in concat_manifest
+    assert len(json.loads(args_log_path.read_text(encoding="utf-8"))) == 4
 
 
 def test_speech_job_cancel_marks_running_job_canceled(tmp_path: Path) -> None:

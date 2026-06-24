@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
+import json
 import os
 from pathlib import Path
 
@@ -34,6 +36,7 @@ def write_fake_ffmpeg(
     path: Path,
     *,
     output: bytes = b"combined-audio",
+    args_log_path: Path | None = None,
     sleep_seconds: float = 0,
     exit_code: int = 0,
     stderr: str = "ffmpeg failed in test",
@@ -45,10 +48,18 @@ sys.stderr.write({stderr!r})
 raise SystemExit({exit_code})
 """
     else:
+        args_log_literal = "None" if args_log_path is None else repr(str(args_log_path))
         script = f"""
 from pathlib import Path
+import json
 import time
 import sys
+args_log_path = {args_log_literal}
+if args_log_path:
+    log_path = Path(args_log_path)
+    entries = json.loads(log_path.read_text(encoding="utf-8")) if log_path.exists() else []
+    entries.append(sys.argv[1:])
+    log_path.write_text(json.dumps(entries), encoding="utf-8")
 time.sleep({sleep_seconds!r})
 Path(sys.argv[-1]).write_bytes({output!r})
 """
@@ -67,13 +78,74 @@ def write_segments(tmp_path: Path) -> tuple[Path, ...]:
 
 def test_speech_audio_processor_concatenates_segments(tmp_path: Path) -> None:
     output = tmp_path / "result.mp3"
-    processor = SpeechAudioProcessor(make_settings(tmp_path, ffmpeg_command=write_fake_ffmpeg(tmp_path / "ffmpeg")))
+    args_log_path = tmp_path / "ffmpeg-calls.json"
+    processor = SpeechAudioProcessor(
+        make_settings(
+            tmp_path,
+            ffmpeg_command=write_fake_ffmpeg(tmp_path / "ffmpeg", args_log_path=args_log_path),
+        )
+    )
 
     asyncio.run(processor.concatenate(write_segments(tmp_path), output))
 
     assert output.read_bytes() == b"combined-audio"
     concat_manifest = output.parent / "concat.txt"
-    assert "ffconcat version 1.0" in concat_manifest.read_text(encoding="utf-8")
+    gap_path = output.parent / "segment-gap-250ms.mp3"
+    assert gap_path.exists()
+    assert concat_manifest.read_text(encoding="utf-8").splitlines() == [
+        "ffconcat version 1.0",
+        f"file '{tmp_path / 'one.mp3'}'",
+        f"file '{gap_path}'",
+        f"file '{tmp_path / 'two.mp3'}'",
+    ]
+    calls = json.loads(args_log_path.read_text(encoding="utf-8"))
+    assert len(calls) == 2
+    assert calls[0][calls[0].index("-t") + 1] == "0.250"
+
+
+def test_speech_audio_processor_omits_gap_for_single_segment(tmp_path: Path) -> None:
+    output = tmp_path / "result.mp3"
+    args_log_path = tmp_path / "ffmpeg-calls.json"
+    segment_path = tmp_path / "one.mp3"
+    segment_path.write_bytes(b"one")
+    processor = SpeechAudioProcessor(
+        make_settings(
+            tmp_path,
+            ffmpeg_command=write_fake_ffmpeg(tmp_path / "ffmpeg", args_log_path=args_log_path),
+        )
+    )
+
+    asyncio.run(processor.concatenate((segment_path,), output))
+
+    assert not (output.parent / "segment-gap-250ms.mp3").exists()
+    assert (output.parent / "concat.txt").read_text(encoding="utf-8").splitlines() == [
+        "ffconcat version 1.0",
+        f"file '{segment_path}'",
+    ]
+    assert len(json.loads(args_log_path.read_text(encoding="utf-8"))) == 1
+
+
+def test_speech_audio_processor_allows_gapless_concat(tmp_path: Path) -> None:
+    output = tmp_path / "result.mp3"
+    args_log_path = tmp_path / "ffmpeg-calls.json"
+    settings = replace(
+        make_settings(
+            tmp_path,
+            ffmpeg_command=write_fake_ffmpeg(tmp_path / "ffmpeg", args_log_path=args_log_path),
+        ),
+        speech_job_segment_gap_ms=0,
+    )
+    processor = SpeechAudioProcessor(settings)
+
+    asyncio.run(processor.concatenate(write_segments(tmp_path), output))
+
+    assert not (output.parent / "segment-gap-0ms.mp3").exists()
+    assert (output.parent / "concat.txt").read_text(encoding="utf-8").splitlines() == [
+        "ffconcat version 1.0",
+        f"file '{tmp_path / 'one.mp3'}'",
+        f"file '{tmp_path / 'two.mp3'}'",
+    ]
+    assert len(json.loads(args_log_path.read_text(encoding="utf-8"))) == 1
 
 
 def test_speech_audio_processor_reports_missing_command(tmp_path: Path) -> None:
