@@ -58,6 +58,8 @@ SAMPLE_PROCESSING_TIMEOUT_SECONDS=900
 SPEECH_JOB_SEGMENT_GAP_MS=250
 ```
 
+`SPEECH_JOB_SEGMENT_GAP_MS` is the default combined-result handoff gap for multi-voice speech jobs. The Generate Speech UI can opt a single job out of that default by sending `segmentGapMs: 0`.
+
 To also enable Isolate Voice through Demucs, use the Demucs engine and add the Demucs-specific settings:
 
 ```sh
