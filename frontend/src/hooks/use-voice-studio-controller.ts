@@ -5,6 +5,10 @@ import { useConfirmation } from "@/hooks/use-confirmation"
 import { useGeneratedAudioLibrary } from "@/hooks/use-generated-audio-library"
 import { useProviderKeys } from "@/hooks/use-provider-keys"
 import { useSampleProcessing } from "@/hooks/use-sample-processing"
+import {
+  useMultiVoiceSpeechGeneration,
+  type MultiVoiceGenerationStatus,
+} from "@/hooks/use-multi-voice-speech-generation"
 import { useSpeechGeneration } from "@/hooks/use-speech-generation"
 import { useVoiceLibrary } from "@/hooks/use-voice-library"
 import { useVoiceMetadata } from "@/hooks/use-voice-metadata"
@@ -14,12 +18,16 @@ import { useWorkflowNavigation } from "@/hooks/use-workflow-navigation"
 import { isTemporaryGeneratedAudioId } from "@/lib/generated-audio-view-model"
 import { formatBytes } from "@/lib/formatters"
 import {
+  buildSpeechJobSegments,
+  type VoiceTextAssignment,
+} from "@/lib/voice-assignments"
+import {
   buildWorkflowSectionStatuses,
   WORKFLOW_SECTIONS,
   workflowSectionIdFromHash,
   type WorkflowSectionId,
 } from "@/lib/workflow-sections"
-import type { ProviderTuningMetadata, VoiceAsset } from "@/types"
+import type { ProviderTuningMetadata, RequestStatus, VoiceAsset } from "@/types"
 
 const EMPTY_TUNING_METADATA: ProviderTuningMetadata = {
   controls: [],
@@ -34,6 +42,9 @@ export function useVoiceStudioController() {
   const [isVoiceTuningExpanded, setIsVoiceTuningExpanded] = useState(false)
   const [isAddVoiceRevealed, setIsAddVoiceRevealed] = useState(false)
   const [latestGeneratedAudioId, setLatestGeneratedAudioId] = useState<string | null>(null)
+  const [latestGenerationMode, setLatestGenerationMode] = useState<"single" | "multi">("single")
+  const [textSelection, setTextSelection] = useState({ end: 0, start: 0, text: "" })
+  const [voiceAssignments, setVoiceAssignments] = useState<VoiceTextAssignment[]>([])
   const textRef = useRef<HTMLTextAreaElement | null>(null)
   const confirmation = useConfirmation()
   const providerKeys = useProviderKeys()
@@ -46,6 +57,9 @@ export function useVoiceStudioController() {
   })
   const generatedAudio = useGeneratedAudioLibrary()
   const speech = useSpeechGeneration({
+    persistGeneratedAudio: generatedAudio.persistGeneratedAudio,
+  })
+  const multiVoiceSpeech = useMultiVoiceSpeechGeneration({
     persistGeneratedAudio: generatedAudio.persistGeneratedAudio,
   })
   const voiceInput = useVoiceSampleInput({
@@ -85,11 +99,27 @@ export function useVoiceStudioController() {
   const archiveStorageError = latestStorageError ? null : generatedAudio.generatedAudioStorageError
   const result = latestGeneratedAudioItem ?? generatedAudio.generatedAudioItems[0] ?? null
   const characterCount = useMemo(() => text.trim().length, [text])
+  const assignmentSegments = useMemo(
+    () =>
+      voiceLibrary.selectedVoice
+        ? buildSpeechJobSegments(text, voiceAssignments, voiceLibrary.selectedVoice)
+        : { error: null, segments: [], stale: voiceAssignments.length > 0 },
+    [text, voiceAssignments, voiceLibrary.selectedVoice]
+  )
+  const hasVoiceAssignments = voiceAssignments.length > 0
+  const isSpeechGenerating = speech.isGenerating || multiVoiceSpeech.isGenerating
+  const activeSpeechStatus =
+    latestGenerationMode === "multi" ? requestStatusFromMultiVoiceStatus(multiVoiceSpeech.status) : speech.status
+  const activeSpeechError = latestGenerationMode === "multi" ? multiVoiceSpeech.error : speech.error
   const modelMultiplier = selectedModel?.characterCostMultiplier ?? null
   const estimatedCredits = modelMultiplier === null ? characterCount : Math.ceil(characterCount * modelMultiplier)
   const hasModelRate = modelMultiplier !== null
   const canGenerate =
-    text.trim().length > 0 && voiceLibrary.selectedVoice !== null && providerKeys.canUseProvider && !speech.isGenerating
+    text.trim().length > 0 &&
+    voiceLibrary.selectedVoice !== null &&
+    providerKeys.canUseProvider &&
+    !isSpeechGenerating &&
+    (!hasVoiceAssignments || (!assignmentSegments.stale && !assignmentSegments.error && assignmentSegments.segments.length > 0))
   const sectionStatuses = useMemo(
     () =>
       buildWorkflowSectionStatuses({
@@ -106,8 +136,8 @@ export function useVoiceStudioController() {
         providerError: providerKeys.providerError,
         providerStatus: providerKeys.providerStatus,
         selectedVoiceId: voiceLibrary.selectedVoiceId,
-        speechError: speech.error,
-        speechStatus: speech.status,
+        speechError: activeSpeechError,
+        speechStatus: activeSpeechStatus,
         voiceError: voiceLibrary.voiceError,
         voiceStatus: voiceLibrary.voiceStatus,
       }),
@@ -124,8 +154,8 @@ export function useVoiceStudioController() {
       sampleProcessing.optionsError,
       sampleProcessing.optionsStatus,
       sampleProcessing.status,
-      speech.error,
-      speech.status,
+      activeSpeechError,
+      activeSpeechStatus,
       voiceLibrary.selectedVoiceId,
       voiceLibrary.voiceError,
       voiceLibrary.voiceStatus,
@@ -164,11 +194,54 @@ export function useVoiceStudioController() {
     void generateSpeech()
   }
 
+  function handleTextSelectionChange() {
+    const textarea = textRef.current
+    if (!textarea) {
+      return
+    }
+    const start = Math.min(textarea.selectionStart, textarea.selectionEnd)
+    const end = Math.max(textarea.selectionStart, textarea.selectionEnd)
+    setTextSelection({
+      end,
+      start,
+      text: textarea.value.slice(start, end),
+    })
+  }
+
+  function handleTextChange(nextText: string) {
+    setText(nextText)
+    setTextSelection({ end: 0, start: 0, text: "" })
+  }
+
   function revealAddVoice() {
     setIsAddVoiceRevealed(true)
   }
 
   async function generateSpeech() {
+    if (hasVoiceAssignments) {
+      setLatestGenerationMode("multi")
+      const generatedResult = await multiVoiceSpeech.generateSpeech({
+        backendDefaultModelId: metadata.backendDefaultModelId,
+        canUseProvider: providerKeys.canUseProvider,
+        defaultVoice: voiceLibrary.selectedVoice,
+        models: metadata.models,
+        provider: providerKeys.activeProvider,
+        providerId: providerKeys.activeProviderId,
+        providerKey: providerKeys.activeProviderKey,
+        segments: assignmentSegments.segments,
+        selectedModelId: metadata.selectedModelId,
+        selectedTuningPresetId,
+        storageLimitBytes: generatedAudio.storageLimitBytes,
+        text,
+        tuning,
+      })
+      if (generatedResult) {
+        setLatestGeneratedAudioId(generatedResult.id)
+      }
+      return
+    }
+
+    setLatestGenerationMode("single")
     const generatedResult = await speech.generateSpeech({
       backendDefaultModelId: metadata.backendDefaultModelId,
       canUseProvider: providerKeys.canUseProvider,
@@ -186,6 +259,56 @@ export function useVoiceStudioController() {
     if (generatedResult) {
       setLatestGeneratedAudioId(generatedResult.id)
     }
+  }
+
+  function cancelGeneration() {
+    if (multiVoiceSpeech.isGenerating) {
+      void multiVoiceSpeech.cancelGeneration()
+      return
+    }
+    speech.cancelGeneration()
+  }
+
+  function assignVoiceToSelection(voice: VoiceAsset) {
+    if (textSelection.start === textSelection.end || !textSelection.text.trim()) {
+      return
+    }
+    const assignment: VoiceTextAssignment = {
+      end: textSelection.end,
+      id: createVoiceAssignmentId(),
+      sourceText: text,
+      start: textSelection.start,
+      text: text.slice(textSelection.start, textSelection.end),
+      voiceId: voice.id,
+      voiceName: voice.name,
+    }
+    setVoiceAssignments((current) =>
+      [...current.filter((candidate) => candidate.end <= assignment.start || candidate.start >= assignment.end), assignment].sort(
+        compareAssignments
+      )
+    )
+  }
+
+  function updateVoiceAssignment(assignmentId: string, voice: VoiceAsset) {
+    setVoiceAssignments((current) =>
+      current.map((assignment) =>
+        assignment.id === assignmentId
+          ? {
+              ...assignment,
+              voiceId: voice.id,
+              voiceName: voice.name,
+            }
+          : assignment
+      )
+    )
+  }
+
+  function removeVoiceAssignment(assignmentId: string) {
+    setVoiceAssignments((current) => current.filter((assignment) => assignment.id !== assignmentId))
+  }
+
+  function clearVoiceAssignments() {
+    setVoiceAssignments([])
   }
 
   function requestDeleteVoice(voice: VoiceAsset) {
@@ -235,13 +358,16 @@ export function useVoiceStudioController() {
     activeSectionId: workflowNavigation.activeSectionId,
     archiveStorageError,
     canGenerate,
+    cancelGeneration,
     characterCount,
     confirmation,
     estimatedCredits,
     generatedAudio,
     handleGenerate,
     handleStorageLimitChange,
+    handleTextSelectionChange,
     hasModelRate,
+    hasVoiceAssignments,
     isAddVoiceRevealed,
     isCostQuotaExpanded,
     isSampleProcessingExpanded,
@@ -263,14 +389,45 @@ export function useVoiceStudioController() {
     setIsCostQuotaExpanded,
     setIsSampleProcessingExpanded,
     setIsVoiceTuningExpanded,
-    setText,
+    setText: handleTextChange,
     speech,
+    speechError: activeSpeechError,
+    speechStatus: activeSpeechStatus,
     text,
     textRef,
+    textSelection,
     tuning,
     voiceInput,
+    voiceAssignmentError: assignmentSegments.error,
+    voiceAssignments,
+    voiceAssignmentsStale: assignmentSegments.stale,
+    voiceAssignmentSegments: assignmentSegments.segments,
+    assignVoiceToSelection,
+    clearVoiceAssignments,
+    isSpeechGenerating,
+    multiVoiceSpeech,
+    removeVoiceAssignment,
+    updateVoiceAssignment,
     voiceLibrary,
     voiceTuning,
     workflowSections: WORKFLOW_SECTIONS,
   }
+}
+
+function compareAssignments(first: VoiceTextAssignment, second: VoiceTextAssignment) {
+  return first.start - second.start || first.end - second.end || first.id.localeCompare(second.id)
+}
+
+function createVoiceAssignmentId() {
+  if (typeof window.crypto?.randomUUID === "function") {
+    return `assignment-${window.crypto.randomUUID()}`
+  }
+  return `assignment-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
+function requestStatusFromMultiVoiceStatus(status: MultiVoiceGenerationStatus): RequestStatus {
+  if (status === "starting" || status === "processing") {
+    return "generating"
+  }
+  return status
 }
