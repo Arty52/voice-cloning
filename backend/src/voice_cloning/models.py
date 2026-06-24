@@ -13,6 +13,9 @@ SampleProcessingSourcePreference = Literal["original", "active"]
 SampleProcessingJobStatus = Literal["pending", "running", "success", "error", "canceled"]
 SampleProcessingStepStatus = Literal["pending", "running", "success", "error", "canceled"]
 SampleProcessingWorkflowMode = Literal["single", "stack"]
+SpeechJobStatus = Literal["pending", "running", "success", "error", "canceled"]
+SpeechSegmentStatus = Literal["pending", "running", "success", "error", "canceled"]
+SpeechSegmentAssignmentKind = Literal["assigned", "default"]
 
 
 @dataclass(frozen=True)
@@ -228,3 +231,37 @@ class SampleProcessingJob:
     workflow_mode: SampleProcessingWorkflowMode = "single"
     steps: tuple[SampleProcessingJobStep, ...] = ()
     active_step_id: str | None = None
+
+
+@dataclass(frozen=True)
+class SpeechJobSegment:
+    id: str
+    index: int
+    text: str
+    voice_id: str
+    voice_name: str
+    assignment_kind: SpeechSegmentAssignmentKind
+    status: SpeechSegmentStatus = "pending"
+    generation_count: int = 0
+    character_count: int | None = None
+    request_id: str | None = None
+    cache_state: str | None = None
+    result_sha256: str | None = None
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class SpeechJob:
+    id: str
+    status: SpeechJobStatus
+    text: str
+    default_voice_id: str
+    segments: tuple[SpeechJobSegment, ...]
+    created_at: str
+    updated_at: str
+    provider_id: str | None = None
+    model_id: str | None = None
+    voice_settings: dict[str, object] | None = None
+    active_segment_id: str | None = None
+    result_sha256: str | None = None
+    error: str | None = None

@@ -525,6 +525,7 @@ def make_settings(
         voice_manifest_path=voice_assets_dir / "voices.json",
         storage_dir=tmp_path / "storage",
         sample_processing_dir=tmp_path / "storage" / "sample-processing",
+        speech_jobs_dir=tmp_path / "storage" / "speech-jobs",
         cors_allowed_origins=["http://localhost:4340"],
         max_source_upload_bytes=max_source_upload_bytes,
     )

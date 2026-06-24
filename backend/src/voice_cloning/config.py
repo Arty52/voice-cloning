@@ -46,6 +46,7 @@ class Settings:
     voice_manifest_path: Path
     storage_dir: Path
     sample_processing_dir: Path
+    speech_jobs_dir: Path
     cors_allowed_origins: list[str]
     max_upload_bytes: int = 10 * 1024 * 1024
     max_source_upload_bytes: int = 50 * 1024 * 1024
@@ -77,6 +78,7 @@ class Settings:
         sample_processing_dir = Path(
             os.getenv("SAMPLE_PROCESSING_DIR", storage_dir / "sample-processing")
         )
+        speech_jobs_dir = Path(os.getenv("SPEECH_JOBS_DIR", storage_dir / "speech-jobs"))
         origins = os.getenv(
             "CORS_ALLOWED_ORIGINS",
             "http://localhost:4340,http://127.0.0.1:4340",
@@ -94,6 +96,7 @@ class Settings:
             voice_manifest_path=voice_manifest.resolve(),
             storage_dir=storage_dir.resolve(),
             sample_processing_dir=sample_processing_dir.resolve(),
+            speech_jobs_dir=speech_jobs_dir.resolve(),
             cors_allowed_origins=_split_csv(origins),
             sample_processing_engine=os.getenv("SAMPLE_PROCESSING_ENGINE", "").strip().lower(),
             sample_processing_demucs_command=os.getenv("SAMPLE_PROCESSING_DEMUCS_COMMAND", "demucs").strip()

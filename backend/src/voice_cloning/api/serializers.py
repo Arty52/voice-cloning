@@ -15,6 +15,8 @@ from ..models import (
     SpeakerSeparationSpeaker,
     SpeakerSeparationTranscript,
     SpeakerTranscriptItem,
+    SpeechJob,
+    SpeechJobSegment,
     SubscriptionSummary,
     VoiceAsset,
     VoicePreset,
@@ -265,6 +267,39 @@ def _job_operation_label(job: SampleProcessingJob) -> str:
         if step.operation_id == job.operation_id:
             return step.operation_label
     return job.operation_id
+
+
+def speech_job_payload(job: SpeechJob) -> dict[str, object]:
+    return {
+        "id": job.id,
+        "status": job.status,
+        "text": job.text,
+        "defaultVoiceId": job.default_voice_id,
+        "segments": [speech_job_segment_payload(segment) for segment in job.segments],
+        "activeSegmentId": job.active_segment_id,
+        "resultSha256": job.result_sha256,
+        "error": job.error,
+        "createdAt": job.created_at,
+        "updatedAt": job.updated_at,
+    }
+
+
+def speech_job_segment_payload(segment: SpeechJobSegment) -> dict[str, object]:
+    return {
+        "id": segment.id,
+        "index": segment.index,
+        "text": segment.text,
+        "voiceId": segment.voice_id,
+        "voiceName": segment.voice_name,
+        "assignmentKind": segment.assignment_kind,
+        "status": segment.status,
+        "generationCount": segment.generation_count,
+        "characterCount": segment.character_count,
+        "requestId": segment.request_id,
+        "cacheState": segment.cache_state,
+        "resultSha256": segment.result_sha256,
+        "error": segment.error,
+    }
 
 
 def sample_processing_result_payload(result: SampleProcessingJobResult) -> dict[str, object]:
