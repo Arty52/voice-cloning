@@ -183,10 +183,14 @@ function App() {
             isDeleteDisabled={generatedAudio.generatedAudioMutation === "delete"}
             item={latestGeneratedAudioItem}
             onDelete={(id) => void generatedAudio.handleDeleteGeneratedAudio(id)}
-            onRegenerateSegment={(segmentId, voiceId) => void regenerateMultiVoiceSegment(segmentId, voiceId)}
+            onRegenerateSegment={(segmentId, voiceId, voiceSettings) =>
+              void regenerateMultiVoiceSegment(segmentId, voiceId, voiceSettings)
+            }
+            providerTuningControls={providerTuning.controls}
             segmentResultUrls={multiVoiceSegmentResultUrls}
             status={speechStatus}
             storageError={latestStorageError}
+            tuning={tuning}
             voices={voiceLibrary.voices}
           />
 

@@ -29,7 +29,7 @@ import {
   workflowSectionIdFromHash,
   type WorkflowSectionId,
 } from "@/lib/workflow-sections"
-import type { ProviderTuningMetadata, RequestStatus, VoiceAsset } from "@/types"
+import type { ProviderTuningMetadata, RequestStatus, VoiceAsset, VoiceTuningValues } from "@/types"
 
 const EMPTY_TUNING_METADATA: ProviderTuningMetadata = {
   controls: [],
@@ -280,13 +280,18 @@ export function useVoiceStudioController() {
     }
   }
 
-  async function regenerateMultiVoiceSegment(segmentId: string, voiceId?: string | null) {
+  async function regenerateMultiVoiceSegment(
+    segmentId: string,
+    voiceId?: string | null,
+    voiceSettings?: VoiceTuningValues | null
+  ) {
     setLatestGenerationMode("multi")
     const generatedResult = await multiVoiceSpeech.regenerateSegment({
       providerKey: providerKeys.activeProviderKey,
       segmentId,
       storageLimitBytes: generatedAudio.storageLimitBytes,
       voiceId,
+      voiceSettings,
     })
     if (generatedResult) {
       setLatestGeneratedAudioId(generatedResult.id)

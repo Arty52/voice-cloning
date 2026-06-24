@@ -3,13 +3,32 @@ import userEvent from "@testing-library/user-event"
 import type { ReactNode } from "react"
 import { describe, expect, it, vi } from "vitest"
 
-import type { GeneratedResult, VoiceAsset } from "@/types"
+import type { GeneratedResult, ProviderTuningControl, VoiceAsset } from "@/types"
 import { TooltipProvider } from "@/components/ui/tooltip"
 
 import { LatestGeneratedAudioPanel } from "./latest-generated-audio-panel"
 
 const narrator = voice("narrator", "Narrator")
 const villain = voice("villain", "Villain")
+const segmentTuningControls: ProviderTuningControl[] = [
+  {
+    defaultValue: 0.4,
+    description: "Lower values allow more expressive delivery.",
+    id: "stability",
+    label: "Stability",
+    max: 1,
+    min: 0,
+    step: 0.01,
+    type: "slider",
+  },
+  {
+    defaultValue: false,
+    description: "Boosts speaker similarity.",
+    id: "useSpeakerBoost",
+    label: "Speaker Boost",
+    type: "toggle",
+  },
+]
 
 const item: GeneratedResult = {
   appVoiceId: "narrator",
@@ -36,6 +55,7 @@ const item: GeneratedResult = {
         text: "Hello narrator.",
         voiceId: "narrator",
         voiceName: "Narrator",
+        voiceSettings: { useSpeakerBoost: false },
       },
       {
         assignmentKind: "default",
@@ -47,6 +67,7 @@ const item: GeneratedResult = {
         text: "Villain replies.",
         voiceId: "villain",
         voiceName: "Villain",
+        voiceSettings: { useSpeakerBoost: false },
       },
     ],
     voices: [
@@ -242,6 +263,7 @@ describe("LatestGeneratedAudioPanel multi-voice results", () => {
         ),
       },
     }
+
     renderLatestPanel(
       <LatestGeneratedAudioPanel
         error={null}
@@ -264,5 +286,62 @@ describe("LatestGeneratedAudioPanel multi-voice results", () => {
 
     expect(screen.getByRole("menuitemradio", { name: "Archived Voice" })).toHaveAttribute("aria-checked", "true")
     expect(screen.getByRole("menuitemradio", { name: "Narrator" })).toBeInTheDocument()
+  })
+
+  it("does not autofocus tuning help when segment tuning opens", async () => {
+    const user = userEvent.setup()
+    renderLatestPanel(
+      <LatestGeneratedAudioPanel
+        error={null}
+        isDeleteDisabled={false}
+        item={item}
+        onDelete={vi.fn()}
+        onRegenerateSegment={vi.fn()}
+        providerTuningControls={segmentTuningControls}
+        segmentResultUrls={{ "segment-one": "/api/speech/jobs/job-1/segments/segment-one/result" }}
+        status="success"
+        storageError={null}
+        tuning={{ stability: 0.4, useSpeakerBoost: false }}
+        voices={[narrator, villain]}
+      />
+    )
+
+    await user.click(screen.getByRole("button", { name: /show segments/i }))
+    await user.click(screen.getAllByRole("button", { name: /^Tune$/i })[0])
+
+    const stabilityHelp = screen.getByRole("button", { name: "Stability help" })
+    expect(screen.getByRole("heading", { name: "Segment 1 Tuning" })).toBeInTheDocument()
+    expect(screen.getByText("Adjust settings for the next time this segment regenerates.")).toBeInTheDocument()
+    expect(document.body.querySelector('label[for="segment-segment-one-tuning-stability"]')).toHaveTextContent(
+      "Stability"
+    )
+    expect(stabilityHelp).not.toHaveFocus()
+  })
+
+  it("regenerates with a segment tuning override", async () => {
+    const user = userEvent.setup()
+    const onRegenerateSegment = vi.fn()
+    renderLatestPanel(
+      <LatestGeneratedAudioPanel
+        error={null}
+        isDeleteDisabled={false}
+        item={item}
+        onDelete={vi.fn()}
+        onRegenerateSegment={onRegenerateSegment}
+        providerTuningControls={segmentTuningControls}
+        segmentResultUrls={{ "segment-one": "/api/speech/jobs/job-1/segments/segment-one/result" }}
+        status="success"
+        storageError={null}
+        tuning={{ useSpeakerBoost: false }}
+        voices={[narrator, villain]}
+      />
+    )
+
+    await user.click(screen.getByRole("button", { name: /show segments/i }))
+    await user.click(screen.getAllByRole("button", { name: /^Tune$/i })[0])
+    await user.click(screen.getByRole("checkbox", { name: "Speaker Boost" }))
+    await user.click(screen.getAllByRole("button", { name: /^Regenerate$/i })[0])
+
+    expect(onRegenerateSegment).toHaveBeenCalledWith("segment-one", null, { useSpeakerBoost: true })
   })
 })

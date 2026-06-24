@@ -985,8 +985,14 @@ describe("App", () => {
         clientSegmentId: string
         text: string
         voiceId: string
+        voiceSettings?: Record<string, unknown> | null
       }>
       text: string
+      voiceSettings?: Record<string, unknown> | null
+    } | null = null
+    let regenerateSegmentBody: {
+      voiceId: string | null
+      voiceSettings?: Record<string, unknown> | null
     } | null = null
     vi.stubGlobal(
       "fetch",
@@ -1036,6 +1042,7 @@ describe("App", () => {
                   text: segment.text,
                   voiceId: segment.voiceId,
                   voiceName: segment.voiceId === "voice-clone-01" ? "Voice_Clone_01" : "Default voice",
+                  voiceSettings: segment.voiceSettings ?? submittedJob.voiceSettings ?? null,
                 })),
                 status: "success",
                 text: submittedJob.text,
@@ -1046,6 +1053,43 @@ describe("App", () => {
         }
         if (path === "/api/speech/jobs/job-1/result" && !init) {
           return okAudio()
+        }
+        if (
+          path.startsWith("/api/speech/jobs/job-1/segments/") &&
+          path.endsWith("/regenerate") &&
+          init?.method === "POST"
+        ) {
+          regenerateSegmentBody = JSON.parse(String(init.body))
+          return okJson({
+            job: {
+              activeSegmentId: null,
+              createdAt: "2026-06-23T00:00:00.000Z",
+              defaultVoiceId: createJobBody?.defaultVoiceId ?? "default",
+              error: null,
+              id: "job-1",
+              resultSha256: "combined-hash-2",
+              segmentGapMs: createJobBody?.segmentGapMs ?? 250,
+              segments: (createJobBody?.segments ?? []).map((segment, index) => ({
+                assignmentKind: segment.assignmentKind,
+                cacheState: "miss",
+                characterCount: segment.text.length,
+                error: null,
+                generationCount: index === 0 ? 2 : 1,
+                id: segment.clientSegmentId,
+                index,
+                requestId: `request-${index + 1}`,
+                resultSha256: `segment-${index + 1}-hash-2`,
+                status: "success",
+                text: segment.text,
+                voiceId: segment.voiceId,
+                voiceName: segment.voiceId === "voice-clone-01" ? "Voice_Clone_01" : "Default voice",
+                voiceSettings: index === 0 ? regenerateSegmentBody?.voiceSettings : segment.voiceSettings,
+              })),
+              status: "success",
+              text: createJobBody?.text ?? "",
+              updatedAt: "2026-06-23T00:00:02.000Z",
+            },
+          })
         }
         return okJson({})
       })
@@ -1111,6 +1155,19 @@ describe("App", () => {
         }),
       ],
       text: "say hello world! now",
+    })
+
+    await user.click(await screen.findByRole("button", { name: /show segments/i }))
+    await user.click(screen.getAllByRole("button", { name: /^Tune$/i })[0])
+    fireEvent.change(screen.getByRole("slider", { name: /^Speed$/i }), { target: { value: "1.2" } })
+    await user.click(screen.getAllByRole("button", { name: /^Regenerate$/i })[0])
+
+    await waitFor(() => expect(regenerateSegmentBody).not.toBeNull())
+    expect(regenerateSegmentBody).toMatchObject({
+      voiceId: null,
+      voiceSettings: expect.objectContaining({
+        speed: 1.2,
+      }),
     })
   })
 
