@@ -20,6 +20,9 @@ export type SampleProcessingSourcePreference = "original" | "active"
 export type SampleProcessingJobStatus = "pending" | "running" | "success" | "error" | "canceled"
 export type SampleProcessingStepStatus = "pending" | "running" | "success" | "error" | "canceled"
 export type SampleProcessingWorkflowMode = "single" | "stack"
+export type SpeechJobStatus = "pending" | "running" | "success" | "error" | "canceled"
+export type SpeechSegmentStatus = "pending" | "running" | "success" | "error" | "canceled"
+export type SpeechSegmentAssignmentKind = "assigned" | "default"
 
 export type VoiceProvider = {
   id: string
@@ -223,6 +226,41 @@ export type SampleProcessingJobResponse = {
   job: SampleProcessingJob
 }
 
+export type SpeechJobSegment = {
+  id: string
+  index: number
+  text: string
+  voiceId: string
+  voiceName: string
+  assignmentKind: SpeechSegmentAssignmentKind
+  voiceSettings?: VoiceTuningValues | null
+  status: SpeechSegmentStatus
+  generationCount: number
+  characterCount: number | null
+  requestId: string | null
+  cacheState: string | null
+  resultSha256: string | null
+  error: string | null
+}
+
+export type SpeechJob = {
+  id: string
+  status: SpeechJobStatus
+  text: string
+  defaultVoiceId: string
+  segmentGapMs: number
+  segments: SpeechJobSegment[]
+  activeSegmentId: string | null
+  resultSha256: string | null
+  error: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type SpeechJobResponse = {
+  job: SpeechJob
+}
+
 export type SubscriptionResponse = {
   available: boolean
   error: string | null
@@ -270,6 +308,7 @@ export type GeneratedResult = {
   createdAt: string
   generatedAt: string
   generationElapsedMs: number | null
+  multiVoiceMetadata: GeneratedAudioMultiVoiceMetadata | null
   tuningMetadata: GeneratedAudioTuningMetadata | null
 }
 
@@ -291,6 +330,33 @@ export type GeneratedAudioTuningMetadata = {
   presetLabel: string | null
   providerId: string
   providerLabel: string
+}
+
+export type GeneratedAudioMultiVoiceSegmentMetadata = {
+  id: string
+  index: number
+  text: string
+  voiceId: string
+  voiceName: string
+  assignmentKind: SpeechSegmentAssignmentKind
+  voiceSettings?: VoiceTuningValues | null
+  generationCount: number
+  characterCount: number | null
+  resultSha256: string | null
+}
+
+export type GeneratedAudioMultiVoiceVoiceMetadata = {
+  voiceId: string
+  voiceName: string
+  segmentCount: number
+}
+
+export type GeneratedAudioMultiVoiceMetadata = {
+  jobId: string
+  resultSha256: string | null
+  segmentCount: number
+  segments: GeneratedAudioMultiVoiceSegmentMetadata[]
+  voices: GeneratedAudioMultiVoiceVoiceMetadata[]
 }
 
 export type ConfirmationState = {

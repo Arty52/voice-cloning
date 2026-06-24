@@ -23,6 +23,7 @@ export function storedAudioToResult(record: StoredGeneratedAudio): GeneratedResu
     generationElapsedMs: record.generationElapsedMs ?? null,
     id: record.id,
     modelId: record.modelId,
+    multiVoiceMetadata: record.multiVoiceMetadata ?? null,
     requestId: record.requestId,
     sizeBytes: record.sizeBytes,
     tuningMetadata: record.tuningMetadata ?? null,

@@ -21,6 +21,27 @@ const baseRecord: StoredGeneratedAudio = {
   voiceName: "Default Voice",
 }
 
+const multiVoiceMetadata = {
+  jobId: "job-1",
+  resultSha256: "combined-hash",
+  segmentCount: 1,
+  segments: [
+    {
+      assignmentKind: "assigned" as const,
+      characterCount: 12,
+      generationCount: 1,
+      id: "segment-one",
+      index: 0,
+      resultSha256: "segment-hash",
+      text: "Hello.",
+      voiceId: "voice-123",
+      voiceName: "Default Voice",
+      voiceSettings: { stability: 0.42 },
+    },
+  ],
+  voices: [{ segmentCount: 1, voiceId: "voice-123", voiceName: "Default Voice" }],
+}
+
 describe("storedAudioToResult", () => {
   beforeEach(() => {
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:generated-audio")
@@ -33,6 +54,7 @@ describe("storedAudioToResult", () => {
   it("preserves stored tuning metadata", () => {
     const result = storedAudioToResult({
       ...baseRecord,
+      multiVoiceMetadata,
       tuningMetadata: {
         adjustedSettings: [
           {
@@ -58,6 +80,7 @@ describe("storedAudioToResult", () => {
       providerLabel: "ElevenLabs",
     })
     expect(result.generationElapsedMs).toBe(1234)
+    expect(result.multiVoiceMetadata).toEqual(multiVoiceMetadata)
   })
 
   it("normalizes legacy records without optional metadata", () => {
@@ -66,6 +89,7 @@ describe("storedAudioToResult", () => {
     const result = storedAudioToResult(legacyRecord as StoredGeneratedAudio)
 
     expect(result.generationElapsedMs).toBeNull()
+    expect(result.multiVoiceMetadata).toBeNull()
     expect(result.tuningMetadata).toBeNull()
   })
 })

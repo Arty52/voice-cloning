@@ -1,8 +1,10 @@
 import type {
   GeneratedAudioAdjustedSetting,
+  GeneratedAudioMultiVoiceMetadata,
   GeneratedAudioTuningMetadata,
   ProviderTuningControl,
   ProviderTuningValue,
+  SpeechJob,
   VoiceProvider,
   VoiceTuningValues,
 } from "@/types"
@@ -41,6 +43,41 @@ export function buildGeneratedAudioTuningMetadata({
     presetLabel: preset?.label ?? null,
     providerId: provider.id,
     providerLabel: provider.label,
+  }
+}
+
+export function buildGeneratedAudioMultiVoiceMetadata(job: SpeechJob): GeneratedAudioMultiVoiceMetadata {
+  const voiceCounts = new Map<string, { segmentCount: number; voiceId: string; voiceName: string }>()
+  for (const segment of job.segments) {
+    const current = voiceCounts.get(segment.voiceId)
+    if (current) {
+      current.segmentCount += 1
+    } else {
+      voiceCounts.set(segment.voiceId, {
+        segmentCount: 1,
+        voiceId: segment.voiceId,
+        voiceName: segment.voiceName,
+      })
+    }
+  }
+
+  return {
+    jobId: job.id,
+    resultSha256: job.resultSha256,
+    segmentCount: job.segments.length,
+    segments: job.segments.map((segment) => ({
+      assignmentKind: segment.assignmentKind,
+      characterCount: segment.characterCount,
+      generationCount: segment.generationCount,
+      id: segment.id,
+      index: segment.index,
+      resultSha256: segment.resultSha256,
+      text: segment.text,
+      voiceId: segment.voiceId,
+      voiceName: segment.voiceName,
+      voiceSettings: segment.voiceSettings,
+    })),
+    voices: Array.from(voiceCounts.values()),
   }
 }
 
