@@ -709,7 +709,7 @@ function CompactVoicePreviewButton({
 
   useEffect(() => {
     if (disabled && hasActivePlaybackRef.current) {
-      stopPreview({ reset: true, updateActive: false })
+      stopPreview({ reset: true })
     }
   }, [disabled, stopPreview])
 

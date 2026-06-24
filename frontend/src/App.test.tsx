@@ -1453,6 +1453,17 @@ describe("App", () => {
     expect(cloneCard.getByRole("button", { name: "Pause Voice_Clone_01 Preview" })).toBeInTheDocument()
 
     pauseSpy.mockClear()
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Start Processing" }))
+    await waitFor(() => expect(pauseSpy).toHaveBeenCalled())
+    await waitFor(() =>
+      expect(cloneCard.getByRole("button", { name: "Play Voice_Clone_01 Preview" })).toBeInTheDocument()
+    )
+
+    await user.click(cloneCard.getByRole("button", { name: "Play Voice_Clone_01 Preview" }))
+    expect(playSpy).toHaveBeenCalledTimes(3)
+    expect(cloneCard.getByRole("button", { name: "Pause Voice_Clone_01 Preview" })).toBeInTheDocument()
+
+    pauseSpy.mockClear()
     await user.click(sampleProcessingPanel().getByRole("button", { name: "Use Audio File" }))
     expect(sampleProcessingPanel().getByLabelText("Audio File")).toHaveAttribute("tabindex", "-1")
     await waitFor(() => expect(pauseSpy).toHaveBeenCalled())
