@@ -89,6 +89,7 @@ export function LatestGeneratedAudioPanel({
           {item.multiVoiceMetadata ? (
             <MultiVoiceSegmentResults
               disabled={isGenerating}
+              key={`${item.multiVoiceMetadata.jobId}:${item.multiVoiceMetadata.resultSha256 ?? ""}`}
               onRegenerateSegment={onRegenerateSegment}
               segmentResultUrls={segmentResultUrls}
               segments={item.multiVoiceMetadata.segments}

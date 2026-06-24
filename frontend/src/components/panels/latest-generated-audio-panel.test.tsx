@@ -159,6 +159,53 @@ describe("LatestGeneratedAudioPanel multi-voice results", () => {
     expect(onRegenerateSegment).toHaveBeenCalledWith("segment-one", "villain")
   })
 
+  it("resets segment voice choices when the latest job changes", async () => {
+    const user = userEvent.setup()
+    const onRegenerateSegment = vi.fn()
+    const renderPanel = (panelItem: GeneratedResult) => (
+      <LatestGeneratedAudioPanel
+        error={null}
+        isDeleteDisabled={false}
+        item={panelItem}
+        onDelete={vi.fn()}
+        onRegenerateSegment={onRegenerateSegment}
+        segmentResultUrls={{
+          "segment-one": `/api/speech/jobs/${panelItem.multiVoiceMetadata?.jobId}/segments/segment-one/result`,
+        }}
+        status="success"
+        storageError={null}
+        voices={[narrator, villain]}
+      />
+    )
+    const { rerender } = renderLatestPanel(renderPanel(item))
+
+    await user.click(screen.getByRole("button", { name: /show segments/i }))
+    await user.click(screen.getByRole("button", { name: /voice for segment 1: narrator/i }))
+    await user.click(screen.getByRole("menuitemradio", { name: "Villain" }))
+    expect(screen.getByRole("button", { name: /voice for segment 1: villain/i })).toBeInTheDocument()
+
+    const nextItem: GeneratedResult = {
+      ...item,
+      id: "generated-2",
+      multiVoiceMetadata: {
+        ...item.multiVoiceMetadata!,
+        jobId: "job-2",
+        resultSha256: "combined-hash-2",
+        segments: item.multiVoiceMetadata!.segments.map((segment) =>
+          segment.id === "segment-one" ? { ...segment, generationCount: 2, resultSha256: "segment-one-hash-2" } : segment
+        ),
+      },
+    }
+    rerender(<TooltipProvider>{renderPanel(nextItem)}</TooltipProvider>)
+
+    await user.click(screen.getByRole("button", { name: /show segments/i }))
+    expect(screen.getByRole("button", { name: /voice for segment 1: narrator/i })).toBeInTheDocument()
+
+    await user.click(screen.getAllByRole("button", { name: /^Regenerate$/i })[0])
+
+    expect(onRegenerateSegment).toHaveBeenLastCalledWith("segment-one", null)
+  })
+
   it("regenerates with the current voice when no override is selected", async () => {
     const user = userEvent.setup()
     const onRegenerateSegment = vi.fn()
