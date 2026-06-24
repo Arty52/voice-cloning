@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest"
 
-import { areVoiceAssignmentsStale, buildSpeechJobSegments, type VoiceTextAssignment } from "./voice-assignments"
+import {
+  areVoiceAssignmentsStale,
+  buildSpeechJobSegments,
+  reconcileVoiceAssignmentsForTextChange,
+  type VoiceTextAssignment,
+} from "./voice-assignments"
 
 const defaultVoice = { id: "narrator", name: "Narrator" }
 const characterVoice = { id: "villain", name: "Villain" }
@@ -133,5 +138,105 @@ describe("voice assignment segment building", () => {
       segments: [],
       stale: false,
     })
+  })
+})
+
+describe("voice assignment text edit reconciliation", () => {
+  it("shifts assignments after text inserted before an assigned span", () => {
+    const originalText = "Narrator. Villain speaks. Narrator again."
+    const nextText = `Intro. ${originalText}`
+
+    const [reconciled] = reconcileVoiceAssignmentsForTextChange(originalText, nextText, [assignment()])
+
+    expect(reconciled).toMatchObject({
+      end: assignment().end + "Intro. ".length,
+      sourceText: nextText,
+      start: assignment().start + "Intro. ".length,
+      text: "Villain speaks.",
+    })
+    expect(areVoiceAssignmentsStale(nextText, [reconciled])).toBe(false)
+  })
+
+  it("updates source snapshots after text inserted after an assigned span", () => {
+    const originalText = "Narrator. Villain speaks. Narrator again."
+    const nextText = `${originalText} Closing narration.`
+
+    const [reconciled] = reconcileVoiceAssignmentsForTextChange(originalText, nextText, [assignment()])
+
+    expect(reconciled).toMatchObject({
+      end: assignment().end,
+      sourceText: nextText,
+      start: assignment().start,
+      text: "Villain speaks.",
+    })
+    expect(areVoiceAssignmentsStale(nextText, [reconciled])).toBe(false)
+  })
+
+  it("shrinks assignments after text is deleted inside an assigned span", () => {
+    const originalText = "Narrator. Villain speaks. Narrator again."
+    const nextText = originalText.replace("speaks", "speak")
+
+    const [reconciled] = reconcileVoiceAssignmentsForTextChange(originalText, nextText, [assignment()])
+
+    expect(reconciled).toMatchObject({
+      end: assignment().end - 1,
+      sourceText: nextText,
+      start: assignment().start,
+      text: "Villain speak.",
+    })
+    expect(buildSpeechJobSegments(nextText, [reconciled], defaultVoice)).toMatchObject({
+      error: null,
+      stale: false,
+    })
+  })
+
+  it("expands assignments after text is inserted inside an assigned span", () => {
+    const originalText = "Narrator. Villain speaks. Narrator again."
+    const nextText = originalText.replace("Villain speaks.", "Villain loudly speaks.")
+
+    const [reconciled] = reconcileVoiceAssignmentsForTextChange(originalText, nextText, [assignment()])
+
+    expect(reconciled).toMatchObject({
+      end: assignment().end + "loudly ".length,
+      sourceText: nextText,
+      start: assignment().start,
+      text: "Villain loudly speaks.",
+    })
+    expect(areVoiceAssignmentsStale(nextText, [reconciled])).toBe(false)
+  })
+
+  it("replaces text inside an assigned span", () => {
+    const originalText = "Narrator. Villain speaks. Narrator again."
+    const nextText = originalText.replace("speaks", "whispers")
+
+    const [reconciled] = reconcileVoiceAssignmentsForTextChange(originalText, nextText, [assignment()])
+
+    expect(reconciled).toMatchObject({
+      end: assignment().end + "whispers".length - "speaks".length,
+      sourceText: nextText,
+      start: assignment().start,
+      text: "Villain whispers.",
+    })
+    expect(areVoiceAssignmentsStale(nextText, [reconciled])).toBe(false)
+  })
+
+  it("removes assignments when their assigned text is deleted", () => {
+    const originalText = "Narrator. Villain speaks. Narrator again."
+    const nextText = originalText.replace("Villain speaks.", "")
+
+    const reconciled = reconcileVoiceAssignmentsForTextChange(originalText, nextText, [assignment()])
+
+    expect(reconciled).toEqual([])
+  })
+
+  it("keeps assignments stale when an edit crosses an assignment boundary", () => {
+    const originalText = "Narrator. Villain speaks. Narrator again."
+    const nextText = originalText.replace("ator. Villain ", "")
+    const assignments = [assignment()]
+
+    const reconciled = reconcileVoiceAssignmentsForTextChange(originalText, nextText, assignments)
+
+    expect(reconciled).toBe(assignments)
+    expect(areVoiceAssignmentsStale(nextText, reconciled)).toBe(true)
   })
 })

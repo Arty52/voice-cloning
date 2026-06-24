@@ -92,7 +92,7 @@ describe("SpeechInputPanel voice assignments", () => {
       assignmentsStale: true,
     })
 
-    expect(screen.getByRole("alert")).toHaveTextContent(/script has changed/i)
+    expect(screen.getByRole("alert")).toHaveTextContent(/could not be matched/i)
     expect(screen.getByRole("region", { name: /voice assignments/i })).toBeInTheDocument()
     expect(screen.getByText("Villain")).toBeInTheDocument()
     expect(screen.getByText("villain line")).toBeInTheDocument()

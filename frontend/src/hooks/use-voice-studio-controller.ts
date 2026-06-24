@@ -19,6 +19,7 @@ import { isTemporaryGeneratedAudioId } from "@/lib/generated-audio-view-model"
 import { formatBytes } from "@/lib/formatters"
 import {
   buildSpeechJobSegments,
+  reconcileVoiceAssignmentsForTextChange,
   type VoiceTextAssignment,
 } from "@/lib/voice-assignments"
 import {
@@ -209,6 +210,7 @@ export function useVoiceStudioController() {
   }
 
   function handleTextChange(nextText: string) {
+    setVoiceAssignments((current) => reconcileVoiceAssignmentsForTextChange(text, nextText, current))
     setText(nextText)
     setTextSelection({ end: 0, start: 0, text: "" })
   }

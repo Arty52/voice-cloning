@@ -42,12 +42,57 @@ export function areVoiceAssignmentsStale(text: string, assignments: VoiceTextAss
   return assignments.some((assignment) => isAssignmentStale(text, assignment))
 }
 
+export function reconcileVoiceAssignmentsForTextChange(
+  previousText: string,
+  nextText: string,
+  assignments: VoiceTextAssignment[]
+) {
+  if (assignments.length === 0 || previousText === nextText) {
+    return assignments
+  }
+
+  const orderedAssignments = [...assignments].sort(compareAssignments)
+  if (validateAssignments(previousText, orderedAssignments) || areVoiceAssignmentsStale(previousText, orderedAssignments)) {
+    return assignments
+  }
+
+  const edit = detectContiguousEdit(previousText, nextText)
+  if (!edit) {
+    return assignments
+  }
+
+  const affectedAssignments = orderedAssignments.filter((assignment) => editIntersectsAssignment(edit, assignment))
+  if (affectedAssignments.length > 1) {
+    return assignments
+  }
+  if (affectedAssignments.length === 1 && !isSafeAssignmentEdit(edit, affectedAssignments[0])) {
+    return assignments
+  }
+
+  const reconciledAssignments: VoiceTextAssignment[] = []
+  for (const assignment of orderedAssignments) {
+    const nextRange = reconcileAssignmentRange(edit, assignment)
+    if (!nextRange) {
+      continue
+    }
+    reconciledAssignments.push({
+      ...assignment,
+      end: nextRange.end,
+      sourceText: nextText,
+      start: nextRange.start,
+      text: nextText.slice(nextRange.start, nextRange.end),
+    })
+  }
+
+  return reconciledAssignments.sort(compareAssignments)
+}
+
 export function buildSpeechJobSegments(
   text: string,
   assignments: VoiceTextAssignment[],
   defaultVoice: Pick<VoiceAsset, "id" | "name">
 ): AssignmentSegmentBuildResult {
-  const orderedAssignments = [...assignments].sort((first, second) => first.start - second.start || first.end - second.end)
+  const orderedAssignments = [...assignments].sort(compareAssignments)
   const validationError = validateAssignments(text, orderedAssignments)
   const stale = areVoiceAssignmentsStale(text, orderedAssignments)
   if (validationError || stale) {
@@ -107,6 +152,77 @@ function isAssignmentStale(text: string, assignment: VoiceTextAssignment) {
   return assignment.sourceText !== text || text.slice(assignment.start, assignment.end) !== assignment.text
 }
 
+type TextEdit = {
+  delta: number
+  previousEnd: number
+  start: number
+}
+
+type AssignmentRange = Pick<VoiceTextAssignment, "end" | "start">
+
+function detectContiguousEdit(previousText: string, nextText: string): TextEdit | null {
+  let start = 0
+  while (
+    start < previousText.length &&
+    start < nextText.length &&
+    previousText[start] === nextText[start]
+  ) {
+    start += 1
+  }
+
+  let previousSuffixStart = previousText.length
+  let nextSuffixStart = nextText.length
+  while (
+    previousSuffixStart > start &&
+    nextSuffixStart > start &&
+    previousText[previousSuffixStart - 1] === nextText[nextSuffixStart - 1]
+  ) {
+    previousSuffixStart -= 1
+    nextSuffixStart -= 1
+  }
+
+  if (start === previousText.length && start === nextText.length) {
+    return null
+  }
+
+  return {
+    delta: nextSuffixStart - previousSuffixStart,
+    previousEnd: previousSuffixStart,
+    start,
+  }
+}
+
+function editIntersectsAssignment(edit: TextEdit, assignment: VoiceTextAssignment) {
+  if (edit.previousEnd > edit.start) {
+    return edit.start < assignment.end && edit.previousEnd > assignment.start
+  }
+  return edit.start > assignment.start && edit.start <= assignment.end
+}
+
+function isSafeAssignmentEdit(edit: TextEdit, assignment: VoiceTextAssignment) {
+  if (edit.previousEnd === edit.start) {
+    return edit.start > assignment.start && edit.start <= assignment.end
+  }
+  return edit.start >= assignment.start && edit.previousEnd <= assignment.end
+}
+
+function reconcileAssignmentRange(edit: TextEdit, assignment: VoiceTextAssignment): AssignmentRange | null {
+  if (editIntersectsAssignment(edit, assignment)) {
+    const end = assignment.end + edit.delta
+    return end > assignment.start ? { end, start: assignment.start } : null
+  }
+  if (edit.previousEnd <= assignment.start) {
+    return {
+      end: assignment.end + edit.delta,
+      start: assignment.start + edit.delta,
+    }
+  }
+  return {
+    end: assignment.end,
+    start: assignment.start,
+  }
+}
+
 function defaultSpan(text: string, start: number, end: number, defaultVoice: Pick<VoiceAsset, "id" | "name">): SpanDraft {
   return {
     assignmentId: null,
@@ -164,4 +280,8 @@ function toSpeakableSegments(spans: SpanDraft[]) {
 
 function segmentId(span: SpanDraft, index: number) {
   return span.assignmentId ?? `default-${index}-${span.start}-${span.end}`
+}
+
+function compareAssignments(first: VoiceTextAssignment, second: VoiceTextAssignment) {
+  return first.start - second.start || first.end - second.end || first.id.localeCompare(second.id)
 }

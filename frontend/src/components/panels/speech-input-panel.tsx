@@ -129,7 +129,7 @@ export function SpeechInputPanel({
           <AlertTitle>Voice Assignments Need Attention</AlertTitle>
           <AlertDescription>
             {assignmentError ||
-              "The script has changed since voices were assigned. Clear and reassign voices, or restore the exact text."}
+              "Some script edits could not be matched to the current voice assignments. Clear and reassign voices, or restore the matching text."}
           </AlertDescription>
         </Alert>
       ) : null}
