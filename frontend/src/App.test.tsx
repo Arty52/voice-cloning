@@ -206,6 +206,7 @@ const providersResponse: ProvidersResponse = {
 
 const sampleProcessingOptions = {
   engine: "demucs",
+  recommendedWorkflowOrder: ["isolateVoice", "separateSpeakers", "trimSilence"],
   operations: [
     {
       id: "isolateVoice" as const,
@@ -283,6 +284,24 @@ const successfulSampleProcessingJob = {
     sourceSha256: "default-hash",
     sourcePreference: "original" as const,
     engine: "demucs",
+    workflowMode: "single" as const,
+    steps: [
+      {
+        id: "job-1",
+        operationId: "isolateVoice" as const,
+        operationLabel: "Isolate Voice",
+        status: "success" as const,
+        engine: "demucs",
+        processingPresetId: "balanced" as const,
+        processingPresetLabel: "Balanced",
+        startedAt: "2026-06-19T00:00:00+00:00",
+        completedAt: "2026-06-19T00:00:01+00:00",
+        error: null,
+        sourceSha256: "default-hash",
+        resultSha256: "processed-hash",
+      },
+    ],
+    activeStepId: null,
     createdAt: "2026-06-19T00:00:00+00:00",
     updatedAt: "2026-06-19T00:00:01+00:00",
     error: null,
@@ -308,6 +327,24 @@ const successfulSpeakerSeparationJob = {
     sourceSha256: "source-hash",
     sourcePreference: "original" as const,
     engine: "pyannote-community-1+faster-whisper",
+    workflowMode: "single" as const,
+    steps: [
+      {
+        id: "job-1",
+        operationId: "separateSpeakers" as const,
+        operationLabel: "Separate Speakers",
+        status: "success" as const,
+        engine: "pyannote-community-1+faster-whisper",
+        processingPresetId: null,
+        processingPresetLabel: null,
+        startedAt: "2026-06-23T00:00:00+00:00",
+        completedAt: "2026-06-23T00:00:01+00:00",
+        error: null,
+        sourceSha256: "source-hash",
+        resultSha256: "speaker-result-hash",
+      },
+    ],
+    activeStepId: null,
     createdAt: "2026-06-23T00:00:00+00:00",
     updatedAt: "2026-06-23T00:00:01+00:00",
     error: null,
@@ -1324,13 +1361,13 @@ describe("App", () => {
 
     await screen.findByText("default/default-voice.mp3")
 
-    expect(await sampleProcessingPanel().findByRole("radio", { name: /Clean Up Voice/i })).toHaveAttribute(
-      "aria-checked",
+    expect(await sampleProcessingPanel().findByRole("button", { name: /Clean Up Voice/i })).toHaveAttribute(
+      "aria-pressed",
       "true"
     )
     expect(sampleProcessingPanel().getByText("Pull the spoken voice forward and reduce background audio.")).toBeInTheDocument()
-    expect(sampleProcessingPanel().getByRole("radio", { name: /Tighten Pauses/i })).toBeInTheDocument()
-    expect(await sampleProcessingPanel().findByRole("radio", { name: /Split Speakers/i })).toBeDisabled()
+    expect(sampleProcessingPanel().getByRole("button", { name: /Tighten Pauses/i })).toBeInTheDocument()
+    expect(await sampleProcessingPanel().findByRole("button", { name: /Split Speakers/i })).toBeDisabled()
     expect(sampleProcessingPanel().getAllByText("Unavailable").length).toBeGreaterThan(0)
   })
 
@@ -1362,8 +1399,8 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    expect(await sampleProcessingPanel().findByRole("radio", { name: /Tighten Pauses/i })).toHaveAttribute(
-      "aria-checked",
+    expect(await sampleProcessingPanel().findByRole("button", { name: /Tighten Pauses/i })).toHaveAttribute(
+      "aria-pressed",
       "true"
     )
     const trimAggressiveness = within(sampleProcessingPanel().getByRole("radiogroup", { name: "Trim Aggressiveness" }))
@@ -1511,7 +1548,7 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(await sampleProcessingPanel().findByRole("radio", { name: /Split Speakers/i }))
+    await user.click(await sampleProcessingPanel().findByRole("button", { name: /Split Speakers/i }))
     await user.click(sampleProcessingPanel().getByRole("button", { name: "Start Processing" }))
 
     expect(await sampleProcessingPanel().findByText("Speaker Streams")).toBeInTheDocument()
@@ -1660,6 +1697,100 @@ describe("App", () => {
     expect(sampleProcessingPanel().getByLabelText("Sample Processing Elapsed Time")).toHaveTextContent("Finished In 12s")
   })
 
+  it("shows stacked workflow progress and aborts a running job", async () => {
+    const runningStackJob = {
+      job: {
+        ...successfulSampleProcessingJob.job,
+        status: "running" as const,
+        workflowMode: "stack" as const,
+        activeStepId: "job-1-step-1",
+        result: null,
+        steps: [
+          {
+            ...successfulSampleProcessingJob.job.steps[0],
+            id: "job-1-step-1",
+            status: "running" as const,
+            completedAt: null,
+            resultSha256: null,
+          },
+          {
+            id: "job-1-step-2",
+            operationId: "trimSilence" as const,
+            operationLabel: "Trim Silence",
+            status: "pending" as const,
+            engine: "ffmpeg",
+            processingPresetId: "trimBalanced" as const,
+            processingPresetLabel: "Balanced",
+            startedAt: null,
+            completedAt: null,
+            error: null,
+            sourceSha256: null,
+            resultSha256: null,
+          },
+        ],
+      },
+    }
+    const canceledStackJob = {
+      job: {
+        ...runningStackJob.job,
+        status: "canceled" as const,
+        activeStepId: null,
+        error: "Sample processing was canceled.",
+        steps: runningStackJob.job.steps.map((step) =>
+          step.id === "job-1-step-1"
+            ? {
+                ...step,
+                status: "canceled" as const,
+                completedAt: "2026-06-19T00:00:01+00:00",
+                error: "Sample processing was canceled.",
+              }
+            : step
+        ),
+      },
+    }
+    const baseFetch = mockFetch()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/sample-processing/jobs" && init?.method === "POST") {
+          return okJson(runningStackJob)
+        }
+        if (path === "/api/sample-processing/jobs/job-1" && !init) {
+          return okJson(runningStackJob)
+        }
+        if (path === "/api/sample-processing/jobs/job-1/cancel" && init?.method === "POST") {
+          return okJson(canceledStackJob)
+        }
+        return baseFetch(input, init)
+      })
+    )
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.click(sampleProcessingPanel().getByRole("button", { name: /Tighten Pauses/i }))
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Start Processing" }))
+
+    expect(await sampleProcessingPanel().findByText("Workflow Progress")).toBeInTheDocument()
+    expect(sampleProcessingPanel().getByText("Active Step: Isolate Voice")).toBeInTheDocument()
+    expect(sampleProcessingPanel().getByText("Queued")).toBeInTheDocument()
+
+    const jobCall = vi.mocked(fetch).mock.calls.find(
+      ([url, init]) => String(url) === "/api/sample-processing/jobs" && init?.method === "POST"
+    )
+    const jobBody = jobCall?.[1]?.body as FormData
+    expect(JSON.parse(jobBody.get("workflowSteps") as string)).toEqual([
+      { operationId: "isolateVoice", processingPresetId: "balanced" },
+      { operationId: "trimSilence", processingPresetId: "trimBalanced" },
+    ])
+
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Abort" }))
+
+    await waitFor(() => expect(sampleProcessingPanel().getAllByText("Canceled").length).toBeGreaterThan(0))
+    expect(sampleProcessingPanel().queryByRole("button", { name: "Add To Voice Library" })).not.toBeInTheDocument()
+  })
+
   it("sends the selected isolation strength preset", async () => {
     const user = userEvent.setup()
     renderApp()
@@ -1687,7 +1818,7 @@ describe("App", () => {
 
     await screen.findByText("default/default-voice.mp3")
     expect(sampleProcessingPanel().getByRole("radiogroup", { name: "Isolation Strength" })).toBeInTheDocument()
-    await user.click(sampleProcessingPanel().getByRole("radio", { name: /Tighten Pauses/i }))
+    await user.click(sampleProcessingPanel().getByRole("button", { name: /Tighten Pauses/i }))
 
     const trimAggressiveness = within(await sampleProcessingPanel().findByRole("radiogroup", { name: "Trim Aggressiveness" }))
     expect(trimAggressiveness.getByRole("radio", { name: "Balanced" })).toHaveAttribute("aria-checked", "true")
@@ -1703,8 +1834,11 @@ describe("App", () => {
       ([url, init]) => String(url) === "/api/sample-processing/jobs" && init?.method === "POST"
     )
     const jobBody = jobCall?.[1]?.body as FormData
-    expect(jobBody.get("operationId")).toBe("trimSilence")
-    expect(jobBody.get("processingPresetId")).toBe("trimAggressive")
+    expect(jobBody.get("operationId")).toBeNull()
+    expect(JSON.parse(jobBody.get("workflowSteps") as string)).toEqual([
+      { operationId: "isolateVoice", processingPresetId: "balanced" },
+      { operationId: "trimSilence", processingPresetId: "trimAggressive" },
+    ])
     expect(await sampleProcessingPanel().findByLabelText("Processed sample preview")).toBeInTheDocument()
     expect(sampleProcessingPanel().getByLabelText("Voice Name")).toHaveValue("Default voice Trimmed")
   })
@@ -1749,7 +1883,7 @@ describe("App", () => {
     expect(await sampleProcessingPanel().findByLabelText("Processed sample preview")).toBeInTheDocument()
     expect(sampleProcessingPanel().getByLabelText("Sample Processing Elapsed Time")).toHaveTextContent("Finished In")
 
-    await user.click(sampleProcessingPanel().getByRole("radio", { name: /Tighten Pauses/i }))
+    await user.click(sampleProcessingPanel().getByRole("button", { name: /Tighten Pauses/i }))
 
     await waitFor(() => {
       expect(sampleProcessingPanel().queryByLabelText("Processed sample preview")).not.toBeInTheDocument()
@@ -1792,7 +1926,7 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(sampleProcessingPanel().getByRole("radio", { name: /Tighten Pauses/i }))
+    await user.click(sampleProcessingPanel().getByRole("button", { name: /Tighten Pauses/i }))
     const startButton = await sampleProcessingPanel().findByRole("button", { name: "Start Processing" })
     await waitFor(() => expect(startButton).toBeEnabled())
     await user.click(startButton)
@@ -1815,8 +1949,11 @@ describe("App", () => {
       .mock.calls.filter(([url, init]) => String(url) === "/api/sample-processing/jobs" && init?.method === "POST")
     expect(jobCalls).toHaveLength(2)
     const nextJobBody = jobCalls[1]?.[1]?.body as FormData
-    expect(nextJobBody.get("operationId")).toBe("trimSilence")
-    expect(nextJobBody.get("processingPresetId")).toBe("trimAggressive")
+    expect(nextJobBody.get("operationId")).toBeNull()
+    expect(JSON.parse(nextJobBody.get("workflowSteps") as string)).toEqual([
+      { operationId: "isolateVoice", processingPresetId: "balanced" },
+      { operationId: "trimSilence", processingPresetId: "trimAggressive" },
+    ])
   })
 
   it("creates a sample processing job from an uploaded file", async () => {
