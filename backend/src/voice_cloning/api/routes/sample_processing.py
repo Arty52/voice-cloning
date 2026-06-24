@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
+
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from ...services.sample_processing import (
+    SampleProcessingWorkflowStepInput,
     SampleProcessingService,
     SampleProcessingServiceError,
     SpeakerNameAssignment,
@@ -27,14 +30,19 @@ def create_sample_processing_router(sample_processing: SampleProcessingService) 
 
     @router.get("/api/sample-processing/options")
     def sample_processing_options() -> dict[str, object]:
-        return sample_processing_options_payload(sample_processing.operations())
+        return sample_processing_options_payload(
+            sample_processing.operations(),
+            engine=sample_processing.engine(),
+            recommended_workflow_order=sample_processing.recommended_workflow_order(),
+        )
 
     @router.post("/api/sample-processing/jobs", status_code=202)
     async def create_sample_processing_job(
-        operationId: str = Form(...),
+        operationId: str | None = Form(None),
         processingPresetId: str | None = Form(None),
         sourceVoiceId: str | None = Form(None),
         sourcePreference: str = Form("original"),
+        workflowSteps: str | None = Form(None),
         sourceFile: UploadFile | None = File(None),
     ) -> dict[str, object]:
         try:
@@ -44,6 +52,7 @@ def create_sample_processing_router(sample_processing: SampleProcessingService) 
                 source_voice_id=sourceVoiceId,
                 source_preference=sourcePreference,
                 source_upload=sourceFile,
+                workflow_steps=_parse_workflow_steps(workflowSteps),
             )
         except SampleProcessingServiceError as exc:
             raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
@@ -53,6 +62,14 @@ def create_sample_processing_router(sample_processing: SampleProcessingService) 
     def sample_processing_job(job_id: str) -> dict[str, object]:
         try:
             job = sample_processing.get_job(job_id)
+        except SampleProcessingServiceError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+        return {"job": sample_processing_job_payload(job)}
+
+    @router.post("/api/sample-processing/jobs/{job_id}/cancel")
+    async def cancel_sample_processing_job(job_id: str) -> dict[str, object]:
+        try:
+            job = await sample_processing.cancel_job(job_id)
         except SampleProcessingServiceError as exc:
             raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
         return {"job": sample_processing_job_payload(job)}
@@ -136,3 +153,31 @@ def create_sample_processing_router(sample_processing: SampleProcessingService) 
         return {"voices": [voice_asset_payload(voice) for voice in voices]}
 
     return router
+
+
+def _parse_workflow_steps(value: str | None) -> tuple[SampleProcessingWorkflowStepInput, ...] | None:
+    if value is None or not value.strip():
+        return None
+    try:
+        raw_steps = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=422, detail="workflowSteps must be valid JSON.") from exc
+    if not isinstance(raw_steps, list):
+        raise HTTPException(status_code=422, detail="workflowSteps must be a JSON array.")
+    steps: list[SampleProcessingWorkflowStepInput] = []
+    for raw_step in raw_steps:
+        if not isinstance(raw_step, dict):
+            raise HTTPException(status_code=422, detail="workflowSteps entries must be objects.")
+        operation_id = raw_step.get("operationId")
+        processing_preset_id = raw_step.get("processingPresetId")
+        if not isinstance(operation_id, str):
+            raise HTTPException(status_code=422, detail="workflowSteps operationId is required.")
+        if processing_preset_id is not None and not isinstance(processing_preset_id, str):
+            raise HTTPException(status_code=422, detail="workflowSteps processingPresetId must be a string.")
+        steps.append(
+            SampleProcessingWorkflowStepInput(
+                operation_id=operation_id,
+                processing_preset_id=processing_preset_id,
+            )
+        )
+    return tuple(steps)

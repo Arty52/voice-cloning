@@ -858,6 +858,10 @@ async def _run_external_command(args: list[str], label: str, timeout_seconds: fl
 
     try:
         _, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout_seconds)
+    except asyncio.CancelledError:
+        process.kill()
+        await process.communicate()
+        raise
     except TimeoutError as exc:
         process.kill()
         await process.communicate()

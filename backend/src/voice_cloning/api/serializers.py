@@ -6,6 +6,7 @@ from ..models import (
     CachedVoice,
     ModelSummary,
     SampleProcessingJob,
+    SampleProcessingJobStep,
     SampleProcessingJobResult,
     SampleProcessingOperation,
     SampleProcessingPreset,
@@ -188,9 +189,14 @@ def voice_processing_step_payload(step: VoiceProcessingStep) -> dict[str, object
 
 def sample_processing_options_payload(
     operations: tuple[SampleProcessingOperation, ...],
+    *,
+    engine: str | None = None,
+    recommended_workflow_order: tuple[str, ...] = (),
 ) -> dict[str, object]:
     return {
+        "engine": engine,
         "operations": [sample_processing_operation_payload(operation) for operation in operations],
+        "recommendedWorkflowOrder": list(recommended_workflow_order),
     }
 
 
@@ -217,6 +223,7 @@ def sample_processing_job_payload(job: SampleProcessingJob) -> dict[str, object]
     return {
         "id": job.id,
         "operationId": job.operation_id,
+        "operationLabel": _job_operation_label(job),
         "status": job.status,
         "processingPresetId": job.processing_preset_id,
         "processingPresetLabel": job.processing_preset_label,
@@ -229,8 +236,35 @@ def sample_processing_job_payload(job: SampleProcessingJob) -> dict[str, object]
         "updatedAt": job.updated_at,
         "error": job.error,
         "engine": job.engine,
+        "workflowMode": job.workflow_mode,
+        "steps": [sample_processing_job_step_payload(step) for step in job.steps],
+        "activeStepId": job.active_step_id,
         "result": sample_processing_result_payload(job.result) if job.result is not None else None,
     }
+
+
+def sample_processing_job_step_payload(step: SampleProcessingJobStep) -> dict[str, object]:
+    return {
+        "id": step.id,
+        "operationId": step.operation_id,
+        "operationLabel": step.operation_label,
+        "status": step.status,
+        "engine": step.engine,
+        "processingPresetId": step.processing_preset_id,
+        "processingPresetLabel": step.processing_preset_label,
+        "startedAt": step.started_at,
+        "completedAt": step.completed_at,
+        "error": step.error,
+        "sourceSha256": step.source_sha256,
+        "resultSha256": step.result_sha256,
+    }
+
+
+def _job_operation_label(job: SampleProcessingJob) -> str:
+    for step in reversed(job.steps):
+        if step.operation_id == job.operation_id:
+            return step.operation_label
+    return job.processing_preset_label or job.operation_id
 
 
 def sample_processing_result_payload(result: SampleProcessingJobResult) -> dict[str, object]:
