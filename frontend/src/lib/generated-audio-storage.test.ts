@@ -17,7 +17,7 @@ import {
   updateGeneratedAudioStorageLimitBytes,
   type SaveGeneratedAudioInput,
 } from "./generated-audio-storage"
-import type { GeneratedAudioTuningMetadata } from "@/types"
+import type { GeneratedAudioMultiVoiceMetadata, GeneratedAudioTuningMetadata } from "@/types"
 
 const tuningMetadata: GeneratedAudioTuningMetadata = {
   adjustedSettings: [
@@ -35,6 +35,40 @@ const tuningMetadata: GeneratedAudioTuningMetadata = {
   presetLabel: "Animated Dialogue",
   providerId: "elevenlabs",
   providerLabel: "ElevenLabs",
+}
+
+const multiVoiceMetadata: GeneratedAudioMultiVoiceMetadata = {
+  jobId: "job-1",
+  resultSha256: "combined-hash",
+  segmentCount: 2,
+  segments: [
+    {
+      assignmentKind: "assigned",
+      characterCount: 12,
+      generationCount: 1,
+      id: "segment-one",
+      index: 0,
+      resultSha256: "segment-one-hash",
+      text: "Hello.",
+      voiceId: "narrator",
+      voiceName: "Narrator",
+    },
+    {
+      assignmentKind: "default",
+      characterCount: 8,
+      generationCount: 1,
+      id: "segment-two",
+      index: 1,
+      resultSha256: "segment-two-hash",
+      text: "Hi.",
+      voiceId: "default",
+      voiceName: "Default Voice",
+    },
+  ],
+  voices: [
+    { segmentCount: 1, voiceId: "narrator", voiceName: "Narrator" },
+    { segmentCount: 1, voiceId: "default", voiceName: "Default Voice" },
+  ],
 }
 
 function deleteDatabase(name: string) {
@@ -116,7 +150,7 @@ describe("generated audio storage", () => {
   it("saves generated audio and lists newest first", async () => {
     await saveGeneratedAudio(audioInput({ createdAt: "2026-05-28T10:00:00.000Z", id: "first" }), 20)
     await saveGeneratedAudio(
-      audioInput({ createdAt: "2026-05-28T10:01:00.000Z", id: "second", tuningMetadata }),
+      audioInput({ createdAt: "2026-05-28T10:01:00.000Z", id: "second", multiVoiceMetadata, tuningMetadata }),
       20
     )
 
@@ -132,6 +166,7 @@ describe("generated audio storage", () => {
       modelId: "eleven_multilingual_v2",
       requestId: "req_test_123",
       sizeBytes: 4,
+      multiVoiceMetadata,
       tuningMetadata,
       voiceId: "voice-123",
       voiceName: "Default voice",
@@ -149,6 +184,7 @@ describe("generated audio storage", () => {
 
     const record = (await listGeneratedAudio())[0]
     expect(record.generationElapsedMs).toBe(1234)
+    expect(record.multiVoiceMetadata).toBeNull()
     expect(record.tuningMetadata).toBeNull()
   })
 
@@ -162,11 +198,13 @@ describe("generated audio storage", () => {
       tuningMetadata: null,
     }
     delete legacyRecord.generationElapsedMs
+    delete legacyRecord.multiVoiceMetadata
     await putRawGeneratedAudioRecord(legacyRecord)
 
     expect((await listGeneratedAudio())[0]).toMatchObject({
       generationElapsedMs: null,
       id: "legacy",
+      multiVoiceMetadata: null,
     })
   })
 

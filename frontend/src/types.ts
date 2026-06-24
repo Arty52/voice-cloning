@@ -306,6 +306,7 @@ export type GeneratedResult = {
   createdAt: string
   generatedAt: string
   generationElapsedMs: number | null
+  multiVoiceMetadata: GeneratedAudioMultiVoiceMetadata | null
   tuningMetadata: GeneratedAudioTuningMetadata | null
 }
 
@@ -327,6 +328,32 @@ export type GeneratedAudioTuningMetadata = {
   presetLabel: string | null
   providerId: string
   providerLabel: string
+}
+
+export type GeneratedAudioMultiVoiceSegmentMetadata = {
+  id: string
+  index: number
+  text: string
+  voiceId: string
+  voiceName: string
+  assignmentKind: SpeechSegmentAssignmentKind
+  generationCount: number
+  characterCount: number | null
+  resultSha256: string | null
+}
+
+export type GeneratedAudioMultiVoiceVoiceMetadata = {
+  voiceId: string
+  voiceName: string
+  segmentCount: number
+}
+
+export type GeneratedAudioMultiVoiceMetadata = {
+  jobId: string
+  resultSha256: string | null
+  segmentCount: number
+  segments: GeneratedAudioMultiVoiceSegmentMetadata[]
+  voices: GeneratedAudioMultiVoiceVoiceMetadata[]
 }
 
 export type ConfirmationState = {

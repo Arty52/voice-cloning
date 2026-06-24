@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 
-import { buildGeneratedAudioTuningMetadata } from "./generated-audio-metadata"
-import type { VoiceProvider } from "@/types"
+import { buildGeneratedAudioMultiVoiceMetadata, buildGeneratedAudioTuningMetadata } from "./generated-audio-metadata"
+import type { SpeechJob, VoiceProvider } from "@/types"
 
 const NUMBER_FORMATTER = new Intl.NumberFormat(undefined, {
   maximumFractionDigits: 2,
@@ -262,6 +262,114 @@ describe("buildGeneratedAudioTuningMetadata", () => {
     ).toMatchObject({
       adjustedSettings: [],
       mode: "default",
+    })
+  })
+})
+
+describe("buildGeneratedAudioMultiVoiceMetadata", () => {
+  it("summarizes speech job segments and voices", () => {
+    const job: SpeechJob = {
+      activeSegmentId: null,
+      createdAt: "2026-06-23T00:00:00.000Z",
+      defaultVoiceId: "narrator",
+      error: null,
+      id: "job-1",
+      resultSha256: "combined-hash",
+      segments: [
+        {
+          assignmentKind: "assigned",
+          cacheState: "miss",
+          characterCount: 12,
+          error: null,
+          generationCount: 1,
+          id: "segment-one",
+          index: 0,
+          requestId: "request-one",
+          resultSha256: "segment-one-hash",
+          status: "success",
+          text: "Hello.",
+          voiceId: "narrator",
+          voiceName: "Narrator",
+        },
+        {
+          assignmentKind: "default",
+          cacheState: "hit",
+          characterCount: 8,
+          error: null,
+          generationCount: 2,
+          id: "segment-two",
+          index: 1,
+          requestId: "request-two",
+          resultSha256: "segment-two-hash",
+          status: "success",
+          text: "Hi.",
+          voiceId: "narrator",
+          voiceName: "Narrator",
+        },
+        {
+          assignmentKind: "assigned",
+          cacheState: "miss",
+          characterCount: 5,
+          error: null,
+          generationCount: 1,
+          id: "segment-three",
+          index: 2,
+          requestId: "request-three",
+          resultSha256: "segment-three-hash",
+          status: "success",
+          text: "Bye.",
+          voiceId: "villain",
+          voiceName: "Villain",
+        },
+      ],
+      status: "success",
+      text: "Hello.Hi.Bye.",
+      updatedAt: "2026-06-23T00:00:01.000Z",
+    }
+
+    expect(buildGeneratedAudioMultiVoiceMetadata(job)).toEqual({
+      jobId: "job-1",
+      resultSha256: "combined-hash",
+      segmentCount: 3,
+      segments: [
+        {
+          assignmentKind: "assigned",
+          characterCount: 12,
+          generationCount: 1,
+          id: "segment-one",
+          index: 0,
+          resultSha256: "segment-one-hash",
+          text: "Hello.",
+          voiceId: "narrator",
+          voiceName: "Narrator",
+        },
+        {
+          assignmentKind: "default",
+          characterCount: 8,
+          generationCount: 2,
+          id: "segment-two",
+          index: 1,
+          resultSha256: "segment-two-hash",
+          text: "Hi.",
+          voiceId: "narrator",
+          voiceName: "Narrator",
+        },
+        {
+          assignmentKind: "assigned",
+          characterCount: 5,
+          generationCount: 1,
+          id: "segment-three",
+          index: 2,
+          resultSha256: "segment-three-hash",
+          text: "Bye.",
+          voiceId: "villain",
+          voiceName: "Villain",
+        },
+      ],
+      voices: [
+        { segmentCount: 2, voiceId: "narrator", voiceName: "Narrator" },
+        { segmentCount: 1, voiceId: "villain", voiceName: "Villain" },
+      ],
     })
   })
 })

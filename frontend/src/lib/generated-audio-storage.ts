@@ -1,4 +1,4 @@
-import type { GeneratedAudioTuningMetadata } from "@/types"
+import type { GeneratedAudioMultiVoiceMetadata, GeneratedAudioTuningMetadata } from "@/types"
 
 export const GENERATED_AUDIO_DB_NAME = "voice-clone-generated-audio"
 export const GENERATED_AUDIO_STORE_NAME = "generated-audio"
@@ -25,6 +25,7 @@ export type StoredGeneratedAudio = {
   characterCount: number | null
   requestId: string | null
   generationElapsedMs: number | null
+  multiVoiceMetadata?: GeneratedAudioMultiVoiceMetadata | null
   tuningMetadata?: GeneratedAudioTuningMetadata | null
 }
 
@@ -41,6 +42,7 @@ export type SaveGeneratedAudioInput = {
   characterCount: number | null
   requestId: string | null
   generationElapsedMs?: number | null
+  multiVoiceMetadata?: GeneratedAudioMultiVoiceMetadata | null
   tuningMetadata?: GeneratedAudioTuningMetadata | null
 }
 
@@ -83,6 +85,7 @@ export async function saveGeneratedAudio(
     contentType: input.contentType || input.blob.type || "audio/mpeg",
     createdAt: input.createdAt ?? new Date().toISOString(),
     generationElapsedMs: normalizeGenerationElapsedMs(input.generationElapsedMs),
+    multiVoiceMetadata: input.multiVoiceMetadata ?? null,
     sizeBytes: input.blob.size,
     tuningMetadata: input.tuningMetadata ?? null,
   }
@@ -215,12 +218,15 @@ async function getAllGeneratedAudioRecords(): Promise<StoredGeneratedAudio[]> {
 
 type LegacyStoredGeneratedAudio = Omit<StoredGeneratedAudio, "generationElapsedMs"> & {
   generationElapsedMs?: number | null
+  multiVoiceMetadata?: GeneratedAudioMultiVoiceMetadata | null
 }
 
 function normalizeStoredGeneratedAudio(record: StoredGeneratedAudio | LegacyStoredGeneratedAudio): StoredGeneratedAudio {
   return {
     ...record,
     generationElapsedMs: normalizeGenerationElapsedMs(record.generationElapsedMs),
+    multiVoiceMetadata: record.multiVoiceMetadata ?? null,
+    tuningMetadata: record.tuningMetadata ?? null,
   }
 }
 
