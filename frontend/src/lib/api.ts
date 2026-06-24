@@ -36,11 +36,17 @@ export type VoiceUpdate = {
 }
 
 export type CreateSampleProcessingJobRequest = {
-  operationId: SampleProcessingOperationId
+  operationId?: SampleProcessingOperationId
   processingPresetId?: SampleProcessingPresetId | null
   sourceFile?: File | null
   sourcePreference?: SampleProcessingSourcePreference
   sourceVoiceId?: string | null
+  workflowSteps?: SampleProcessingWorkflowStepRequest[]
+}
+
+export type SampleProcessingWorkflowStepRequest = {
+  operationId: SampleProcessingOperationId
+  processingPresetId?: SampleProcessingPresetId | null
 }
 
 export type SaveProcessedVoiceRequest = {
@@ -174,9 +180,14 @@ export async function createSampleProcessingJob({
   sourceFile,
   sourcePreference,
   sourceVoiceId,
+  workflowSteps,
 }: CreateSampleProcessingJobRequest) {
   const formData = new FormData()
-  formData.append("operationId", operationId)
+  if (workflowSteps && workflowSteps.length > 0) {
+    formData.append("workflowSteps", JSON.stringify(workflowSteps))
+  } else if (operationId) {
+    formData.append("operationId", operationId)
+  }
   if (processingPresetId) {
     formData.append("processingPresetId", processingPresetId)
   }
@@ -197,6 +208,12 @@ export async function createSampleProcessingJob({
 
 export async function fetchSampleProcessingJob(jobId: string) {
   return fetchJson<SampleProcessingJobResponse>(`/api/sample-processing/jobs/${encodeURIComponent(jobId)}`)
+}
+
+export async function cancelSampleProcessingJob(jobId: string) {
+  return fetchJson<SampleProcessingJobResponse>(`/api/sample-processing/jobs/${encodeURIComponent(jobId)}/cancel`, {
+    method: "POST",
+  })
 }
 
 export function sampleProcessingResultUrl(jobId: string) {

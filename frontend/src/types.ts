@@ -17,7 +17,9 @@ export type SampleProcessingPresetId =
   | "trimBalanced"
   | "trimAggressive"
 export type SampleProcessingSourcePreference = "original" | "active"
-export type SampleProcessingJobStatus = "pending" | "running" | "success" | "error"
+export type SampleProcessingJobStatus = "pending" | "running" | "success" | "error" | "canceled"
+export type SampleProcessingStepStatus = "pending" | "running" | "success" | "error" | "canceled"
+export type SampleProcessingWorkflowMode = "single" | "stack"
 
 export type VoiceProvider = {
   id: string
@@ -117,7 +119,7 @@ export type VoiceProcessingStep = {
   createdAt: string
   sourceSha256: string
   resultSha256: string
-  engine: string
+  engine: string | null
   processingPresetId?: SampleProcessingPresetId
   processingPresetLabel?: string | null
   speakerId?: string
@@ -142,6 +144,7 @@ export type SampleProcessingPreset = {
 export type SampleProcessingOptionsResponse = {
   engine: string | null
   operations: SampleProcessingOperation[]
+  recommendedWorkflowOrder: SampleProcessingOperationId[]
 }
 
 export type SampleProcessingAudioResult = {
@@ -179,6 +182,21 @@ export type SpeakerSeparationResult = {
 
 export type SampleProcessingResult = SampleProcessingAudioResult | SpeakerSeparationResult
 
+export type SampleProcessingJobStep = {
+  id: string
+  operationId: SampleProcessingOperationId
+  operationLabel: string
+  status: SampleProcessingStepStatus
+  engine: string | null
+  processingPresetId: SampleProcessingPresetId | null
+  processingPresetLabel: string | null
+  startedAt: string | null
+  completedAt: string | null
+  error: string | null
+  sourceSha256: string | null
+  resultSha256: string | null
+}
+
 export type SampleProcessingJob = {
   id: string
   operationId: SampleProcessingOperationId
@@ -191,7 +209,10 @@ export type SampleProcessingJob = {
   sourceContentType?: string | null
   sourceSha256: string
   sourcePreference: SampleProcessingSourcePreference
-  engine: string
+  engine: string | null
+  workflowMode: SampleProcessingWorkflowMode
+  steps: SampleProcessingJobStep[]
+  activeStepId: string | null
   createdAt: string
   updatedAt: string
   error: string | null
