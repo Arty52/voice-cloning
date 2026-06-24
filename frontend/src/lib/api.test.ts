@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import {
   addVoice,
+  cancelSampleProcessingJob,
   createSampleProcessingJob,
   providerHeaders,
   saveProcessedVoice,
@@ -109,6 +110,41 @@ describe("voice API helpers", () => {
     expect(body.get("operationId")).toBe("isolateVoice")
     expect(body.get("sourceFile")).toBe(source)
     expect(body.get("sourceVoiceId")).toBeNull()
+  })
+
+  it("creates a stacked sample processing job", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => okJson({ job: { id: "job-1", status: "running" } })))
+
+    await createSampleProcessingJob({
+      sourceVoiceId: "voice-clone-01",
+      workflowSteps: [
+        { operationId: "isolateVoice", processingPresetId: "balanced" },
+        { operationId: "separateSpeakers" },
+        { operationId: "trimSilence", processingPresetId: "trimBalanced" },
+      ],
+    })
+
+    const body = vi.mocked(fetch).mock.calls[0][1]?.body as FormData
+    expect(body.get("operationId")).toBeNull()
+    expect(body.get("workflowSteps")).toBe(
+      JSON.stringify([
+        { operationId: "isolateVoice", processingPresetId: "balanced" },
+        { operationId: "separateSpeakers" },
+        { operationId: "trimSilence", processingPresetId: "trimBalanced" },
+      ])
+    )
+    expect(body.get("sourceVoiceId")).toBe("voice-clone-01")
+  })
+
+  it("cancels a sample processing job", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => okJson({ job: { id: "job-1", status: "canceled" } })))
+
+    await cancelSampleProcessingJob("job-1")
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/sample-processing/jobs/job-1/cancel",
+      expect.objectContaining({ method: "POST" })
+    )
   })
 
   it("saves a processed result as a voice", async () => {
