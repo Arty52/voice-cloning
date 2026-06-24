@@ -111,7 +111,7 @@ export function SampleProcessingPanel({
               </span>
             ) : null}
           </div>
-          <p className="mt-1 text-sm text-muted-foreground">Prepare samples before adding them to the Voice Library.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Prepare source audio before saving it as a voice.</p>
         </div>
         {isCollapsible ? (
           <Button
