@@ -105,8 +105,8 @@ The UI opens on `Voices`. The sidebar is the top-level workflow map:
 
 1. `Prepare Audio` (`#prepare`, optional step 0): optionally process an uploaded file or saved source audio before creating a library voice.
 2. `Voices` (`#voices`, step 1): upload or record a voice sample, choose a local name such as `Voice_Clone_01`, choose Standard Narration or Animated Dialogue, save it, select it, and preview it.
-3. `Generate Speech` (`#generate`, step 2): enter text, optionally assign selected text spans to saved voices, review the latest result, and adjust Voice Tuning. Selecting a saved voice initializes tuning from that voice's assigned preset when the active provider maps it, otherwise from provider defaults. Multi-voice segment controls can regenerate one segment with a different voice or a segment-specific tuning snapshot without changing the rest of the result.
-4. `Generated Audio` (`#archive`, optional): play, download, remove, or clear saved generated MP3s from browser IndexedDB.
+3. `Generate Speech` (`#generate`, step 2): enter text, optionally assign selected text spans to saved voices, review the latest result, play combined and segment results, regenerate multi-voice segments, and adjust Voice Tuning. Selecting a saved voice initializes tuning from that voice's assigned preset when the active provider maps it, otherwise from provider defaults. Multi-voice segment controls can regenerate one segment with a different voice or a segment-specific tuning snapshot without changing the rest of the result.
+4. `Generated Audio` (`#archive`, optional): play, download, remove, or clear saved generated MP3s from browser IndexedDB, including Multi-Voice archive metadata.
 5. `Provider & Usage` (`#provider`): add an ElevenLabs key if `.env` does not provide one, confirm `.env` fallback, check Cost & Quota, and choose a model if model metadata is available.
 
 The API is available at:
@@ -122,6 +122,14 @@ Each local voice has a provider-independent voice preset assignment. Choose Stan
 The assignment is saved as local voice metadata and is not a provider clone id or provider secret. When you select a voice, Voice Tuning starts from the active provider preset mapped to that assignment. If the active provider has no matching mapped preset, Voice Tuning uses that provider's default values instead. Manual slider, toggle, or select changes are per-request only; they show as Custom and do not overwrite the saved assignment. Segment-level tuning for multi-voice regeneration is stored only with that runtime speech job and the browser's generated-audio metadata.
 
 Existing voices or older manifests without an assignment default to Standard Narration. This iteration persists only the preset id, not custom tuning overrides.
+
+## Multi-Voice Generation
+
+In `#generate`, select script text in the native textarea and choose `Assign Voice` to attach that span to a saved voice. Desktop uses a Popover voice picker; mobile uses a Sheet. Unassigned text uses the currently selected Source voice when generation starts, so single-voice generation remains the default path when no assignments exist.
+
+Assignments are tied to the exact script text that existed when the span was selected. Editing the textarea after assigning voices marks the assignment set stale and blocks multi-voice generation until you clear/reassign voices or restore the exact text. The frontend sends ordered text segments to the backend rather than character offsets, and the backend verifies that the segment text joins back to the submitted script exactly.
+
+Successful multi-voice jobs show the combined result in Latest Generated Audio with a Multi-Voice badge, segment count, and voice summary. The segment section lets you play each generated segment, optionally choose a different saved voice for that segment, and regenerate it. Regeneration rebuilds the combined result and stores a new browser archive entry. The Generated Audio archive preserves Multi-Voice metadata for saved combined results; segment playback is available for the latest active backend job.
 
 ## Privacy Model
 

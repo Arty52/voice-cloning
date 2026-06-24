@@ -506,7 +506,9 @@ The response is `202` with `{ "job": { ... } }`:
 
 `POST /api/speech/jobs/{jobId}/cancel` cancels a pending or running job and returns the updated job. Cancel is idempotent for terminal jobs.
 
-`GET /api/speech/jobs/{jobId}/result` streams the combined `audio/mpeg` result after success. `GET /api/speech/jobs/{jobId}/segments/{segmentId}/result` streams an individual generated segment after that segment succeeds. Both return `409` until their audio is ready.
+`GET /api/speech/jobs/{jobId}/result` streams the combined `audio/mpeg` result after success. The Generate Speech UI saves this combined audio in browser IndexedDB and records Multi-Voice metadata such as the job id, segment count, voice summary, and result hashes.
+
+`GET /api/speech/jobs/{jobId}/segments/{segmentId}/result` streams an individual generated segment after that segment succeeds. Segment result URLs are intended for the latest active job's per-segment playback controls; they are runtime job artifacts, not durable archive URLs. Combined and segment result endpoints return `409` until their audio is ready.
 
 `POST /api/speech/jobs/{jobId}/segments/{segmentId}/regenerate` starts regeneration for a successful job segment and rebuilds the combined result. The optional JSON body can change that segment's voice and replace that segment's stored tuning before regenerating. Omit `voiceSettings` or send `null` to preserve the segment's current tuning snapshot.
 
@@ -516,5 +518,7 @@ The response is `202` with `{ "job": { ... } }`:
   "voiceSettings": { "speed": 1.2, "stability": 0.36 }
 }
 ```
+
+Regeneration increments the segment `generationCount`, refreshes the segment and combined `resultSha256` values, and returns `202` with the updated job state while the segment is pending/running.
 
 Speech jobs keep runtime files under ignored `storage/speech-jobs/`. Segment generation reuses the normal provider clone cache. Final assembly requires FFmpeg through `SAMPLE_PROCESSING_FFMPEG_COMMAND`; Docker includes FFmpeg by default, and host development must have the command available on `PATH` or configured with an absolute path. Combined multi-voice results use the job's effective `segmentGapMs`; when the request omits it, the backend default comes from `SPEECH_JOB_SEGMENT_GAP_MS` and defaults to `250`.
