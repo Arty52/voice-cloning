@@ -189,7 +189,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
       return null
     }
 
-    const runId = startRun()
+    const runId = startRun({ clearJob: false })
     const nextPersistContext = {
       ...persistContext,
       storageLimitBytes: storageLimitBytes ?? persistContext.storageLimitBytes,
@@ -283,11 +283,12 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
       }
       runIdRef.current = activeRunId + 1
       updateJob(payload.job)
-      finishGenerationTimer()
+      const elapsedMs = finishGenerationTimer()
       if (payload.job.status === "success") {
         setStatus("success")
         setError(null)
-        return
+        const persistContext = lastPersistContextRef.current
+        return persistContext ? persistSuccessfulJob(payload.job, persistContext, elapsedMs) : null
       }
       if (payload.job.status === "error") {
         setStatus("error")
@@ -347,12 +348,14 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
     }
   }
 
-  function startRun() {
+  function startRun({ clearJob = true }: { clearJob?: boolean } = {}) {
     const runId = runIdRef.current + 1
     runIdRef.current = runId
     setStatus("starting")
     setError(null)
-    updateJob(null)
+    if (clearJob) {
+      updateJob(null)
+    }
     startGenerationTimer()
     return runId
   }

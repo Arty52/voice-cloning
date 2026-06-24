@@ -386,6 +386,60 @@ describe("useMultiVoiceSpeechGeneration", () => {
     expect(persistGeneratedAudio).not.toHaveBeenCalled()
   })
 
+  it("persists a job that completes while cancellation is requested", async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path === "/api/speech/jobs" && init?.method === "POST") {
+          return okJson({ job: runningJob }, 202)
+        }
+        if (path === "/api/speech/jobs/job-1" && !init) {
+          return okJson({ job: runningJob })
+        }
+        if (path === "/api/speech/jobs/job-1/cancel" && init?.method === "POST") {
+          return okJson({ job: successJob })
+        }
+        if (path === "/api/speech/jobs/job-1/result" && !init) {
+          return okAudio("combined")
+        }
+        return okJson({})
+      })
+    )
+    const persistGeneratedAudio = vi.fn(async () => generatedResult)
+    const { result } = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+
+    let pendingGeneration: Promise<GeneratedResult | null> | null = null
+    act(() => {
+      pendingGeneration = result.current.generateSpeech(generationInput())
+    })
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(result.current.status).toBe("processing")
+
+    await act(async () => {
+      await result.current.cancelGeneration()
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500)
+      await pendingGeneration
+    })
+
+    expect(result.current.status).toBe("success")
+    expect(result.current.job?.status).toBe("success")
+    expect(persistGeneratedAudio).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cacheState: "multi-voice",
+        multiVoiceMetadata: expect.objectContaining({ resultSha256: "combined-hash" }),
+      }),
+      100
+    )
+  })
+
   it("regenerates a segment and persists refreshed combined audio metadata", async () => {
     vi.stubGlobal(
       "fetch",
@@ -449,5 +503,43 @@ describe("useMultiVoiceSpeechGeneration", () => {
       }),
       80
     )
+  })
+
+  it("preserves the previous successful job when segment regeneration fails to start", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path === "/api/speech/jobs" && init?.method === "POST") {
+          return okJson({ job: successJob }, 202)
+        }
+        if (path === "/api/speech/jobs/job-1/result" && !init) {
+          return okAudio("combined")
+        }
+        if (path === "/api/speech/jobs/job-1/segments/segment-one/regenerate" && init?.method === "POST") {
+          return Promise.reject(new Error("Bad provider key."))
+        }
+        return okJson({})
+      })
+    )
+    const persistGeneratedAudio = vi.fn(async () => generatedResult)
+    const { result } = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+
+    await act(async () => {
+      await result.current.generateSpeech(generationInput())
+    })
+    await act(async () => {
+      await result.current.regenerateSegment({
+        providerKey: "bad-key",
+        segmentId: "segment-one",
+        voiceId: "villain",
+      })
+    })
+
+    expect(result.current.status).toBe("error")
+    expect(result.current.error).toBe("Bad provider key.")
+    expect(result.current.job?.status).toBe("success")
+    expect(result.current.resultUrl).toBe("/api/speech/jobs/job-1/result")
+    expect(persistGeneratedAudio).toHaveBeenCalledTimes(1)
   })
 })
