@@ -7,6 +7,8 @@ import type {
   SampleProcessingOptionsResponse,
   SampleProcessingPresetId,
   SampleProcessingSourcePreference,
+  SpeechJobResponse,
+  SpeechSegmentAssignmentKind,
   SubscriptionResponse,
   VoiceAsset,
   VoicePresetId,
@@ -87,6 +89,29 @@ export type SpeechApiRequest = {
   text: string
   tuning: VoiceTuningValues
   voiceId: string
+}
+
+export type CreateSpeechJobSegmentRequest = {
+  assignmentKind: SpeechSegmentAssignmentKind
+  clientSegmentId: string
+  text: string
+  voiceId: string
+}
+
+export type CreateSpeechJobRequest = {
+  defaultVoiceId: string
+  modelId: string | null
+  providerId: string | null
+  providerKey: string | null
+  segments: CreateSpeechJobSegmentRequest[]
+  signal?: AbortSignal
+  text: string
+  tuning: VoiceTuningValues
+}
+
+export type RegenerateSpeechJobSegmentRequest = {
+  providerKey: string | null
+  voiceId?: string | null
 }
 
 export type SpeechApiResult =
@@ -315,6 +340,70 @@ export async function createSpeech({
     status: "success",
     voiceId: response.headers.get("X-Voice-Id"),
   }
+}
+
+export async function createSpeechJob({
+  defaultVoiceId,
+  modelId,
+  providerId,
+  providerKey,
+  segments,
+  signal,
+  text,
+  tuning,
+}: CreateSpeechJobRequest) {
+  return fetchJson<SpeechJobResponse>("/api/speech/jobs", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...providerHeaders({ providerKey }),
+    },
+    body: JSON.stringify({
+      defaultVoiceId,
+      modelId,
+      providerId,
+      segments,
+      text,
+      voiceSettings: tuning,
+    }),
+    signal,
+  })
+}
+
+export async function fetchSpeechJob(jobId: string) {
+  return fetchJson<SpeechJobResponse>(`/api/speech/jobs/${encodeURIComponent(jobId)}`)
+}
+
+export async function cancelSpeechJob(jobId: string) {
+  return fetchJson<SpeechJobResponse>(`/api/speech/jobs/${encodeURIComponent(jobId)}/cancel`, {
+    method: "POST",
+  })
+}
+
+export function speechJobResultUrl(jobId: string) {
+  return `/api/speech/jobs/${encodeURIComponent(jobId)}/result`
+}
+
+export function speechJobSegmentResultUrl(jobId: string, segmentId: string) {
+  return `/api/speech/jobs/${encodeURIComponent(jobId)}/segments/${encodeURIComponent(segmentId)}/result`
+}
+
+export async function regenerateSpeechJobSegment(
+  jobId: string,
+  segmentId: string,
+  { providerKey, voiceId }: RegenerateSpeechJobSegmentRequest
+) {
+  return fetchJson<SpeechJobResponse>(
+    `/api/speech/jobs/${encodeURIComponent(jobId)}/segments/${encodeURIComponent(segmentId)}/regenerate`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...providerHeaders({ providerKey }),
+      },
+      body: JSON.stringify({ voiceId: voiceId || null }),
+    }
+  )
 }
 
 export function hasModel(models: ModelOption[], modelId: string) {

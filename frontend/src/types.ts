@@ -20,6 +20,9 @@ export type SampleProcessingSourcePreference = "original" | "active"
 export type SampleProcessingJobStatus = "pending" | "running" | "success" | "error" | "canceled"
 export type SampleProcessingStepStatus = "pending" | "running" | "success" | "error" | "canceled"
 export type SampleProcessingWorkflowMode = "single" | "stack"
+export type SpeechJobStatus = "pending" | "running" | "success" | "error" | "canceled"
+export type SpeechSegmentStatus = "pending" | "running" | "success" | "error" | "canceled"
+export type SpeechSegmentAssignmentKind = "assigned" | "default"
 
 export type VoiceProvider = {
   id: string
@@ -221,6 +224,39 @@ export type SampleProcessingJob = {
 
 export type SampleProcessingJobResponse = {
   job: SampleProcessingJob
+}
+
+export type SpeechJobSegment = {
+  id: string
+  index: number
+  text: string
+  voiceId: string
+  voiceName: string
+  assignmentKind: SpeechSegmentAssignmentKind
+  status: SpeechSegmentStatus
+  generationCount: number
+  characterCount: number | null
+  requestId: string | null
+  cacheState: string | null
+  resultSha256: string | null
+  error: string | null
+}
+
+export type SpeechJob = {
+  id: string
+  status: SpeechJobStatus
+  text: string
+  defaultVoiceId: string
+  segments: SpeechJobSegment[]
+  activeSegmentId: string | null
+  resultSha256: string | null
+  error: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type SpeechJobResponse = {
+  job: SpeechJob
 }
 
 export type SubscriptionResponse = {

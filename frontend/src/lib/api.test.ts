@@ -3,12 +3,18 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import {
   addVoice,
   cancelSampleProcessingJob,
+  cancelSpeechJob,
   createSampleProcessingJob,
+  createSpeechJob,
   providerHeaders,
+  fetchSpeechJob,
+  regenerateSpeechJobSegment,
   saveProcessedVoice,
   saveSpeakerVoices,
   sampleProcessingSourceUrl,
   sampleProcessingSpeakerResultUrl,
+  speechJobResultUrl,
+  speechJobSegmentResultUrl,
   updateSampleProcessingSpeakerAssignments,
   updateVoice,
   VOICE_PROVIDER_KEY_HEADER,
@@ -234,6 +240,107 @@ describe("voice API helpers", () => {
           ],
         }),
         headers: { "Content-Type": "application/json" },
+        method: "POST",
+      })
+    )
+  })
+
+  it("creates a speech job with JSON segments and provider key header", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => okJson({ job: { id: "job-1", status: "pending" } }, 202)))
+
+    await createSpeechJob({
+      defaultVoiceId: "narrator",
+      modelId: "eleven_flash_v2_5",
+      providerId: "elevenlabs",
+      providerKey: " browser-secret ",
+      segments: [
+        {
+          assignmentKind: "assigned",
+          clientSegmentId: "segment-one",
+          text: "Hello ",
+          voiceId: "narrator",
+        },
+        {
+          assignmentKind: "default",
+          clientSegmentId: "segment-two",
+          text: "there.",
+          voiceId: "default",
+        },
+      ],
+      text: "Hello there.",
+      tuning: { stability: 0.42 },
+    })
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/speech/jobs",
+      expect.objectContaining({
+        headers: {
+          "Content-Type": "application/json",
+          [VOICE_PROVIDER_KEY_HEADER]: "browser-secret",
+        },
+        method: "POST",
+      })
+    )
+    expect(JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string)).toEqual({
+      defaultVoiceId: "narrator",
+      modelId: "eleven_flash_v2_5",
+      providerId: "elevenlabs",
+      segments: [
+        {
+          assignmentKind: "assigned",
+          clientSegmentId: "segment-one",
+          text: "Hello ",
+          voiceId: "narrator",
+        },
+        {
+          assignmentKind: "default",
+          clientSegmentId: "segment-two",
+          text: "there.",
+          voiceId: "default",
+        },
+      ],
+      text: "Hello there.",
+      voiceSettings: { stability: 0.42 },
+    })
+  })
+
+  it("polls and cancels speech jobs", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => okJson({ job: { id: "job 1", status: "canceled" } })))
+
+    await fetchSpeechJob("job 1")
+    await cancelSpeechJob("job 1")
+
+    expect(fetch).toHaveBeenNthCalledWith(1, "/api/speech/jobs/job%201", undefined)
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      "/api/speech/jobs/job%201/cancel",
+      expect.objectContaining({ method: "POST" })
+    )
+  })
+
+  it("builds speech job result URLs", () => {
+    expect(speechJobResultUrl("job 1")).toBe("/api/speech/jobs/job%201/result")
+    expect(speechJobSegmentResultUrl("job 1", "segment/1")).toBe(
+      "/api/speech/jobs/job%201/segments/segment%2F1/result"
+    )
+  })
+
+  it("regenerates speech job segments with an optional voice override", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => okJson({ job: { id: "job-1", status: "running" } }, 202)))
+
+    await regenerateSpeechJobSegment("job-1", "segment-one", {
+      providerKey: "browser-secret",
+      voiceId: "villain",
+    })
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/speech/jobs/job-1/segments/segment-one/regenerate",
+      expect.objectContaining({
+        body: JSON.stringify({ voiceId: "villain" }),
+        headers: {
+          "Content-Type": "application/json",
+          [VOICE_PROVIDER_KEY_HEADER]: "browser-secret",
+        },
         method: "POST",
       })
     )
