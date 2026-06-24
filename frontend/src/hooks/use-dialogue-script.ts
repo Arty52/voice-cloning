@@ -24,6 +24,7 @@ export function useDialogueScript({ defaultVoice, voices }: UseDialogueScriptOpt
 
   const speakerLabels = useMemo(() => uniqueSpeakerLabels(blocks), [blocks])
   const selectedBlockCount = selectedBlockIds.size
+  const selectedBlockIdsSnapshot = useMemo<ReadonlySet<string>>(() => new Set(selectedBlockIds), [selectedBlockIds])
   const allBlocksSelected = blocks.length > 0 && blocks.every((block) => selectedBlockIds.has(block.id))
   const segmentBuild = useMemo(() => {
     if (!defaultVoice) {
@@ -86,7 +87,11 @@ export function useDialogueScript({ defaultVoice, voices }: UseDialogueScriptOpt
   }
 
   function updateSpeakerMapping(speakerLabel: string, voice: VoiceAsset | null) {
-    setSpeakerMappings((current) => upsertSpeakerMapping(current, speakerLabel, voice?.id ?? null))
+    const normalizedLabel = normalizeSpeakerLabel(speakerLabel)
+    if (!normalizedLabel) {
+      return
+    }
+    setSpeakerMappings((current) => upsertSpeakerMapping(current, normalizedLabel, voice?.id ?? null))
   }
 
   function toggleBlockSelection(blockId: string, selected: boolean) {
@@ -150,7 +155,7 @@ export function useDialogueScript({ defaultVoice, voices }: UseDialogueScriptOpt
     mode,
     segmentBuild,
     selectedBlockCount,
-    selectedBlockIds,
+    selectedBlockIds: selectedBlockIdsSnapshot,
     setAllBlocksSelected,
     setMode,
     speakerLabels,

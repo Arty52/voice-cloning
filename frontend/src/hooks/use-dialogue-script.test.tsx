@@ -47,6 +47,18 @@ describe("useDialogueScript", () => {
     expect(result.current.segmentBuild.segments.map((segment) => segment.voiceId)).toEqual(["skippy", "vegeta"])
   })
 
+  it("normalizes labels when updating speaker mappings", () => {
+    const { result } = renderHook(() => useDialogueScript({ defaultVoice: narrator, voices }))
+
+    act(() => {
+      result.current.importFromText("Skippy: Hello.")
+      result.current.updateSpeakerMapping("  Skippy  ", skippy)
+    })
+
+    expect(result.current.speakerMappings).toContainEqual({ speakerLabel: "Skippy", voiceId: "skippy" })
+    expect(result.current.segmentBuild.error).toBeNull()
+  })
+
   it("updates row text and speaker labels", () => {
     const { result } = renderHook(() => useDialogueScript({ defaultVoice: narrator, voices }))
 
@@ -94,6 +106,23 @@ describe("useDialogueScript", () => {
     expect(result.current.speakerMappings).toContainEqual({ speakerLabel: "Skippy", voiceId: "skippy" })
     expect(result.current.blocks.every((block) => block.voiceId === null)).toBe(true)
     expect(result.current.segmentBuild.error).toBeNull()
+  })
+
+  it("keeps internal selected rows isolated from returned set mutations", () => {
+    const { result } = renderHook(() => useDialogueScript({ defaultVoice: narrator, voices }))
+
+    act(() => {
+      result.current.importFromText("Skippy: One.\nUnlabeled.")
+      result.current.toggleBlockSelection("dialogue-block-1", true)
+    })
+    ;(result.current.selectedBlockIds as Set<string>).add("dialogue-block-2")
+    act(() => {
+      result.current.assignSelectedBlocks(skippy)
+    })
+
+    expect(result.current.selectedBlockCount).toBe(1)
+    expect(result.current.speakerMappings).toContainEqual({ speakerLabel: "Skippy", voiceId: "skippy" })
+    expect(result.current.blocks.map((block) => block.voiceId)).toEqual([null, null])
   })
 
   it("bulk assignment on mixed rows writes row overrides", () => {
