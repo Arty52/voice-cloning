@@ -432,7 +432,27 @@ class SampleProcessingService:
             )
         )
         self._validate_speaker_separation_result(updated_result)
-        self._refresh_speaker_processing_steps_from_result(job_id, updated_result)
+        trim_step = _successful_job_step(job, "trimSilence")
+        if trim_step is not None:
+            self._refresh_speaker_processing_steps_from_result(
+                job_id,
+                updated_result,
+                operation_id="separateSpeakers",
+            )
+            updated_result, trim_steps = await self._run_trim_on_speakers(
+                job_id,
+                trim_step,
+                _resolved_workflow_step_from_job_step(trim_step, self._enabled_operation("trimSilence")),
+                updated_result,
+            )
+            self._replace_speaker_processing_step(job_id, trim_step.id, trim_steps)
+            self._update_step(
+                job_id,
+                trim_step.id,
+                result_sha256=_aggregate_speaker_result_sha256(updated_result),
+            )
+        else:
+            self._refresh_speaker_processing_steps_from_result(job_id, updated_result)
         self._update_job(job_id, result=updated_result)
         return self.get_job(job_id)
 
@@ -519,7 +539,6 @@ class SampleProcessingService:
                     initial_request.job_dir,
                     step.id,
                     is_final=index == len(workflow_steps) - 1,
-                    workflow_mode=self.get_job(job_id).workflow_mode,
                 )
                 request = SampleProcessingRequest(
                     job_id=job_id,
@@ -714,10 +733,33 @@ class SampleProcessingService:
         for speaker_id, steps in steps_by_speaker_id.items():
             current[speaker_id] = (*current.get(speaker_id, ()), *steps)
 
+    def _replace_speaker_processing_step(
+        self,
+        job_id: str,
+        step_id: str,
+        steps_by_speaker_id: dict[str, tuple[VoiceProcessingStep, ...]],
+    ) -> None:
+        current = self._speaker_processing_steps.setdefault(job_id, {})
+        for speaker_id, replacement_steps in steps_by_speaker_id.items():
+            existing_steps = current.get(speaker_id, ())
+            updated_steps: list[VoiceProcessingStep] = []
+            replaced = False
+            for step in existing_steps:
+                if step.id == step_id:
+                    updated_steps.extend(replacement_steps)
+                    replaced = True
+                else:
+                    updated_steps.append(step)
+            if not replaced:
+                updated_steps.extend(replacement_steps)
+            current[speaker_id] = tuple(updated_steps)
+
     def _refresh_speaker_processing_steps_from_result(
         self,
         job_id: str,
         result: SpeakerSeparationResult,
+        *,
+        operation_id: SampleProcessingOperationId | None = None,
     ) -> None:
         current = self._speaker_processing_steps.get(job_id)
         if not current:
@@ -726,7 +768,14 @@ class SampleProcessingService:
             if speaker.result is None or speaker.id not in current or not current[speaker.id]:
                 continue
             steps = current[speaker.id]
-            current[speaker.id] = (*steps[:-1], replace(steps[-1], result_sha256=speaker.result.sha256))
+            step_index = _speaker_processing_step_index(steps, operation_id=operation_id)
+            if step_index is None:
+                continue
+            current[speaker.id] = (
+                *steps[:step_index],
+                replace(steps[step_index], result_sha256=speaker.result.sha256),
+                *steps[step_index + 1 :],
+            )
 
     def _voice_processing_steps_for_job(
         self,
@@ -1032,10 +1081,7 @@ def _step_output_path(
     step_id: str,
     *,
     is_final: bool,
-    workflow_mode: SampleProcessingWorkflowMode,
 ) -> Path:
-    if is_final and workflow_mode == "single":
-        return job_dir / RESULT_FILENAME
     if is_final:
         return job_dir / RESULT_FILENAME
     return job_dir / f"{step_id}.wav"
@@ -1061,6 +1107,17 @@ def _voice_step_from_job_step(
         processing_preset_label=step.processing_preset_label,
         speaker_id=speaker_id,
         speaker_label=speaker_label,
+    )
+
+
+def _resolved_workflow_step_from_job_step(
+    step: SampleProcessingJobStep,
+    operation: SampleProcessingOperation,
+) -> ResolvedSampleProcessingWorkflowStep:
+    return ResolvedSampleProcessingWorkflowStep(
+        operation=operation,
+        processing_preset_id=step.processing_preset_id,
+        processing_preset_label=step.processing_preset_label,
     )
 
 
@@ -1091,6 +1148,31 @@ def _aggregate_speaker_result_sha256(result: SpeakerSeparationResult) -> str | N
     if not hashes:
         return None
     return sample_hash("|".join(hashes).encode("utf-8"))
+
+
+def _successful_job_step(
+    job: SampleProcessingJob,
+    operation_id: SampleProcessingOperationId,
+) -> SampleProcessingJobStep | None:
+    for step in reversed(job.steps):
+        if step.operation_id == operation_id and step.status == "success":
+            return step
+    return None
+
+
+def _speaker_processing_step_index(
+    steps: tuple[VoiceProcessingStep, ...],
+    *,
+    operation_id: SampleProcessingOperationId | None,
+) -> int | None:
+    if not steps:
+        return None
+    if operation_id is None:
+        return len(steps) - 1
+    for index in range(len(steps) - 1, -1, -1):
+        if steps[index].operation_id == operation_id:
+            return index
+    return None
 
 
 def _current_source_sha256(result: SpeakerSeparationResult | None, sample: VoiceSample) -> str:

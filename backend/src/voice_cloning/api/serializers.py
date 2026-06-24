@@ -264,7 +264,7 @@ def _job_operation_label(job: SampleProcessingJob) -> str:
     for step in reversed(job.steps):
         if step.operation_id == job.operation_id:
             return step.operation_label
-    return job.processing_preset_label or job.operation_id
+    return job.operation_id
 
 
 def sample_processing_result_payload(result: SampleProcessingJobResult) -> dict[str, object]:

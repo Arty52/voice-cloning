@@ -56,6 +56,13 @@ TRIM_SILENCE_FILTERS = {
 _T = TypeVar("_T")
 
 
+def _kill_process(process: asyncio.subprocess.Process) -> None:
+    try:
+        process.kill()
+    except ProcessLookupError:
+        pass
+
+
 class DemucsSampleProcessor:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
@@ -859,11 +866,11 @@ async def _run_external_command(args: list[str], label: str, timeout_seconds: fl
     try:
         _, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout_seconds)
     except asyncio.CancelledError:
-        process.kill()
+        _kill_process(process)
         await process.communicate()
         raise
     except TimeoutError as exc:
-        process.kill()
+        _kill_process(process)
         await process.communicate()
         raise SampleProcessingServiceError(f"{label} timed out.", 504) from exc
 
