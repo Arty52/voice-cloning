@@ -643,6 +643,33 @@ function stubDecodedAudio(durationSeconds = 3, sampleRate = 48000) {
   vi.stubGlobal("AudioContext", FakeAudioContext)
 }
 
+function stubDeferredDecodedAudio(durationSeconds = 3, sampleRate = 48000) {
+  const channelData = new Float32Array(Math.ceil(durationSeconds * sampleRate)).fill(0.25)
+  const audioBuffer = {
+    duration: durationSeconds,
+    getChannelData: () => channelData,
+    numberOfChannels: 1,
+    sampleRate,
+  }
+  let resolveDecode: (value: typeof audioBuffer) => void = () => undefined
+  const decodePromise = new Promise<typeof audioBuffer>((resolve) => {
+    resolveDecode = resolve
+  })
+  class FakeAudioContext {
+    state = "running"
+
+    close = vi.fn(async () => {
+      this.state = "closed"
+    })
+
+    decodeAudioData = vi.fn(() => decodePromise)
+  }
+  vi.stubGlobal("AudioContext", FakeAudioContext)
+  return {
+    resolve: () => resolveDecode(audioBuffer),
+  }
+}
+
 function stubAudioDecodeFailure() {
   class FakeAudioContext {
     state = "running"
@@ -2151,6 +2178,28 @@ describe("App", () => {
     expect(body.get("name")).toBe("Dropped_Voice")
     expect(body.get("sampleFile")).toBeInstanceOf(File)
     expect(body.get("windowDurationSeconds")).toBe("3")
+  })
+
+  it("keeps recording unavailable while an upload is being prepared", async () => {
+    const pendingDecode = stubDeferredDecodedAudio(3)
+    const getUserMedia = vi.fn()
+    vi.stubGlobal("navigator", { ...navigator, mediaDevices: { getUserMedia } })
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.upload(screen.getByLabelText(/sample file/i), new File(["sample"], "pending.wav", { type: "audio/wav" }))
+
+    expect((await screen.findAllByText("Preparing Sample")).length).toBeGreaterThan(0)
+    const recordButton = addVoicePanel().getByRole("button", { name: /^Record$/ })
+    expect(recordButton).toBeDisabled()
+
+    await user.click(recordButton)
+
+    expect(getUserMedia).not.toHaveBeenCalled()
+    pendingDecode.resolve()
+    expect(await screen.findByText("0:03 Selected")).toBeInTheDocument()
+    expect(addVoicePanel().getByRole("button", { name: /^Record$/ })).toBeEnabled()
   })
 
   it("defaults long uploads to the provider maximum window", async () => {

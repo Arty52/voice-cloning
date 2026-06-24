@@ -127,7 +127,7 @@ export function useVoiceSampleInput({ onVoiceSaved, providerSample }: UseVoiceSa
   }
 
   async function handleStartRecording() {
-    if (isUploading || isRecorderBusy) {
+    if (isUploading || isPreparingSample || isRecorderBusy) {
       return
     }
 

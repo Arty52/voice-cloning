@@ -144,7 +144,13 @@ export function AddVoicePanel({
             onFileSelect={handleUploadFileSelect}
             selectedFileName={uploadFile?.name ?? null}
           >
-            <Button disabled={isUploading || isRecorderBusy} onClick={handleStartRecording} size="sm" type="button" variant="secondary">
+            <Button
+              disabled={isUploading || isPreparingSample || isRecorderBusy}
+              onClick={handleStartRecording}
+              size="sm"
+              type="button"
+              variant="secondary"
+            >
               <Mic aria-hidden="true" data-icon="inline-start" />
               {recordButtonLabel}
             </Button>

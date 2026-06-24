@@ -76,7 +76,10 @@ export function AudioFileDropZone({
           className="sr-only"
           disabled={disabled}
           id={id}
-          onChange={(event) => onFileSelect(event.currentTarget.files?.[0] ?? null)}
+          onChange={(event) => {
+            onFileSelect(event.currentTarget.files?.[0] ?? null)
+            event.currentTarget.value = ""
+          }}
           ref={inputRef}
           tabIndex={-1}
           type="file"

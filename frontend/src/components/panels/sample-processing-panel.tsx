@@ -730,21 +730,26 @@ function presetControlLabel(operationId: SampleProcessingOperationId) {
 }
 
 function operationCardCopy(operationId: SampleProcessingOperationId) {
-  if (operationId === "isolateVoice") {
-    return {
-      description: "Pull the spoken voice forward and reduce background audio.",
-      title: "Clean Up Voice",
+  switch (operationId) {
+    case "isolateVoice":
+      return {
+        description: "Pull the spoken voice forward and reduce background audio.",
+        title: "Clean Up Voice",
+      }
+    case "trimSilence":
+      return {
+        description: "Remove long quiet stretches so the sample starts, ends, and flows cleanly.",
+        title: "Tighten Pauses",
+      }
+    case "separateSpeakers":
+      return {
+        description: "Find each speaker in a conversation and create separate voice streams.",
+        title: "Split Speakers",
+      }
+    default: {
+      const unhandledOperationId: never = operationId
+      throw new Error(`Unhandled sample processing operation: ${unhandledOperationId}`)
     }
-  }
-  if (operationId === "trimSilence") {
-    return {
-      description: "Remove long quiet stretches so the sample starts, ends, and flows cleanly.",
-      title: "Tighten Pauses",
-    }
-  }
-  return {
-    description: "Find each speaker in a conversation and create separate voice streams.",
-    title: "Split Speakers",
   }
 }
 
