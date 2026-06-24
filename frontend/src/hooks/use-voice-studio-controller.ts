@@ -1,6 +1,6 @@
 import { type FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 
-import { DEFAULT_TEXT } from "@/constants"
+import { DEFAULT_TEXT, MAX_SPEECH_TEXT_LENGTH } from "@/constants"
 import { useConfirmation } from "@/hooks/use-confirmation"
 import { useDialogueScript } from "@/hooks/use-dialogue-script"
 import { useGeneratedAudioLibrary } from "@/hooks/use-generated-audio-library"
@@ -145,8 +145,10 @@ export function useVoiceStudioController() {
   const modelMultiplier = selectedModel?.characterCostMultiplier ?? null
   const estimatedCredits = modelMultiplier === null ? characterCount : Math.ceil(characterCount * modelMultiplier)
   const hasModelRate = modelMultiplier !== null
+  const isWithinSpeechTextLimit = characterCount <= MAX_SPEECH_TEXT_LENGTH
   const canGenerate =
     characterCount > 0 &&
+    isWithinSpeechTextLimit &&
     voiceLibrary.selectedVoice !== null &&
     providerKeys.canUseProvider &&
     !isSpeechGenerating &&

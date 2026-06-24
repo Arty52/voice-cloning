@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import App from "./App"
 import { TooltipProvider } from "./components/ui/tooltip"
+import { MAX_SPEECH_TEXT_LENGTH } from "./constants"
 import { VOICE_PROVIDER_KEY_HEADER } from "./lib/api"
 import {
   BYTES_PER_MEBIBYTE,
@@ -1240,6 +1241,27 @@ describe("App", () => {
 
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
     expect(createSpeechJob).not.toHaveBeenCalled()
+  })
+
+  it("blocks dialogue row generation when edited text exceeds the speech limit", async () => {
+    window.history.replaceState(null, "", "/#generate")
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    fireEvent.change(screen.getByLabelText(/text to speak/i), { target: { value: "Skippy: Hello." } })
+    await user.click(screen.getByRole("radio", { name: "Dialogue Rows" }))
+    await user.click(screen.getByRole("button", { name: "Import Dialogue" }))
+    await user.click(screen.getByRole("button", { name: "Map Voice" }))
+    await user.click(screen.getByRole("button", { name: "Default voice" }))
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Generate$/ })).toBeEnabled())
+
+    fireEvent.change(screen.getByLabelText("Dialogue"), {
+      target: { value: "x".repeat(MAX_SPEECH_TEXT_LENGTH + 1) },
+    })
+
+    expect(screen.getByText(`${MAX_SPEECH_TEXT_LENGTH + 1}/${MAX_SPEECH_TEXT_LENGTH}`)).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /^Generate$/ })).toBeDisabled()
   })
 
   it("links from the voice library to speech generation", async () => {
