@@ -36,6 +36,7 @@ const multiVoiceMetadata = {
       text: "Hello.",
       voiceId: "voice-123",
       voiceName: "Default Voice",
+      voiceSettings: { stability: 0.42 },
     },
   ],
   voices: [{ segmentCount: 1, voiceId: "voice-123", voiceName: "Default Voice" }],

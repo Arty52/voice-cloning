@@ -75,6 +75,7 @@ export function buildGeneratedAudioMultiVoiceMetadata(job: SpeechJob): Generated
       text: segment.text,
       voiceId: segment.voiceId,
       voiceName: segment.voiceName,
+      voiceSettings: segment.voiceSettings,
     })),
     voices: Array.from(voiceCounts.values()),
   }

@@ -291,6 +291,7 @@ describe("buildGeneratedAudioMultiVoiceMetadata", () => {
           text: "Hello.",
           voiceId: "narrator",
           voiceName: "Narrator",
+          voiceSettings: { stability: 0.42 },
         },
         {
           assignmentKind: "default",
@@ -306,6 +307,7 @@ describe("buildGeneratedAudioMultiVoiceMetadata", () => {
           text: "Hi.",
           voiceId: "narrator",
           voiceName: "Narrator",
+          voiceSettings: { stability: 0.42 },
         },
         {
           assignmentKind: "assigned",
@@ -321,6 +323,7 @@ describe("buildGeneratedAudioMultiVoiceMetadata", () => {
           text: "Bye.",
           voiceId: "villain",
           voiceName: "Villain",
+          voiceSettings: { speed: 1.2 },
         },
       ],
       status: "success",
@@ -343,6 +346,7 @@ describe("buildGeneratedAudioMultiVoiceMetadata", () => {
           text: "Hello.",
           voiceId: "narrator",
           voiceName: "Narrator",
+          voiceSettings: { stability: 0.42 },
         },
         {
           assignmentKind: "default",
@@ -354,6 +358,7 @@ describe("buildGeneratedAudioMultiVoiceMetadata", () => {
           text: "Hi.",
           voiceId: "narrator",
           voiceName: "Narrator",
+          voiceSettings: { stability: 0.42 },
         },
         {
           assignmentKind: "assigned",
@@ -365,6 +370,7 @@ describe("buildGeneratedAudioMultiVoiceMetadata", () => {
           text: "Bye.",
           voiceId: "villain",
           voiceName: "Villain",
+          voiceSettings: { speed: 1.2 },
         },
       ],
       voices: [

@@ -52,6 +52,7 @@ const multiVoiceMetadata: GeneratedAudioMultiVoiceMetadata = {
       text: "Hello.",
       voiceId: "narrator",
       voiceName: "Narrator",
+      voiceSettings: { stability: 0.42 },
     },
     {
       assignmentKind: "default",
@@ -63,6 +64,7 @@ const multiVoiceMetadata: GeneratedAudioMultiVoiceMetadata = {
       text: "Hi.",
       voiceId: "default",
       voiceName: "Default Voice",
+      voiceSettings: { stability: 0.42 },
     },
   ],
   voices: [
