@@ -371,7 +371,10 @@ function VoicePickerControl({
     return (
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="inline-flex cursor-not-allowed">
+          <span
+            className="inline-flex cursor-not-allowed rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            tabIndex={0}
+          >
             {trigger}
           </span>
         </TooltipTrigger>

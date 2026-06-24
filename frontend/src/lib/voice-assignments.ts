@@ -196,12 +196,12 @@ function editIntersectsAssignment(edit: TextEdit, assignment: VoiceTextAssignmen
   if (edit.previousEnd > edit.start) {
     return edit.start < assignment.end && edit.previousEnd > assignment.start
   }
-  return edit.start > assignment.start && edit.start <= assignment.end
+  return edit.start > assignment.start && edit.start < assignment.end
 }
 
 function isSafeAssignmentEdit(edit: TextEdit, assignment: VoiceTextAssignment) {
   if (edit.previousEnd === edit.start) {
-    return edit.start > assignment.start && edit.start <= assignment.end
+    return edit.start > assignment.start && edit.start < assignment.end
   }
   return edit.start >= assignment.start && edit.previousEnd <= assignment.end
 }
@@ -282,6 +282,6 @@ function segmentId(span: SpanDraft, index: number) {
   return span.assignmentId ?? `default-${index}-${span.start}-${span.end}`
 }
 
-function compareAssignments(first: VoiceTextAssignment, second: VoiceTextAssignment) {
+export function compareAssignments(first: VoiceTextAssignment, second: VoiceTextAssignment) {
   return first.start - second.start || first.end - second.end || first.id.localeCompare(second.id)
 }

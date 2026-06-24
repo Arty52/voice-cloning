@@ -104,6 +104,17 @@ describe("SpeechInputPanel voice assignments", () => {
     expect(await screen.findByRole("tooltip")).toHaveTextContent("Select script text before assigning a voice.")
   })
 
+  it("explains the disabled assignment action on keyboard focus", async () => {
+    const user = userEvent.setup()
+    renderPanel()
+
+    await user.tab()
+    await user.tab()
+
+    expect(screen.getByRole("button", { name: /^Assign Voice$/i }).closest("[data-slot='tooltip-trigger']")).toHaveFocus()
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Select script text before assigning a voice.")
+  })
+
   it("assigns the selected text to a picked voice", async () => {
     const user = userEvent.setup()
     const props = renderPanel({ selectedText: "villain line" })

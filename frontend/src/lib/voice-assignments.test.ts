@@ -205,6 +205,38 @@ describe("voice assignment text edit reconciliation", () => {
     expect(areVoiceAssignmentsStale(nextText, [reconciled])).toBe(false)
   })
 
+  it("treats inserted text at an assignment end boundary as unassigned", () => {
+    const originalText = "Narrator. Villain speaks. Narrator again."
+    const assigned = assignment()
+    const nextText = `${originalText.slice(0, assigned.end)} loudly${originalText.slice(assigned.end)}`
+
+    const [reconciled] = reconcileVoiceAssignmentsForTextChange(originalText, nextText, [assigned])
+
+    expect(reconciled).toMatchObject({
+      end: assigned.end,
+      sourceText: nextText,
+      start: assigned.start,
+      text: "Villain speaks.",
+    })
+    expect(areVoiceAssignmentsStale(nextText, [reconciled])).toBe(false)
+  })
+
+  it("treats inserted text at an assignment start boundary as unassigned before the assignment", () => {
+    const originalText = "Narrator. Villain speaks. Narrator again."
+    const assigned = assignment()
+    const nextText = `${originalText.slice(0, assigned.start)}Angry ${originalText.slice(assigned.start)}`
+
+    const [reconciled] = reconcileVoiceAssignmentsForTextChange(originalText, nextText, [assigned])
+
+    expect(reconciled).toMatchObject({
+      end: assigned.end + "Angry ".length,
+      sourceText: nextText,
+      start: assigned.start + "Angry ".length,
+      text: "Villain speaks.",
+    })
+    expect(areVoiceAssignmentsStale(nextText, [reconciled])).toBe(false)
+  })
+
   it("replaces text inside an assigned span", () => {
     const originalText = "Narrator. Villain speaks. Narrator again."
     const nextText = originalText.replace("speaks", "whispers")

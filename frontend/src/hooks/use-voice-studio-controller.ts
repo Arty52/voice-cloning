@@ -19,6 +19,7 @@ import { isTemporaryGeneratedAudioId } from "@/lib/generated-audio-view-model"
 import { formatBytes } from "@/lib/formatters"
 import {
   buildSpeechJobSegments,
+  compareAssignments,
   reconcileVoiceAssignmentsForTextChange,
   type VoiceTextAssignment,
 } from "@/lib/voice-assignments"
@@ -433,10 +434,6 @@ export function useVoiceStudioController() {
     voiceTuning,
     workflowSections: WORKFLOW_SECTIONS,
   }
-}
-
-function compareAssignments(first: VoiceTextAssignment, second: VoiceTextAssignment) {
-  return first.start - second.start || first.end - second.end || first.id.localeCompare(second.id)
 }
 
 function createVoiceAssignmentId() {
