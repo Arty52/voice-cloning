@@ -108,6 +108,9 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
     ? sourceVoiceId
     : selectedVoice?.id ?? voices[0]?.id ?? ""
   const selectedSourceVoice = voices.find((voice) => voice.id === resolvedSourceVoiceId) ?? null
+  const canUseOriginalRecording = hasRetainedOriginalSource(selectedSourceVoice)
+  const effectiveSourcePreference =
+    sourceMode === "voice" && sourcePreference === "original" && !canUseOriginalRecording ? "active" : sourcePreference
   const voiceOptions = useMemo(() => voices.map((voice) => ({ label: voice.name, value: voice.id })), [voices])
   const isProcessing = status === "starting" || status === "processing"
   const hasSource = sourceMode === "upload" ? sourceFile !== null : resolvedSourceVoiceId.trim().length > 0
@@ -316,7 +319,10 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
   }
 
   function handleSourcePreferenceChange(nextPreference: SampleProcessingSourcePreference) {
-    if (nextPreference === sourcePreference) {
+    if (nextPreference === "original" && !canUseOriginalRecording) {
+      return
+    }
+    if (nextPreference === effectiveSourcePreference) {
       return
     }
     setSourcePreference(nextPreference)
@@ -359,7 +365,7 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
         operationId: workflowSteps.length === 1 ? primaryStep?.operationId : undefined,
         processingPresetId: workflowSteps.length === 1 ? primaryStep?.processingPresetId : null,
         sourceFile: sourceMode === "upload" ? sourceFile : null,
-        sourcePreference: sourceMode === "voice" ? sourcePreference : undefined,
+        sourcePreference: sourceMode === "voice" ? effectiveSourcePreference : undefined,
         sourceVoiceId: sourceMode === "voice" ? resolvedSourceVoiceId : null,
         workflowSteps: workflowSteps.length > 1 ? workflowSteps : undefined,
       })
@@ -692,7 +698,9 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
     assignSelectedTranscriptItemsToSpeaker,
     assignSpeakerName,
     assignTranscriptItemsToSpeaker,
+    canUseOriginalRecording,
     enabledOperations,
+    effectiveSourcePreference,
     error,
     handleSaveProcessedVoice,
     handleSaveSpeakerVoices,
@@ -766,6 +774,10 @@ function resolveProcessingPresetId(
     return current ?? DEFAULT_PROCESSING_PRESET_ID
   }
   return operation?.defaultProcessingPresetId ?? presets[0]?.id ?? DEFAULT_PROCESSING_PRESET_ID
+}
+
+function hasRetainedOriginalSource(sourceVoice: VoiceAsset | null) {
+  return (sourceVoice?.sourceFilePath ?? "").trim().length > 0
 }
 
 function resolveProcessingPresetIds(

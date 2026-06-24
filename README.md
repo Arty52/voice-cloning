@@ -73,7 +73,7 @@ http://localhost:6420
 
 The Voice Studio opens on `Voices`. Use the sidebar to move between stable workflow sections:
 
-1. `Prepare Samples` (`#prepare`, optional step 0): process uploaded or saved samples before adding them to the library.
+1. `Prepare Audio` (`#prepare`, optional step 0): process uploaded or saved source audio before adding it to the library.
 2. `Voices` (`#voices`, step 1): upload, record, select, preview, rename, and assign local voice presets.
 3. `Generate Speech` (`#generate`, step 2): enter text, tune the selected voice, choose model settings, generate speech, and review the latest result.
 4. `Generated Audio` (`#archive`, optional): review, download, remove, or clear browser-saved generated audio.

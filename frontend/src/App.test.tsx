@@ -35,6 +35,13 @@ const defaultVoice = {
   processingSteps: [],
 }
 
+const retainedSourceVoice = {
+  ...defaultVoice,
+  sourceFilePath: "sources/default-recording.wav",
+  sourceContentType: "audio/wav",
+  sourceSha256: "source-hash",
+}
+
 const voiceCloneVoice = {
   id: "voice-clone-01",
   name: "Voice_Clone_01",
@@ -1386,7 +1393,9 @@ describe("App", () => {
     const defaultCard = within(sampleProcessingPanel().getByRole("group", { name: "Default voice Source Voice" }))
     const cloneCard = within(sampleProcessingPanel().getByRole("group", { name: "Voice_Clone_01 Source Voice" }))
     expect(defaultCard.getByText("Standard Narration")).toBeInTheDocument()
-    expect(defaultCard.getByText("Default")).toBeInTheDocument()
+    expect(defaultCard.getByLabelText("Included default voice")).toBeInTheDocument()
+    expect(defaultCard.queryByText("Default")).not.toBeInTheDocument()
+    expect(cloneCard.queryByText("Uploaded")).not.toBeInTheDocument()
     expect(cloneCard.getByText("Source: voice-clone-01.mp3")).toBeInTheDocument()
     expect(cloneCard.getByRole("button", { name: "Select Voice_Clone_01" })).toHaveAttribute("aria-pressed", "false")
     expect(document.querySelector('audio[src="/api/voices/voice-clone-01/sample"]')).toHaveAttribute("preload", "none")
@@ -1411,6 +1420,102 @@ describe("App", () => {
     expect(jobBody.get("sourceVoiceId")).toBe("voice-clone-01")
   })
 
+  it("keeps compact saved voice previews exclusive and stops them when the carousel unmounts", async () => {
+    const playSpy = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined)
+    const pauseSpy = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined)
+    const baseFetch = mockFetch()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "default", voices: [defaultVoice, voiceCloneVoice] })
+        }
+        return baseFetch(input, init)
+      })
+    )
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+
+    const defaultCard = within(sampleProcessingPanel().getByRole("group", { name: "Default voice Source Voice" }))
+    const cloneCard = within(sampleProcessingPanel().getByRole("group", { name: "Voice_Clone_01 Source Voice" }))
+
+    await user.click(defaultCard.getByRole("button", { name: "Play Default voice Preview" }))
+    expect(playSpy).toHaveBeenCalledTimes(1)
+    expect(defaultCard.getByRole("button", { name: "Pause Default voice Preview" })).toBeInTheDocument()
+
+    await user.click(cloneCard.getByRole("button", { name: "Play Voice_Clone_01 Preview" }))
+    expect(playSpy).toHaveBeenCalledTimes(2)
+    await waitFor(() => expect(pauseSpy).toHaveBeenCalled())
+    expect(defaultCard.getByRole("button", { name: "Play Default voice Preview" })).toBeInTheDocument()
+    expect(cloneCard.getByRole("button", { name: "Pause Voice_Clone_01 Preview" })).toBeInTheDocument()
+
+    pauseSpy.mockClear()
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Start Processing" }))
+    await waitFor(() => expect(pauseSpy).toHaveBeenCalled())
+    await waitFor(() =>
+      expect(cloneCard.getByRole("button", { name: "Play Voice_Clone_01 Preview" })).toBeInTheDocument()
+    )
+
+    await user.click(cloneCard.getByRole("button", { name: "Play Voice_Clone_01 Preview" }))
+    expect(playSpy).toHaveBeenCalledTimes(3)
+    expect(cloneCard.getByRole("button", { name: "Pause Voice_Clone_01 Preview" })).toBeInTheDocument()
+
+    pauseSpy.mockClear()
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Use Audio File" }))
+    expect(sampleProcessingPanel().getByLabelText("Audio File")).toHaveAttribute("tabindex", "-1")
+    await waitFor(() => expect(pauseSpy).toHaveBeenCalled())
+  })
+
+  it("contains horizontal wheel gestures inside the saved voice carousel", async () => {
+    const baseFetch = mockFetch()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "default", voices: [defaultVoice, voiceCloneVoice] })
+        }
+        return baseFetch(input, init)
+      })
+    )
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+
+    const carousel = sampleProcessingPanel().getByRole("group", { name: "Select Voice" })
+    Object.defineProperties(carousel, {
+      clientWidth: { configurable: true, value: 320 },
+      scrollWidth: { configurable: true, value: 900 },
+    })
+
+    expect(carousel).toHaveClass("overscroll-x-contain")
+
+    carousel.scrollLeft = 0
+    const leftBoundaryWheel = new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaX: -80 })
+    fireEvent(carousel, leftBoundaryWheel)
+    expect(leftBoundaryWheel.defaultPrevented).toBe(true)
+    expect(carousel.scrollLeft).toBe(0)
+
+    const rightWheel = new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaX: 120 })
+    fireEvent(carousel, rightWheel)
+    expect(rightWheel.defaultPrevented).toBe(true)
+    expect(carousel.scrollLeft).toBe(120)
+
+    carousel.scrollLeft = 580
+    const rightBoundaryWheel = new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaX: 120 })
+    fireEvent(carousel, rightBoundaryWheel)
+    expect(rightBoundaryWheel.defaultPrevented).toBe(true)
+    expect(carousel.scrollLeft).toBe(580)
+
+    const verticalWheel = new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaX: 8, deltaY: 80 })
+    fireEvent(carousel, verticalWheel)
+    expect(verticalWheel.defaultPrevented).toBe(false)
+    expect(carousel.scrollLeft).toBe(580)
+  })
+
   it("switches from the saved voice carousel to audio upload", async () => {
     const user = userEvent.setup()
     renderApp()
@@ -1419,7 +1524,7 @@ describe("App", () => {
     await user.click(sampleProcessingPanel().getByRole("button", { name: "Use Audio File" }))
 
     expect(sampleProcessingPanel().getByLabelText("Audio File")).toHaveAttribute("tabindex", "-1")
-    expect(sampleProcessingPanel().queryByText("Source Preference")).not.toBeInTheDocument()
+    expect(sampleProcessingPanel().queryByText("Process From")).not.toBeInTheDocument()
   })
 
   it("shows an empty saved voice source state until audio is uploaded", async () => {
@@ -1540,50 +1645,72 @@ describe("App", () => {
     expect(sampleProcessingPanel().getByLabelText("Voice Name")).toHaveValue("Default voice Trimmed")
   })
 
-  it("explains source preference without implying the selected voice is overwritten", async () => {
+  it("shows process-from copy without relying on tooltip help", async () => {
+    const baseFetch = mockFetch()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "default", voices: [retainedSourceVoice] })
+        }
+        return baseFetch(input, init)
+      })
+    )
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+
+    expect(sampleProcessingPanel().getByText("Process From")).toBeInTheDocument()
+    expect(sampleProcessingPanel().getByText("Choose which version of this saved voice to prepare.")).toBeVisible()
+    expect(sampleProcessingPanel().queryByRole("button", { name: "Explain Source Preference" })).not.toBeInTheDocument()
+    const originalRecording = sampleProcessingPanel().getByRole("button", { name: "Original Recording" })
+    expect(originalRecording).toHaveAccessibleDescription(
+      "Best for cleanup, splitting speakers, and trimming. Uses the full uploaded source when available."
+    )
+    expect(originalRecording).toHaveAttribute("aria-pressed", "true")
+    expect(sampleProcessingPanel().getByText("Recommended")).toBeInTheDocument()
+    expect(sampleProcessingPanel().getByRole("button", { name: "Saved Sample" })).toHaveAccessibleDescription(
+      "Best for quick touch-ups. Uses the current library sample."
+    )
+  })
+
+  it("uses saved sample when the selected voice has no retained original recording", async () => {
     const user = userEvent.setup()
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
 
-    const sourcePreferenceHelp = await sampleProcessingPanel().findByRole("button", {
-      name: "Explain Source Preference",
-    })
-    expect(sourcePreferenceHelp).toBeVisible()
+    const originalRecording = sampleProcessingPanel().getByRole("button", { name: "Original Recording Unavailable" })
+    expect(originalRecording).toBeDisabled()
+    expect(originalRecording).toHaveAttribute("aria-pressed", "false")
+    expect(originalRecording).toHaveAccessibleDescription("This saved voice does not have a retained original recording.")
+    expect(sampleProcessingPanel().getByRole("button", { name: "Saved Sample" })).toHaveAttribute("aria-pressed", "true")
 
-    await user.hover(sourcePreferenceHelp)
+    const startButton = await sampleProcessingPanel().findByRole("button", { name: "Start Processing" })
+    await waitFor(() => expect(startButton).toBeEnabled())
+    await user.click(startButton)
 
-    const tooltip = await waitFor(() => {
-      const sourcePreferenceTooltip = screen
-        .getAllByRole("tooltip")
-        .find((element) => within(element).queryByText("Original Source"))
-      expect(sourcePreferenceTooltip).toBeDefined()
-      return sourcePreferenceTooltip as HTMLElement
-    })
-    expect(within(tooltip).getByText("Original Source")).toBeInTheDocument()
-    expect(
-      within(tooltip).getByText(
-        "Uses the retained full upload/source file when one exists; otherwise falls back to the active sample."
-      )
-    ).toBeInTheDocument()
-    expect(within(tooltip).getByText("Active Sample")).toBeInTheDocument()
-    expect(within(tooltip).getByText("Uses the provider-facing sample currently stored for the selected voice.")).toBeInTheDocument()
-    expect(
-      within(tooltip).getByText(
-        "Processing creates a preview only. Add To Voice Library saves that preview as a new voice and does not replace the selected voice."
-      )
-    ).toBeInTheDocument()
-
-    expect(sampleProcessingPanel().getByRole("button", { name: "Original Source" })).toHaveAccessibleDescription(
-      "Uses the retained full upload/source file when one exists; otherwise falls back to the active sample. Processing creates a preview only. Add To Voice Library saves that preview as a new voice and does not replace the selected voice."
+    const jobCall = vi.mocked(fetch).mock.calls.find(
+      ([url, init]) => String(url) === "/api/sample-processing/jobs" && init?.method === "POST"
     )
-    expect(sampleProcessingPanel().getByRole("button", { name: "Active Sample" })).toHaveAccessibleDescription(
-      "Uses the provider-facing sample currently stored for the selected voice. Processing creates a preview only. Add To Voice Library saves that preview as a new voice and does not replace the selected voice."
-    )
+    const jobBody = jobCall?.[1]?.body as FormData
+    expect(jobBody.get("sourcePreference")).toBe("active")
   })
 
   it("processes an existing voice, previews the result, and saves it as a selectable voice", async () => {
     const user = userEvent.setup()
+    const baseFetch = mockFetch()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "default", voices: [retainedSourceVoice] })
+        }
+        return baseFetch(input, init)
+      })
+    )
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
@@ -1973,7 +2100,7 @@ describe("App", () => {
     expect(await sampleProcessingPanel().findByLabelText("Processed sample preview")).toBeInTheDocument()
     expect(sampleProcessingPanel().getByLabelText("Sample Processing Elapsed Time")).toHaveTextContent("Finished In")
 
-    await user.click(sampleProcessingPanel().getByRole("button", { name: "Active Sample" }))
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Tighten Pauses" }))
 
     await waitFor(() => {
       expect(sampleProcessingPanel().queryByLabelText("Processed sample preview")).not.toBeInTheDocument()
@@ -2080,7 +2207,7 @@ describe("App", () => {
 
     await screen.findByText("default/default-voice.mp3")
     await user.click(sampleProcessingPanel().getByRole("button", { name: "Audio File" }))
-    expect(sampleProcessingPanel().queryByText("Source Preference")).not.toBeInTheDocument()
+    expect(sampleProcessingPanel().queryByText("Process From")).not.toBeInTheDocument()
     expect(sampleProcessingPanel().queryByRole("button", { name: "Explain Source Preference" })).not.toBeInTheDocument()
     expect(sampleProcessingPanel().getByLabelText("Audio File")).toHaveAttribute("tabindex", "-1")
     await user.upload(sampleProcessingPanel().getByLabelText("Audio File"), sourceFile)

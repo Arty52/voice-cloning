@@ -1,4 +1,4 @@
-import { type CSSProperties, useEffect, useRef, useState } from "react"
+import { type CSSProperties, type ReactNode, useCallback, useEffect, useRef, useState } from "react"
 import {
   AudioLines,
   Ban,
@@ -8,13 +8,13 @@ import {
   Circle,
   CircleAlert,
   FileAudio,
-  Info,
   Loader2,
   Mic,
   Pause,
   Play,
   Save,
   Scissors,
+  Sparkles,
   Upload,
   Users,
   Wand2,
@@ -52,6 +52,7 @@ import { voicePresetLabel } from "@/lib/voice-presets"
 import type {
   SampleProcessingOperationId,
   SampleProcessingPresetId,
+  SampleProcessingSourcePreference,
   SpeakerSeparationResult,
   SpeakerSeparationSpeaker,
   SpeakerTranscriptItem,
@@ -67,11 +68,11 @@ type SampleProcessingPanelProps = {
   voicePresets: { id: VoicePresetId; label: string; description: string }[]
 }
 
-const SOURCE_PREFERENCE_ORIGINAL_DESCRIPTION =
-  "Uses the retained full upload/source file when one exists; otherwise falls back to the active sample."
-const SOURCE_PREFERENCE_ACTIVE_DESCRIPTION = "Uses the provider-facing sample currently stored for the selected voice."
-const SOURCE_PREFERENCE_SAVE_DESCRIPTION =
-  "Processing creates a preview only. Add To Voice Library saves that preview as a new voice and does not replace the selected voice."
+const PROCESS_FROM_DESCRIPTION = "Choose which version of this saved voice to prepare."
+const PROCESS_FROM_ORIGINAL_DESCRIPTION =
+  "Best for cleanup, splitting speakers, and trimming. Uses the full uploaded source when available."
+const PROCESS_FROM_ORIGINAL_UNAVAILABLE_DESCRIPTION = "This saved voice does not have a retained original recording."
+const PROCESS_FROM_SAVED_SAMPLE_DESCRIPTION = "Best for quick touch-ups. Uses the current library sample."
 const SPEAKER_COLORS = [
   "oklch(0.74 0.17 36)",
   "oklch(0.72 0.14 184)",
@@ -220,7 +221,7 @@ function WorkflowStackSelection({ processing }: { processing: SampleProcessingCo
           return (
             <div
               className={cn(
-                "flex h-full flex-col rounded-md border border-border bg-background/60 transition",
+                "flex h-full flex-col rounded-md border border-border bg-background/60 transition-[background-color,box-shadow]",
                 hasPresetControls ? "p-2" : "p-0",
                 isSelected && "border-primary/60 bg-primary/10 shadow-sm"
               )}
@@ -231,7 +232,7 @@ function WorkflowStackSelection({ processing }: { processing: SampleProcessingCo
                 aria-label={operationCopy.title}
                 aria-pressed={isSelected}
                 className={cn(
-                  "flex min-h-28 w-full flex-col items-start justify-start gap-3 rounded text-left outline-none transition hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+                  "flex min-h-28 w-full flex-col items-start justify-start gap-3 rounded text-left outline-none transition-[background-color,box-shadow] hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
                   hasPresetControls ? "p-2" : "flex-1 p-4"
                 )}
                 disabled={isDisabled || !operation.enabled}
@@ -310,7 +311,10 @@ function SourceSelection({
         <div className="grid grid-cols-2 gap-1 rounded-md border border-border bg-background/60 p-1" role="group" aria-label="Sample source">
           <Button
             aria-pressed={processing.sourceMode === "voice"}
-            className={cn(processing.sourceMode !== "voice" && "bg-transparent")}
+            className={cn(
+              "transition-[background-color,box-shadow]",
+              processing.sourceMode !== "voice" && "border border-transparent bg-transparent"
+            )}
             disabled={processing.isProcessing}
             onClick={() => processing.handleSourceModeChange("voice")}
             type="button"
@@ -321,7 +325,10 @@ function SourceSelection({
           </Button>
           <Button
             aria-pressed={processing.sourceMode === "upload"}
-            className={cn(processing.sourceMode !== "upload" && "bg-transparent")}
+            className={cn(
+              "transition-[background-color,box-shadow]",
+              processing.sourceMode !== "upload" && "border border-transparent bg-transparent"
+            )}
             disabled={processing.isProcessing}
             onClick={() => processing.handleSourceModeChange("upload")}
             type="button"
@@ -346,75 +353,7 @@ function SourceSelection({
               voices={processing.sourceVoices}
             />
           </Field>
-          <Field>
-            <div className="flex items-center gap-1.5">
-              <FieldLabel id="sample-processing-source-preference-label">Source Preference</FieldLabel>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    aria-label="Explain Source Preference"
-                    className="size-6 shrink-0"
-                    disabled={processing.isProcessing}
-                    size="icon"
-                    type="button"
-                    variant="ghost"
-                  >
-                    <Info aria-hidden="true" data-icon="inline-start" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent className="max-w-72" side="top" sideOffset={6}>
-                  <div className="flex flex-col gap-2">
-                    <div className="flex flex-col gap-1">
-                      <span className="font-medium">Original Source</span>
-                      <span>{SOURCE_PREFERENCE_ORIGINAL_DESCRIPTION}</span>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <span className="font-medium">Active Sample</span>
-                      <span>{SOURCE_PREFERENCE_ACTIVE_DESCRIPTION}</span>
-                    </div>
-                    <span>{SOURCE_PREFERENCE_SAVE_DESCRIPTION}</span>
-                  </div>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-            <div
-              className="grid grid-cols-2 gap-1 rounded-md border border-border bg-background/60 p-1"
-              role="group"
-              aria-labelledby="sample-processing-source-preference-label"
-            >
-              <Button
-                aria-describedby="sample-processing-original-source-description sample-processing-source-save-description"
-                aria-pressed={processing.sourcePreference === "original"}
-                className={cn(processing.sourcePreference !== "original" && "bg-transparent")}
-                disabled={processing.isProcessing}
-                onClick={() => processing.setSourcePreference("original")}
-                type="button"
-                variant={processing.sourcePreference === "original" ? "secondary" : "ghost"}
-              >
-                Original Source
-              </Button>
-              <Button
-                aria-describedby="sample-processing-active-sample-description sample-processing-source-save-description"
-                aria-pressed={processing.sourcePreference === "active"}
-                className={cn(processing.sourcePreference !== "active" && "bg-transparent")}
-                disabled={processing.isProcessing}
-                onClick={() => processing.setSourcePreference("active")}
-                type="button"
-                variant={processing.sourcePreference === "active" ? "secondary" : "ghost"}
-              >
-                Active Sample
-              </Button>
-            </div>
-            <FieldDescription className="sr-only" id="sample-processing-original-source-description">
-              {SOURCE_PREFERENCE_ORIGINAL_DESCRIPTION}
-            </FieldDescription>
-            <FieldDescription className="sr-only" id="sample-processing-active-sample-description">
-              {SOURCE_PREFERENCE_ACTIVE_DESCRIPTION}
-            </FieldDescription>
-            <FieldDescription className="sr-only" id="sample-processing-source-save-description">
-              {SOURCE_PREFERENCE_SAVE_DESCRIPTION}
-            </FieldDescription>
-          </Field>
+          <ProcessFromSelection processing={processing} />
         </>
       ) : (
         <AudioFileDropZone
@@ -426,6 +365,89 @@ function SourceSelection({
         />
       )}
     </>
+  )
+}
+
+function ProcessFromSelection({ processing }: { processing: SampleProcessingController }) {
+  return (
+    <Field>
+      <FieldLabel id="sample-processing-source-preference-label">Process From</FieldLabel>
+      <FieldDescription>{PROCESS_FROM_DESCRIPTION}</FieldDescription>
+      <div
+        aria-labelledby="sample-processing-source-preference-label"
+        className="grid grid-cols-1 gap-2 sm:grid-cols-2"
+        role="group"
+      >
+        <ProcessFromOptionCard
+          description={
+            processing.canUseOriginalRecording
+              ? PROCESS_FROM_ORIGINAL_DESCRIPTION
+              : PROCESS_FROM_ORIGINAL_UNAVAILABLE_DESCRIPTION
+          }
+          disabled={processing.isProcessing || !processing.canUseOriginalRecording}
+          isSelected={processing.effectiveSourcePreference === "original"}
+          label={processing.canUseOriginalRecording ? "Original Recording" : "Original Recording Unavailable"}
+          onSelect={() => processing.setSourcePreference("original")}
+          value="original"
+        >
+          {processing.canUseOriginalRecording ? <Badge variant="secondary">Recommended</Badge> : null}
+        </ProcessFromOptionCard>
+        <ProcessFromOptionCard
+          description={PROCESS_FROM_SAVED_SAMPLE_DESCRIPTION}
+          disabled={processing.isProcessing}
+          isSelected={processing.effectiveSourcePreference === "active"}
+          label="Saved Sample"
+          onSelect={() => processing.setSourcePreference("active")}
+          value="active"
+        />
+      </div>
+    </Field>
+  )
+}
+
+function ProcessFromOptionCard({
+  children,
+  description,
+  disabled,
+  isSelected,
+  label,
+  onSelect,
+  value,
+}: {
+  children?: ReactNode
+  description: string
+  disabled: boolean
+  isSelected: boolean
+  label: string
+  onSelect: () => void
+  value: SampleProcessingSourcePreference
+}) {
+  const descriptionId = `sample-processing-process-from-${value}-description`
+
+  return (
+    <button
+      aria-describedby={descriptionId}
+      aria-label={label}
+      aria-pressed={isSelected}
+      className={cn(
+        "flex min-h-28 flex-col items-start justify-between gap-3 rounded-md border border-border bg-background/60 p-3 text-left outline-none transition-[background-color,box-shadow] hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60",
+        isSelected && "border-primary bg-primary/10 hover:bg-primary/10"
+      )}
+      disabled={disabled}
+      onClick={onSelect}
+      type="button"
+    >
+      <span className="flex w-full items-start justify-between gap-2">
+        <span className="min-w-0 text-sm font-medium text-foreground">{label}</span>
+        <span className="flex shrink-0 items-center gap-2">
+          {children}
+          {isSelected ? <Check aria-label="Selected process source" className="size-4 text-primary" /> : null}
+        </span>
+      </span>
+      <span className="text-xs leading-5 text-muted-foreground" id={descriptionId}>
+        {description}
+      </span>
+    </button>
   )
 }
 
@@ -444,10 +466,33 @@ function SavedVoiceCarousel({
   voicePresets: { id: VoicePresetId; label: string; description: string }[]
   voices: VoiceAsset[]
 }) {
+  const carouselRef = useRef<HTMLDivElement | null>(null)
+  const [activePreviewVoiceId, setActivePreviewVoiceId] = useState<string | null>(null)
+  const handlePreviewStart = useCallback((voiceId: string) => {
+    setActivePreviewVoiceId(voiceId)
+  }, [])
+  const handlePreviewStop = useCallback((voiceId: string) => {
+    setActivePreviewVoiceId((currentVoiceId) => (currentVoiceId === voiceId ? null : currentVoiceId))
+  }, [])
+  const visibleActivePreviewVoiceId = disabled ? null : activePreviewVoiceId
+
+  useEffect(() => {
+    const carousel = carouselRef.current
+    if (!carousel) {
+      return undefined
+    }
+
+    carousel.addEventListener("wheel", containSavedVoiceCarouselWheel, { passive: false })
+    return () => {
+      carousel.removeEventListener("wheel", containSavedVoiceCarouselWheel)
+    }
+  }, [])
+
   return (
     <div
       aria-labelledby="sample-processing-voice-label"
-      className="flex gap-2 overflow-x-auto rounded-md border border-border bg-background/60 p-2"
+      className="flex gap-2 overflow-x-auto overscroll-x-contain rounded-md border border-border bg-background/60 p-2"
+      ref={carouselRef}
       role="group"
     >
       {voices.length === 0 ? <SavedVoiceEmptyCard /> : null}
@@ -456,6 +501,9 @@ function SavedVoiceCarousel({
           disabled={disabled}
           isSelected={voice.id === selectedVoiceId}
           key={voice.id}
+          activePreviewVoiceId={visibleActivePreviewVoiceId}
+          onPreviewStart={handlePreviewStart}
+          onPreviewStop={handlePreviewStop}
           onSelectVoice={onSelectVoice}
           voice={voice}
           voicePreset={voicePresetLabel(voicePresets, voice.voicePresetId)}
@@ -463,7 +511,7 @@ function SavedVoiceCarousel({
       ))}
       <button
         aria-label="Use Audio File"
-        className="flex min-h-32 min-w-56 snap-start flex-col items-start justify-between gap-4 rounded-md border border-dashed border-border bg-background/70 p-3 text-left outline-none transition hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+        className="flex min-h-32 min-w-56 snap-start flex-col items-start justify-between gap-4 rounded-md border border-dashed border-border bg-background/70 p-3 text-left outline-none transition-[background-color,box-shadow] hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
         disabled={disabled}
         onClick={onUseAudioFile}
         type="button"
@@ -482,6 +530,50 @@ function SavedVoiceCarousel({
   )
 }
 
+function containSavedVoiceCarouselWheel(event: WheelEvent) {
+  const carousel = event.currentTarget as HTMLElement | null
+  if (!carousel) {
+    return
+  }
+
+  const horizontalDelta = horizontalCarouselWheelDelta(event, carousel)
+  if (horizontalDelta === 0) {
+    return
+  }
+
+  const maxScrollLeft = Math.max(0, carousel.scrollWidth - carousel.clientWidth)
+  if (maxScrollLeft === 0) {
+    return
+  }
+
+  event.preventDefault()
+  carousel.scrollLeft = Math.min(maxScrollLeft, Math.max(0, carousel.scrollLeft + horizontalDelta))
+}
+
+function horizontalCarouselWheelDelta(event: WheelEvent, carousel: HTMLElement) {
+  const absoluteDeltaX = Math.abs(event.deltaX)
+  const absoluteDeltaY = Math.abs(event.deltaY)
+
+  if (!event.shiftKey && absoluteDeltaX <= absoluteDeltaY) {
+    return 0
+  }
+
+  const horizontalDelta = event.shiftKey && absoluteDeltaY > absoluteDeltaX ? event.deltaY : event.deltaX
+  if (horizontalDelta === 0) {
+    return 0
+  }
+
+  if (event.deltaMode === 1) {
+    return horizontalDelta * 16
+  }
+
+  if (event.deltaMode === 2) {
+    return horizontalDelta * carousel.clientWidth
+  }
+
+  return horizontalDelta
+}
+
 function SavedVoiceEmptyCard() {
   return (
     <div className="flex min-h-32 min-w-64 snap-start flex-col justify-center gap-2 rounded-md border border-dashed border-border bg-background/50 p-3">
@@ -492,36 +584,43 @@ function SavedVoiceEmptyCard() {
 }
 
 function SavedVoiceSourceCard({
+  activePreviewVoiceId,
   disabled,
   isSelected,
+  onPreviewStart,
+  onPreviewStop,
   onSelectVoice,
   voice,
   voicePreset,
 }: {
+  activePreviewVoiceId: string | null
   disabled: boolean
   isSelected: boolean
+  onPreviewStart: (voiceId: string) => void
+  onPreviewStop: (voiceId: string) => void
   onSelectVoice: (voiceId: string) => void
   voice: VoiceAsset
   voicePreset: string
 }) {
   const descriptionId = `sample-processing-source-voice-${voice.id}-description`
-  const sourceLabel = voice.source === "default" ? "Default" : "Uploaded"
+  const includedVoiceDescriptionId = `sample-processing-source-voice-${voice.id}-included-description`
+  const isIncludedVoice = voice.source === "default"
   const fileLabel = voice.sourceFilePath ?? voice.filePath
 
   return (
     <div
       aria-label={`${voice.name} Source Voice`}
       className={cn(
-        "relative min-h-32 min-w-64 snap-start rounded-md border border-border bg-background/70 p-1 transition hover:bg-muted/50",
+        "relative min-h-32 min-w-64 snap-start rounded-md border border-border bg-background/70 p-1 transition-[background-color,box-shadow] hover:bg-muted/50",
         isSelected && "border-primary bg-primary/10 hover:bg-primary/10"
       )}
       role="group"
     >
       <button
-        aria-describedby={descriptionId}
+        aria-describedby={isIncludedVoice ? `${descriptionId} ${includedVoiceDescriptionId}` : descriptionId}
         aria-label={`Select ${voice.name}`}
         aria-pressed={isSelected}
-        className="flex size-full min-h-28 flex-col items-start justify-between gap-3 rounded px-2 py-2 pr-12 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+        className="flex size-full min-h-28 flex-col items-start justify-between gap-3 rounded px-2 py-2 pr-12 text-left outline-none transition-[background-color,box-shadow] focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
         disabled={disabled}
         onClick={() => onSelectVoice(voice.id)}
         type="button"
@@ -532,24 +631,107 @@ function SavedVoiceSourceCard({
             <Badge className="px-1.5 py-0.5" variant="secondary">
               {voicePreset}
             </Badge>
-            <Badge className="px-1.5 py-0.5" variant="secondary">
-              {sourceLabel}
-            </Badge>
+            {isIncludedVoice ? <IncludedVoiceIndicator /> : null}
           </span>
         </span>
         <span className="min-w-0 max-w-full truncate font-mono text-xs text-muted-foreground" id={descriptionId}>
           Source: {fileLabel}
         </span>
+        {isIncludedVoice ? (
+          <span className="sr-only" id={includedVoiceDescriptionId}>
+            Included default voice
+          </span>
+        ) : null}
         {isSelected ? <Check aria-label="Selected voice" className="absolute right-3 top-3 size-4 text-primary" /> : null}
       </button>
-      <CompactVoicePreviewButton disabled={disabled} voice={voice} />
+      <CompactVoicePreviewButton
+        activePreviewVoiceId={activePreviewVoiceId}
+        disabled={disabled}
+        onPreviewStart={onPreviewStart}
+        onPreviewStop={onPreviewStop}
+        voice={voice}
+      />
     </div>
   )
 }
 
-function CompactVoicePreviewButton({ disabled, voice }: { disabled: boolean; voice: VoiceAsset }) {
+function IncludedVoiceIndicator() {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          aria-label="Included default voice"
+          className="inline-flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground"
+        >
+          <Sparkles aria-hidden="true" className="size-3.5" />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top" sideOffset={6}>
+        <p>Included Voice</p>
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
+function CompactVoicePreviewButton({
+  activePreviewVoiceId,
+  disabled,
+  onPreviewStart,
+  onPreviewStop,
+  voice,
+}: {
+  activePreviewVoiceId: string | null
+  disabled: boolean
+  onPreviewStart: (voiceId: string) => void
+  onPreviewStop: (voiceId: string) => void
+  voice: VoiceAsset
+}) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
-  const [isPlaying, setIsPlaying] = useState(false)
+  const hasActivePlaybackRef = useRef(false)
+  const isPlaying = activePreviewVoiceId === voice.id
+
+  const stopPreview = useCallback(
+    ({ reset = false, updateActive = true }: { reset?: boolean; updateActive?: boolean } = {}) => {
+      const audio = audioRef.current
+      if (audio && hasActivePlaybackRef.current) {
+        audio.pause()
+        if (reset) {
+          audio.currentTime = 0
+        }
+      }
+      hasActivePlaybackRef.current = false
+      if (updateActive) {
+        onPreviewStop(voice.id)
+      }
+    },
+    [onPreviewStop, voice.id]
+  )
+
+  useEffect(() => {
+    if (disabled && hasActivePlaybackRef.current) {
+      stopPreview({ reset: true })
+    }
+  }, [disabled, stopPreview])
+
+  useEffect(() => {
+    if (!isPlaying && hasActivePlaybackRef.current) {
+      stopPreview({ reset: true, updateActive: false })
+    }
+  }, [isPlaying, stopPreview])
+
+  useEffect(
+    () => {
+      const audio = audioRef.current
+      return () => {
+        if (audio && hasActivePlaybackRef.current) {
+          audio.pause()
+          audio.currentTime = 0
+          hasActivePlaybackRef.current = false
+        }
+      }
+    },
+    []
+  )
 
   async function handlePreviewToggle() {
     const audio = audioRef.current
@@ -558,25 +740,35 @@ function CompactVoicePreviewButton({ disabled, voice }: { disabled: boolean; voi
     }
 
     if (isPlaying) {
-      audio.pause()
-      setIsPlaying(false)
+      stopPreview()
       return
     }
 
     try {
+      onPreviewStart(voice.id)
+      hasActivePlaybackRef.current = true
       await audio.play()
-      setIsPlaying(true)
     } catch {
-      setIsPlaying(false)
+      hasActivePlaybackRef.current = false
+      onPreviewStop(voice.id)
     }
   }
 
   return (
     <>
       <audio
-        onEnded={() => setIsPlaying(false)}
-        onPause={() => setIsPlaying(false)}
-        onPlay={() => setIsPlaying(true)}
+        onEnded={() => {
+          hasActivePlaybackRef.current = false
+          onPreviewStop(voice.id)
+        }}
+        onPause={() => {
+          hasActivePlaybackRef.current = false
+          onPreviewStop(voice.id)
+        }}
+        onPlay={() => {
+          hasActivePlaybackRef.current = true
+          onPreviewStart(voice.id)
+        }}
         preload="none"
         ref={audioRef}
         src={`/api/voices/${encodeURIComponent(voice.id)}/sample`}
