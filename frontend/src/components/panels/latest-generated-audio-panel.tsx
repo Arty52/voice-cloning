@@ -119,7 +119,6 @@ function MultiVoiceSegmentResults({
 }: MultiVoiceSegmentResultsProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [voiceSelections, setVoiceSelections] = useState<Record<string, string>>({})
-  const voiceOptions = voices.map((voice) => ({ label: voice.name, value: voice.id }))
 
   return (
     <section
@@ -151,6 +150,7 @@ function MultiVoiceSegmentResults({
           <div className="grid gap-2 p-3">
             {segments.map((segment) => {
               const selectedVoiceId = voiceSelections[segment.id] ?? segment.voiceId
+              const voiceOptions = segmentVoiceOptions(voices, segment)
               const segmentUrl = segmentResultUrls[segment.id]
               return (
                 <article className="rounded-md border border-border/70 bg-background/40 p-3" key={segment.id}>
@@ -178,7 +178,7 @@ function MultiVoiceSegmentResults({
                   <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
                     <MenuSelect
                       ariaLabel={`Voice For Segment ${segment.index + 1}`}
-                      disabled={disabled || voices.length === 0}
+                      disabled={disabled || voiceOptions.length === 0}
                       onChange={(voiceId) =>
                         setVoiceSelections((current) => ({
                           ...current,
@@ -217,4 +217,12 @@ function formatSegmentExcerpt(value: string) {
     return normalized
   }
   return `${normalized.slice(0, 179)}...`
+}
+
+function segmentVoiceOptions(voices: VoiceAsset[], segment: GeneratedAudioMultiVoiceSegmentMetadata) {
+  const options = voices.map((voice) => ({ label: voice.name, value: voice.id }))
+  if (!options.some((option) => option.value === segment.voiceId)) {
+    options.unshift({ label: segment.voiceName, value: segment.voiceId })
+  }
+  return options
 }

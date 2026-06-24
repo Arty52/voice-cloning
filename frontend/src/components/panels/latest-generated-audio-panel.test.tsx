@@ -228,4 +228,41 @@ describe("LatestGeneratedAudioPanel multi-voice results", () => {
 
     expect(onRegenerateSegment).toHaveBeenCalledWith("segment-one", null)
   })
+
+  it("keeps a segment's current voice visible when it is missing from the voice library", async () => {
+    const user = userEvent.setup()
+    const archivedVoiceItem: GeneratedResult = {
+      ...item,
+      multiVoiceMetadata: {
+        ...item.multiVoiceMetadata!,
+        segments: item.multiVoiceMetadata!.segments.map((segment) =>
+          segment.id === "segment-one"
+            ? { ...segment, voiceId: "archived", voiceName: "Archived Voice" }
+            : segment
+        ),
+      },
+    }
+    renderLatestPanel(
+      <LatestGeneratedAudioPanel
+        error={null}
+        isDeleteDisabled={false}
+        item={archivedVoiceItem}
+        onDelete={vi.fn()}
+        onRegenerateSegment={vi.fn()}
+        segmentResultUrls={{ "segment-one": "/api/speech/jobs/job-1/segments/segment-one/result" }}
+        status="success"
+        storageError={null}
+        voices={[narrator, villain]}
+      />
+    )
+
+    await user.click(screen.getByRole("button", { name: /show segments/i }))
+
+    expect(screen.getByRole("button", { name: /voice for segment 1: archived voice/i })).toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: /voice for segment 1: archived voice/i }))
+
+    expect(screen.getByRole("menuitemradio", { name: "Archived Voice" })).toHaveAttribute("aria-checked", "true")
+    expect(screen.getByRole("menuitemradio", { name: "Narrator" })).toBeInTheDocument()
+  })
 })
