@@ -77,6 +77,10 @@ You can also choose a supported Demucs device with `SAMPLE_PROCESSING_DEMUCS_DEV
 
 Max Isolation uses the finetuned `htdemucs_ft` model. The first run may download additional model weights. If the model is unavailable in the local Demucs install or cache, the job reports the Demucs model error instead of falling back to a weaker preset.
 
+Stacked workflows run each selected operation in order, so their total runtime is roughly the sum of the selected steps. Clean Up Voice + Split Speakers + Tighten Pauses can be significantly slower than any individual operation because Trim Silence runs once for each detected speaker stream.
+
+If you abort a job, the backend marks the job `canceled` and skips remaining stack steps. FFmpeg and Demucs subprocesses are killed. Pyannote or faster-whisper work may keep using CPU briefly if it was already running in a worker thread, but its job result is discarded.
+
 ## Sample Processing Output Is Missing Or Too Large
 
 If Demucs finishes but no `vocals.wav` stem exists, the job fails with a sanitized error and leaves the job directory under ignored `storage/sample-processing/` for inspection. If FFmpeg does not produce the normalized Isolate Voice, Trim Silence, or Speaker Separation result, the job reports an FFmpeg failure. If pyannote detects no speakers, Speaker Separation reports that no speakers were detected. If FFmpeg writes a result or speaker stream larger than the active sample cap, the backend deletes that result and reports the size limit. Shorten the source, choose a smaller retained source window, or raise the local upload cap only for trusted local work.
