@@ -602,6 +602,17 @@ def test_settings_reads_speech_job_segment_gap_environment(
     assert settings.speech_job_segment_gap_ms == 125
 
 
+def test_settings_reports_invalid_speech_job_segment_gap_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_ROOT", str(tmp_path))
+    monkeypatch.setenv("SPEECH_JOB_SEGMENT_GAP_MS", "fast")
+
+    with pytest.raises(ValueError, match="SPEECH_JOB_SEGMENT_GAP_MS must be a non-negative integer."):
+        Settings.from_env()
+
+
 def test_settings_reads_diarization_environment(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

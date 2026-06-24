@@ -32,7 +32,10 @@ def _non_negative_int_env(name: str, default: int) -> int:
     normalized_value = raw_value.strip()
     if not normalized_value:
         return default
-    value = int(normalized_value)
+    try:
+        value = int(normalized_value)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a non-negative integer.") from exc
     if value < 0:
         raise ValueError(f"{name} must be non-negative.")
     return value
