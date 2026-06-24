@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
   areVoiceAssignmentsStale,
   buildSpeechJobSegments,
+  createVoiceTextAssignment,
   reconcileVoiceAssignmentsForTextChange,
   type VoiceTextAssignment,
 } from "./voice-assignments"
@@ -27,6 +28,44 @@ function assignment(overrides: Partial<VoiceTextAssignment> = {}): VoiceTextAssi
 }
 
 describe("voice assignment segment building", () => {
+  it("creates assignments from multi-line selections", () => {
+    const sourceText = "Narrator starts.\nVillain speaks.\nNarrator ends."
+    const start = sourceText.indexOf("Villain")
+    const end = sourceText.indexOf("Narrator ends.")
+
+    expect(
+      createVoiceTextAssignment({
+        id: "multi-line-selection",
+        selection: {
+          end,
+          start,
+          text: sourceText.slice(start, end),
+        },
+        sourceText,
+        voice: characterVoice,
+      })
+    ).toEqual({
+      end,
+      id: "multi-line-selection",
+      sourceText,
+      start,
+      text: "Villain speaks.\n",
+      voiceId: "villain",
+      voiceName: "Villain",
+    })
+  })
+
+  it("ignores whitespace-only selections", () => {
+    expect(
+      createVoiceTextAssignment({
+        id: "empty",
+        selection: { end: 2, start: 0, text: "\n " },
+        sourceText: "\n ",
+        voice: characterVoice,
+      })
+    ).toBeNull()
+  })
+
   it("expands assignments and default spans into ordered speech job segments", () => {
     const text = "Narrator. Villain speaks. Narrator again."
 
