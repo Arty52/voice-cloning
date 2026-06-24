@@ -26,6 +26,7 @@ function App() {
     handleGenerate,
     handleStorageLimitChange,
     hasModelRate,
+    isAddVoiceRevealed,
     isVoiceTuningExpanded,
     latestGeneratedAudioItem,
     latestStorageError,
@@ -36,6 +37,7 @@ function App() {
     requestClearGeneratedAudio,
     requestDeleteVoice,
     result,
+    revealAddVoice,
     sampleProcessing,
     sectionStatuses,
     selectedModel,
@@ -102,10 +104,17 @@ function App() {
             handleSampleWindowChange={voiceInput.handleSampleWindowChange}
             handleUpload={voiceInput.handleUpload}
             handleUploadFileSelect={voiceInput.handleUploadFileSelect}
+            isCovered={
+              activeSectionId === "voices" &&
+              voiceLibrary.voiceStatus === "success" &&
+              voiceLibrary.voices.length > 0 &&
+              !isAddVoiceRevealed
+            }
             isRecorderBusy={voiceInput.isRecorderBusy}
             isRecording={voiceInput.isRecording}
             isPreparingSample={voiceInput.isPreparingSample}
             isUploading={voiceInput.isUploading}
+            onReveal={revealAddVoice}
             recorderError={voiceInput.recorderError}
             recorderStatus={voiceInput.recorderStatus}
             recordingDurationSeconds={voiceInput.recordingDurationSeconds}

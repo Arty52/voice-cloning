@@ -556,7 +556,14 @@ function scopedPanelByHeading(name: string) {
 }
 
 function addVoicePanel() {
-  return scopedPanelByHeading("Add Voice")
+  return within(screen.getByRole("form", { name: "Add Voice" }))
+}
+
+async function revealAddVoicePanel(user: { click: (element: Element) => Promise<void> }) {
+  const revealButton = addVoicePanel().queryByRole("button", { name: "Add Another Voice" })
+  if (revealButton) {
+    await user.click(revealButton)
+  }
 }
 
 function voiceLibraryPanel() {
@@ -573,6 +580,10 @@ function sampleProcessingPanel() {
 
 function expectVoicePresetSelection(control: HTMLElement, selected: boolean) {
   expectSubtleSelectorSelection(control, selected)
+}
+
+function expectElementBefore(before: Element, after: Element) {
+  expect(before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 }
 
 function expectSubtleSelectorSelection(control: HTMLElement, selected: boolean) {
@@ -916,6 +927,54 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "Generate Speech" })).toHaveAttribute("aria-current", "page")
     expect(document.querySelector('[data-section-id="generate"]')).not.toHaveClass("hidden")
     expect(document.querySelector('[data-section-id="voices"]')).toHaveClass("hidden")
+  })
+
+  it("covers add voice until it is revealed for the current voices visit", async () => {
+    window.history.replaceState(null, "", "/#voices")
+    const user = userEvent.setup()
+    renderApp()
+
+    expect(await screen.findByText("default/default-voice.mp3")).toBeInTheDocument()
+    expect(addVoicePanel().getByRole("heading", { name: "Add Another Voice" })).toBeInTheDocument()
+    expect(
+      addVoicePanel().getByText("Your Voice Library is ready. Keep this panel tucked away until you want to upload or record a new sample.")
+    ).toBeInTheDocument()
+    expect(addVoicePanel().getByRole("button", { name: "Add Another Voice" })).toHaveClass("bg-secondary")
+    expect(addVoicePanel().queryByRole("group", { name: "Audio Drop Zone" })).not.toBeInTheDocument()
+    expect(addVoicePanel().queryByRole("textbox", { name: "Voice Name" })).not.toBeInTheDocument()
+    expect(screen.getByRole("form", { name: "Add Voice" }).querySelector("[inert]")).toHaveAttribute("aria-hidden", "true")
+
+    await revealAddVoicePanel(user)
+
+    expect(addVoicePanel().getByRole("group", { name: "Audio Drop Zone" })).toBeInTheDocument()
+    expect(addVoicePanel().getByRole("textbox", { name: "Voice Name" })).toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: "Generate Speech" }))
+    await waitFor(() => expect(window.location.hash).toBe("#generate"))
+    await user.click(screen.getByRole("button", { name: "Voices" }))
+    await waitFor(() => expect(window.location.hash).toBe("#voices"))
+
+    expect(addVoicePanel().getByRole("heading", { name: "Add Another Voice" })).toBeInTheDocument()
+  })
+
+  it("shows add voice immediately when the voice library is empty", async () => {
+    window.history.replaceState(null, "", "/#voices")
+    const baseFetch = mockFetch()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "", voices: [] })
+        }
+        return baseFetch(input, init)
+      })
+    )
+    renderApp()
+
+    expect(await voiceLibraryPanel().findByText("No voices saved yet. Add or record a voice to proceed.")).toBeInTheDocument()
+    expect(addVoicePanel().queryByRole("heading", { name: "Add Another Voice" })).not.toBeInTheDocument()
+    expect(addVoicePanel().getByRole("group", { name: "Audio Drop Zone" })).toBeInTheDocument()
   })
 
   it("closes mobile workflow navigation after selecting a section", async () => {
@@ -2016,6 +2075,45 @@ describe("App", () => {
     expect(body.get("sourceFile")).toBeNull()
     expect(await screen.findByRole("button", { name: /^Voice_Clone_01/i })).toBeInTheDocument()
     expect(voiceLibraryPanel().getAllByText("Animated Dialogue").length).toBeGreaterThan(0)
+  })
+
+  it("covers add voice again after saving a voice from voices", async () => {
+    window.history.replaceState(null, "", "/#voices")
+    stubDecodedAudio(3)
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    await revealAddVoicePanel(user)
+    await user.upload(screen.getByLabelText(/sample file/i), new File(["sample"], "fresh-voice.wav", { type: "audio/wav" }))
+    await user.type(screen.getByLabelText(/voice name/i), "Fresh_Voice")
+    await screen.findByRole("group", { name: /saved sample mode/i })
+    await user.click(screen.getByRole("button", { name: /save voice/i }))
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/voices", expect.objectContaining({ method: "POST" })))
+    expect(await screen.findByRole("button", { name: /^Voice_Clone_01/i })).toBeInTheDocument()
+    expect(addVoicePanel().getByRole("heading", { name: "Add Another Voice" })).toBeInTheDocument()
+    expect(addVoicePanel().queryByRole("textbox", { name: "Voice Name" })).not.toBeInTheDocument()
+  })
+
+  it("orders add voice controls by source preview preset name and save", async () => {
+    window.history.replaceState(null, "", "/#voices")
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    await revealAddVoicePanel(user)
+
+    const source = addVoicePanel().getByRole("group", { name: "Audio Drop Zone" })
+    const preview = addVoicePanel().getByText("Upload Preview")
+    const preset = addVoicePanel().getByRole("radiogroup", { name: "Voice Preset" })
+    const name = addVoicePanel().getByRole("textbox", { name: "Voice Name" })
+    const save = addVoicePanel().getByRole("button", { name: /save voice/i })
+
+    expectElementBefore(source, preview)
+    expectElementBefore(preview, preset)
+    expectElementBefore(preset, name)
+    expectElementBefore(name, save)
   })
 
   it("accepts a dropped audio file when adding a voice", async () => {
