@@ -22,12 +22,18 @@ class SpeechAudioProcessor:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
 
-    async def concatenate(self, segment_paths: tuple[Path, ...], output_path: Path) -> None:
+    async def concatenate(
+        self,
+        segment_paths: tuple[Path, ...],
+        output_path: Path,
+        *,
+        segment_gap_ms: int | None = None,
+    ) -> None:
         if not segment_paths:
             raise SpeechAudioProcessorError("Speech job has no generated segments.", 422)
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        gap_path = await self._prepare_gap_audio(segment_paths, output_path)
+        gap_path = await self._prepare_gap_audio(segment_paths, output_path, segment_gap_ms)
         concat_paths = _interleave_gap_audio(segment_paths, gap_path)
         concat_path = output_path.parent / "concat.txt"
         concat_path.write_text(
@@ -58,8 +64,13 @@ class SpeechAudioProcessor:
         if not output_path.exists():
             raise SpeechAudioProcessorError("FFmpeg did not produce combined speech audio.", 502)
 
-    async def _prepare_gap_audio(self, segment_paths: tuple[Path, ...], output_path: Path) -> Path | None:
-        gap_ms = self.settings.speech_job_segment_gap_ms
+    async def _prepare_gap_audio(
+        self,
+        segment_paths: tuple[Path, ...],
+        output_path: Path,
+        segment_gap_ms: int | None,
+    ) -> Path | None:
+        gap_ms = self.settings.speech_job_segment_gap_ms if segment_gap_ms is None else segment_gap_ms
         if gap_ms <= 0 or len(segment_paths) < 2:
             return None
 

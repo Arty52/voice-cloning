@@ -256,6 +256,7 @@ class SpeechJob:
     status: SpeechJobStatus
     text: str
     default_voice_id: str
+    segment_gap_ms: int
     segments: tuple[SpeechJobSegment, ...]
     created_at: str
     updated_at: str

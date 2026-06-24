@@ -58,6 +58,7 @@ class SpeechJobService:
         segments: tuple[SpeechJobSegmentInput, ...],
         provider: VoiceProvider,
         model_id: str | None,
+        segment_gap_ms: int | None,
         voice_settings: Mapping[str, Any] | None,
         provider_key: str | None,
     ) -> SpeechJob:
@@ -66,6 +67,7 @@ class SpeechJobService:
             default_voice_id=default_voice_id,
             segments=segments,
         )
+        effective_segment_gap_ms = self._validate_segment_gap(segment_gap_ms)
         job_id = uuid4().hex
         job_dir = self._job_dir(job_id)
         job_dir_created = False
@@ -75,6 +77,7 @@ class SpeechJobService:
             status="pending",
             text=text,
             default_voice_id=default_voice_id,
+            segment_gap_ms=effective_segment_gap_ms,
             provider_id=provider.id,
             model_id=model_id,
             voice_settings=dict(voice_settings) if voice_settings is not None else None,
@@ -290,7 +293,11 @@ class SpeechJobService:
     async def _rebuild_result(self, job_id: str) -> None:
         job = self.get_job(job_id)
         segment_paths = tuple(self._segment_path(job_id, segment.id) for segment in job.segments)
-        await self.audio_processor.concatenate(segment_paths, self._job_dir(job_id) / SPEECH_RESULT_FILENAME)
+        await self.audio_processor.concatenate(
+            segment_paths,
+            self._job_dir(job_id) / SPEECH_RESULT_FILENAME,
+            segment_gap_ms=job.segment_gap_ms,
+        )
         result_content = (self._job_dir(job_id) / SPEECH_RESULT_FILENAME).read_bytes()
         self._update_job(
             job_id,
@@ -338,6 +345,13 @@ class SpeechJobService:
                 )
             )
         return tuple(resolved_segments)
+
+    def _validate_segment_gap(self, segment_gap_ms: int | None) -> int:
+        if segment_gap_ms is None:
+            return self.settings.speech_job_segment_gap_ms
+        if segment_gap_ms < 0:
+            raise SpeechJobServiceError("Speech segment gap must be a non-negative integer.", 422)
+        return segment_gap_ms
 
     def _cancel_job_state(self, job_id: str) -> None:
         job = self.get_job(job_id)

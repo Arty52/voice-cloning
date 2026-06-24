@@ -56,6 +56,7 @@ class CreateSpeechJobRequest(BaseModel):
     defaultVoiceId: str
     providerId: str | None = None
     modelId: str | None = None
+    segmentGapMs: int | None = Field(default=None, ge=0)
     voiceSettings: dict[str, Any] | None = None
     segments: list[SpeechJobSegmentRequest] = Field(min_length=1)
 

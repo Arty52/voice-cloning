@@ -1029,6 +1029,7 @@ def test_speech_job_generates_segments_and_combined_result(tmp_path: Path) -> No
     assert [request[3] for request in fake_provider.speech_requests] == ["eleven_flash_v2_5", "eleven_flash_v2_5"]
     assert job["status"] == "success"
     assert job["activeSegmentId"] is None
+    assert job["segmentGapMs"] == 250
     assert job["resultSha256"] == sample_hash(b"combined-mp3")
     assert [segment["id"] for segment in job["segments"]] == ["segment-one", "segment-two"]
     assert [segment["status"] for segment in job["segments"]] == ["success", "success"]
@@ -1069,6 +1070,34 @@ def test_speech_job_rejects_segments_that_do_not_match_text(tmp_path: Path) -> N
     assert fake_provider.speech_requests == []
 
 
+def test_speech_job_rejects_negative_segment_gap(tmp_path: Path) -> None:
+    settings = replace(
+        make_settings(tmp_path),
+        sample_processing_ffmpeg_command=str(ffmpeg_fake_command(tmp_path / "ffmpeg-fake")),
+    )
+    fake_provider = FakeElevenLabsProvider().bind_settings(settings)
+    app = create_app(
+        settings=settings,
+        provider_registry=ProviderRegistry([fake_provider]),
+        voice_cache=VoiceCache(settings.storage_dir / "voice-cache.json"),
+        voice_library=VoiceLibrary(settings),
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/speech/jobs",
+        json={
+            "text": "Hello.",
+            "defaultVoiceId": "default",
+            "segmentGapMs": -1,
+            "segments": [{"clientSegmentId": "segment-one", "text": "Hello.", "voiceId": "default"}],
+        },
+    )
+
+    assert response.status_code == 422
+    assert fake_provider.speech_requests == []
+
+
 def test_speech_job_regenerates_segment_and_rebuilds_result(tmp_path: Path) -> None:
     args_log_path = tmp_path / "ffmpeg-calls.json"
     ffmpeg_command = ffmpeg_fake_command(
@@ -1104,6 +1133,7 @@ def test_speech_job_regenerates_segment_and_rebuilds_result(tmp_path: Path) -> N
             json={
                 "text": "Hello there.",
                 "defaultVoiceId": "default",
+                "segmentGapMs": 0,
                 "segments": [
                     {"clientSegmentId": "segment-one", "text": "Hello ", "voiceId": "default"},
                     {"clientSegmentId": "segment-two", "text": "there.", "voiceId": "default"},
@@ -1111,7 +1141,7 @@ def test_speech_job_regenerates_segment_and_rebuilds_result(tmp_path: Path) -> N
             },
         )
         job_id = create.json()["job"]["id"]
-        wait_for_speech_job(client, job_id)
+        initial_job = wait_for_speech_job(client, job_id)
         regenerate = client.post(
             f"/api/speech/jobs/{job_id}/segments/segment-one/regenerate",
             json={"voiceId": second_voice.id},
@@ -1120,17 +1150,19 @@ def test_speech_job_regenerates_segment_and_rebuilds_result(tmp_path: Path) -> N
         result = client.get(f"/api/speech/jobs/{job_id}/result")
 
     assert regenerate.status_code == 202
+    assert initial_job["segmentGapMs"] == 0
     assert len(fake_provider.speech_requests) == 3
     assert len(fake_provider.created_samples) == 2
     assert fake_provider.created_samples[1].sha256 == sample_hash(b"second-sample")
     assert job["status"] == "success"
+    assert job["segmentGapMs"] == 0
     assert job["segments"][0]["voiceId"] == second_voice.id
     assert job["segments"][0]["voiceName"] == "Second Voice"
     assert job["segments"][0]["generationCount"] == 2
     assert result.content == b"combined-mp3"
     concat_manifest = (settings.speech_jobs_dir / job_id / "concat.txt").read_text(encoding="utf-8")
-    assert "segment-gap-250ms.mp3" in concat_manifest
-    assert len(json.loads(args_log_path.read_text(encoding="utf-8"))) == 4
+    assert "segment-gap" not in concat_manifest
+    assert len(json.loads(args_log_path.read_text(encoding="utf-8"))) == 2
 
 
 def test_speech_job_cancel_marks_running_job_canceled(tmp_path: Path) -> None:

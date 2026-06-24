@@ -275,6 +275,7 @@ def speech_job_payload(job: SpeechJob) -> dict[str, object]:
         "status": job.status,
         "text": job.text,
         "defaultVoiceId": job.default_voice_id,
+        "segmentGapMs": job.segment_gap_ms,
         "segments": [speech_job_segment_payload(segment) for segment in job.segments],
         "activeSegmentId": job.active_segment_id,
         "resultSha256": job.result_sha256,

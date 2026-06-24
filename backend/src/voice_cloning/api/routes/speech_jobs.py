@@ -29,6 +29,7 @@ def create_speech_jobs_router(
                 provider=provider,
                 provider_key=provider_key,
                 model_id=request.modelId,
+                segment_gap_ms=request.segmentGapMs,
                 voice_settings=request.voiceSettings,
                 segments=tuple(
                     SpeechJobSegmentInput(

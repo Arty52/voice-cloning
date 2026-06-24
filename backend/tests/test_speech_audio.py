@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import replace
 import json
 import os
 from pathlib import Path
@@ -103,6 +102,31 @@ def test_speech_audio_processor_concatenates_segments(tmp_path: Path) -> None:
     assert calls[0][calls[0].index("-t") + 1] == "0.250"
 
 
+def test_speech_audio_processor_accepts_explicit_segment_gap(tmp_path: Path) -> None:
+    output = tmp_path / "result.mp3"
+    args_log_path = tmp_path / "ffmpeg-calls.json"
+    processor = SpeechAudioProcessor(
+        make_settings(
+            tmp_path,
+            ffmpeg_command=write_fake_ffmpeg(tmp_path / "ffmpeg", args_log_path=args_log_path),
+        )
+    )
+
+    asyncio.run(processor.concatenate(write_segments(tmp_path), output, segment_gap_ms=125))
+
+    gap_path = output.parent / "segment-gap-125ms.mp3"
+    assert gap_path.exists()
+    assert (output.parent / "concat.txt").read_text(encoding="utf-8").splitlines() == [
+        "ffconcat version 1.0",
+        f"file '{tmp_path / 'one.mp3'}'",
+        f"file '{gap_path}'",
+        f"file '{tmp_path / 'two.mp3'}'",
+    ]
+    calls = json.loads(args_log_path.read_text(encoding="utf-8"))
+    assert len(calls) == 2
+    assert calls[0][calls[0].index("-t") + 1] == "0.125"
+
+
 def test_speech_audio_processor_omits_gap_for_single_segment(tmp_path: Path) -> None:
     output = tmp_path / "result.mp3"
     args_log_path = tmp_path / "ffmpeg-calls.json"
@@ -128,18 +152,17 @@ def test_speech_audio_processor_omits_gap_for_single_segment(tmp_path: Path) -> 
 def test_speech_audio_processor_allows_gapless_concat(tmp_path: Path) -> None:
     output = tmp_path / "result.mp3"
     args_log_path = tmp_path / "ffmpeg-calls.json"
-    settings = replace(
+    processor = SpeechAudioProcessor(
         make_settings(
             tmp_path,
             ffmpeg_command=write_fake_ffmpeg(tmp_path / "ffmpeg", args_log_path=args_log_path),
-        ),
-        speech_job_segment_gap_ms=0,
+        )
     )
-    processor = SpeechAudioProcessor(settings)
 
-    asyncio.run(processor.concatenate(write_segments(tmp_path), output))
+    asyncio.run(processor.concatenate(write_segments(tmp_path), output, segment_gap_ms=0))
 
     assert not (output.parent / "segment-gap-0ms.mp3").exists()
+    assert not (output.parent / "segment-gap-250ms.mp3").exists()
     assert (output.parent / "concat.txt").read_text(encoding="utf-8").splitlines() == [
         "ffconcat version 1.0",
         f"file '{tmp_path / 'one.mp3'}'",
