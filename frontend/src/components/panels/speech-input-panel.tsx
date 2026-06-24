@@ -26,6 +26,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { cn } from "@/lib/utils"
 import type { VoiceTextAssignment } from "@/lib/voice-assignments"
@@ -81,6 +82,11 @@ export function SpeechInputPanel({
   voices,
 }: SpeechInputPanelProps) {
   const canAssignSelection = selectedText.trim().length > 0 && voices.length > 0 && !isGenerating
+  const assignVoiceDisabledReason = getAssignVoiceDisabledReason({
+    isGenerating,
+    selectedText,
+    voices,
+  })
   const quickAssignmentVoices = assignedVoices(assignments, voices)
 
   return (
@@ -119,6 +125,7 @@ export function SpeechInputPanel({
         <VoicePickerControl
           description="Choose the voice for the selected text."
           disabled={!canAssignSelection}
+          disabledTooltip={assignVoiceDisabledReason}
           onSelect={onAssignVoice}
           title="Assign Voice"
           triggerLabel="Assign Voice"
@@ -315,6 +322,7 @@ function VoiceAssignmentsList({
 type VoicePickerControlProps = {
   description: string
   disabled: boolean
+  disabledTooltip?: string | null
   onSelect: (voice: VoiceAsset) => void
   selectedVoiceId?: string
   title: string
@@ -326,6 +334,7 @@ type VoicePickerControlProps = {
 function VoicePickerControl({
   description,
   disabled,
+  disabledTooltip,
   onSelect,
   selectedVoiceId,
   title,
@@ -353,6 +362,25 @@ function VoicePickerControl({
       {triggerLabel}
     </Button>
   )
+
+  if (disabled) {
+    if (!disabledTooltip) {
+      return trigger
+    }
+
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex cursor-not-allowed">
+            {trigger}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top" sideOffset={6}>
+          {disabledTooltip}
+        </TooltipContent>
+      </Tooltip>
+    )
+  }
 
   if (isMobile) {
     return (
@@ -418,6 +446,27 @@ function formatExcerpt(value: string, maxLength = 80) {
 
 function formatCount(count: number, singular: string) {
   return `${count} ${singular}${count === 1 ? "" : "s"}`
+}
+
+function getAssignVoiceDisabledReason({
+  isGenerating,
+  selectedText,
+  voices,
+}: {
+  isGenerating: boolean
+  selectedText: string
+  voices: VoiceAsset[]
+}) {
+  if (isGenerating) {
+    return "Wait for generation to finish before assigning a voice."
+  }
+  if (!selectedText.trim()) {
+    return "Select script text before assigning a voice."
+  }
+  if (voices.length === 0) {
+    return "Add a voice before assigning selected text."
+  }
+  return null
 }
 
 function assignedVoices(assignments: VoiceTextAssignment[], voices: VoiceAsset[]) {

@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest"
 
 import type { VoiceTextAssignment } from "@/lib/voice-assignments"
 import type { VoiceAsset } from "@/types"
+import { TooltipProvider } from "@/components/ui/tooltip"
 
 import { SpeechInputPanel } from "./speech-input-panel"
 
@@ -73,7 +74,11 @@ function renderPanel(overrides: Partial<Parameters<typeof SpeechInputPanel>[0]> 
     voices: [narrator, villain],
     ...overrides,
   }
-  render(<SpeechInputPanel {...props} />)
+  render(
+    <TooltipProvider>
+      <SpeechInputPanel {...props} />
+    </TooltipProvider>
+  )
   return props
 }
 
@@ -84,6 +89,19 @@ describe("SpeechInputPanel voice assignments", () => {
     expect(screen.getByRole("button", { name: /^Assign Voice$/i })).toBeDisabled()
     expect(screen.queryByRole("checkbox", { name: "Natural Handoffs" })).not.toBeInTheDocument()
     expect(screen.getByText("Select script text to assign a voice.")).toBeInTheDocument()
+  })
+
+  it("explains why assignment is disabled when no text is selected", async () => {
+    const user = userEvent.setup()
+    renderPanel()
+
+    const assignButton = screen.getByRole("button", { name: /^Assign Voice$/i })
+    const trigger = assignButton.closest("[data-slot='tooltip-trigger']")
+    expect(trigger).not.toBeNull()
+
+    await user.hover(trigger as Element)
+
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Select script text before assigning a voice.")
   })
 
   it("assigns the selected text to a picked voice", async () => {
