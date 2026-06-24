@@ -108,9 +108,19 @@ export function useVoiceStudioController() {
         : { error: null, segments: [], stale: voiceAssignments.length > 0 },
     [text, voiceAssignments, voiceLibrary.selectedVoice]
   )
+  const missingAssignedVoiceError = useMemo(() => {
+    if (voiceAssignments.length === 0) {
+      return null
+    }
+    const availableVoiceIds = new Set(voiceLibrary.voices.map((voice) => voice.id))
+    return voiceAssignments.some((assignment) => !availableVoiceIds.has(assignment.voiceId))
+      ? "Some assigned voices are no longer in the Voice Library. Remove or update those assignments before generating."
+      : null
+  }, [voiceAssignments, voiceLibrary.voices])
+  const voiceAssignmentError = assignmentSegments.error ?? missingAssignedVoiceError
   const hasVoiceAssignments = voiceAssignments.length > 0
   const voiceAssignmentSpeechSegmentCount =
-    hasVoiceAssignments && !assignmentSegments.stale && !assignmentSegments.error
+    hasVoiceAssignments && !assignmentSegments.stale && !voiceAssignmentError
       ? assignmentSegments.segments.length
       : null
   const isSpeechGenerating = speech.isGenerating || multiVoiceSpeech.isGenerating
@@ -125,7 +135,7 @@ export function useVoiceStudioController() {
     voiceLibrary.selectedVoice !== null &&
     providerKeys.canUseProvider &&
     !isSpeechGenerating &&
-    (!hasVoiceAssignments || (!assignmentSegments.stale && !assignmentSegments.error && assignmentSegments.segments.length > 0))
+    (!hasVoiceAssignments || (!assignmentSegments.stale && !voiceAssignmentError && assignmentSegments.segments.length > 0))
   const sectionStatuses = useMemo(
     () =>
       buildWorkflowSectionStatuses({
@@ -408,7 +418,7 @@ export function useVoiceStudioController() {
     textSelection,
     tuning,
     voiceInput,
-    voiceAssignmentError: assignmentSegments.error,
+    voiceAssignmentError,
     voiceAssignments,
     voiceAssignmentsStale: assignmentSegments.stale,
     voiceAssignmentSpeechSegmentCount,

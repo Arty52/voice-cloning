@@ -1114,6 +1114,77 @@ describe("App", () => {
     })
   })
 
+  it("blocks multi-voice generation when an assigned voice is deleted", async () => {
+    window.history.replaceState(null, "", "/#generate")
+    const createSpeechJob = vi.fn()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/providers" && !init) {
+          return okJson(providersResponse)
+        }
+        if (path === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "default", voices: [defaultVoice, voiceCloneVoice] })
+        }
+        if (path === "/api/voices/voice-clone-01" && init?.method === "DELETE") {
+          return okJson({ defaultVoiceId: "default", voices: [defaultVoice] })
+        }
+        if (path === "/api/subscription" && !init) {
+          return okJson(subscription)
+        }
+        if (path === "/api/models" && !init) {
+          return okJson({
+            available: true,
+            error: null,
+            defaultModelId: "eleven_multilingual_v2",
+            models: [multilingualModel, flashModel],
+          })
+        }
+        if (path === "/api/sample-processing/options" && !init) {
+          return okJson(sampleProcessingOptions)
+        }
+        if (path === "/api/speech/jobs" && init?.method === "POST") {
+          createSpeechJob(init)
+          return okJson({})
+        }
+        return okJson({})
+      })
+    )
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    const textarea = screen.getByLabelText(/text to speak/i) as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: "default intro assigned line" } })
+    textarea.setSelectionRange("default intro ".length, "default intro assigned".length)
+    fireEvent.select(textarea)
+
+    await user.click(screen.getByRole("button", { name: /^Assign Voice$/i }))
+    await user.click(screen.getByRole("button", { name: "Voice_Clone_01" }))
+    expect(screen.getByText("assigned")).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Generate$/ })).toBeEnabled())
+
+    await user.click(screen.getByRole("button", { name: "Voices" }))
+    await user.click(await screen.findByRole("button", { name: /open actions for voice_clone_01/i }))
+    await user.click(screen.getByRole("menuitem", { name: /delete/i }))
+    const dialog = screen.getByRole("dialog", { name: /delete voice/i })
+    await user.click(within(dialog).getByRole("button", { name: /^delete$/i }))
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith("/api/voices/voice-clone-01", expect.objectContaining({ method: "DELETE" }))
+    )
+    await user.click(screen.getByRole("button", { name: "Generate Speech" }))
+
+    expect(
+      await screen.findByText("Some assigned voices are no longer in the Voice Library. Remove or update those assignments before generating.")
+    ).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /^Generate$/ })).toBeDisabled()
+
+    await user.click(screen.getByRole("button", { name: /^Generate$/ }))
+    expect(createSpeechJob).not.toHaveBeenCalled()
+  })
+
   it("links from the voice library to speech generation", async () => {
     window.history.replaceState(null, "", "/#voices")
     const baseFetch = mockFetch()
