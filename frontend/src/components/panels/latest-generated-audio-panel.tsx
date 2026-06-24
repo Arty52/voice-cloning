@@ -1,26 +1,45 @@
-import { ChevronDown, RefreshCw } from "lucide-react"
+import { ChevronDown, RefreshCw, SlidersHorizontal } from "lucide-react"
 import { useState } from "react"
 
 import { AudioPlayer } from "@/components/audio-player"
 import { GeneratedAudioItem } from "@/components/generated-audio-item"
+import {
+  Popover,
+  PopoverContent,
+  PopoverDescription,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Loading } from "@/components/ui/loading"
 import { MenuSelect } from "@/components/ui/menu-select"
 import { Separator } from "@/components/ui/separator"
+import { VoiceTuningControls } from "@/components/voice-tuning-controls"
 import { cn } from "@/lib/utils"
-import type { GeneratedAudioMultiVoiceSegmentMetadata, GeneratedResult, RequestStatus, VoiceAsset } from "@/types"
+import type {
+  GeneratedAudioMultiVoiceSegmentMetadata,
+  GeneratedResult,
+  ProviderTuningControl,
+  ProviderTuningValue,
+  RequestStatus,
+  VoiceAsset,
+  VoiceTuningValues,
+} from "@/types"
 
 type LatestGeneratedAudioPanelProps = {
   error: string | null
   isDeleteDisabled: boolean
   item: GeneratedResult | null
   onDelete: (id: string) => void
-  onRegenerateSegment: (segmentId: string, voiceId?: string | null) => void
+  onRegenerateSegment: (segmentId: string, voiceId?: string | null, voiceSettings?: VoiceTuningValues | null) => void
+  providerTuningControls?: ProviderTuningControl[]
   segmentResultUrls: Record<string, string>
   status: RequestStatus
   storageError: string | null
+  tuning?: VoiceTuningValues
   voices: VoiceAsset[]
 }
 
@@ -30,9 +49,11 @@ export function LatestGeneratedAudioPanel({
   item,
   onDelete,
   onRegenerateSegment,
+  providerTuningControls = [],
   segmentResultUrls,
   status,
   storageError,
+  tuning = {},
   voices,
 }: LatestGeneratedAudioPanelProps) {
   const isCanceled = status === "canceled"
@@ -91,8 +112,10 @@ export function LatestGeneratedAudioPanel({
               disabled={isGenerating}
               key={`${item.multiVoiceMetadata.jobId}:${item.multiVoiceMetadata.resultSha256 ?? ""}`}
               onRegenerateSegment={onRegenerateSegment}
+              providerTuningControls={providerTuningControls}
               segmentResultUrls={segmentResultUrls}
               segments={item.multiVoiceMetadata.segments}
+              tuning={tuning}
               voices={voices}
             />
           ) : null}
@@ -104,21 +127,43 @@ export function LatestGeneratedAudioPanel({
 
 type MultiVoiceSegmentResultsProps = {
   disabled: boolean
-  onRegenerateSegment: (segmentId: string, voiceId?: string | null) => void
+  onRegenerateSegment: (segmentId: string, voiceId?: string | null, voiceSettings?: VoiceTuningValues | null) => void
+  providerTuningControls: ProviderTuningControl[]
   segmentResultUrls: Record<string, string>
   segments: GeneratedAudioMultiVoiceSegmentMetadata[]
+  tuning: VoiceTuningValues
   voices: VoiceAsset[]
 }
 
 function MultiVoiceSegmentResults({
   disabled,
   onRegenerateSegment,
+  providerTuningControls,
   segmentResultUrls,
   segments,
+  tuning,
   voices,
 }: MultiVoiceSegmentResultsProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const [segmentTuning, setSegmentTuning] = useState<Record<string, VoiceTuningValues>>({})
   const [voiceSelections, setVoiceSelections] = useState<Record<string, string>>({})
+
+  function handleSegmentTuningValueChange(
+    segment: GeneratedAudioMultiVoiceSegmentMetadata,
+    control: ProviderTuningControl,
+    value: ProviderTuningValue
+  ) {
+    setSegmentTuning((current) => {
+      const currentValues = current[segment.id] ?? segment.voiceSettings ?? tuning
+      return {
+        ...current,
+        [segment.id]: {
+          ...currentValues,
+          [control.id]: value,
+        },
+      }
+    })
+  }
 
   return (
     <section
@@ -151,6 +196,7 @@ function MultiVoiceSegmentResults({
             {segments.map((segment) => {
               const selectedVoiceId = voiceSelections[segment.id] ?? segment.voiceId
               const voiceOptions = segmentVoiceOptions(voices, segment)
+              const selectedTuning = segmentTuning[segment.id] ?? segment.voiceSettings ?? tuning
               const segmentUrl = segmentResultUrls[segment.id]
               return (
                 <article className="rounded-md border border-border/70 bg-background/40 p-3" key={segment.id}>
@@ -176,6 +222,34 @@ function MultiVoiceSegmentResults({
                     </div>
                   )}
                   <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+                    {providerTuningControls.length > 0 ? (
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button disabled={disabled || !segmentUrl} size="sm" type="button" variant="secondary">
+                            <SlidersHorizontal aria-hidden="true" data-icon="inline-start" />
+                            Tune
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent align="end" className="w-80 sm:w-96">
+                          <PopoverHeader>
+                            <PopoverTitle>Segment {segment.index + 1} Tuning</PopoverTitle>
+                            <PopoverDescription>
+                              Adjust settings used the next time this segment regenerates.
+                            </PopoverDescription>
+                          </PopoverHeader>
+                          <VoiceTuningControls
+                            className="mt-4 grid-cols-1"
+                            controls={providerTuningControls}
+                            disabled={disabled || !segmentUrl}
+                            idPrefix={`segment-${segment.id}-tuning`}
+                            onTuningValueChange={(control, value) =>
+                              handleSegmentTuningValueChange(segment, control, value)
+                            }
+                            tuning={selectedTuning}
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    ) : null}
                     <MenuSelect
                       ariaLabel={`Voice For Segment ${segment.index + 1}`}
                       disabled={disabled || voiceOptions.length === 0}
@@ -191,7 +265,12 @@ function MultiVoiceSegmentResults({
                     <Button
                       disabled={disabled || !segmentUrl}
                       onClick={() => {
-                        onRegenerateSegment(segment.id, selectedVoiceId === segment.voiceId ? null : selectedVoiceId)
+                        const voiceId = selectedVoiceId === segment.voiceId ? null : selectedVoiceId
+                        if (providerTuningControls.length > 0) {
+                          onRegenerateSegment(segment.id, voiceId, selectedTuning)
+                          return
+                        }
+                        onRegenerateSegment(segment.id, voiceId)
                       }}
                       size="sm"
                       type="button"
