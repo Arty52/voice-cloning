@@ -26,6 +26,7 @@ function App() {
     handleGenerate,
     handleStorageLimitChange,
     hasModelRate,
+    isAddVoiceRevealed,
     isVoiceTuningExpanded,
     latestGeneratedAudioItem,
     latestStorageError,
@@ -36,6 +37,7 @@ function App() {
     requestClearGeneratedAudio,
     requestDeleteVoice,
     result,
+    revealAddVoice,
     sampleProcessing,
     sectionStatuses,
     selectedModel,
@@ -83,11 +85,9 @@ function App() {
             isUpdatingVoice={voiceLibrary.isUpdatingVoice}
             onDeleteRequest={requestDeleteVoice}
             onPlayVoice={voiceLibrary.playVoice}
-            onPresetChange={(voice, voicePresetId) => void voiceLibrary.updateVoicePreset(voice, voicePresetId)}
             onRenameRequest={voiceLibrary.requestRename}
             onSelectVoice={voiceLibrary.setSelectedVoiceId}
             onSetDefault={(voice) => void voiceLibrary.setDefault(voice.id)}
-            selectedVoice={voiceLibrary.selectedVoice}
             selectedVoiceId={voiceLibrary.selectedVoiceId}
             voiceError={voiceLibrary.voiceError}
             voicePresets={providerKeys.voicePresets}
@@ -103,12 +103,18 @@ function App() {
             handleSampleModeChange={voiceInput.handleSampleModeChange}
             handleSampleWindowChange={voiceInput.handleSampleWindowChange}
             handleUpload={voiceInput.handleUpload}
-            handleUploadFileChange={voiceInput.handleUploadFileChange}
-            handleVoiceSampleInputModeChange={voiceInput.handleVoiceSampleInputModeChange}
+            handleUploadFileSelect={voiceInput.handleUploadFileSelect}
+            isCovered={
+              activeSectionId === "voices" &&
+              voiceLibrary.voiceStatus === "success" &&
+              voiceLibrary.voices.length > 0 &&
+              !isAddVoiceRevealed
+            }
             isRecorderBusy={voiceInput.isRecorderBusy}
             isRecording={voiceInput.isRecording}
             isPreparingSample={voiceInput.isPreparingSample}
             isUploading={voiceInput.isUploading}
+            onReveal={revealAddVoice}
             recorderError={voiceInput.recorderError}
             recorderStatus={voiceInput.recorderStatus}
             recordingDurationSeconds={voiceInput.recordingDurationSeconds}

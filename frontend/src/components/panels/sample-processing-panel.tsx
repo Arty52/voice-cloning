@@ -1,6 +1,7 @@
 import { type CSSProperties, useEffect, useRef, useState } from "react"
 import { AudioLines, ChevronDown, FileAudio, Info, Play, Save, Upload, Wand2 } from "lucide-react"
 
+import { AudioFileDropZone } from "@/components/audio-file-drop-zone"
 import { AudioPlayer } from "@/components/audio-player"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -71,12 +72,6 @@ export function SampleProcessingPanel({
   const [dragStartItemId, setDragStartItemId] = useState<string | null>(null)
   const [hoveredSpeakerId, setHoveredSpeakerId] = useState<string | null>(null)
   const [isSpeakerSaveDialogOpen, setSpeakerSaveDialogOpen] = useState(false)
-  const operationOptions = processing.operations.map((operation) => ({
-    label: operation.enabled
-      ? operationDisplayLabel(operation.id, operation.label)
-      : `${operationDisplayLabel(operation.id, operation.label)} Unavailable`,
-    value: operation.id,
-  }))
   const voiceOptions = processing.voiceOptions.length > 0 ? processing.voiceOptions : [{ label: "No Voices", value: "" }]
   const isUnavailable =
     processing.optionsStatus === "success" &&
@@ -204,20 +199,40 @@ export function SampleProcessingPanel({
             <FieldGroup>
               <Field>
                 <FieldLabel id="sample-processing-operation-label">Operation</FieldLabel>
-                <MenuSelect
-                  ariaLabel="Sample Processing Operation"
+                <ToggleGroup
+                  aria-labelledby="sample-processing-operation-label"
+                  className="grid w-full grid-cols-1 gap-2 md:grid-cols-3"
                   disabled={processing.optionsStatus !== "success" || processing.operations.length === 0 || processing.isProcessing}
-                  onChange={(value) => {
+                  onValueChange={(value) => {
                     if (isSampleProcessingOperationId(value)) {
                       processing.setOperationId(value)
                     }
                   }}
-                  options={operationOptions}
+                  type="single"
                   value={processing.operationId}
-                />
-                {processing.selectedOperation ? (
-                  <FieldDescription>{processing.selectedOperation.description}</FieldDescription>
-                ) : null}
+                >
+                  {processing.operations.map((operation) => {
+                    const operationCopy = operationCardCopy(operation.id)
+                    const descriptionId = `sample-processing-operation-${operation.id}-description`
+                    return (
+                      <ToggleGroupItem
+                        aria-describedby={descriptionId}
+                        className="h-auto min-h-32 w-full flex-col items-start justify-start gap-3 whitespace-normal rounded-md border border-border bg-background/60 p-4 text-left text-muted-foreground aria-checked:border-primary aria-checked:bg-primary/10 aria-checked:text-foreground disabled:opacity-50"
+                        disabled={!operation.enabled}
+                        key={operation.id}
+                        value={operation.id}
+                      >
+                        <span className="flex w-full items-start justify-between gap-2">
+                          <span className="text-sm font-medium text-foreground">{operationCopy.title}</span>
+                          {!operation.enabled ? <Badge variant="secondary">Unavailable</Badge> : null}
+                        </span>
+                        <span className="text-xs leading-5 text-muted-foreground" id={descriptionId}>
+                          {operationCopy.description}
+                        </span>
+                      </ToggleGroupItem>
+                    )
+                  })}
+                </ToggleGroup>
               </Field>
 
               {processing.selectedOperation?.enabled === true && processing.processingPresets.length > 0 ? (
@@ -237,7 +252,7 @@ export function SampleProcessingPanel({
                   >
                     {processing.processingPresets.map((preset) => (
                       <ToggleGroupItem
-                        className="h-9 min-w-0 rounded px-2 text-center text-xs font-medium text-muted-foreground aria-checked:bg-primary aria-checked:text-primary-foreground aria-checked:shadow-sm"
+                        className="h-9 min-w-0 rounded border border-transparent px-2 text-center text-xs font-medium text-muted-foreground aria-checked:border-primary/60 aria-checked:bg-primary/10 aria-checked:text-foreground aria-checked:shadow-sm aria-checked:ring-1 aria-checked:ring-primary/30"
                         key={preset.id}
                         value={preset.id}
                       >
@@ -362,16 +377,13 @@ export function SampleProcessingPanel({
                   </Field>
                 </>
               ) : (
-                <Field>
-                  <FieldLabel htmlFor="sample-processing-file">Audio File</FieldLabel>
-                  <Input
-                    accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac"
-                    disabled={processing.isProcessing}
-                    id="sample-processing-file"
-                    onChange={processing.handleSourceFileChange}
-                    type="file"
-                  />
-                </Field>
+                <AudioFileDropZone
+                  disabled={processing.isProcessing}
+                  id="sample-processing-file"
+                  label="Audio File"
+                  onFileSelect={processing.handleSourceFileSelect}
+                  selectedFileName={processing.sourceFile?.name ?? null}
+                />
               )}
             </FieldGroup>
 
@@ -717,11 +729,28 @@ function presetControlLabel(operationId: SampleProcessingOperationId) {
   return "Processing Preset"
 }
 
-function operationDisplayLabel(operationId: SampleProcessingOperationId, label: string) {
-  if (operationId === "separateSpeakers") {
-    return "Speaker Separation"
+function operationCardCopy(operationId: SampleProcessingOperationId) {
+  switch (operationId) {
+    case "isolateVoice":
+      return {
+        description: "Pull the spoken voice forward and reduce background audio.",
+        title: "Clean Up Voice",
+      }
+    case "trimSilence":
+      return {
+        description: "Remove long quiet stretches so the sample starts, ends, and flows cleanly.",
+        title: "Tighten Pauses",
+      }
+    case "separateSpeakers":
+      return {
+        description: "Find each speaker in a conversation and create separate voice streams.",
+        title: "Split Speakers",
+      }
+    default: {
+      const unhandledOperationId: never = operationId
+      throw new Error(`Unhandled sample processing operation: ${unhandledOperationId}`)
+    }
   }
-  return label
 }
 
 function isSampleProcessingOperationId(value: string): value is SampleProcessingOperationId {

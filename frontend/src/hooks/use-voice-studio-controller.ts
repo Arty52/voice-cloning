@@ -1,4 +1,4 @@
-import { type FormEvent, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { type FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 
 import { DEFAULT_TEXT } from "@/constants"
 import { useConfirmation } from "@/hooks/use-confirmation"
@@ -13,7 +13,12 @@ import { useVoiceTuning } from "@/hooks/use-voice-tuning"
 import { useWorkflowNavigation } from "@/hooks/use-workflow-navigation"
 import { isTemporaryGeneratedAudioId } from "@/lib/generated-audio-view-model"
 import { formatBytes } from "@/lib/formatters"
-import { buildWorkflowSectionStatuses, WORKFLOW_SECTIONS } from "@/lib/workflow-sections"
+import {
+  buildWorkflowSectionStatuses,
+  WORKFLOW_SECTIONS,
+  workflowSectionIdFromHash,
+  type WorkflowSectionId,
+} from "@/lib/workflow-sections"
 import type { ProviderTuningMetadata, VoiceAsset } from "@/types"
 
 const EMPTY_TUNING_METADATA: ProviderTuningMetadata = {
@@ -27,6 +32,7 @@ export function useVoiceStudioController() {
   const [isCostQuotaExpanded, setIsCostQuotaExpanded] = useState(false)
   const [isSampleProcessingExpanded, setIsSampleProcessingExpanded] = useState(false)
   const [isVoiceTuningExpanded, setIsVoiceTuningExpanded] = useState(false)
+  const [isAddVoiceRevealed, setIsAddVoiceRevealed] = useState(false)
   const [latestGeneratedAudioId, setLatestGeneratedAudioId] = useState<string | null>(null)
   const textRef = useRef<HTMLTextAreaElement | null>(null)
   const confirmation = useConfirmation()
@@ -43,7 +49,10 @@ export function useVoiceStudioController() {
     persistGeneratedAudio: generatedAudio.persistGeneratedAudio,
   })
   const voiceInput = useVoiceSampleInput({
-    onVoiceSaved: voiceLibrary.addSavedVoice,
+    onVoiceSaved: (voice) => {
+      voiceLibrary.addSavedVoice(voice)
+      setIsAddVoiceRevealed(false)
+    },
     providerSample: providerKeys.activeProvider?.sample,
   })
   const sampleProcessing = useSampleProcessing({
@@ -132,9 +141,31 @@ export function useVoiceStudioController() {
     textarea.style.height = `${textarea.scrollHeight}px`
   }, [text])
 
+  useEffect(() => {
+    function handleHashChange() {
+      if (workflowSectionIdFromHash(window.location.hash) !== "voices") {
+        setIsAddVoiceRevealed(false)
+      }
+    }
+
+    window.addEventListener("hashchange", handleHashChange)
+    return () => window.removeEventListener("hashchange", handleHashChange)
+  }, [])
+
+  function navigateToSection(sectionId: WorkflowSectionId) {
+    if (sectionId !== "voices") {
+      setIsAddVoiceRevealed(false)
+    }
+    workflowNavigation.navigateToSection(sectionId)
+  }
+
   function handleGenerate(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault()
     void generateSpeech()
+  }
+
+  function revealAddVoice() {
+    setIsAddVoiceRevealed(true)
   }
 
   async function generateSpeech() {
@@ -211,18 +242,20 @@ export function useVoiceStudioController() {
     handleGenerate,
     handleStorageLimitChange,
     hasModelRate,
+    isAddVoiceRevealed,
     isCostQuotaExpanded,
     isSampleProcessingExpanded,
     isVoiceTuningExpanded,
     latestGeneratedAudioItem,
     latestStorageError,
     metadata,
-    navigateToSection: workflowNavigation.navigateToSection,
+    navigateToSection,
     providerKeys,
     providerTuning,
     requestClearGeneratedAudio,
     requestDeleteVoice,
     result,
+    revealAddVoice,
     sampleProcessing,
     sectionStatuses,
     selectedModel,
