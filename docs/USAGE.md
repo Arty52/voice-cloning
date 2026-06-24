@@ -201,6 +201,8 @@ Set `SAMPLE_PROCESSING_ENGINE=ffmpeg` to enable only Trim Silence. Set `SAMPLE_P
 
 You can run one operation or stack multiple operations in one backend-owned workflow. The recommended stack is Clean Up Voice, Split Speakers, then Tighten Pauses. When all three are selected, voice isolation runs first, Speaker Separation runs on the isolated audio, and Trim Silence tightens each generated speaker stream. When Split Speakers is not selected, Trim Silence tightens the single current audio result.
 
+In `#prepare`, choose a saved voice or upload an audio file, then select one or more Workflow Stack cards before starting. Uploads support MP3, WAV, M4A, AAC, OGG, and FLAC. Selected cards show selected-state styling, each selected operation with presets exposes its own preset control, and the running job shows Workflow Progress with Queued, Running, Complete, Error, or Canceled steps.
+
 Isolation Strength offers four presets. Fast uses fewer Demucs shifts for quick previews. Balanced is the default and preserves the original behavior. Clean keeps Balanced separation and adds conservative FFmpeg high-pass/low-pass cleanup. Max Isolation uses the finetuned `htdemucs_ft` model with higher shifts and overlap; it is slower and requires that model to be available locally.
 
 Trim Aggressiveness offers three presets. Light trims only quieter or longer empty regions. Balanced is the default and preserves a small amount of room tone. Aggressive trims shorter or louder empty regions for tighter samples.

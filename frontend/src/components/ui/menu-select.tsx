@@ -11,6 +11,7 @@ export type MenuSelectOption = {
 
 type MenuSelectProps = {
   ariaLabel: string
+  buttonClassName?: string
   className?: string
   disabled?: boolean
   onChange: (value: string) => void
@@ -18,7 +19,15 @@ type MenuSelectProps = {
   value: string
 }
 
-export function MenuSelect({ ariaLabel, className, disabled = false, onChange, options, value }: MenuSelectProps) {
+export function MenuSelect({
+  ariaLabel,
+  buttonClassName,
+  className,
+  disabled = false,
+  onChange,
+  options,
+  value,
+}: MenuSelectProps) {
   const [isOpen, setIsOpen] = useState(false)
   const buttonRef = useRef<HTMLButtonElement | null>(null)
   const rootRef = useRef<HTMLDivElement | null>(null)
@@ -59,7 +68,7 @@ export function MenuSelect({ ariaLabel, className, disabled = false, onChange, o
         aria-expanded={isOpen}
         aria-haspopup="menu"
         aria-label={`${ariaLabel}: ${selectedOption?.label ?? "None"}`}
-        className="h-9 min-w-28 justify-between border-input bg-background px-3 font-normal"
+        className={cn("h-9 min-w-28 justify-between border-input bg-background px-3 font-normal", buttonClassName)}
         disabled={disabled}
         onClick={() => setIsOpen((current) => !current)}
         ref={buttonRef}
@@ -67,7 +76,7 @@ export function MenuSelect({ ariaLabel, className, disabled = false, onChange, o
         variant="secondary"
       >
         <span>{selectedOption?.label ?? "None"}</span>
-        <ChevronDown aria-hidden="true" className={cn("size-4 transition-transform", isOpen && "rotate-180")} />
+        <ChevronDown aria-hidden="true" className={cn("transition-transform", isOpen && "rotate-180")} data-icon="inline-end" />
       </Button>
       {isOpen ? (
         <div

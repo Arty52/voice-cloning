@@ -5,6 +5,14 @@ import { describe, expect, it, vi } from "vitest"
 import { AudioFileDropZone } from "@/components/audio-file-drop-zone"
 
 describe("AudioFileDropZone", () => {
+  it("shows supported audio formats in the helper copy", () => {
+    render(<AudioFileDropZone id="sample-file" label="Sample File" onFileSelect={vi.fn()} />)
+
+    expect(
+      screen.getByText("Drag an audio file here, or choose one from your computer. Supports MP3, WAV, M4A, AAC, OGG, and FLAC.")
+    ).toBeInTheDocument()
+  })
+
   it("clears the hidden file input after selection so the same file can be selected again", async () => {
     const user = userEvent.setup()
     const onFileSelect = vi.fn()
