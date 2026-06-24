@@ -194,7 +194,11 @@ export async function createSampleProcessingJob({
   if (hasWorkflowSteps) {
     formData.append("workflowSteps", JSON.stringify(workflowSteps))
   } else {
-    formData.append("operationId", operationId)
+    const singleOperationId = operationId
+    if (!singleOperationId) {
+      throw new Error("Sample processing requires operationId or workflowSteps.")
+    }
+    formData.append("operationId", singleOperationId)
   }
   if (processingPresetId) {
     formData.append("processingPresetId", processingPresetId)
