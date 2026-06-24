@@ -1806,9 +1806,11 @@ describe("App", () => {
     await user.click(sampleProcessingPanel().getByRole("button", { name: /Tighten Pauses/i }))
     await user.click(sampleProcessingPanel().getByRole("button", { name: "Start Processing" }))
 
-    expect(await sampleProcessingPanel().findByText("Workflow Progress")).toBeInTheDocument()
+    const progressHeading = await sampleProcessingPanel().findByText("Workflow Progress")
+    expect(progressHeading).toBeInTheDocument()
     expect(sampleProcessingPanel().getByText("Active Step: Isolate Voice")).toBeInTheDocument()
     expect(sampleProcessingPanel().getByText("Queued")).toBeInTheDocument()
+    expect(progressHeading.closest("section")?.querySelector(".animate-spin")).toBeInTheDocument()
 
     const jobCall = vi.mocked(fetch).mock.calls.find(
       ([url, init]) => String(url) === "/api/sample-processing/jobs" && init?.method === "POST"

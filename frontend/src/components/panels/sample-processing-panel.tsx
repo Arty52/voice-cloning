@@ -463,7 +463,7 @@ function ProcessingProgress({ processing }: { processing: SampleProcessingContro
                     )}
                     variant={step.status === "success" ? "accent" : "secondary"}
                   >
-                    <StepIcon aria-hidden="true" className="size-3" />
+                    <StepIcon aria-hidden="true" className={cn("size-3", step.status === "running" && "animate-spin")} />
                     {stepStatusLabel(step.status)}
                   </Badge>
                 </div>

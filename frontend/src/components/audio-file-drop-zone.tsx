@@ -88,7 +88,7 @@ export function AudioFileDropZone({
         <div className="flex flex-col gap-1">
           <span className="text-sm font-medium">{selectedFileName ? "Audio Selected" : "Drop Audio Here"}</span>
           <FieldDescription id={descriptionId}>
-            Drag an audio file into this field, or choose one from your computer.
+            Drag an audio file here, or choose one from your computer. Supports MP3, WAV, M4A, AAC, OGG, and FLAC.
           </FieldDescription>
         </div>
         {selectedFileName ? <Badge variant="secondary">{selectedFileName}</Badge> : null}
