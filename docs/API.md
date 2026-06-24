@@ -173,10 +173,14 @@ Both fields are optional, but at least one of `name` or `voicePresetId` is requi
 
 Sample Processing prepares local samples without changing the normal generation flow. Enabled operations depend on local processor configuration: `SAMPLE_PROCESSING_ENGINE=demucs` enables `isolateVoice` and `trimSilence`, `SAMPLE_PROCESSING_ENGINE=ffmpeg` enables only `trimSilence`, and diarization-capable processors enable `separateSpeakers`.
 
+Operations can run alone or as a backend-owned stack. The recommended stacked order is `isolateVoice`, then `separateSpeakers`, then `trimSilence`. If Speaker Separation is selected, Trim Silence runs after the split on each generated speaker stream; otherwise it runs on the single current audio result.
+
 `GET /api/sample-processing/options` returns the operation registry for the configured processor:
 
 ```json
 {
+  "engine": "demucs+pyannote-community-1+faster-whisper",
+  "recommendedWorkflowOrder": ["isolateVoice", "separateSpeakers", "trimSilence"],
   "operations": [
     {
       "id": "isolateVoice",
@@ -237,13 +241,24 @@ Sample Processing prepares local samples without changing the normal generation 
 
 `POST /api/sample-processing/jobs` accepts multipart form fields:
 
-- `operationId`: required operation id, currently `isolateVoice`, `trimSilence`, or `separateSpeakers` when the matching local processor is enabled
+- `operationId`: required for legacy one-step jobs; operation id is currently `isolateVoice`, `trimSilence`, or `separateSpeakers` when the matching local processor is enabled
 - `processingPresetId`: optional operation preset id; Isolate Voice defaults to `balanced`, and Trim Silence defaults to `trimBalanced`
+- `workflowSteps`: optional JSON array for stacked workflows. When provided, it replaces `operationId`/`processingPresetId` and is canonicalized into the recommended backend order.
 - `sourceVoiceId`: optional saved local voice id
 - `sourcePreference`: optional, either `original` or `active`; `original` uses the retained full upload/source file when one exists and falls back to the active provider-facing sample when none exists; `active` always uses the provider-facing sample currently stored for the selected voice
 - `sourceFile`: optional uploaded audio source
 
 Exactly one of `sourceVoiceId` or `sourceFile` is required. The endpoint returns `202` with the created job:
+
+For a stacked workflow, send `workflowSteps` as JSON:
+
+```json
+[
+  { "operationId": "isolateVoice", "processingPresetId": "balanced" },
+  { "operationId": "separateSpeakers" },
+  { "operationId": "trimSilence", "processingPresetId": "trimBalanced" }
+]
+```
 
 ```json
 {
@@ -252,6 +267,24 @@ Exactly one of `sourceVoiceId` or `sourceFile` is required. The endpoint returns
     "operationId": "isolateVoice",
     "operationLabel": "Isolate Voice",
     "status": "running",
+    "workflowMode": "single",
+    "activeStepId": "sample-job-id",
+    "steps": [
+      {
+        "id": "sample-job-id",
+        "operationId": "isolateVoice",
+        "operationLabel": "Isolate Voice",
+        "status": "running",
+        "engine": "demucs",
+        "processingPresetId": "balanced",
+        "processingPresetLabel": "Balanced",
+        "startedAt": "2026-06-19T12:00:01Z",
+        "completedAt": null,
+        "error": null,
+        "sourceSha256": "abc123",
+        "resultSha256": null
+      }
+    ],
     "processingPresetId": "balanced",
     "processingPresetLabel": "Balanced",
     "sourceName": "Voice_Clone_01",
@@ -284,6 +317,8 @@ Exactly one of `sourceVoiceId` or `sourceFile` is required. The endpoint returns
 
 `GET /api/sample-processing/jobs/{jobId}/result` streams the processed WAV result. The result is available only after the job reaches `success`.
 
+`POST /api/sample-processing/jobs/{jobId}/cancel` cancels a pending or running job and returns `{ "job": { ... } }`. Cancel is idempotent for `success`, `error`, and `canceled` jobs. FFmpeg and Demucs subprocesses are killed on cancellation. Pyannote and faster-whisper model calls are marked canceled immediately and later pipeline steps are skipped; already-running thread-backed model inference may finish in the background.
+
 For `trimSilence`, the job `engine` is `ffmpeg`, and the saved `processingSteps` metadata records the selected trim preset. For `isolateVoice`, the job `engine` remains `demucs`.
 
 `POST /api/sample-processing/jobs/{jobId}/voice` saves a successful result as a local voice:
@@ -292,7 +327,7 @@ For `trimSilence`, the job `engine` is `ffmpeg`, and the saved `processingSteps`
 { "name": "Voice_Clone_01 Isolated", "voicePresetId": "animatedDialogue" }
 ```
 
-The response is `201` with `{ "voice": { ... } }`. The saved voice is persisted through `VoiceLibrary` as a new local voice. This endpoint does not mutate, refine, overwrite, or replace the source voice. The new voice uses the processed sample as its active `filePath` and includes `processingSteps` metadata with the operation id, engine, source hash, result hash, and selected processing preset when present.
+The response is `201` with `{ "voice": { ... } }`. The saved voice is persisted through `VoiceLibrary` as a new local voice. This endpoint does not mutate, refine, overwrite, or replace the source voice. The new voice uses the processed sample as its active `filePath` and includes `processingSteps` metadata with the operation id, engine, source hash, result hash, and selected processing preset when present. Stacked single-audio jobs save one processing step entry per completed stack step.
 
 Speaker Separation jobs return a structured result instead of a single audio file:
 
@@ -335,7 +370,7 @@ Speaker Separation jobs return a structured result instead of a single audio fil
 }
 ```
 
-`GET /api/sample-processing/jobs/{jobId}/source` streams the local source audio for successful Speaker Separation jobs so the frontend can seek and play transcript-selected ranges. It is not used by single-audio jobs.
+`GET /api/sample-processing/jobs/{jobId}/source` streams the local source audio for successful Speaker Separation jobs so the frontend can seek and play transcript-selected ranges. For stacked jobs, this is the audio that was fed into diarization after any earlier single-audio steps. It is not used by single-audio jobs.
 
 `GET /api/sample-processing/jobs/{jobId}/speakers/{speakerId}/result` streams one generated speaker WAV for a successful Speaker Separation job. `GET /api/sample-processing/jobs/{jobId}/result` remains reserved for single-audio jobs and returns `409` for Speaker Separation jobs.
 
@@ -365,7 +400,7 @@ The response is `200` with `{ "job": { ... } }` and the updated Speaker Separati
 }
 ```
 
-The response is `201` with `{ "voices": [ ... ] }`. Each saved voice receives a normal `voicePresetId` and `processingSteps` entry, plus optional `speakerId` and `speakerLabel` metadata for traceability. The available `voicePresetId` values are the top-level `/api/providers.voicePresets` values used by normal uploads. Provider authors should map provider-specific tuning controls and presets to those shared semantic presets in [How To Add A Provider](ADDING_PROVIDER.md).
+The response is `201` with `{ "voices": [ ... ] }`. Each saved voice receives a normal `voicePresetId` and `processingSteps` entries for prior stack steps plus speaker-specific split/trim metadata with optional `speakerId` and `speakerLabel` fields. The available `voicePresetId` values are the top-level `/api/providers.voicePresets` values used by normal uploads. Provider authors should map provider-specific tuning controls and presets to those shared semantic presets in [How To Add A Provider](ADDING_PROVIDER.md).
 
 ## Speech
 

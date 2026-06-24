@@ -10,7 +10,9 @@ DEFAULT_VOICE_PRESET_ID: VoicePresetId = "standardNarration"
 SampleProcessingOperationId = Literal["isolateVoice", "trimSilence", "separateSpeakers"]
 SampleProcessingPresetId = Literal["fast", "balanced", "clean", "maxIsolation", "trimLight", "trimBalanced", "trimAggressive"]
 SampleProcessingSourcePreference = Literal["original", "active"]
-SampleProcessingJobStatus = Literal["pending", "running", "success", "error"]
+SampleProcessingJobStatus = Literal["pending", "running", "success", "error", "canceled"]
+SampleProcessingStepStatus = Literal["pending", "running", "success", "error", "canceled"]
+SampleProcessingWorkflowMode = Literal["single", "stack"]
 
 
 @dataclass(frozen=True)
@@ -191,6 +193,22 @@ SampleProcessingJobResult = SampleProcessingResult | SpeakerSeparationResult
 
 
 @dataclass(frozen=True)
+class SampleProcessingJobStep:
+    id: str
+    operation_id: SampleProcessingOperationId
+    operation_label: str
+    status: SampleProcessingStepStatus
+    engine: str | None = None
+    processing_preset_id: SampleProcessingPresetId | None = None
+    processing_preset_label: str | None = None
+    started_at: str | None = None
+    completed_at: str | None = None
+    error: str | None = None
+    source_sha256: str | None = None
+    result_sha256: str | None = None
+
+
+@dataclass(frozen=True)
 class SampleProcessingJob:
     id: str
     operation_id: SampleProcessingOperationId
@@ -207,3 +225,6 @@ class SampleProcessingJob:
     engine: str | None = None
     processing_preset_id: SampleProcessingPresetId | None = None
     processing_preset_label: str | None = None
+    workflow_mode: SampleProcessingWorkflowMode = "single"
+    steps: tuple[SampleProcessingJobStep, ...] = ()
+    active_step_id: str | None = None
