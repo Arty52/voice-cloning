@@ -1389,6 +1389,7 @@ describe("App", () => {
     expect(defaultCard.getByText("Default")).toBeInTheDocument()
     expect(cloneCard.getByText("Source: voice-clone-01.mp3")).toBeInTheDocument()
     expect(cloneCard.getByRole("button", { name: "Select Voice_Clone_01" })).toHaveAttribute("aria-pressed", "false")
+    expect(document.querySelector('audio[src="/api/voices/voice-clone-01/sample"]')).toHaveAttribute("preload", "none")
 
     await user.click(cloneCard.getByRole("button", { name: "Play Voice_Clone_01 Preview" }))
     expect(playSpy).toHaveBeenCalled()

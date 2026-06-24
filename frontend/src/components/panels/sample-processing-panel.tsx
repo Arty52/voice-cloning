@@ -577,7 +577,7 @@ function CompactVoicePreviewButton({ disabled, voice }: { disabled: boolean; voi
         onEnded={() => setIsPlaying(false)}
         onPause={() => setIsPlaying(false)}
         onPlay={() => setIsPlaying(true)}
-        preload="metadata"
+        preload="none"
         ref={audioRef}
         src={`/api/voices/${encodeURIComponent(voice.id)}/sample`}
       />
