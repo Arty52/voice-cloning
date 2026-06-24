@@ -18,37 +18,53 @@ function App() {
   const {
     activeSectionId,
     archiveStorageError,
+    assignVoiceToSelection,
     canGenerate,
+    cancelGeneration,
     characterCount,
+    clearVoiceAssignments,
     confirmation,
     estimatedCredits,
     generatedAudio,
     handleGenerate,
     handleStorageLimitChange,
+    handleTextSelectionChange,
     hasModelRate,
     isAddVoiceRevealed,
+    isSpeechGenerating,
     isVoiceTuningExpanded,
     latestGeneratedAudioItem,
     latestStorageError,
     metadata,
+    naturalHandoffsEnabled,
     navigateToSection,
     providerKeys,
     providerTuning,
     requestClearGeneratedAudio,
     requestDeleteVoice,
     result,
+    removeVoiceAssignment,
     revealAddVoice,
     sampleProcessing,
     sectionStatuses,
     selectedModel,
     selectedTuningPresetId,
+    setNaturalHandoffsEnabled,
     setIsVoiceTuningExpanded,
     setText,
     speech,
+    speechError,
+    speechStatus,
     text,
     textRef,
+    textSelection,
     tuning,
     voiceInput,
+    voiceAssignmentError,
+    voiceAssignments,
+    voiceAssignmentSpeechSegmentCount,
+    voiceAssignmentsStale,
+    updateVoiceAssignment,
     voiceLibrary,
     voiceTuning,
     workflowSections,
@@ -136,30 +152,43 @@ function App() {
 
         <WorkflowSectionPanel activeSectionId={activeSectionId} id="generate">
           <SpeechInputPanel
+            assignmentError={voiceAssignmentError}
+            assignmentSpeechSegmentCount={voiceAssignmentSpeechSegmentCount}
+            assignments={voiceAssignments}
+            assignmentsStale={voiceAssignmentsStale}
             canGenerate={canGenerate}
             characterCount={characterCount}
-            isGenerating={speech.isGenerating}
-            onCancelGeneration={speech.cancelGeneration}
+            isGenerating={isSpeechGenerating}
+            onAssignVoice={assignVoiceToSelection}
+            onCancelGeneration={cancelGeneration}
+            onClearAssignments={clearVoiceAssignments}
+            onEditAssignmentVoice={updateVoiceAssignment}
             onGenerate={handleGenerate}
+            onNaturalHandoffsEnabledChange={setNaturalHandoffsEnabled}
+            onRemoveAssignment={removeVoiceAssignment}
             onTextChange={setText}
+            onTextSelectionChange={handleTextSelectionChange}
             selectedVoice={voiceLibrary.selectedVoice}
+            selectedText={textSelection.text}
+            naturalHandoffsEnabled={naturalHandoffsEnabled}
             text={text}
             textRef={textRef}
+            voices={voiceLibrary.voices}
           />
 
           <LatestGeneratedAudioPanel
-            error={speech.error}
+            error={speechError}
             isDeleteDisabled={generatedAudio.generatedAudioMutation === "delete"}
             item={latestGeneratedAudioItem}
             onDelete={(id) => void generatedAudio.handleDeleteGeneratedAudio(id)}
-            status={speech.status}
+            status={speechStatus}
             storageError={latestStorageError}
           />
 
           <VoiceTuningPanel
             controls={providerTuning.controls}
             isExpanded={isVoiceTuningExpanded}
-            isGenerating={speech.isGenerating}
+            isGenerating={isSpeechGenerating}
             isLoading={providerKeys.providerStatus === "idle" || providerKeys.providerStatus === "loading"}
             onExpandedChange={setIsVoiceTuningExpanded}
             onPresetApply={voiceTuning.handlePresetApply}
@@ -202,7 +231,7 @@ function App() {
             hasModelRate={hasModelRate}
             isCollapsible={false}
             isExpanded
-            isGenerating={speech.isGenerating}
+            isGenerating={isSpeechGenerating}
             modelError={metadata.modelError}
             modelStatus={metadata.modelStatus}
             models={metadata.models}

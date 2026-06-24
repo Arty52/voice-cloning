@@ -975,6 +975,216 @@ describe("App", () => {
     expect(document.querySelector('[data-section-id="generate"]')).toHaveClass("hidden")
   })
 
+  it("keeps voice assignments active after a safe edit inside assigned text", async () => {
+    window.history.replaceState(null, "", "/#generate")
+    let createJobBody: {
+      defaultVoiceId: string
+      segmentGapMs?: number
+      segments: Array<{
+        assignmentKind: string
+        clientSegmentId: string
+        text: string
+        voiceId: string
+      }>
+      text: string
+    } | null = null
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/providers" && !init) {
+          return okJson(providersResponse)
+        }
+        if (path === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "default", voices: [defaultVoice, voiceCloneVoice] })
+        }
+        if (path === "/api/subscription" && !init) {
+          return okJson(subscription)
+        }
+        if (path === "/api/models" && !init) {
+          return okJson({
+            available: true,
+            error: null,
+            defaultModelId: "eleven_multilingual_v2",
+            models: [multilingualModel, flashModel],
+          })
+        }
+        if (path === "/api/speech/jobs" && init?.method === "POST") {
+          const submittedJob = JSON.parse(String(init.body)) as NonNullable<typeof createJobBody>
+          createJobBody = submittedJob
+          return okJson(
+            {
+              job: {
+                activeSegmentId: null,
+                createdAt: "2026-06-23T00:00:00.000Z",
+                defaultVoiceId: submittedJob.defaultVoiceId,
+                error: null,
+                id: "job-1",
+                resultSha256: "combined-hash",
+                segmentGapMs: submittedJob.segmentGapMs ?? 250,
+                segments: submittedJob.segments.map((segment, index) => ({
+                  assignmentKind: segment.assignmentKind,
+                  cacheState: "miss",
+                  characterCount: segment.text.length,
+                  error: null,
+                  generationCount: 1,
+                  id: segment.clientSegmentId,
+                  index,
+                  requestId: `request-${index + 1}`,
+                  resultSha256: `segment-${index + 1}-hash`,
+                  status: "success",
+                  text: segment.text,
+                  voiceId: segment.voiceId,
+                  voiceName: segment.voiceId === "voice-clone-01" ? "Voice_Clone_01" : "Default voice",
+                })),
+                status: "success",
+                text: submittedJob.text,
+                updatedAt: "2026-06-23T00:00:01.000Z",
+              },
+            }
+          )
+        }
+        if (path === "/api/speech/jobs/job-1/result" && !init) {
+          return okAudio()
+        }
+        return okJson({})
+      })
+    )
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    const textarea = screen.getByLabelText(/text to speak/i) as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: "say helloo world! now" } })
+    const assignmentStart = "say ".length
+    const assignmentEnd = assignmentStart + "helloo world!".length
+    textarea.setSelectionRange(assignmentStart, assignmentEnd)
+    fireEvent.select(textarea)
+
+    await user.click(screen.getByRole("button", { name: /^Assign Voice$/i }))
+    await user.click(screen.getByRole("button", { name: "Voice_Clone_01" }))
+    expect(screen.getByText("helloo world!")).toBeInTheDocument()
+    const assignmentsRegion = screen.getByRole("region", { name: /voice assignments/i })
+    expect(assignmentsRegion).toHaveTextContent("1 Assignment")
+    expect(assignmentsRegion).toHaveTextContent("3 Speech Segments")
+
+    fireEvent.change(textarea, { target: { value: "say hello world! now" } })
+
+    expect(screen.queryByText(/could not be matched/i)).not.toBeInTheDocument()
+    expect(screen.getByText("hello world!")).toBeInTheDocument()
+    expect(assignmentsRegion).toHaveTextContent("3 Speech Segments")
+
+    const secondAssignmentStart = "say hello world! ".length
+    textarea.setSelectionRange(secondAssignmentStart, "say hello world! now".length)
+    fireEvent.select(textarea)
+    await user.click(screen.getByRole("button", { name: "Assign Selected Text to Voice_Clone_01" }))
+    expect(screen.getByText("now")).toBeInTheDocument()
+    expect(assignmentsRegion).toHaveTextContent("2 Assignments")
+    expect(assignmentsRegion).toHaveTextContent("3 Speech Segments")
+    const naturalHandoffs = screen.getByRole("checkbox", { name: "Natural Handoffs" })
+    expect(naturalHandoffs).toBeChecked()
+    await user.click(naturalHandoffs)
+    expect(naturalHandoffs).not.toBeChecked()
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Generate$/ })).toBeEnabled())
+
+    await user.click(screen.getByRole("button", { name: /^Generate$/ }))
+
+    await waitFor(() => expect(createJobBody).not.toBeNull())
+    expect(createJobBody).toMatchObject({
+      segmentGapMs: 0,
+      segments: [
+        expect.objectContaining({
+          assignmentKind: "default",
+          text: "say ",
+          voiceId: "default",
+        }),
+        expect.objectContaining({
+          assignmentKind: "assigned",
+          text: "hello world! ",
+          voiceId: "voice-clone-01",
+        }),
+        expect.objectContaining({
+          assignmentKind: "assigned",
+          text: "now",
+          voiceId: "voice-clone-01",
+        }),
+      ],
+      text: "say hello world! now",
+    })
+  })
+
+  it("blocks multi-voice generation when an assigned voice is deleted", async () => {
+    window.history.replaceState(null, "", "/#generate")
+    const createSpeechJob = vi.fn()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/providers" && !init) {
+          return okJson(providersResponse)
+        }
+        if (path === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "default", voices: [defaultVoice, voiceCloneVoice] })
+        }
+        if (path === "/api/voices/voice-clone-01" && init?.method === "DELETE") {
+          return okJson({ defaultVoiceId: "default", voices: [defaultVoice] })
+        }
+        if (path === "/api/subscription" && !init) {
+          return okJson(subscription)
+        }
+        if (path === "/api/models" && !init) {
+          return okJson({
+            available: true,
+            error: null,
+            defaultModelId: "eleven_multilingual_v2",
+            models: [multilingualModel, flashModel],
+          })
+        }
+        if (path === "/api/sample-processing/options" && !init) {
+          return okJson(sampleProcessingOptions)
+        }
+        if (path === "/api/speech/jobs" && init?.method === "POST") {
+          createSpeechJob(init)
+          return okJson({})
+        }
+        return okJson({})
+      })
+    )
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    const textarea = screen.getByLabelText(/text to speak/i) as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: "default intro assigned line" } })
+    textarea.setSelectionRange("default intro ".length, "default intro assigned".length)
+    fireEvent.select(textarea)
+
+    await user.click(screen.getByRole("button", { name: /^Assign Voice$/i }))
+    await user.click(screen.getByRole("button", { name: "Voice_Clone_01" }))
+    expect(screen.getByText("assigned")).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Generate$/ })).toBeEnabled())
+
+    await user.click(screen.getByRole("button", { name: "Voices" }))
+    await user.click(await screen.findByRole("button", { name: /open actions for voice_clone_01/i }))
+    await user.click(screen.getByRole("menuitem", { name: /delete/i }))
+    const dialog = screen.getByRole("dialog", { name: /delete voice/i })
+    await user.click(within(dialog).getByRole("button", { name: /^delete$/i }))
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith("/api/voices/voice-clone-01", expect.objectContaining({ method: "DELETE" }))
+    )
+    await user.click(screen.getByRole("button", { name: "Generate Speech" }))
+
+    expect(
+      await screen.findByText("Some assigned voices are no longer in the Voice Library. Remove or update those assignments before generating.")
+    ).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /^Generate$/ })).toBeDisabled()
+
+    await user.click(screen.getByRole("button", { name: /^Generate$/ }))
+    expect(createSpeechJob).not.toHaveBeenCalled()
+  })
+
   it("links from the voice library to speech generation", async () => {
     window.history.replaceState(null, "", "/#voices")
     const baseFetch = mockFetch()
