@@ -432,6 +432,17 @@ describe("useSampleProcessing stacked workflow state", () => {
       .mock.calls.find(([url, init]) => String(url) === "/api/sample-processing/jobs" && init?.method === "POST")
     const body = createCall?.[1]?.body as FormData
     expect(body.get("sourcePreference")).toBe("active")
+    expect(result.current.status).toBe("success")
+    const processedJob = result.current.job
+
+    act(() => {
+      result.current.setSourcePreference("active")
+    })
+
+    expect(result.current.sourcePreference).toBe("original")
+    expect(result.current.effectiveSourcePreference).toBe("active")
+    expect(result.current.status).toBe("success")
+    expect(result.current.job).toBe(processedJob)
   })
 
   it("submits selected stack steps in recommended order from an upload", async () => {

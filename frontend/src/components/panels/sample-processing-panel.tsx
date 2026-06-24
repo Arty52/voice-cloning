@@ -1,4 +1,4 @@
-import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from "react"
+import { type CSSProperties, type ReactNode, useCallback, useEffect, useRef, useState } from "react"
 import {
   AudioLines,
   Ban,
@@ -464,6 +464,15 @@ function SavedVoiceCarousel({
   voicePresets: { id: VoicePresetId; label: string; description: string }[]
   voices: VoiceAsset[]
 }) {
+  const [activePreviewVoiceId, setActivePreviewVoiceId] = useState<string | null>(null)
+  const handlePreviewStart = useCallback((voiceId: string) => {
+    setActivePreviewVoiceId(voiceId)
+  }, [])
+  const handlePreviewStop = useCallback((voiceId: string) => {
+    setActivePreviewVoiceId((currentVoiceId) => (currentVoiceId === voiceId ? null : currentVoiceId))
+  }, [])
+  const visibleActivePreviewVoiceId = disabled ? null : activePreviewVoiceId
+
   return (
     <div
       aria-labelledby="sample-processing-voice-label"
@@ -476,6 +485,9 @@ function SavedVoiceCarousel({
           disabled={disabled}
           isSelected={voice.id === selectedVoiceId}
           key={voice.id}
+          activePreviewVoiceId={visibleActivePreviewVoiceId}
+          onPreviewStart={handlePreviewStart}
+          onPreviewStop={handlePreviewStop}
           onSelectVoice={onSelectVoice}
           voice={voice}
           voicePreset={voicePresetLabel(voicePresets, voice.voicePresetId)}
@@ -512,14 +524,20 @@ function SavedVoiceEmptyCard() {
 }
 
 function SavedVoiceSourceCard({
+  activePreviewVoiceId,
   disabled,
   isSelected,
+  onPreviewStart,
+  onPreviewStop,
   onSelectVoice,
   voice,
   voicePreset,
 }: {
+  activePreviewVoiceId: string | null
   disabled: boolean
   isSelected: boolean
+  onPreviewStart: (voiceId: string) => void
+  onPreviewStop: (voiceId: string) => void
   onSelectVoice: (voiceId: string) => void
   voice: VoiceAsset
   voicePreset: string
@@ -562,14 +580,76 @@ function SavedVoiceSourceCard({
         </span>
         {isSelected ? <Check aria-label="Selected voice" className="absolute right-3 top-3 size-4 text-primary" /> : null}
       </button>
-      <CompactVoicePreviewButton disabled={disabled} voice={voice} />
+      <CompactVoicePreviewButton
+        activePreviewVoiceId={activePreviewVoiceId}
+        disabled={disabled}
+        onPreviewStart={onPreviewStart}
+        onPreviewStop={onPreviewStop}
+        voice={voice}
+      />
     </div>
   )
 }
 
-function CompactVoicePreviewButton({ disabled, voice }: { disabled: boolean; voice: VoiceAsset }) {
+function CompactVoicePreviewButton({
+  activePreviewVoiceId,
+  disabled,
+  onPreviewStart,
+  onPreviewStop,
+  voice,
+}: {
+  activePreviewVoiceId: string | null
+  disabled: boolean
+  onPreviewStart: (voiceId: string) => void
+  onPreviewStop: (voiceId: string) => void
+  voice: VoiceAsset
+}) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
-  const [isPlaying, setIsPlaying] = useState(false)
+  const hasActivePlaybackRef = useRef(false)
+  const isPlaying = activePreviewVoiceId === voice.id
+
+  const stopPreview = useCallback(
+    ({ reset = false, updateActive = true }: { reset?: boolean; updateActive?: boolean } = {}) => {
+      const audio = audioRef.current
+      if (audio && hasActivePlaybackRef.current) {
+        audio.pause()
+        if (reset) {
+          audio.currentTime = 0
+        }
+      }
+      hasActivePlaybackRef.current = false
+      if (updateActive) {
+        onPreviewStop(voice.id)
+      }
+    },
+    [onPreviewStop, voice.id]
+  )
+
+  useEffect(() => {
+    if (disabled && hasActivePlaybackRef.current) {
+      stopPreview({ reset: true, updateActive: false })
+    }
+  }, [disabled, stopPreview])
+
+  useEffect(() => {
+    if (!isPlaying && hasActivePlaybackRef.current) {
+      stopPreview({ reset: true, updateActive: false })
+    }
+  }, [isPlaying, stopPreview])
+
+  useEffect(
+    () => {
+      const audio = audioRef.current
+      return () => {
+        if (audio && hasActivePlaybackRef.current) {
+          audio.pause()
+          audio.currentTime = 0
+          hasActivePlaybackRef.current = false
+        }
+      }
+    },
+    []
+  )
 
   async function handlePreviewToggle() {
     const audio = audioRef.current
@@ -578,25 +658,35 @@ function CompactVoicePreviewButton({ disabled, voice }: { disabled: boolean; voi
     }
 
     if (isPlaying) {
-      audio.pause()
-      setIsPlaying(false)
+      stopPreview()
       return
     }
 
     try {
+      onPreviewStart(voice.id)
+      hasActivePlaybackRef.current = true
       await audio.play()
-      setIsPlaying(true)
     } catch {
-      setIsPlaying(false)
+      hasActivePlaybackRef.current = false
+      onPreviewStop(voice.id)
     }
   }
 
   return (
     <>
       <audio
-        onEnded={() => setIsPlaying(false)}
-        onPause={() => setIsPlaying(false)}
-        onPlay={() => setIsPlaying(true)}
+        onEnded={() => {
+          hasActivePlaybackRef.current = false
+          onPreviewStop(voice.id)
+        }}
+        onPause={() => {
+          hasActivePlaybackRef.current = false
+          onPreviewStop(voice.id)
+        }}
+        onPlay={() => {
+          hasActivePlaybackRef.current = true
+          onPreviewStart(voice.id)
+        }}
         preload="none"
         ref={audioRef}
         src={`/api/voices/${encodeURIComponent(voice.id)}/sample`}

@@ -322,7 +322,7 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
     if (nextPreference === "original" && !canUseOriginalRecording) {
       return
     }
-    if (nextPreference === sourcePreference) {
+    if (nextPreference === effectiveSourcePreference) {
       return
     }
     setSourcePreference(nextPreference)

@@ -1418,6 +1418,44 @@ describe("App", () => {
     expect(jobBody.get("sourceVoiceId")).toBe("voice-clone-01")
   })
 
+  it("keeps compact saved voice previews exclusive and stops them when the carousel unmounts", async () => {
+    const playSpy = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined)
+    const pauseSpy = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined)
+    const baseFetch = mockFetch()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "default", voices: [defaultVoice, voiceCloneVoice] })
+        }
+        return baseFetch(input, init)
+      })
+    )
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+
+    const defaultCard = within(sampleProcessingPanel().getByRole("group", { name: "Default voice Source Voice" }))
+    const cloneCard = within(sampleProcessingPanel().getByRole("group", { name: "Voice_Clone_01 Source Voice" }))
+
+    await user.click(defaultCard.getByRole("button", { name: "Play Default voice Preview" }))
+    expect(playSpy).toHaveBeenCalledTimes(1)
+    expect(defaultCard.getByRole("button", { name: "Pause Default voice Preview" })).toBeInTheDocument()
+
+    await user.click(cloneCard.getByRole("button", { name: "Play Voice_Clone_01 Preview" }))
+    expect(playSpy).toHaveBeenCalledTimes(2)
+    await waitFor(() => expect(pauseSpy).toHaveBeenCalled())
+    expect(defaultCard.getByRole("button", { name: "Play Default voice Preview" })).toBeInTheDocument()
+    expect(cloneCard.getByRole("button", { name: "Pause Voice_Clone_01 Preview" })).toBeInTheDocument()
+
+    pauseSpy.mockClear()
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Use Audio File" }))
+    expect(sampleProcessingPanel().getByLabelText("Audio File")).toHaveAttribute("tabindex", "-1")
+    await waitFor(() => expect(pauseSpy).toHaveBeenCalled())
+  })
+
   it("switches from the saved voice carousel to audio upload", async () => {
     const user = userEvent.setup()
     renderApp()
@@ -2002,7 +2040,7 @@ describe("App", () => {
     expect(await sampleProcessingPanel().findByLabelText("Processed sample preview")).toBeInTheDocument()
     expect(sampleProcessingPanel().getByLabelText("Sample Processing Elapsed Time")).toHaveTextContent("Finished In")
 
-    await user.click(sampleProcessingPanel().getByRole("button", { name: "Saved Sample" }))
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Tighten Pauses" }))
 
     await waitFor(() => {
       expect(sampleProcessingPanel().queryByLabelText("Processed sample preview")).not.toBeInTheDocument()
