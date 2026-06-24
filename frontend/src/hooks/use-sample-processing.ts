@@ -748,6 +748,7 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
     sourceFile,
     sourceMode,
     sourcePreference,
+    sourceVoices: voices,
     sourceVoiceId: resolvedSourceVoiceId,
     status,
     voiceOptions,
