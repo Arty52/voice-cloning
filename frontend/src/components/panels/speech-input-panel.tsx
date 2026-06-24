@@ -92,6 +92,8 @@ export function SpeechInputPanel({
 }: SpeechInputPanelProps) {
   const isDialogueMode = dialogue.mode === "dialogue"
   const canAssignSelection = selectedText.trim().length > 0 && voices.length > 0 && !isGenerating
+  const showDialogueAlert = isDialogueMode && assignmentError
+  const showVoiceAssignmentAlert = !isDialogueMode && (assignmentsStale || assignmentError)
   const assignVoiceDisabledReason = getAssignVoiceDisabledReason({
     isGenerating,
     selectedText,
@@ -225,13 +227,20 @@ export function SpeechInputPanel({
         </Field>
       ) : null}
 
-      {assignmentsStale || assignmentError ? (
+      {showVoiceAssignmentAlert ? (
         <Alert className="mt-4 border-destructive/40 bg-destructive/10 text-destructive" role="alert">
           <AlertTitle>Voice Assignments Need Attention</AlertTitle>
           <AlertDescription>
             {assignmentError ||
               "Some script edits could not be matched to the current voice assignments. Clear and reassign voices, or restore the matching text."}
           </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {showDialogueAlert ? (
+        <Alert className="mt-4 border-destructive/40 bg-destructive/10 text-destructive" role="alert">
+          <AlertTitle>Dialogue Rows Need Attention</AlertTitle>
+          <AlertDescription>{assignmentError}</AlertDescription>
         </Alert>
       ) : null}
 

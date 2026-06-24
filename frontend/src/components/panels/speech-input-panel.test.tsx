@@ -212,6 +212,7 @@ describe("SpeechInputPanel voice assignments", () => {
     expect(screen.getByRole("region", { name: "Dialogue Rows" })).toBeInTheDocument()
     expect(screen.getByRole("region", { name: "Speaker Voice Mapping" })).toBeInTheDocument()
     const alerts = screen.getAllByRole("alert")
+    expect(alerts[0]).toHaveTextContent("Dialogue Rows Need Attention")
     expect(alerts[0]).toHaveTextContent("Map voices for labeled speakers before generating: Skippy.")
     expect(alerts[1]).toHaveTextContent("Map Skippy to a voice before generating.")
 
@@ -226,6 +227,37 @@ describe("SpeechInputPanel voice assignments", () => {
     expect(dialogue.toggleBlockSelection).toHaveBeenCalledWith("dialogue-block-1", true)
   })
 
+  it("does not show range assignment stale warnings in dialogue mode", () => {
+    const dialogue = dialogueController({
+      blocks: [dialogueBlock({ voiceId: "skippy", voiceName: "Skippy Voice" })],
+      mode: "dialogue",
+      segmentBuild: {
+        error: null,
+        missingSpeakerLabels: [],
+        segments: [
+          {
+            assignmentId: "dialogue-block-1",
+            assignmentKind: "assigned",
+            clientSegmentId: "dialogue-block-1",
+            end: "Hello world.".length,
+            start: 0,
+            text: "Hello world.",
+            voiceId: "skippy",
+            voiceName: "Skippy Voice",
+          },
+        ],
+        text: "Hello world.",
+      },
+      speakerLabels: ["Skippy"],
+      speakerMappings: [{ speakerLabel: "Skippy", voiceId: "skippy" }],
+    })
+
+    renderPanel({ assignments: [assignment], assignmentsStale: true, dialogue })
+
+    expect(screen.queryByText("Voice Assignments Need Attention")).not.toBeInTheDocument()
+    expect(screen.queryByText(/Some script edits could not be matched/)).not.toBeInTheDocument()
+  })
+
   it("prevents Enter in a dialogue row speaker field from submitting generation", () => {
     const dialogue = dialogueController({
       blocks: [dialogueBlock()],
@@ -235,10 +267,14 @@ describe("SpeechInputPanel voice assignments", () => {
         missingSpeakerLabels: [],
         segments: [
           {
+            assignmentId: "dialogue-block-1",
             assignmentKind: "assigned",
             clientSegmentId: "dialogue-block-1",
+            end: "Hello world.".length,
+            start: 0,
             text: "Hello world.",
             voiceId: "skippy",
+            voiceName: "Skippy Voice",
           },
         ],
         text: "Hello world.",
