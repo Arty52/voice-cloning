@@ -19,6 +19,13 @@ const assignment: VoiceTextAssignment = {
   voiceId: villain.id,
   voiceName: villain.name,
 }
+const duplicateVoiceAssignment: VoiceTextAssignment = {
+  ...assignment,
+  end: 5,
+  id: "assignment-two",
+  start: 0,
+  text: "Hello",
+}
 
 function voice(id: string, name: string): VoiceAsset {
   return {
@@ -95,7 +102,7 @@ describe("SpeechInputPanel voice assignments", () => {
 
     expect(screen.getByRole("alert")).toHaveTextContent(/could not be matched/i)
     expect(screen.getByRole("region", { name: /voice assignments/i })).toBeInTheDocument()
-    expect(screen.getByText("Villain")).toBeInTheDocument()
+    expect(screen.getAllByText("Villain").length).toBeGreaterThan(0)
     expect(screen.getByText("villain line")).toBeInTheDocument()
 
     await user.click(screen.getByRole("button", { name: /^Edit Voice$/i }))
@@ -116,6 +123,39 @@ describe("SpeechInputPanel voice assignments", () => {
     expect(assignmentsRegion).toHaveTextContent("1 Assignment")
     expect(assignmentsRegion).toHaveTextContent("3 Speech Segments")
     expect(assignmentsRegion).not.toHaveTextContent("1 Segment")
+  })
+
+  it("shows unique quick assignment shortcuts for assigned voices", async () => {
+    const user = userEvent.setup()
+    const props = renderPanel({
+      assignments: [assignment, duplicateVoiceAssignment],
+      selectedText: "another line",
+    })
+
+    const quickButtons = screen.getAllByRole("button", { name: "Assign Selected Text to Villain" })
+    expect(quickButtons).toHaveLength(1)
+
+    await user.click(quickButtons[0])
+
+    expect(props.onAssignVoice).toHaveBeenCalledWith(villain)
+  })
+
+  it("disables quick assignment shortcuts until text is selected", () => {
+    renderPanel({
+      assignments: [assignment],
+    })
+
+    expect(screen.getByRole("button", { name: "Assign Selected Text to Villain" })).toBeDisabled()
+  })
+
+  it("disables quick assignment shortcuts while generating", () => {
+    renderPanel({
+      assignments: [assignment],
+      isGenerating: true,
+      selectedText: "another line",
+    })
+
+    expect(screen.getByRole("button", { name: "Assign Selected Text to Villain" })).toBeDisabled()
   })
 
   it("shows validation errors and clears all assignments", async () => {

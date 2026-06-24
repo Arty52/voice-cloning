@@ -1071,6 +1071,15 @@ describe("App", () => {
     expect(screen.queryByText(/could not be matched/i)).not.toBeInTheDocument()
     expect(screen.getByText("hello world!")).toBeInTheDocument()
     expect(assignmentsRegion).toHaveTextContent("3 Speech Segments")
+
+    const secondAssignmentStart = "say hello world! ".length
+    textarea.setSelectionRange(secondAssignmentStart, "say hello world! now".length)
+    fireEvent.select(textarea)
+    await user.click(screen.getByRole("button", { name: "Assign Selected Text to Voice_Clone_01" }))
+    expect(screen.getByText("now")).toBeInTheDocument()
+    expect(assignmentsRegion).toHaveTextContent("2 Assignments")
+    expect(assignmentsRegion).toHaveTextContent("3 Speech Segments")
+
     await waitFor(() => expect(screen.getByRole("button", { name: /^Generate$/ })).toBeEnabled())
 
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
@@ -1085,13 +1094,13 @@ describe("App", () => {
         }),
         expect.objectContaining({
           assignmentKind: "assigned",
-          text: "hello world!",
+          text: "hello world! ",
           voiceId: "voice-clone-01",
         }),
         expect.objectContaining({
-          assignmentKind: "default",
-          text: " now",
-          voiceId: "default",
+          assignmentKind: "assigned",
+          text: "now",
+          voiceId: "voice-clone-01",
         }),
       ],
       text: "say hello world! now",

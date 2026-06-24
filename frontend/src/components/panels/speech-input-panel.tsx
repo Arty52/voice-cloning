@@ -76,6 +76,7 @@ export function SpeechInputPanel({
   voices,
 }: SpeechInputPanelProps) {
   const canAssignSelection = selectedText.trim().length > 0 && voices.length > 0 && !isGenerating
+  const quickAssignmentVoices = assignedVoices(assignments, voices)
 
   return (
     <form
@@ -119,6 +120,24 @@ export function SpeechInputPanel({
           triggerIcon={<UserPlus aria-hidden="true" />}
           voices={voices}
         />
+        {quickAssignmentVoices.length > 0 ? (
+          <div aria-label="Quick Voice Assignments" className="flex flex-wrap items-center gap-2">
+            {quickAssignmentVoices.map((voice) => (
+              <Button
+                aria-label={`Assign Selected Text to ${voice.name}`}
+                className="h-auto p-0"
+                disabled={!canAssignSelection}
+                key={voice.id}
+                onClick={() => onAssignVoice(voice)}
+                variant="ghost"
+              >
+                <Badge className="pointer-events-none" variant="accent">
+                  {voice.name}
+                </Badge>
+              </Button>
+            ))}
+          </div>
+        ) : null}
         {assignments.length > 0 ? (
           <Button disabled={isGenerating} onClick={onClearAssignments} size="sm" variant="ghost">
             Clear Assignments
@@ -371,4 +390,24 @@ function formatExcerpt(value: string, maxLength = 80) {
 
 function formatCount(count: number, singular: string) {
   return `${count} ${singular}${count === 1 ? "" : "s"}`
+}
+
+function assignedVoices(assignments: VoiceTextAssignment[], voices: VoiceAsset[]) {
+  const voicesById = new Map(voices.map((voice) => [voice.id, voice]))
+  const seenVoiceIds = new Set<string>()
+  const result: VoiceAsset[] = []
+
+  for (const assignment of assignments) {
+    if (seenVoiceIds.has(assignment.voiceId)) {
+      continue
+    }
+    const voice = voicesById.get(assignment.voiceId)
+    if (!voice) {
+      continue
+    }
+    seenVoiceIds.add(voice.id)
+    result.push(voice)
+  }
+
+  return result
 }
