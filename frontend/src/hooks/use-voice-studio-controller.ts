@@ -280,6 +280,19 @@ export function useVoiceStudioController() {
     }
   }
 
+  async function regenerateMultiVoiceSegment(segmentId: string, voiceId?: string | null) {
+    setLatestGenerationMode("multi")
+    const generatedResult = await multiVoiceSpeech.regenerateSegment({
+      providerKey: providerKeys.activeProviderKey,
+      segmentId,
+      storageLimitBytes: generatedAudio.storageLimitBytes,
+      voiceId,
+    })
+    if (generatedResult) {
+      setLatestGeneratedAudioId(generatedResult.id)
+    }
+  }
+
   function cancelGeneration() {
     if (multiVoiceSpeech.isGenerating) {
       void multiVoiceSpeech.cancelGeneration()
@@ -400,6 +413,7 @@ export function useVoiceStudioController() {
     providerTuning,
     requestClearGeneratedAudio,
     requestDeleteVoice,
+    regenerateMultiVoiceSegment,
     result,
     revealAddVoice,
     sampleProcessing,
@@ -428,6 +442,7 @@ export function useVoiceStudioController() {
     clearVoiceAssignments,
     isSpeechGenerating,
     multiVoiceSpeech,
+    multiVoiceSegmentResultUrls: multiVoiceSpeech.segmentResultUrls,
     removeVoiceAssignment,
     updateVoiceAssignment,
     voiceLibrary,

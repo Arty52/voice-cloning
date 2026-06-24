@@ -37,11 +37,13 @@ function App() {
     latestStorageError,
     metadata,
     naturalHandoffsEnabled,
+    multiVoiceSegmentResultUrls,
     navigateToSection,
     providerKeys,
     providerTuning,
     requestClearGeneratedAudio,
     requestDeleteVoice,
+    regenerateMultiVoiceSegment,
     result,
     removeVoiceAssignment,
     revealAddVoice,
@@ -181,8 +183,11 @@ function App() {
             isDeleteDisabled={generatedAudio.generatedAudioMutation === "delete"}
             item={latestGeneratedAudioItem}
             onDelete={(id) => void generatedAudio.handleDeleteGeneratedAudio(id)}
+            onRegenerateSegment={(segmentId, voiceId) => void regenerateMultiVoiceSegment(segmentId, voiceId)}
+            segmentResultUrls={multiVoiceSegmentResultUrls}
             status={speechStatus}
             storageError={latestStorageError}
+            voices={voiceLibrary.voices}
           />
 
           <VoiceTuningPanel
