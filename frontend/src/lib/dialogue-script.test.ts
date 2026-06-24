@@ -47,6 +47,20 @@ Skippy: Hello.
     ])
   })
 
+  it("parses Unicode speaker labels", () => {
+    const blocks = parseSpeakerLabeledScript(`
+José: Hola.
+李雷: 你好。
+Мария 2: Привет.
+`)
+
+    expect(blocks).toEqual([
+      expect.objectContaining({ speakerLabel: "José", text: "Hola." }),
+      expect.objectContaining({ speakerLabel: "李雷", text: "你好。" }),
+      expect.objectContaining({ speakerLabel: "Мария 2", text: "Привет." }),
+    ])
+  })
+
   it("normalizes speaker label whitespace", () => {
     expect(normalizeSpeakerLabel("  Captain   Rex  ")).toBe("Captain Rex")
   })

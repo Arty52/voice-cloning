@@ -31,8 +31,8 @@ type BuildDialogueSpeechJobSegmentsInput = {
   voices: VoiceChoice[]
 }
 
-const SPEAKER_LABEL_PATTERN = /^([A-Za-z][A-Za-z0-9 ._'()-]{0,48}):[ \t]+(.+)$/
-const EMPTY_SPEAKER_LABEL_PATTERN = /^([A-Za-z][A-Za-z0-9 ._'()-]{0,48}):[ \t]*$/
+const SPEAKER_LABEL_PATTERN = /^([\p{L}\p{N}][\p{L}\p{N}\p{M} ._'()-]{0,48}):[ \t]+(.+)$/u
+const EMPTY_SPEAKER_LABEL_PATTERN = /^([\p{L}\p{N}][\p{L}\p{N}\p{M} ._'()-]{0,48}):[ \t]*$/u
 const SPEAKER_COLOR_COUNT = 6
 
 export function parseSpeakerLabeledScript(text: string): MultiVoiceScriptBlock[] {
