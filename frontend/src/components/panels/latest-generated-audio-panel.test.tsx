@@ -87,6 +87,44 @@ function renderLatestPanel(ui: ReactNode) {
 }
 
 describe("LatestGeneratedAudioPanel multi-voice results", () => {
+  it("keeps segment controls collapsed until opened", async () => {
+    const user = userEvent.setup()
+    renderLatestPanel(
+      <LatestGeneratedAudioPanel
+        error={null}
+        isDeleteDisabled={false}
+        item={item}
+        onDelete={vi.fn()}
+        onRegenerateSegment={vi.fn()}
+        segmentResultUrls={{
+          "segment-one": "/api/speech/jobs/job-1/segments/segment-one/result",
+          "segment-two": "/api/speech/jobs/job-1/segments/segment-two/result",
+        }}
+        status="success"
+        storageError={null}
+        voices={[narrator, villain]}
+      />
+    )
+
+    expect(screen.getByRole("region", { name: /multi-voice segment controls/i })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /show segments/i })).toHaveAttribute("aria-expanded", "false")
+    expect(screen.getAllByRole("button", { name: /play audio/i })).toHaveLength(1)
+    expect(screen.queryByRole("group", { name: /generated segment 1 playback/i })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: /show segments/i }))
+
+    expect(screen.getByRole("button", { name: /hide segments/i })).toHaveAttribute("aria-expanded", "true")
+    expect(screen.getByText("Hello narrator.")).toBeInTheDocument()
+    expect(screen.getByText("Villain replies.")).toBeInTheDocument()
+    expect(screen.getAllByRole("button", { name: /play audio/i })).toHaveLength(3)
+
+    await user.click(screen.getByRole("button", { name: /hide segments/i }))
+
+    expect(screen.getByRole("button", { name: /show segments/i })).toHaveAttribute("aria-expanded", "false")
+    expect(screen.getAllByRole("button", { name: /play audio/i })).toHaveLength(1)
+    expect(screen.queryByRole("group", { name: /generated segment 1 playback/i })).not.toBeInTheDocument()
+  })
+
   it("plays segments and regenerates with an optional changed voice", async () => {
     const user = userEvent.setup()
     const onRegenerateSegment = vi.fn()
@@ -107,7 +145,9 @@ describe("LatestGeneratedAudioPanel multi-voice results", () => {
       />
     )
 
-    expect(screen.getByRole("region", { name: /multi-voice segments/i })).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: /show segments/i }))
+
+    expect(screen.getByRole("region", { name: /multi-voice segment controls/i })).toBeInTheDocument()
     expect(screen.getByText("Hello narrator.")).toBeInTheDocument()
     expect(screen.getByText("Villain replies.")).toBeInTheDocument()
     expect(screen.getAllByRole("button", { name: /play audio/i })).toHaveLength(3)
@@ -136,6 +176,7 @@ describe("LatestGeneratedAudioPanel multi-voice results", () => {
       />
     )
 
+    await user.click(screen.getByRole("button", { name: /show segments/i }))
     await user.click(screen.getAllByRole("button", { name: /^Regenerate$/i })[0])
 
     expect(onRegenerateSegment).toHaveBeenCalledWith("segment-one", null)
