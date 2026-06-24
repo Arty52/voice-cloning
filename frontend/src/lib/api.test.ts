@@ -379,6 +379,7 @@ describe("voice API helpers", () => {
     vi.stubGlobal("fetch", vi.fn(() => okJson({ job: { id: "job-1", status: "running" } }, 202)))
 
     await regenerateSpeechJobSegment("job-1", "segment-one", {
+      providerKey: null,
       voiceId: "",
       voiceSettings: null,
     })
