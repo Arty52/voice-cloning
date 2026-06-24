@@ -233,6 +233,7 @@ export type SpeechJobSegment = {
   voiceId: string
   voiceName: string
   assignmentKind: SpeechSegmentAssignmentKind
+  voiceSettings?: VoiceTuningValues | null
   status: SpeechSegmentStatus
   generationCount: number
   characterCount: number | null
@@ -338,6 +339,7 @@ export type GeneratedAudioMultiVoiceSegmentMetadata = {
   voiceId: string
   voiceName: string
   assignmentKind: SpeechSegmentAssignmentKind
+  voiceSettings?: VoiceTuningValues | null
   generationCount: number
   characterCount: number | null
   resultSha256: string | null

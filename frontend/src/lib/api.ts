@@ -96,6 +96,7 @@ export type CreateSpeechJobSegmentRequest = {
   clientSegmentId: string
   text: string
   voiceId: string
+  voiceSettings?: VoiceTuningValues | null
 }
 
 export type CreateSpeechJobRequest = {
@@ -113,6 +114,7 @@ export type CreateSpeechJobRequest = {
 export type RegenerateSpeechJobSegmentRequest = {
   providerKey: string | null
   voiceId?: string | null
+  voiceSettings?: VoiceTuningValues | null
 }
 
 export type SpeechApiResult =
@@ -406,7 +408,7 @@ export function speechJobSegmentResultUrl(jobId: string, segmentId: string) {
 export async function regenerateSpeechJobSegment(
   jobId: string,
   segmentId: string,
-  { providerKey, voiceId }: RegenerateSpeechJobSegmentRequest
+  { providerKey, voiceId, voiceSettings }: RegenerateSpeechJobSegmentRequest
 ) {
   return fetchJson<SpeechJobResponse>(
     `/api/speech/jobs/${encodeURIComponent(jobId)}/segments/${encodeURIComponent(segmentId)}/regenerate`,
@@ -416,7 +418,7 @@ export async function regenerateSpeechJobSegment(
         "Content-Type": "application/json",
         ...providerHeaders({ providerKey }),
       },
-      body: JSON.stringify({ voiceId: voiceId || null }),
+      body: JSON.stringify({ voiceId: voiceId || null, voiceSettings: voiceSettings ?? null }),
     }
   )
 }

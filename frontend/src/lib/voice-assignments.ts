@@ -1,4 +1,4 @@
-import type { SpeechSegmentAssignmentKind, VoiceAsset } from "@/types"
+import type { SpeechSegmentAssignmentKind, VoiceAsset, VoiceTuningValues } from "@/types"
 
 export type VoiceTextAssignment = {
   id: string
@@ -19,6 +19,7 @@ export type SpeechJobSegmentDraft = {
   text: string
   voiceId: string
   voiceName: string
+  voiceSettings?: VoiceTuningValues | null
 }
 
 export type AssignmentSegmentBuildResult = {

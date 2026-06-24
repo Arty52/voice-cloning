@@ -41,6 +41,7 @@ type RegenerateSegmentInput = {
   segmentId: string
   storageLimitBytes?: number
   voiceId?: string | null
+  voiceSettings?: VoiceTuningValues | null
 }
 
 type PersistContext = {
@@ -153,6 +154,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
           clientSegmentId: segment.clientSegmentId,
           text: segment.text,
           voiceId: segment.voiceId,
+          voiceSettings: segment.voiceSettings,
         })),
         text: input.text,
         tuning: input.tuning,
@@ -167,7 +169,13 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
     }
   }
 
-  async function regenerateSegment({ providerKey, segmentId, storageLimitBytes, voiceId }: RegenerateSegmentInput) {
+  async function regenerateSegment({
+    providerKey,
+    segmentId,
+    storageLimitBytes,
+    voiceId,
+    voiceSettings,
+  }: RegenerateSegmentInput) {
     const activeJob = job
     const persistContext = lastPersistContextRef.current
     if (!activeJob || activeJob.status !== "success") {
@@ -189,7 +197,11 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
     lastPersistContextRef.current = nextPersistContext
 
     try {
-      const payload = await api.regenerateSpeechJobSegment(activeJob.id, segmentId, { providerKey, voiceId })
+      const payload = await api.regenerateSpeechJobSegment(activeJob.id, segmentId, {
+        providerKey,
+        voiceId,
+        voiceSettings,
+      })
       if (!isActiveRun(runId)) {
         return null
       }

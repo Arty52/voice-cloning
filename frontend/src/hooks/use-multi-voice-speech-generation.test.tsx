@@ -82,6 +82,7 @@ const runningJob: SpeechJob = {
       text: "Hello ",
       voiceId: "narrator",
       voiceName: "Narrator",
+      voiceSettings: { stability: 0.42 },
     },
     {
       assignmentKind: "default",
@@ -97,6 +98,7 @@ const runningJob: SpeechJob = {
       text: "there.",
       voiceId: "narrator",
       voiceName: "Narrator",
+      voiceSettings: { stability: 0.42 },
     },
   ],
   status: "running",
@@ -132,6 +134,7 @@ const regeneratedJob: SpeechJob = {
           resultSha256: "segment-one-hash-2",
           voiceId: "villain",
           voiceName: "Villain",
+          voiceSettings: { stability: 0.8 },
         }
       : segment
   ),
@@ -200,6 +203,7 @@ function generationInput(overrides: Partial<GenerateMultiVoiceSpeechInput> = {})
         text: "Hello ",
         voiceId: "narrator",
         voiceName: "Narrator",
+        voiceSettings: { stability: 0.42 },
       },
       {
         assignmentId: null,
@@ -210,6 +214,7 @@ function generationInput(overrides: Partial<GenerateMultiVoiceSpeechInput> = {})
         text: "there.",
         voiceId: "narrator",
         voiceName: "Narrator",
+        voiceSettings: { stability: 0.42 },
       },
     ],
     selectedModelId: "eleven_flash_v2_5",
@@ -281,6 +286,10 @@ describe("useMultiVoiceSpeechGeneration", () => {
       defaultVoiceId: "narrator",
       modelId: "eleven_flash_v2_5",
       providerId: "elevenlabs",
+      segments: [
+        expect.objectContaining({ clientSegmentId: "segment-one", voiceSettings: { stability: 0.42 } }),
+        expect.objectContaining({ clientSegmentId: "segment-two", voiceSettings: { stability: 0.42 } }),
+      ],
       text: "Hello there.",
       voiceSettings: { stability: 0.42 },
     })
@@ -409,6 +418,7 @@ describe("useMultiVoiceSpeechGeneration", () => {
         segmentId: "segment-one",
         storageLimitBytes: 80,
         voiceId: "villain",
+        voiceSettings: { stability: 0.8 },
       })
     })
 
@@ -419,7 +429,7 @@ describe("useMultiVoiceSpeechGeneration", () => {
       "Content-Type": "application/json",
       "X-Voice-Provider-Key": "browser-secret",
     })
-    expect(regenerateCall?.[1]?.body).toBe(JSON.stringify({ voiceId: "villain" }))
+    expect(regenerateCall?.[1]?.body).toBe(JSON.stringify({ voiceId: "villain", voiceSettings: { stability: 0.8 } }))
     expect(persistGeneratedAudio).toHaveBeenCalledTimes(2)
     expect(persistGeneratedAudio).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -432,6 +442,7 @@ describe("useMultiVoiceSpeechGeneration", () => {
               resultSha256: "segment-one-hash-2",
               voiceId: "villain",
               voiceName: "Villain",
+              voiceSettings: { stability: 0.8 },
             }),
           ]),
         }),

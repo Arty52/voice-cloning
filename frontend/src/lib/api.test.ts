@@ -259,6 +259,7 @@ describe("voice API helpers", () => {
           clientSegmentId: "segment-one",
           text: "Hello ",
           voiceId: "narrator",
+          voiceSettings: { speed: 1.1 },
         },
         {
           assignmentKind: "default",
@@ -291,6 +292,7 @@ describe("voice API helpers", () => {
           clientSegmentId: "segment-one",
           text: "Hello ",
           voiceId: "narrator",
+          voiceSettings: { speed: 1.1 },
         },
         {
           assignmentKind: "default",
@@ -351,18 +353,19 @@ describe("voice API helpers", () => {
     )
   })
 
-  it("regenerates speech job segments with an optional voice override", async () => {
+  it("regenerates speech job segments with optional voice and tuning overrides", async () => {
     vi.stubGlobal("fetch", vi.fn(() => okJson({ job: { id: "job-1", status: "running" } }, 202)))
 
     await regenerateSpeechJobSegment("job-1", "segment-one", {
       providerKey: "browser-secret",
       voiceId: "villain",
+      voiceSettings: { speed: 1.2 },
     })
 
     expect(fetch).toHaveBeenCalledWith(
       "/api/speech/jobs/job-1/segments/segment-one/regenerate",
       expect.objectContaining({
-        body: JSON.stringify({ voiceId: "villain" }),
+        body: JSON.stringify({ voiceId: "villain", voiceSettings: { speed: 1.2 } }),
         headers: {
           "Content-Type": "application/json",
           [VOICE_PROVIDER_KEY_HEADER]: "browser-secret",
