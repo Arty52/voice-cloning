@@ -5,6 +5,7 @@ import { DEFAULT_VOICE_PRESET_ID } from "@/lib/voice-presets"
 import type {
   AsyncStatus,
   SampleProcessingJob,
+  SampleProcessingOperation,
   SampleProcessingOperationId,
   SampleProcessingOptionsResponse,
   SampleProcessingPresetId,
@@ -15,7 +16,7 @@ import type {
 } from "@/types"
 
 export type SampleProcessingSourceMode = "voice" | "upload"
-export type SampleProcessingStatus = "idle" | "starting" | "processing" | "success" | "error"
+export type SampleProcessingStatus = "idle" | "starting" | "processing" | "success" | "error" | "canceled"
 
 type UseSampleProcessingOptions = {
   onVoiceSaved: (voice: VoiceAsset) => void
@@ -25,14 +26,19 @@ type UseSampleProcessingOptions = {
 
 const POLL_INTERVAL_MS = 1500
 const TIMER_INTERVAL_MS = 100
+const DEFAULT_WORKFLOW_ORDER: SampleProcessingOperationId[] = ["isolateVoice", "separateSpeakers", "trimSilence"]
 const DEFAULT_PROCESSING_PRESET_ID: SampleProcessingPresetId = "balanced"
 
 export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: UseSampleProcessingOptions) {
   const [options, setOptions] = useState<SampleProcessingOptionsResponse | null>(null)
   const [optionsStatus, setOptionsStatus] = useState<AsyncStatus>("idle")
   const [optionsError, setOptionsError] = useState<string | null>(null)
-  const [operationId, setOperationId] = useState<SampleProcessingOperationId>("isolateVoice")
-  const [processingPresetId, setProcessingPresetId] = useState<SampleProcessingPresetId>(DEFAULT_PROCESSING_PRESET_ID)
+  const [selectedOperationIds, setSelectedOperationIds] = useState<SampleProcessingOperationId[]>(["isolateVoice"])
+  const [processingPresetIds, setProcessingPresetIds] = useState<
+    Partial<Record<SampleProcessingOperationId, SampleProcessingPresetId>>
+  >({
+    isolateVoice: DEFAULT_PROCESSING_PRESET_ID,
+  })
   const [sourceMode, setSourceMode] = useState<SampleProcessingSourceMode>("voice")
   const [sourceVoiceId, setSourceVoiceId] = useState("")
   const [sourcePreference, setSourcePreference] = useState<SampleProcessingSourcePreference>("original")
@@ -63,11 +69,41 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
 
   const operations = useMemo(() => options?.operations ?? [], [options])
   const enabledOperations = useMemo(() => operations.filter((operation) => operation.enabled), [operations])
+  const recommendedWorkflowOrder = useMemo(() => workflowOrderForOptions(options), [options])
+  const workflowOperationIds = useMemo(
+    () => canonicalSelectedOperationIds(selectedOperationIds, operations, recommendedWorkflowOrder),
+    [operations, recommendedWorkflowOrder, selectedOperationIds]
+  )
+  const operationId = workflowOperationIds[0] ?? selectedOperationIds[0] ?? "isolateVoice"
   const selectedOperation = operations.find((operation) => operation.id === operationId) ?? null
   const processingPresets = selectedOperation?.enabled === true ? selectedOperation.processingPresets : []
-  const resolvedProcessingPresetId = resolveProcessingPresetId(processingPresetId, selectedOperation)
+  const resolvedProcessingPresetId = resolveProcessingPresetId(processingPresetIds[operationId], selectedOperation)
   const selectedProcessingPreset =
     processingPresets.find((preset) => preset.id === resolvedProcessingPresetId) ?? null
+  const selectedWorkflowSteps = useMemo(
+    () =>
+      workflowOperationIds
+        .map((selectedOperationId) => {
+          const operation = operations.find((candidate) => candidate.id === selectedOperationId)
+          if (!operation?.enabled) {
+            return null
+          }
+          const presetId = operation.processingPresets.length > 0
+            ? resolveProcessingPresetId(processingPresetIds[selectedOperationId], operation)
+            : null
+          return {
+            operation,
+            operationId: operation.id,
+            processingPresetId: presetId,
+          }
+        })
+        .filter((step): step is {
+          operation: SampleProcessingOperation
+          operationId: SampleProcessingOperationId
+          processingPresetId: SampleProcessingPresetId | null
+        } => step !== null),
+    [operations, processingPresetIds, workflowOperationIds]
+  )
   const resolvedSourceVoiceId = voices.some((voice) => voice.id === sourceVoiceId)
     ? sourceVoiceId
     : selectedVoice?.id ?? voices[0]?.id ?? ""
@@ -75,7 +111,9 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
   const voiceOptions = useMemo(() => voices.map((voice) => ({ label: voice.name, value: voice.id })), [voices])
   const isProcessing = status === "starting" || status === "processing"
   const hasSource = sourceMode === "upload" ? sourceFile !== null : resolvedSourceVoiceId.trim().length > 0
-  const canStart = !isProcessing && selectedOperation?.enabled === true && hasSource
+  const canStart = !isProcessing && selectedWorkflowSteps.length > 0 && hasSource
+  const canCancel = isProcessing && activeJobIdRef.current !== null
+  const activeStep = (job?.steps ?? []).find((step) => step.id === job?.activeStepId) ?? null
   const speakerSeparationResult =
     job?.status === "success" && isSpeakerSeparationResult(job.result) ? job.result : null
   const isSpeakerSeparationJob = speakerSeparationResult !== null
@@ -178,13 +216,11 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
         setOptions(payload)
         setOptionsStatus("success")
         const nextOperation = payload.operations.find((operation) => operation.enabled) ?? payload.operations[0]
-        if (nextOperation) {
-          setOperationId((current) => {
-            const currentOperation = payload.operations.find((operation) => operation.id === current)
-            return currentOperation?.enabled ? current : nextOperation.id
-          })
-          setProcessingPresetId((current) => resolveProcessingPresetId(current, nextOperation))
-        }
+        setSelectedOperationIds((current) => {
+          const currentAvailable = canonicalSelectedOperationIds(current, payload.operations, workflowOrderForOptions(payload))
+          return currentAvailable.length > 0 ? currentAvailable : nextOperation ? [nextOperation.id] : []
+        })
+        setProcessingPresetIds((current) => resolveProcessingPresetIds(current, payload.operations))
       } catch (caught) {
         if (!mountedRef.current) {
           return
@@ -229,8 +265,12 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
     if (nextOperationId === operationId) {
       return
     }
-    setOperationId(nextOperationId)
-    setProcessingPresetId(resolveProcessingPresetId(undefined, operations.find((operation) => operation.id === nextOperationId)))
+    const nextOperation = operations.find((operation) => operation.id === nextOperationId)
+    setSelectedOperationIds(nextOperation?.enabled ? [nextOperationId] : [])
+    setProcessingPresetIds((current) => ({
+      ...current,
+      [nextOperationId]: resolveProcessingPresetId(undefined, nextOperation),
+    }))
     resetProcessedCandidate()
   }
 
@@ -238,7 +278,40 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
     if (nextPresetId === resolvedProcessingPresetId) {
       return
     }
-    setProcessingPresetId(nextPresetId)
+    setProcessingPresetIds((current) => ({ ...current, [operationId]: nextPresetId }))
+    resetProcessedCandidate()
+  }
+
+  function handleProcessingPresetChangeForOperation(
+    nextOperationId: SampleProcessingOperationId,
+    nextPresetId: SampleProcessingPresetId
+  ) {
+    const operation = operations.find((candidate) => candidate.id === nextOperationId)
+    const resolvedPresetId = resolveProcessingPresetId(nextPresetId, operation)
+    if (processingPresetIds[nextOperationId] === resolvedPresetId) {
+      return
+    }
+    setProcessingPresetIds((current) => ({ ...current, [nextOperationId]: resolvedPresetId }))
+    resetProcessedCandidate()
+  }
+
+  function handleWorkflowStepSelected(nextOperationId: SampleProcessingOperationId, selected: boolean) {
+    const operation = operations.find((candidate) => candidate.id === nextOperationId)
+    if (!operation?.enabled) {
+      return
+    }
+    const currentIds = new Set(selectedOperationIds)
+    if (selected) {
+      currentIds.add(nextOperationId)
+    } else {
+      currentIds.delete(nextOperationId)
+    }
+    const nextOperationIds = canonicalSelectedOperationIds(Array.from(currentIds), operations, recommendedWorkflowOrder)
+    setSelectedOperationIds(nextOperationIds)
+    setProcessingPresetIds((current) => ({
+      ...current,
+      [nextOperationId]: resolveProcessingPresetId(current[nextOperationId], operation),
+    }))
     resetProcessedCandidate()
   }
 
@@ -266,6 +339,11 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
 
     const runId = runIdRef.current + 1
     runIdRef.current = runId
+    const workflowSteps = selectedWorkflowSteps.map((step) => ({
+      operationId: step.operationId,
+      processingPresetId: step.processingPresetId,
+    }))
+    const primaryStep = selectedWorkflowSteps[0] ?? null
     startProcessingTimer()
     setStatus("starting")
     setError(null)
@@ -273,16 +351,17 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
     setSaveStatus("idle")
     updateJob(null)
     clearSpeakerSeparationState()
-    setSaveName(suggestedSaveName(sourceMode, selectedSourceVoice, sourceFile, selectedOperation))
+    setSaveName(suggestedSaveName(sourceMode, selectedSourceVoice, sourceFile, selectedWorkflowSteps))
     setSaveVoicePresetId(selectedSourceVoice?.voicePresetId ?? DEFAULT_VOICE_PRESET_ID)
 
     try {
       const payload = await api.createSampleProcessingJob({
-        operationId,
-        processingPresetId: processingPresets.length > 0 ? resolvedProcessingPresetId : null,
+        operationId: workflowSteps.length === 1 ? primaryStep?.operationId : undefined,
+        processingPresetId: workflowSteps.length === 1 ? primaryStep?.processingPresetId : null,
         sourceFile: sourceMode === "upload" ? sourceFile : null,
         sourcePreference: sourceMode === "voice" ? sourcePreference : undefined,
         sourceVoiceId: sourceMode === "voice" ? resolvedSourceVoiceId : null,
+        workflowSteps: workflowSteps.length > 1 ? workflowSteps : undefined,
       })
       if (!isActiveRun(runId)) {
         return
@@ -291,6 +370,11 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
       if (payload.job.status === "success") {
         finishProcessingTimer()
         setStatus("success")
+        return
+      }
+      if (payload.job.status === "canceled") {
+        finishProcessingTimer()
+        setStatus("canceled")
         return
       }
       if (payload.job.status === "error") {
@@ -324,6 +408,11 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
           setStatus("success")
           return
         }
+        if (payload.job.status === "canceled") {
+          finishProcessingTimer()
+          setStatus("canceled")
+          return
+        }
         if (payload.job.status === "error") {
           finishProcessingTimer()
           setStatus("error")
@@ -340,6 +429,46 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
         return
       }
       await delay(POLL_INTERVAL_MS)
+    }
+  }
+
+  async function handleCancelProcessing() {
+    const activeJobId = activeJobIdRef.current
+    const activeRunId = runIdRef.current
+    if (!activeJobId || !isProcessing) {
+      return
+    }
+    try {
+      const payload = await api.cancelSampleProcessingJob(activeJobId)
+      if (!isActiveRun(activeRunId)) {
+        return
+      }
+      updateJob(payload.job)
+      if (payload.job.status === "canceled") {
+        runIdRef.current = activeRunId + 1
+        finishProcessingTimer()
+        setStatus("canceled")
+        setError(null)
+        return
+      }
+      if (payload.job.status === "success") {
+        runIdRef.current = activeRunId + 1
+        finishProcessingTimer()
+        setStatus("success")
+        setError(null)
+        return
+      }
+      if (payload.job.status === "error") {
+        runIdRef.current = activeRunId + 1
+        finishProcessingTimer()
+        setStatus("error")
+        setError(payload.job.error || "Sample processing failed.")
+      }
+    } catch (caught) {
+      if (!isActiveRun(activeRunId)) {
+        return
+      }
+      setError(caught instanceof Error ? caught.message : "Unable to cancel sample processing.")
     }
   }
 
@@ -553,9 +682,11 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
   }
 
   return {
+    activeStep,
     canSave,
     canSaveSelectedSpeakers,
     canStart,
+    canCancel,
     assignmentError,
     assignmentStatus,
     assignSelectedTranscriptItemsToSpeaker,
@@ -565,6 +696,7 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
     error,
     handleSaveProcessedVoice,
     handleSaveSpeakerVoices,
+    handleCancelProcessing,
     handleSpeakerNameChange,
     handleSpeakerSaveSelectionChange,
     handleSpeakerVoicePresetChange,
@@ -585,20 +717,25 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
     processingPresets,
     processingElapsedMs,
     resultUrl,
+    recommendedWorkflowOrder,
     saveError,
     saveName,
     saveStatus,
     saveVoicePresetId,
     selectedOperation,
+    selectedOperationIds: workflowOperationIds,
     selectedProcessingPreset,
     selectedSpeakerIds,
     selectedSourceVoice,
     selectedTranscriptItemIds,
+    selectedWorkflowSteps,
     setOperationId: handleOperationChange,
     setProcessingPresetId: handleProcessingPresetChange,
+    setProcessingPresetIdForOperation: handleProcessingPresetChangeForOperation,
     setSaveName,
     setSaveVoicePresetId,
     setSelectedSpeakerIds,
+    setWorkflowStepSelected: handleWorkflowStepSelected,
     setSourcePreference: handleSourcePreferenceChange,
     setSourceVoiceId: handleSourceVoiceChange,
     speakerNameAssignments,
@@ -630,30 +767,56 @@ function resolveProcessingPresetId(
   return operation?.defaultProcessingPresetId ?? presets[0]?.id ?? DEFAULT_PROCESSING_PRESET_ID
 }
 
+function resolveProcessingPresetIds(
+  current: Partial<Record<SampleProcessingOperationId, SampleProcessingPresetId>>,
+  operations: SampleProcessingOperation[]
+) {
+  return Object.fromEntries(
+    operations.map((operation) => [operation.id, resolveProcessingPresetId(current[operation.id], operation)])
+  ) as Partial<Record<SampleProcessingOperationId, SampleProcessingPresetId>>
+}
+
+function workflowOrderForOptions(options: SampleProcessingOptionsResponse | null) {
+  const order = options?.recommendedWorkflowOrder ?? []
+  return order.length > 0 ? order : DEFAULT_WORKFLOW_ORDER
+}
+
+function canonicalSelectedOperationIds(
+  selectedIds: SampleProcessingOperationId[],
+  operations: SampleProcessingOperation[],
+  recommendedWorkflowOrder: SampleProcessingOperationId[]
+) {
+  const enabledIds = new Set(operations.filter((operation) => operation.enabled).map((operation) => operation.id))
+  const selectedEnabledIds = new Set(selectedIds.filter((operationId) => enabledIds.has(operationId)))
+  const orderedIds = recommendedWorkflowOrder.filter((operationId) => selectedEnabledIds.has(operationId))
+  const remainingIds = selectedIds.filter((operationId) => selectedEnabledIds.has(operationId) && !orderedIds.includes(operationId))
+  return [...orderedIds, ...remainingIds]
+}
+
 function suggestedSaveName(
   sourceMode: SampleProcessingSourceMode,
   sourceVoice: VoiceAsset | null,
   sourceFile: File | null,
-  operation: SampleProcessingOptionsResponse["operations"][number] | null
+  workflowSteps: { operation: SampleProcessingOperation }[]
 ) {
-  const suffix = operationNameSuffix(operation)
+  const suffix = operationNameSuffix(workflowSteps)
   if (sourceMode === "voice") {
     return `${sourceVoice?.name || "Processed Voice"} ${suffix}`
   }
   return `${fileStem(sourceFile?.name) || "Uploaded Source"} ${suffix}`
 }
 
-function operationNameSuffix(operation: SampleProcessingOptionsResponse["operations"][number] | null) {
-  if (operation?.id === "isolateVoice") {
-    return "Isolated"
-  }
-  if (operation?.id === "trimSilence") {
-    return "Trimmed"
-  }
-  if (operation?.id === "separateSpeakers") {
+function operationNameSuffix(workflowSteps: { operation: SampleProcessingOperation }[]) {
+  if (workflowSteps.some((step) => step.operation.id === "separateSpeakers")) {
     return "Separated"
   }
-  return operation?.label ?? "Processed"
+  if (workflowSteps.some((step) => step.operation.id === "trimSilence")) {
+    return "Trimmed"
+  }
+  if (workflowSteps.some((step) => step.operation.id === "isolateVoice")) {
+    return "Isolated"
+  }
+  return workflowSteps[0]?.operation.label ?? "Processed"
 }
 
 function fileStem(filename: string | undefined) {
