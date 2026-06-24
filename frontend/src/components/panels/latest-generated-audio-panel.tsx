@@ -230,7 +230,11 @@ function MultiVoiceSegmentResults({
                             Tune
                           </Button>
                         </PopoverTrigger>
-                        <PopoverContent align="end" className="w-80 sm:w-96">
+                        <PopoverContent
+                          align="end"
+                          className="w-80 sm:w-96"
+                          onOpenAutoFocus={(event) => event.preventDefault()}
+                        >
                           <PopoverHeader>
                             <PopoverTitle>Segment {segment.index + 1} Tuning</PopoverTitle>
                             <PopoverDescription>

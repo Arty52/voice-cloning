@@ -12,6 +12,16 @@ const narrator = voice("narrator", "Narrator")
 const villain = voice("villain", "Villain")
 const segmentTuningControls: ProviderTuningControl[] = [
   {
+    defaultValue: 0.4,
+    description: "Lower values allow more expressive delivery.",
+    id: "stability",
+    label: "Stability",
+    max: 1,
+    min: 0,
+    step: 0.01,
+    type: "slider",
+  },
+  {
     defaultValue: false,
     description: "Boosts speaker similarity.",
     id: "useSpeakerBoost",
@@ -276,6 +286,32 @@ describe("LatestGeneratedAudioPanel multi-voice results", () => {
 
     expect(screen.getByRole("menuitemradio", { name: "Archived Voice" })).toHaveAttribute("aria-checked", "true")
     expect(screen.getByRole("menuitemradio", { name: "Narrator" })).toBeInTheDocument()
+  })
+
+  it("does not autofocus tuning help when segment tuning opens", async () => {
+    const user = userEvent.setup()
+    renderLatestPanel(
+      <LatestGeneratedAudioPanel
+        error={null}
+        isDeleteDisabled={false}
+        item={item}
+        onDelete={vi.fn()}
+        onRegenerateSegment={vi.fn()}
+        providerTuningControls={segmentTuningControls}
+        segmentResultUrls={{ "segment-one": "/api/speech/jobs/job-1/segments/segment-one/result" }}
+        status="success"
+        storageError={null}
+        tuning={{ stability: 0.4, useSpeakerBoost: false }}
+        voices={[narrator, villain]}
+      />
+    )
+
+    await user.click(screen.getByRole("button", { name: /show segments/i }))
+    await user.click(screen.getAllByRole("button", { name: /^Tune$/i })[0])
+
+    const stabilityHelp = screen.getByRole("button", { name: "Stability help" })
+    expect(screen.getByRole("heading", { name: "Segment 1 Tuning" })).toBeInTheDocument()
+    expect(stabilityHelp).not.toHaveFocus()
   })
 
   it("regenerates with a segment tuning override", async () => {
