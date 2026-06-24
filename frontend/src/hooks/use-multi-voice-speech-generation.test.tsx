@@ -10,6 +10,10 @@ import type {
 
 import { useMultiVoiceSpeechGeneration } from "./use-multi-voice-speech-generation"
 
+type GenerateMultiVoiceSpeechInput = Parameters<
+  ReturnType<typeof useMultiVoiceSpeechGeneration>["generateSpeech"]
+>[0]
+
 const defaultVoice: VoiceAsset = {
   id: "narrator",
   name: "Narrator",
@@ -62,6 +66,7 @@ const runningJob: SpeechJob = {
   error: null,
   id: "job-1",
   resultSha256: null,
+  segmentGapMs: 250,
   segments: [
     {
       assignmentKind: "assigned",
@@ -164,7 +169,7 @@ const generatedResult: GeneratedResult = {
   voiceName: "Multi-Voice",
 }
 
-function generationInput() {
+function generationInput(overrides: Partial<GenerateMultiVoiceSpeechInput> = {}) {
   return {
     backendDefaultModelId: "eleven_multilingual_v2",
     canUseProvider: true,
@@ -212,6 +217,7 @@ function generationInput() {
     storageLimitBytes: 100,
     text: "Hello there.",
     tuning: { stability: 0.42 },
+    ...overrides,
   }
 }
 
@@ -278,6 +284,7 @@ describe("useMultiVoiceSpeechGeneration", () => {
       text: "Hello there.",
       voiceSettings: { stability: 0.42 },
     })
+    expect(JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string)).not.toHaveProperty("segmentGapMs")
     expect(vi.mocked(fetch).mock.calls[0][1]?.headers).toMatchObject({
       "Content-Type": "application/json",
       "X-Voice-Provider-Key": "browser-secret",
@@ -297,6 +304,32 @@ describe("useMultiVoiceSpeechGeneration", () => {
       }),
       100
     )
+  })
+
+  it("forwards an explicit gapless multi-voice speech job option", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path === "/api/speech/jobs" && init?.method === "POST") {
+          return okJson({ job: successJob }, 202)
+        }
+        if (path === "/api/speech/jobs/job-1/result" && !init) {
+          return okAudio("combined")
+        }
+        return okJson({})
+      })
+    )
+    const persistGeneratedAudio = vi.fn(async () => generatedResult)
+    const { result } = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+
+    await act(async () => {
+      await result.current.generateSpeech(generationInput({ segmentGapMs: 0 }))
+    })
+
+    expect(JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string)).toMatchObject({
+      segmentGapMs: 0,
+    })
   })
 
   it("cancels a running job", async () => {

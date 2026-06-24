@@ -275,6 +275,7 @@ describe("buildGeneratedAudioMultiVoiceMetadata", () => {
       error: null,
       id: "job-1",
       resultSha256: "combined-hash",
+      segmentGapMs: 250,
       segments: [
         {
           assignmentKind: "assigned",

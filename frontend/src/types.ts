@@ -247,6 +247,7 @@ export type SpeechJob = {
   status: SpeechJobStatus
   text: string
   defaultVoiceId: string
+  segmentGapMs: number
   segments: SpeechJobSegment[]
   activeSegmentId: string | null
   resultSha256: string | null

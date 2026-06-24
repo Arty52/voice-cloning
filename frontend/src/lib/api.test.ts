@@ -304,6 +304,32 @@ describe("voice API helpers", () => {
     })
   })
 
+  it("serializes an explicit speech job segment gap", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => okJson({ job: { id: "job-1", status: "pending" } }, 202)))
+
+    await createSpeechJob({
+      defaultVoiceId: "narrator",
+      modelId: null,
+      providerId: "elevenlabs",
+      providerKey: null,
+      segmentGapMs: 0,
+      segments: [
+        {
+          assignmentKind: "assigned",
+          clientSegmentId: "segment-one",
+          text: "Hello.",
+          voiceId: "narrator",
+        },
+      ],
+      text: "Hello.",
+      tuning: {},
+    })
+
+    expect(JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string)).toMatchObject({
+      segmentGapMs: 0,
+    })
+  })
+
   it("polls and cancels speech jobs", async () => {
     vi.stubGlobal("fetch", vi.fn(() => okJson({ job: { id: "job 1", status: "canceled" } })))
 

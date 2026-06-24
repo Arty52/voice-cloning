@@ -27,6 +27,7 @@ type GenerateMultiVoiceSpeechInput = {
   provider: VoiceProvider | null
   providerId: string | null
   providerKey: string | null
+  segmentGapMs?: number | null
   segments: SpeechJobSegmentDraft[]
   selectedModelId: string
   selectedTuningPresetId: string
@@ -146,6 +147,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
         modelId: submittedModelId,
         providerId: input.providerId,
         providerKey: input.providerKey,
+        segmentGapMs: input.segmentGapMs,
         segments: input.segments.map((segment) => ({
           assignmentKind: segment.assignmentKind,
           clientSegmentId: segment.clientSegmentId,

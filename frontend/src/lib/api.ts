@@ -103,6 +103,7 @@ export type CreateSpeechJobRequest = {
   modelId: string | null
   providerId: string | null
   providerKey: string | null
+  segmentGapMs?: number | null
   segments: CreateSpeechJobSegmentRequest[]
   signal?: AbortSignal
   text: string
@@ -347,25 +348,39 @@ export async function createSpeechJob({
   modelId,
   providerId,
   providerKey,
+  segmentGapMs,
   segments,
   signal,
   text,
   tuning,
 }: CreateSpeechJobRequest) {
+  const body: {
+    defaultVoiceId: string
+    modelId: string | null
+    providerId: string | null
+    segmentGapMs?: number
+    segments: CreateSpeechJobSegmentRequest[]
+    text: string
+    voiceSettings: VoiceTuningValues
+  } = {
+    defaultVoiceId,
+    modelId,
+    providerId,
+    segments,
+    text,
+    voiceSettings: tuning,
+  }
+  if (segmentGapMs !== undefined && segmentGapMs !== null) {
+    body.segmentGapMs = segmentGapMs
+  }
+
   return fetchJson<SpeechJobResponse>("/api/speech/jobs", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       ...providerHeaders({ providerKey }),
     },
-    body: JSON.stringify({
-      defaultVoiceId,
-      modelId,
-      providerId,
-      segments,
-      text,
-      voiceSettings: tuning,
-    }),
+    body: JSON.stringify(body),
     signal,
   })
 }
