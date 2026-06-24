@@ -38,6 +38,16 @@ Some ElevenLabs keys are scoped. Use the permission error to update the key in t
 
 Sample Processing is disabled unless `.env` sets `SAMPLE_PROCESSING_ENGINE=ffmpeg`, `SAMPLE_PROCESSING_ENGINE=demucs`, or `SAMPLE_PROCESSING_ENABLE_DIARIZATION=1` and the backend runtime can execute the configured commands. `ffmpeg` enables Trim Silence only. `demucs` enables Isolate Voice and Trim Silence. `SAMPLE_PROCESSING_ENABLE_DIARIZATION=1` enables Speaker Separation. If `/api/sample-processing/options` shows disabled operations, confirm the engine and diarization settings, rebuild when install flags changed, and restart the backend.
 
+## Multi-Voice Speech Assembly Fails
+
+Multi-voice generation writes segment audio under ignored `storage/speech-jobs/` and uses FFmpeg to assemble the final result. Docker installs FFmpeg by default. For host development, install FFmpeg in the same environment that runs FastAPI, or set an absolute command path:
+
+```sh
+SAMPLE_PROCESSING_FFMPEG_COMMAND=/path/to/ffmpeg
+```
+
+If FFmpeg is missing, exits nonzero, or times out, the speech job moves to `error` and the job payload reports a sanitized message. Individual segment generation may have succeeded even when final assembly fails, but the combined result is available only after FFmpeg produces the final `audio/mpeg` file.
+
 ## Demucs Or FFmpeg Command Was Not Found
 
 Install the missing tool in the same environment that runs the FastAPI backend, or set an absolute command path:

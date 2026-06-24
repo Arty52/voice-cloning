@@ -22,6 +22,7 @@ Voice Clone Lab is a small local app, but changes should still keep clear bounda
 - `VoiceLibrary` owns local voice asset persistence, including `voicePresetId`. The current implementation is manifest-backed under ignored `assets/voices/` data, and it normalizes missing or invalid preset ids to `standardNarration` before writing.
 - Keep voice persistence behind the `VoiceLibrary` API and route/service contract. A future PostgreSQL-backed library should be able to replace the manifest implementation without changing frontend request shapes or provider adapter contracts.
 - Sample-processing routes should stay behind `SampleProcessingService`. The service owns job state, source selection, result path safety, assignment updates, and saving processed results through `VoiceLibrary`; processor adapters own external tool execution such as Demucs, FFmpeg, and diarization engines. Runtime job data belongs under ignored `storage/sample-processing/`.
+- Multi-voice speech generation should stay behind `SpeechJobService`. The service owns speech job state, segment validation, provider/cache orchestration through the existing single-segment speech service, cancellation, segment regeneration, and final audio assembly. Runtime speech job data belongs under ignored `storage/speech-jobs/`.
 
 ## Frontend Boundaries
 

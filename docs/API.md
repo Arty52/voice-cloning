@@ -24,6 +24,12 @@ The FastAPI service is available at `http://localhost:6420` when the Docker stac
 - `POST /api/sample-processing/jobs/{jobId}/voice`
 - `POST /api/sample-processing/jobs/{jobId}/speaker-voices`
 - `POST /api/speech`
+- `POST /api/speech/jobs`
+- `GET /api/speech/jobs/{jobId}`
+- `POST /api/speech/jobs/{jobId}/cancel`
+- `GET /api/speech/jobs/{jobId}/result`
+- `GET /api/speech/jobs/{jobId}/segments/{segmentId}/result`
+- `POST /api/speech/jobs/{jobId}/segments/{segmentId}/regenerate`
 
 Provider-backed routes accept an optional `providerId` request value and an optional `X-Voice-Provider-Key` header. When `providerId` is omitted, the backend uses `defaultProviderId`. When the header is present and non-empty, the browser-provided key overrides the selected provider's backend fallback key; otherwise the backend falls back to `.env`. The API never returns either key.
 
@@ -428,3 +434,80 @@ The response is `audio/mpeg` with these headers:
 Generation elapsed time is not part of the backend/provider response contract. The frontend measures `generationElapsedMs` around the `/api/speech` request and stores it with browser-local generated audio metadata.
 
 Voice clone cache entries are separated by provider and active key fingerprint, so switching browser keys does not reuse another account's cached voice ID.
+
+### Multi-Voice Speech Jobs
+
+`POST /api/speech/jobs` creates a backend-owned generation job for one script split into ordered voice segments. It accepts JSON and the optional `X-Voice-Provider-Key` header:
+
+```json
+{
+  "text": "Hello there.",
+  "defaultVoiceId": "default",
+  "providerId": "elevenlabs",
+  "modelId": "eleven_multilingual_v2",
+  "voiceSettings": { "stability": 0.5 },
+  "segments": [
+    {
+      "clientSegmentId": "segment-one",
+      "text": "Hello ",
+      "voiceId": "default",
+      "assignmentKind": "assigned"
+    },
+    {
+      "clientSegmentId": "segment-two",
+      "text": "there.",
+      "voiceId": "default",
+      "assignmentKind": "default"
+    }
+  ]
+}
+```
+
+The backend rejects blank text, text longer than the configured limit, unknown voice ids, empty segment lists, whitespace-only segments, and any payload where `segments.map(text).join("")` does not exactly equal `text`. Provider keys are used only for the active request and are never returned in job payloads.
+
+The response is `202` with `{ "job": { ... } }`:
+
+```json
+{
+  "job": {
+    "id": "job-id",
+    "status": "running",
+    "text": "Hello there.",
+    "defaultVoiceId": "default",
+    "activeSegmentId": "segment-one",
+    "resultSha256": null,
+    "error": null,
+    "segments": [
+      {
+        "id": "segment-one",
+        "index": 0,
+        "text": "Hello ",
+        "voiceId": "default",
+        "voiceName": "Default Voice",
+        "assignmentKind": "assigned",
+        "status": "running",
+        "generationCount": 0,
+        "characterCount": null,
+        "requestId": null,
+        "cacheState": null,
+        "resultSha256": null,
+        "error": null
+      }
+    ]
+  }
+}
+```
+
+`GET /api/speech/jobs/{jobId}` returns the current job state. A successful job has `status: "success"`, every segment has `status: "success"`, and `resultSha256` is populated for both the final audio and each generated segment.
+
+`POST /api/speech/jobs/{jobId}/cancel` cancels a pending or running job and returns the updated job. Cancel is idempotent for terminal jobs.
+
+`GET /api/speech/jobs/{jobId}/result` streams the combined `audio/mpeg` result after success. `GET /api/speech/jobs/{jobId}/segments/{segmentId}/result` streams an individual generated segment after that segment succeeds. Both return `409` until their audio is ready.
+
+`POST /api/speech/jobs/{jobId}/segments/{segmentId}/regenerate` starts regeneration for a successful job segment and rebuilds the combined result. The optional JSON body can change that segment's voice before regenerating:
+
+```json
+{ "voiceId": "another-local-voice" }
+```
+
+Speech jobs keep runtime files under ignored `storage/speech-jobs/`. Segment generation reuses the normal provider clone cache. Final assembly requires FFmpeg through `SAMPLE_PROCESSING_FFMPEG_COMMAND`; Docker includes FFmpeg by default, and host development must have the command available on `PATH` or configured with an absolute path.
