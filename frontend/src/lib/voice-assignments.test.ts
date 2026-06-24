@@ -66,6 +66,52 @@ describe("voice assignment segment building", () => {
     ).toBeNull()
   })
 
+  it("creates assignments from normalized source text ranges", () => {
+    const sourceText = "Say hello now."
+    const start = sourceText.indexOf("hello")
+    const end = start + "hello".length
+
+    expect(
+      createVoiceTextAssignment({
+        id: "reversed-selection",
+        selection: {
+          end: start,
+          start: end,
+          text: "stale selection payload",
+        },
+        sourceText,
+        voice: characterVoice,
+      })
+    ).toEqual({
+      end,
+      id: "reversed-selection",
+      sourceText,
+      start,
+      text: "hello",
+      voiceId: "villain",
+      voiceName: "Villain",
+    })
+  })
+
+  it("rejects stale or out-of-bounds selection ranges", () => {
+    expect(
+      createVoiceTextAssignment({
+        id: "stale-empty-slice",
+        selection: { end: 3, start: 0, text: "real text" },
+        sourceText: "   ",
+        voice: characterVoice,
+      })
+    ).toBeNull()
+    expect(
+      createVoiceTextAssignment({
+        id: "outside",
+        selection: { end: 8, start: 0, text: "outside" },
+        sourceText: "short",
+        voice: characterVoice,
+      })
+    ).toBeNull()
+  })
+
   it("expands assignments and default spans into ordered speech job segments", () => {
     const text = "Narrator. Villain speaks. Narrator again."
 

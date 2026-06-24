@@ -1,5 +1,5 @@
 import type { SpeechSegmentAssignmentKind, VoiceAsset, VoiceTuningValues } from "@/types"
-import { hasSpeakableSelection, type TextSelectionRange } from "@/lib/text-selection"
+import type { TextSelectionRange } from "@/lib/text-selection"
 
 export type VoiceTextAssignment = {
   id: string
@@ -56,16 +56,23 @@ export function createVoiceTextAssignment({
   sourceText,
   voice,
 }: VoiceTextAssignmentInput): VoiceTextAssignment | null {
-  if (!hasSpeakableSelection(selection)) {
+  const start = Math.min(selection.start, selection.end)
+  const end = Math.max(selection.start, selection.end)
+  if (start < 0 || end > sourceText.length || start === end) {
+    return null
+  }
+
+  const selectedText = sourceText.slice(start, end)
+  if (selectedText.trim().length === 0) {
     return null
   }
 
   return {
-    end: selection.end,
+    end,
     id,
     sourceText,
-    start: selection.start,
-    text: sourceText.slice(selection.start, selection.end),
+    start,
+    text: selectedText,
     voiceId: voice.id,
     voiceName: voice.name,
   }
