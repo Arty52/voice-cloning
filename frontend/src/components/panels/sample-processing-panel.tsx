@@ -219,7 +219,7 @@ function WorkflowStackSelection({ processing }: { processing: SampleProcessingCo
           return (
             <div
               className={cn(
-                "flex h-full flex-col rounded-md border border-border bg-background/60 transition",
+                "flex h-full flex-col rounded-md border border-border bg-background/60 transition-[background-color,box-shadow]",
                 hasPresetControls ? "p-2" : "p-0",
                 isSelected && "border-primary/60 bg-primary/10 shadow-sm"
               )}
@@ -230,7 +230,7 @@ function WorkflowStackSelection({ processing }: { processing: SampleProcessingCo
                 aria-label={operationCopy.title}
                 aria-pressed={isSelected}
                 className={cn(
-                  "flex min-h-28 w-full flex-col items-start justify-start gap-3 rounded text-left outline-none transition hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+                  "flex min-h-28 w-full flex-col items-start justify-start gap-3 rounded text-left outline-none transition-[background-color,box-shadow] hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
                   hasPresetControls ? "p-2" : "flex-1 p-4"
                 )}
                 disabled={isDisabled || !operation.enabled}
@@ -309,7 +309,10 @@ function SourceSelection({
         <div className="grid grid-cols-2 gap-1 rounded-md border border-border bg-background/60 p-1" role="group" aria-label="Sample source">
           <Button
             aria-pressed={processing.sourceMode === "voice"}
-            className={cn(processing.sourceMode !== "voice" && "bg-transparent")}
+            className={cn(
+              "transition-[background-color,box-shadow]",
+              processing.sourceMode !== "voice" && "border border-transparent bg-transparent"
+            )}
             disabled={processing.isProcessing}
             onClick={() => processing.handleSourceModeChange("voice")}
             type="button"
@@ -320,7 +323,10 @@ function SourceSelection({
           </Button>
           <Button
             aria-pressed={processing.sourceMode === "upload"}
-            className={cn(processing.sourceMode !== "upload" && "bg-transparent")}
+            className={cn(
+              "transition-[background-color,box-shadow]",
+              processing.sourceMode !== "upload" && "border border-transparent bg-transparent"
+            )}
             disabled={processing.isProcessing}
             onClick={() => processing.handleSourceModeChange("upload")}
             type="button"
@@ -422,7 +428,7 @@ function ProcessFromOptionCard({
       aria-label={label}
       aria-pressed={isSelected}
       className={cn(
-        "flex min-h-28 flex-col items-start justify-between gap-3 rounded-md border border-border bg-background/60 p-3 text-left outline-none transition hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60",
+        "flex min-h-28 flex-col items-start justify-between gap-3 rounded-md border border-border bg-background/60 p-3 text-left outline-none transition-[background-color,box-shadow] hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60",
         isSelected && "border-primary bg-primary/10 hover:bg-primary/10"
       )}
       disabled={disabled}
@@ -477,7 +483,7 @@ function SavedVoiceCarousel({
       ))}
       <button
         aria-label="Use Audio File"
-        className="flex min-h-32 min-w-56 snap-start flex-col items-start justify-between gap-4 rounded-md border border-dashed border-border bg-background/70 p-3 text-left outline-none transition hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+        className="flex min-h-32 min-w-56 snap-start flex-col items-start justify-between gap-4 rounded-md border border-dashed border-border bg-background/70 p-3 text-left outline-none transition-[background-color,box-shadow] hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
         disabled={disabled}
         onClick={onUseAudioFile}
         type="button"
@@ -526,7 +532,7 @@ function SavedVoiceSourceCard({
     <div
       aria-label={`${voice.name} Source Voice`}
       className={cn(
-        "relative min-h-32 min-w-64 snap-start rounded-md border border-border bg-background/70 p-1 transition hover:bg-muted/50",
+        "relative min-h-32 min-w-64 snap-start rounded-md border border-border bg-background/70 p-1 transition-[background-color,box-shadow] hover:bg-muted/50",
         isSelected && "border-primary bg-primary/10 hover:bg-primary/10"
       )}
       role="group"
@@ -535,7 +541,7 @@ function SavedVoiceSourceCard({
         aria-describedby={descriptionId}
         aria-label={`Select ${voice.name}`}
         aria-pressed={isSelected}
-        className="flex size-full min-h-28 flex-col items-start justify-between gap-3 rounded px-2 py-2 pr-12 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+        className="flex size-full min-h-28 flex-col items-start justify-between gap-3 rounded px-2 py-2 pr-12 text-left outline-none transition-[background-color,box-shadow] focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
         disabled={disabled}
         onClick={() => onSelectVoice(voice.id)}
         type="button"
