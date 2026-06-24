@@ -1381,6 +1381,8 @@ describe("App", () => {
       "true"
     )
     expect(sampleProcessingPanel().getByText("Pull the spoken voice forward and reduce background audio.")).toBeInTheDocument()
+    expect(sampleProcessingPanel().queryByText(/^Step \d+$/)).not.toBeInTheDocument()
+    expect(sampleProcessingPanel().queryByText("Optional")).not.toBeInTheDocument()
     expect(sampleProcessingPanel().getByRole("button", { name: /Tighten Pauses/i })).toHaveClass("flex-1")
     const splitSpeakersButton = await sampleProcessingPanel().findByRole("button", { name: /Split Speakers/i })
     expect(splitSpeakersButton).toHaveClass("flex-1")

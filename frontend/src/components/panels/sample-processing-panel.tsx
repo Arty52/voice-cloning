@@ -206,8 +206,7 @@ function WorkflowStackSelection({ processing }: { processing: SampleProcessingCo
       >
         {orderedOperations.map((operation) => {
           const operationCopy = operationCardCopy(operation.id)
-          const selectedIndex = processing.selectedOperationIds.indexOf(operation.id)
-          const isSelected = selectedIndex >= 0
+          const isSelected = processing.selectedOperationIds.includes(operation.id)
           const descriptionId = `sample-processing-operation-${operation.id}-description`
           const selectedStep = processing.selectedWorkflowSteps.find((step) => step.operationId === operation.id)
           const presetId = selectedStep?.processingPresetId ?? operation.defaultProcessingPresetId ?? operation.processingPresets[0]?.id
@@ -243,10 +242,8 @@ function WorkflowStackSelection({ processing }: { processing: SampleProcessingCo
                   </span>
                   {!operation.enabled ? (
                     <Badge variant="secondary">Unavailable</Badge>
-                  ) : isSelected ? (
-                    <Badge variant="accent">Step {selectedIndex + 1}</Badge>
                   ) : (
-                    <Badge variant="secondary">Optional</Badge>
+                    <WorkflowSelectionIndicator isSelected={isSelected} />
                   )}
                 </span>
                 <span className="text-xs leading-5 text-muted-foreground" id={descriptionId}>
@@ -282,6 +279,17 @@ function WorkflowStackSelection({ processing }: { processing: SampleProcessingCo
         })}
       </div>
     </Field>
+  )
+}
+
+function WorkflowSelectionIndicator({ isSelected }: { isSelected: boolean }) {
+  const SelectionIcon = isSelected ? CheckCircle2 : Circle
+
+  return (
+    <SelectionIcon
+      aria-hidden="true"
+      className={cn("size-5 shrink-0", isSelected ? "text-primary" : "text-muted-foreground/70")}
+    />
   )
 }
 
