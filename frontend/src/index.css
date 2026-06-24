@@ -93,7 +93,6 @@ audio {
 
 .dialogue-speaker-row {
   border-left-width: 3px;
-  border-left-color: var(--dialogue-speaker-color);
   background:
     linear-gradient(90deg, color-mix(in oklch, var(--dialogue-speaker-color) 12%, transparent), transparent 42%),
     color-mix(in oklch, var(--background) 76%, transparent);
@@ -129,5 +128,5 @@ audio {
 .dialogue-speaker-3,
 .dialogue-speaker-4,
 .dialogue-speaker-5 {
-  border-color: color-mix(in oklch, var(--dialogue-speaker-color) 48%, var(--border));
+  border-left-color: color-mix(in oklch, var(--dialogue-speaker-color) 48%, var(--border));
 }

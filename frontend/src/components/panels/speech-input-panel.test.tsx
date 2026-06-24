@@ -4,7 +4,7 @@ import { createRef } from "react"
 import { describe, expect, it, vi } from "vitest"
 
 import type { DialogueScriptController } from "@/hooks/use-dialogue-script"
-import type { MultiVoiceScriptBlock } from "@/lib/dialogue-script"
+import { speakerColorClassName, type MultiVoiceScriptBlock } from "@/lib/dialogue-script"
 import type { VoiceTextAssignment } from "@/lib/voice-assignments"
 import type { VoiceAsset } from "@/types"
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -215,6 +215,12 @@ describe("SpeechInputPanel voice assignments", () => {
     expect(alerts[0]).toHaveTextContent("Dialogue Rows Need Attention")
     expect(alerts[0]).toHaveTextContent("Map voices for labeled speakers before generating: Skippy.")
     expect(alerts[1]).toHaveTextContent("Map Skippy to a voice before generating.")
+    const missingMappingRow = alerts[1].closest("article")
+    expect(missingMappingRow).toHaveClass(
+      "dialogue-speaker-row",
+      speakerColorClassName("Skippy"),
+      "border-destructive/50"
+    )
 
     await user.clear(screen.getByLabelText("Speaker"))
     await user.type(screen.getByLabelText("Speaker"), "Narrator")
