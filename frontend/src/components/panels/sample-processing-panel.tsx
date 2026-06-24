@@ -148,8 +148,8 @@ export function SampleProcessingPanel({
 
           <form className="space-y-3" onSubmit={processing.handleStartProcessing}>
             <FieldGroup>
-              <WorkflowStackSelection processing={processing} />
               <SourceSelection processing={processing} voiceOptions={voiceOptions} />
+              <WorkflowStackSelection processing={processing} />
             </FieldGroup>
 
             {processing.job ? <ProcessingProgress processing={processing} /> : null}

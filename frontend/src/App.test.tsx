@@ -1348,6 +1348,19 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: /^Generate$/ })).toBeInTheDocument()
   })
 
+  it("orders sample processing controls from source to workflow to action", async () => {
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+
+    const sourceLabel = sampleProcessingPanel().getByText("Source")
+    const workflowStackLabel = sampleProcessingPanel().getByText("Workflow Stack")
+    const startButton = sampleProcessingPanel().getByRole("button", { name: "Start Processing" })
+
+    expectElementBefore(sourceLabel, workflowStackLabel)
+    expectElementBefore(workflowStackLabel, startButton)
+  })
+
   it("shows unavailable sample processing state", async () => {
     const baseFetch = mockFetch()
     vi.stubGlobal(
