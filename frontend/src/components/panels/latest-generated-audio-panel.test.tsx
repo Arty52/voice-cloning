@@ -311,6 +311,10 @@ describe("LatestGeneratedAudioPanel multi-voice results", () => {
 
     const stabilityHelp = screen.getByRole("button", { name: "Stability help" })
     expect(screen.getByRole("heading", { name: "Segment 1 Tuning" })).toBeInTheDocument()
+    expect(screen.getByText("Adjust settings for the next time this segment regenerates.")).toBeInTheDocument()
+    expect(document.body.querySelector('label[for="segment-segment-one-tuning-stability"]')).toHaveTextContent(
+      "Stability"
+    )
     expect(stabilityHelp).not.toHaveFocus()
   })
 

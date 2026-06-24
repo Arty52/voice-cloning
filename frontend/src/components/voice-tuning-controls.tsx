@@ -110,7 +110,9 @@ function VoiceTuningControl({
     <Field>
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-1.5">
-          <FieldLabel id={`${controlId}-label`}>{control.label}</FieldLabel>
+          <FieldLabel htmlFor={controlId} id={`${controlId}-label`}>
+            {control.label}
+          </FieldLabel>
           <TuningInfo description={control.description} id={controlId} label={control.label} />
         </div>
         <span className="font-mono text-xs text-muted-foreground">{sliderValue.toFixed(2)}</span>

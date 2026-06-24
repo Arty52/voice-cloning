@@ -238,7 +238,7 @@ function MultiVoiceSegmentResults({
                           <PopoverHeader>
                             <PopoverTitle>Segment {segment.index + 1} Tuning</PopoverTitle>
                             <PopoverDescription>
-                              Adjust settings used the next time this segment regenerates.
+                              Adjust settings for the next time this segment regenerates.
                             </PopoverDescription>
                           </PopoverHeader>
                           <VoiceTuningControls
