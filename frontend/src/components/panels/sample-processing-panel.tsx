@@ -228,7 +228,7 @@ function WorkflowStackSelection({ processing }: { processing: SampleProcessingCo
                 aria-label={operationCopy.title}
                 aria-pressed={isSelected}
                 className={cn(
-                  "flex min-h-28 w-full flex-col items-start justify-between gap-3 rounded text-left outline-none transition hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+                  "flex min-h-28 w-full flex-col items-start justify-start gap-3 rounded text-left outline-none transition hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
                   hasPresetControls ? "p-2" : "flex-1 p-4"
                 )}
                 disabled={isDisabled || !operation.enabled}
