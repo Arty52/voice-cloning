@@ -3,8 +3,8 @@ import { ChevronDown } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { TuningInfo } from "@/components/tuning-info"
 import { Skeleton } from "@/components/ui/skeleton"
+import { VoiceTuningControls } from "@/components/voice-tuning-controls"
 import { cn } from "@/lib/utils"
 import type {
   ProviderTuningControl,
@@ -102,17 +102,13 @@ export function VoiceTuningPanel({
                 </div>
               </div>
             ) : null}
-            <div className="grid gap-4 sm:grid-cols-2">
-              {controls.map((control) => (
-                <TuningControl
-                  control={control}
-                  disabled={isGenerating}
-                  key={control.id}
-                  onChange={onTuningValueChange}
-                  value={tuning[control.id] ?? control.defaultValue}
-                />
-              ))}
-            </div>
+            <VoiceTuningControls
+              controls={controls}
+              disabled={isGenerating}
+              idPrefix="voice-tuning"
+              onTuningValueChange={onTuningValueChange}
+              tuning={tuning}
+            />
           </div>
         </CollapsibleContent>
       </section>
@@ -143,101 +139,4 @@ function VoiceTuningSkeleton() {
       </div>
     </section>
   )
-}
-
-function TuningControl({
-  control,
-  disabled,
-  onChange,
-  value,
-}: {
-  control: ProviderTuningControl
-  disabled: boolean
-  onChange: (control: ProviderTuningControl, value: ProviderTuningValue) => void
-  value: ProviderTuningValue
-}) {
-  const controlId = `voice-tuning-${control.id}`
-
-  if (control.type === "toggle") {
-    return (
-      <div
-        className="flex items-center justify-between gap-4 rounded-md border border-border bg-background/60 p-3 text-sm"
-      >
-        <div className="flex items-center gap-1.5">
-          <label className="font-medium" htmlFor={controlId} id={`${controlId}-label`}>
-            {control.label}
-          </label>
-          <TuningInfo description={control.description} id={controlId} label={control.label} />
-        </div>
-        <input
-          aria-labelledby={`${controlId}-label`}
-          checked={value === true}
-          className="size-5 accent-primary"
-          disabled={disabled}
-          id={controlId}
-          onChange={(event) => onChange(control, event.target.checked)}
-          type="checkbox"
-        />
-      </div>
-    )
-  }
-
-  if (control.type === "select") {
-    return (
-      <div className="block space-y-2 text-sm font-medium">
-        <div className="flex items-center gap-1.5">
-          <label htmlFor={controlId} id={`${controlId}-label`}>
-            {control.label}
-          </label>
-          <TuningInfo description={control.description} id={controlId} label={control.label} />
-        </div>
-        <select
-          aria-labelledby={`${controlId}-label`}
-          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
-          disabled={disabled}
-          id={controlId}
-          onChange={(event) => onChange(control, selectedOptionValue(control, event.target.value))}
-          value={String(value)}
-        >
-          {(control.options ?? []).map((option) => (
-            <option key={String(option.value)} value={String(option.value)}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </div>
-    )
-  }
-
-  const numericValue = typeof value === "number" ? value : Number(value)
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between gap-3 text-sm">
-        <div className="flex items-center gap-1.5">
-          <label className="font-medium" htmlFor={controlId}>
-            {control.label}
-          </label>
-          <TuningInfo description={control.description} id={controlId} label={control.label} />
-        </div>
-        <span className="font-mono text-xs text-muted-foreground">{numericValue.toFixed(2)}</span>
-      </div>
-      <input
-        className="h-2 w-full accent-primary"
-        disabled={disabled}
-        id={controlId}
-        max={control.max}
-        min={control.min}
-        onChange={(event) => onChange(control, Number(event.target.value))}
-        step={control.step}
-        type="range"
-        value={Number.isNaN(numericValue) ? Number(control.defaultValue) || 0 : numericValue}
-      />
-      {control.capability ? <div className="text-xs text-muted-foreground">{control.capability}</div> : null}
-    </div>
-  )
-}
-
-function selectedOptionValue(control: ProviderTuningControl, selectedValue: string): ProviderTuningValue {
-  const option = (control.options ?? []).find((candidate) => String(candidate.value) === selectedValue)
-  return option ? option.value : selectedValue
 }
