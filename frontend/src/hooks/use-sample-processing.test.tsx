@@ -30,6 +30,13 @@ const sourceVoice: VoiceAsset = {
   processingSteps: [],
 }
 
+const retainedSourceVoice: VoiceAsset = {
+  ...sourceVoice,
+  sourceFilePath: "sources/default-recording.wav",
+  sourceContentType: "audio/wav",
+  sourceSha256: "source-hash",
+}
+
 const sampleProcessingOptions: SampleProcessingOptionsResponse = {
   engine: "pyannote-community-1+faster-whisper",
   recommendedWorkflowOrder: ["isolateVoice", "separateSpeakers", "trimSilence"],
@@ -374,7 +381,7 @@ describe("useSampleProcessing stacked workflow state", () => {
     )
     const onVoiceSaved = vi.fn()
     const { result } = renderHook(() =>
-      useSampleProcessing({ onVoiceSaved, selectedVoice: sourceVoice, voices: [sourceVoice] })
+      useSampleProcessing({ onVoiceSaved, selectedVoice: retainedSourceVoice, voices: [retainedSourceVoice] })
     )
 
     await waitFor(() => expect(result.current.optionsStatus).toBe("success"))
@@ -391,6 +398,40 @@ describe("useSampleProcessing stacked workflow state", () => {
     expect(body.get("sourceVoiceId")).toBe("default")
     expect(body.get("sourcePreference")).toBe("original")
     expect(result.current.status).toBe("success")
+  })
+
+  it("uses the active sample when the source voice has no retained original recording", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path === "/api/sample-processing/options" && !init) {
+          return okJson(stackProcessingOptions)
+        }
+        if (path === "/api/sample-processing/jobs" && init?.method === "POST") {
+          return okJson(successfulStackJob, 202)
+        }
+        return okJson({})
+      })
+    )
+    const onVoiceSaved = vi.fn()
+    const { result } = renderHook(() =>
+      useSampleProcessing({ onVoiceSaved, selectedVoice: sourceVoice, voices: [sourceVoice] })
+    )
+
+    await waitFor(() => expect(result.current.optionsStatus).toBe("success"))
+    expect(result.current.sourcePreference).toBe("original")
+    expect(result.current.canUseOriginalRecording).toBe(false)
+    expect(result.current.effectiveSourcePreference).toBe("active")
+    await act(async () => {
+      await result.current.handleStartProcessing(formEvent())
+    })
+
+    const createCall = vi
+      .mocked(fetch)
+      .mock.calls.find(([url, init]) => String(url) === "/api/sample-processing/jobs" && init?.method === "POST")
+    const body = createCall?.[1]?.body as FormData
+    expect(body.get("sourcePreference")).toBe("active")
   })
 
   it("submits selected stack steps in recommended order from an upload", async () => {

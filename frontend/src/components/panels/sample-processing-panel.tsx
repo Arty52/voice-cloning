@@ -1,4 +1,4 @@
-import { type CSSProperties, useEffect, useRef, useState } from "react"
+import { type CSSProperties, type ReactNode, useEffect, useRef, useState } from "react"
 import {
   AudioLines,
   Ban,
@@ -50,6 +50,7 @@ import { voicePresetLabel } from "@/lib/voice-presets"
 import type {
   SampleProcessingOperationId,
   SampleProcessingPresetId,
+  SampleProcessingSourcePreference,
   SpeakerSeparationResult,
   SpeakerSeparationSpeaker,
   SpeakerTranscriptItem,
@@ -66,8 +67,10 @@ type SampleProcessingPanelProps = {
 }
 
 const PROCESS_FROM_DESCRIPTION = "Choose which version of this saved voice to prepare."
-const SOURCE_PREFERENCE_ORIGINAL_DESCRIPTION = "Uses the full uploaded source when available."
-const SOURCE_PREFERENCE_ACTIVE_DESCRIPTION = "Uses the current library sample."
+const PROCESS_FROM_ORIGINAL_DESCRIPTION =
+  "Best for cleanup, splitting speakers, and trimming. Uses the full uploaded source when available."
+const PROCESS_FROM_ORIGINAL_UNAVAILABLE_DESCRIPTION = "This saved voice does not have a retained original recording."
+const PROCESS_FROM_SAVED_SAMPLE_DESCRIPTION = "Best for quick touch-ups. Uses the current library sample."
 const SPEAKER_COLORS = [
   "oklch(0.74 0.17 36)",
   "oklch(0.72 0.14 184)",
@@ -342,44 +345,7 @@ function SourceSelection({
               voices={processing.sourceVoices}
             />
           </Field>
-          <Field>
-            <FieldLabel id="sample-processing-source-preference-label">Process From</FieldLabel>
-            <FieldDescription>{PROCESS_FROM_DESCRIPTION}</FieldDescription>
-            <div
-              className="grid grid-cols-2 gap-1 rounded-md border border-border bg-background/60 p-1"
-              role="group"
-              aria-labelledby="sample-processing-source-preference-label"
-            >
-              <Button
-                aria-describedby="sample-processing-original-source-description"
-                aria-pressed={processing.sourcePreference === "original"}
-                className={cn(processing.sourcePreference !== "original" && "bg-transparent")}
-                disabled={processing.isProcessing}
-                onClick={() => processing.setSourcePreference("original")}
-                type="button"
-                variant={processing.sourcePreference === "original" ? "secondary" : "ghost"}
-              >
-                Original Recording
-              </Button>
-              <Button
-                aria-describedby="sample-processing-active-sample-description"
-                aria-pressed={processing.sourcePreference === "active"}
-                className={cn(processing.sourcePreference !== "active" && "bg-transparent")}
-                disabled={processing.isProcessing}
-                onClick={() => processing.setSourcePreference("active")}
-                type="button"
-                variant={processing.sourcePreference === "active" ? "secondary" : "ghost"}
-              >
-                Saved Sample
-              </Button>
-            </div>
-            <FieldDescription className="sr-only" id="sample-processing-original-source-description">
-              {SOURCE_PREFERENCE_ORIGINAL_DESCRIPTION}
-            </FieldDescription>
-            <FieldDescription className="sr-only" id="sample-processing-active-sample-description">
-              {SOURCE_PREFERENCE_ACTIVE_DESCRIPTION}
-            </FieldDescription>
-          </Field>
+          <ProcessFromSelection processing={processing} />
         </>
       ) : (
         <AudioFileDropZone
@@ -391,6 +357,89 @@ function SourceSelection({
         />
       )}
     </>
+  )
+}
+
+function ProcessFromSelection({ processing }: { processing: SampleProcessingController }) {
+  return (
+    <Field>
+      <FieldLabel id="sample-processing-source-preference-label">Process From</FieldLabel>
+      <FieldDescription>{PROCESS_FROM_DESCRIPTION}</FieldDescription>
+      <div
+        aria-labelledby="sample-processing-source-preference-label"
+        className="grid grid-cols-1 gap-2 sm:grid-cols-2"
+        role="group"
+      >
+        <ProcessFromOptionCard
+          description={
+            processing.canUseOriginalRecording
+              ? PROCESS_FROM_ORIGINAL_DESCRIPTION
+              : PROCESS_FROM_ORIGINAL_UNAVAILABLE_DESCRIPTION
+          }
+          disabled={processing.isProcessing || !processing.canUseOriginalRecording}
+          isSelected={processing.effectiveSourcePreference === "original"}
+          label={processing.canUseOriginalRecording ? "Original Recording" : "Original Recording Unavailable"}
+          onSelect={() => processing.setSourcePreference("original")}
+          value="original"
+        >
+          {processing.canUseOriginalRecording ? <Badge variant="secondary">Recommended</Badge> : null}
+        </ProcessFromOptionCard>
+        <ProcessFromOptionCard
+          description={PROCESS_FROM_SAVED_SAMPLE_DESCRIPTION}
+          disabled={processing.isProcessing}
+          isSelected={processing.effectiveSourcePreference === "active"}
+          label="Saved Sample"
+          onSelect={() => processing.setSourcePreference("active")}
+          value="active"
+        />
+      </div>
+    </Field>
+  )
+}
+
+function ProcessFromOptionCard({
+  children,
+  description,
+  disabled,
+  isSelected,
+  label,
+  onSelect,
+  value,
+}: {
+  children?: ReactNode
+  description: string
+  disabled: boolean
+  isSelected: boolean
+  label: string
+  onSelect: () => void
+  value: SampleProcessingSourcePreference
+}) {
+  const descriptionId = `sample-processing-process-from-${value}-description`
+
+  return (
+    <button
+      aria-describedby={descriptionId}
+      aria-label={label}
+      aria-pressed={isSelected}
+      className={cn(
+        "flex min-h-28 flex-col items-start justify-between gap-3 rounded-md border border-border bg-background/60 p-3 text-left outline-none transition hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60",
+        isSelected && "border-primary bg-primary/10 hover:bg-primary/10"
+      )}
+      disabled={disabled}
+      onClick={onSelect}
+      type="button"
+    >
+      <span className="flex w-full items-start justify-between gap-2">
+        <span className="min-w-0 text-sm font-medium text-foreground">{label}</span>
+        <span className="flex shrink-0 items-center gap-2">
+          {children}
+          {isSelected ? <Check aria-label="Selected process source" className="size-4 text-primary" /> : null}
+        </span>
+      </span>
+      <span className="text-xs leading-5 text-muted-foreground" id={descriptionId}>
+        {description}
+      </span>
+    </button>
   )
 }
 

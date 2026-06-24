@@ -35,6 +35,13 @@ const defaultVoice = {
   processingSteps: [],
 }
 
+const retainedSourceVoice = {
+  ...defaultVoice,
+  sourceFilePath: "sources/default-recording.wav",
+  sourceContentType: "audio/wav",
+  sourceSha256: "source-hash",
+}
+
 const voiceCloneVoice = {
   id: "voice-clone-01",
   name: "Voice_Clone_01",
@@ -1541,6 +1548,17 @@ describe("App", () => {
   })
 
   it("shows process-from copy without relying on tooltip help", async () => {
+    const baseFetch = mockFetch()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "default", voices: [retainedSourceVoice] })
+        }
+        return baseFetch(input, init)
+      })
+    )
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
@@ -1548,16 +1566,53 @@ describe("App", () => {
     expect(sampleProcessingPanel().getByText("Process From")).toBeInTheDocument()
     expect(sampleProcessingPanel().getByText("Choose which version of this saved voice to prepare.")).toBeVisible()
     expect(sampleProcessingPanel().queryByRole("button", { name: "Explain Source Preference" })).not.toBeInTheDocument()
-    expect(sampleProcessingPanel().getByRole("button", { name: "Original Recording" })).toHaveAccessibleDescription(
-      "Uses the full uploaded source when available."
+    const originalRecording = sampleProcessingPanel().getByRole("button", { name: "Original Recording" })
+    expect(originalRecording).toHaveAccessibleDescription(
+      "Best for cleanup, splitting speakers, and trimming. Uses the full uploaded source when available."
     )
+    expect(originalRecording).toHaveAttribute("aria-pressed", "true")
+    expect(sampleProcessingPanel().getByText("Recommended")).toBeInTheDocument()
     expect(sampleProcessingPanel().getByRole("button", { name: "Saved Sample" })).toHaveAccessibleDescription(
-      "Uses the current library sample."
+      "Best for quick touch-ups. Uses the current library sample."
     )
+  })
+
+  it("uses saved sample when the selected voice has no retained original recording", async () => {
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+
+    const originalRecording = sampleProcessingPanel().getByRole("button", { name: "Original Recording Unavailable" })
+    expect(originalRecording).toBeDisabled()
+    expect(originalRecording).toHaveAttribute("aria-pressed", "false")
+    expect(originalRecording).toHaveAccessibleDescription("This saved voice does not have a retained original recording.")
+    expect(sampleProcessingPanel().getByRole("button", { name: "Saved Sample" })).toHaveAttribute("aria-pressed", "true")
+
+    const startButton = await sampleProcessingPanel().findByRole("button", { name: "Start Processing" })
+    await waitFor(() => expect(startButton).toBeEnabled())
+    await user.click(startButton)
+
+    const jobCall = vi.mocked(fetch).mock.calls.find(
+      ([url, init]) => String(url) === "/api/sample-processing/jobs" && init?.method === "POST"
+    )
+    const jobBody = jobCall?.[1]?.body as FormData
+    expect(jobBody.get("sourcePreference")).toBe("active")
   })
 
   it("processes an existing voice, previews the result, and saves it as a selectable voice", async () => {
     const user = userEvent.setup()
+    const baseFetch = mockFetch()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "default", voices: [retainedSourceVoice] })
+        }
+        return baseFetch(input, init)
+      })
+    )
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
