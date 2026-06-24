@@ -452,7 +452,8 @@ Voice clone cache entries are separated by provider and active key fingerprint, 
       "clientSegmentId": "segment-one",
       "text": "Hello ",
       "voiceId": "default",
-      "assignmentKind": "assigned"
+      "assignmentKind": "assigned",
+      "voiceSettings": { "speed": 1.1 }
     },
     {
       "clientSegmentId": "segment-two",
@@ -464,7 +465,7 @@ Voice clone cache entries are separated by provider and active key fingerprint, 
 }
 ```
 
-The optional `segmentGapMs` request field controls the combined-result handoff gap for that job. Omit it or send `null` to use the backend `SPEECH_JOB_SEGMENT_GAP_MS` default. Send `0` for gapless assembly. The backend rejects blank text, text longer than the configured limit, unknown voice ids, negative `segmentGapMs`, empty segment lists, whitespace-only segments, and any payload where `segments.map(text).join("")` does not exactly equal `text`. Provider keys are used only for the active request and are never returned in job payloads.
+The optional `segmentGapMs` request field controls the combined-result handoff gap for that job. Omit it or send `null` to use the backend `SPEECH_JOB_SEGMENT_GAP_MS` default. Send `0` for gapless assembly. Each segment may include optional `voiceSettings`; omitted or `null` segment settings copy the job-level `voiceSettings`, while an object becomes that segment's effective tuning snapshot. The backend rejects blank text, text longer than the configured limit, unknown voice ids, negative `segmentGapMs`, non-object `voiceSettings`, empty segment lists, whitespace-only segments, and any payload where `segments.map(text).join("")` does not exactly equal `text`. Provider keys are used only for the active request and are never returned in job payloads.
 
 The response is `202` with `{ "job": { ... } }`:
 
@@ -487,6 +488,7 @@ The response is `202` with `{ "job": { ... } }`:
         "voiceId": "default",
         "voiceName": "Default Voice",
         "assignmentKind": "assigned",
+        "voiceSettings": { "speed": 1.1 },
         "status": "running",
         "generationCount": 0,
         "characterCount": null,
@@ -506,10 +508,13 @@ The response is `202` with `{ "job": { ... } }`:
 
 `GET /api/speech/jobs/{jobId}/result` streams the combined `audio/mpeg` result after success. `GET /api/speech/jobs/{jobId}/segments/{segmentId}/result` streams an individual generated segment after that segment succeeds. Both return `409` until their audio is ready.
 
-`POST /api/speech/jobs/{jobId}/segments/{segmentId}/regenerate` starts regeneration for a successful job segment and rebuilds the combined result. The optional JSON body can change that segment's voice before regenerating:
+`POST /api/speech/jobs/{jobId}/segments/{segmentId}/regenerate` starts regeneration for a successful job segment and rebuilds the combined result. The optional JSON body can change that segment's voice and replace that segment's stored tuning before regenerating. Omit `voiceSettings` or send `null` to preserve the segment's current tuning snapshot.
 
 ```json
-{ "voiceId": "another-local-voice" }
+{
+  "voiceId": "another-local-voice",
+  "voiceSettings": { "speed": 1.2, "stability": 0.36 }
+}
 ```
 
 Speech jobs keep runtime files under ignored `storage/speech-jobs/`. Segment generation reuses the normal provider clone cache. Final assembly requires FFmpeg through `SAMPLE_PROCESSING_FFMPEG_COMMAND`; Docker includes FFmpeg by default, and host development must have the command available on `PATH` or configured with an absolute path. Combined multi-voice results use the job's effective `segmentGapMs`; when the request omits it, the backend default comes from `SPEECH_JOB_SEGMENT_GAP_MS` and defaults to `250`.

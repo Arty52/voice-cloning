@@ -105,7 +105,7 @@ The UI opens on `Voices`. The sidebar is the top-level workflow map:
 
 1. `Prepare Audio` (`#prepare`, optional step 0): optionally process an uploaded file or saved source audio before creating a library voice.
 2. `Voices` (`#voices`, step 1): upload or record a voice sample, choose a local name such as `Voice_Clone_01`, choose Standard Narration or Animated Dialogue, save it, select it, and preview it.
-3. `Generate Speech` (`#generate`, step 2): enter text, optionally assign selected text spans to saved voices, review the latest result, and adjust Voice Tuning. Selecting a saved voice initializes tuning from that voice's assigned preset when the active provider maps it, otherwise from provider defaults.
+3. `Generate Speech` (`#generate`, step 2): enter text, optionally assign selected text spans to saved voices, review the latest result, and adjust Voice Tuning. Selecting a saved voice initializes tuning from that voice's assigned preset when the active provider maps it, otherwise from provider defaults. Multi-voice segment controls can regenerate one segment with a different voice or a segment-specific tuning snapshot without changing the rest of the result.
 4. `Generated Audio` (`#archive`, optional): play, download, remove, or clear saved generated MP3s from browser IndexedDB.
 5. `Provider & Usage` (`#provider`): add an ElevenLabs key if `.env` does not provide one, confirm `.env` fallback, check Cost & Quota, and choose a model if model metadata is available.
 
@@ -119,7 +119,7 @@ http://localhost:6420
 
 Each local voice has a provider-independent voice preset assignment. Choose Standard Narration for balanced reading, or Animated Dialogue for more expressive delivery, when saving a new voice or editing the selected voice in the Voice Library.
 
-The assignment is saved as local voice metadata and is not a provider clone id or provider secret. When you select a voice, Voice Tuning starts from the active provider preset mapped to that assignment. If the active provider has no matching mapped preset, Voice Tuning uses that provider's default values instead. Manual slider, toggle, or select changes are per-request only; they show as Custom and do not overwrite the saved assignment.
+The assignment is saved as local voice metadata and is not a provider clone id or provider secret. When you select a voice, Voice Tuning starts from the active provider preset mapped to that assignment. If the active provider has no matching mapped preset, Voice Tuning uses that provider's default values instead. Manual slider, toggle, or select changes are per-request only; they show as Custom and do not overwrite the saved assignment. Segment-level tuning for multi-voice regeneration is stored only with that runtime speech job and the browser's generated-audio metadata.
 
 Existing voices or older manifests without an assignment default to Standard Narration. This iteration persists only the preset id, not custom tuning overrides.
 
