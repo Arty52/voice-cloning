@@ -418,7 +418,7 @@ export async function regenerateSpeechJobSegment(
         "Content-Type": "application/json",
         ...providerHeaders({ providerKey }),
       },
-      body: JSON.stringify({ voiceId: voiceId || null, voiceSettings: voiceSettings ?? null }),
+      body: JSON.stringify({ voiceId: voiceId ?? null, voiceSettings: voiceSettings ?? null }),
     }
   )
 }

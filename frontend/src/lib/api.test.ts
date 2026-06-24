@@ -374,4 +374,20 @@ describe("voice API helpers", () => {
       })
     )
   })
+
+  it("preserves empty speech job segment voice overrides", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => okJson({ job: { id: "job-1", status: "running" } }, 202)))
+
+    await regenerateSpeechJobSegment("job-1", "segment-one", {
+      voiceId: "",
+      voiceSettings: null,
+    })
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/speech/jobs/job-1/segments/segment-one/regenerate",
+      expect.objectContaining({
+        body: JSON.stringify({ voiceId: "", voiceSettings: null }),
+      })
+    )
+  })
 })
