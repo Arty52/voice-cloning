@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { createRef } from "react"
 import { describe, expect, it, vi } from "vitest"
@@ -224,6 +224,34 @@ describe("SpeechInputPanel voice assignments", () => {
     expect(dialogue.updateBlockSpeakerLabel).toHaveBeenCalled()
     expect(dialogue.updateBlockText).toHaveBeenCalled()
     expect(dialogue.toggleBlockSelection).toHaveBeenCalledWith("dialogue-block-1", true)
+  })
+
+  it("prevents Enter in a dialogue row speaker field from submitting generation", () => {
+    const dialogue = dialogueController({
+      blocks: [dialogueBlock()],
+      mode: "dialogue",
+      segmentBuild: {
+        error: null,
+        missingSpeakerLabels: [],
+        segments: [
+          {
+            assignmentKind: "assigned",
+            clientSegmentId: "dialogue-block-1",
+            text: "Hello world.",
+            voiceId: "skippy",
+          },
+        ],
+        text: "Hello world.",
+      },
+      speakerLabels: ["Skippy"],
+      speakerMappings: [{ speakerLabel: "Skippy", voiceId: "skippy" }],
+    })
+    const props = renderPanel({ dialogue })
+
+    const speakerField = screen.getByLabelText("Speaker")
+    expect(fireEvent.keyDown(speakerField, { key: "Enter" })).toBe(false)
+
+    expect(props.onGenerate).not.toHaveBeenCalled()
   })
 
   it("assigns selected dialogue rows through the voice picker", async () => {

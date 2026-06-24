@@ -1,5 +1,5 @@
 import { Pencil, RefreshCw, Sparkles, Trash2, UserPlus, X } from "lucide-react"
-import { useState, type FormEvent, type ReactNode, type RefObject } from "react"
+import { useState, type FormEvent, type KeyboardEvent, type ReactNode, type RefObject } from "react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -29,6 +29,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { MAX_SPEECH_TEXT_LENGTH } from "@/constants"
 import { useIsMobile } from "@/hooks/use-mobile"
 import type { DialogueScriptController } from "@/hooks/use-dialogue-script"
 import { speakerColorClassName, type MultiVoiceScriptBlock } from "@/lib/dialogue-script"
@@ -135,13 +136,15 @@ export function SpeechInputPanel({
       <Field>
         <div className="flex items-center justify-between gap-3">
           <FieldLabel htmlFor="speech-text">{isDialogueMode ? "Script Source" : "Text to Speak"}</FieldLabel>
-          <span className="font-mono text-xs text-muted-foreground">{characterCount}/5000</span>
+          <span className="font-mono text-xs text-muted-foreground">
+            {characterCount}/{MAX_SPEECH_TEXT_LENGTH}
+          </span>
         </div>
         <Textarea
           className="max-h-none overflow-hidden"
           disabled={isGenerating}
           id="speech-text"
-          maxLength={5000}
+          maxLength={MAX_SPEECH_TEXT_LENGTH}
           onChange={(event) => onTextChange(event.target.value)}
           onKeyUp={onTextSelectionChange}
           onMouseUp={onTextSelectionChange}
@@ -553,6 +556,7 @@ function DialogueRow({ block, defaultVoice, dialogue, index, isGenerating, voice
                   disabled={isGenerating}
                   id={speakerId}
                   onChange={(event) => dialogue.updateBlockSpeakerLabel(block.id, event.target.value)}
+                  onKeyDown={preventFormSubmitOnEnter}
                   placeholder="Narrator"
                   value={block.speakerLabel ?? ""}
                 />
@@ -608,6 +612,12 @@ function DialogueRow({ block, defaultVoice, dialogue, index, isGenerating, voice
       </div>
     </article>
   )
+}
+
+function preventFormSubmitOnEnter(event: KeyboardEvent<HTMLInputElement>) {
+  if (event.key === "Enter") {
+    event.preventDefault()
+  }
 }
 
 type VoicePickerControlProps = {
