@@ -63,6 +63,20 @@ describe("useDialogueScript", () => {
     expect(result.current.speakerMappings).toContainEqual({ speakerLabel: "Skippy", voiceId: null })
   })
 
+  it("preserves existing speaker mappings when a row is relabeled", () => {
+    const { result } = renderHook(() => useDialogueScript({ defaultVoice: narrator, voices }))
+
+    act(() => {
+      result.current.importFromText("Skippy: One.\nVegeta: Two.")
+      result.current.updateSpeakerMapping("Skippy", skippy)
+      result.current.updateBlockSpeakerLabel("dialogue-block-2", "Skippy")
+    })
+
+    expect(result.current.speakerMappings).toContainEqual({ speakerLabel: "Skippy", voiceId: "skippy" })
+    expect(result.current.segmentBuild.error).toBeNull()
+    expect(result.current.segmentBuild.segments.map((segment) => segment.voiceId)).toEqual(["skippy", "skippy"])
+  })
+
   it("bulk assignment updates a shared speaker mapping", () => {
     const { result } = renderHook(() => useDialogueScript({ defaultVoice: narrator, voices }))
 

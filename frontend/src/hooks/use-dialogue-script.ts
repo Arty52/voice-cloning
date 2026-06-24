@@ -67,7 +67,7 @@ export function useDialogueScript({ defaultVoice, voices }: UseDialogueScriptOpt
       )
     )
     if (normalizedLabel) {
-      setSpeakerMappings((current) => upsertSpeakerMapping(current, normalizedLabel, null))
+      setSpeakerMappings((current) => ensureSpeakerMapping(current, normalizedLabel))
     }
   }
 
@@ -197,6 +197,13 @@ function upsertSpeakerMapping(
     return mappings.map((mapping) => (mapping.speakerLabel === speakerLabel ? { ...mapping, voiceId } : mapping))
   }
   return [...mappings, { speakerLabel, voiceId }]
+}
+
+function ensureSpeakerMapping(mappings: SpeakerVoiceMapping[], speakerLabel: string) {
+  if (mappings.some((mapping) => mapping.speakerLabel === speakerLabel)) {
+    return mappings
+  }
+  return [...mappings, { speakerLabel, voiceId: null }]
 }
 
 function sharedSelectedSpeakerLabel(blocks: MultiVoiceScriptBlock[]) {
