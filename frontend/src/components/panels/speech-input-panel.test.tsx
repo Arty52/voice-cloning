@@ -3,6 +3,8 @@ import userEvent from "@testing-library/user-event"
 import { createRef } from "react"
 import { describe, expect, it, vi } from "vitest"
 
+import type { DialogueScriptController } from "@/hooks/use-dialogue-script"
+import type { MultiVoiceScriptBlock } from "@/lib/dialogue-script"
 import type { VoiceTextAssignment } from "@/lib/voice-assignments"
 import type { VoiceAsset } from "@/types"
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -10,6 +12,7 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import { SpeechInputPanel } from "./speech-input-panel"
 
 const narrator = voice("narrator", "Narrator")
+const skippy = voice("skippy", "Skippy Voice")
 const villain = voice("villain", "Villain")
 const assignment: VoiceTextAssignment = {
   end: 20,
@@ -56,6 +59,8 @@ function renderPanel(overrides: Partial<Parameters<typeof SpeechInputPanel>[0]> 
     assignmentsStale: false,
     canGenerate: true,
     characterCount: 19,
+    dialogue: dialogueController(),
+    dialogueSpeechSegmentCount: null,
     isGenerating: false,
     naturalHandoffsEnabled: true,
     onAssignVoice: vi.fn(),
@@ -71,7 +76,7 @@ function renderPanel(overrides: Partial<Parameters<typeof SpeechInputPanel>[0]> 
     selectedVoice: narrator,
     text: "Hello villain line.",
     textRef: createRef<HTMLTextAreaElement>(),
-    voices: [narrator, villain],
+    voices: [narrator, villain, skippy],
     ...overrides,
   }
   render(
@@ -80,6 +85,47 @@ function renderPanel(overrides: Partial<Parameters<typeof SpeechInputPanel>[0]> 
     </TooltipProvider>
   )
   return props
+}
+
+function dialogueController(overrides: Partial<DialogueScriptController> = {}): DialogueScriptController {
+  return {
+    allBlocksSelected: false,
+    assignSelectedBlocks: vi.fn(),
+    blocks: [],
+    clearSelectedBlocks: vi.fn(),
+    importFromText: vi.fn(),
+    mode: "range",
+    segmentBuild: {
+      error: null,
+      missingSpeakerLabels: [],
+      segments: [],
+      text: "",
+    },
+    selectedBlockCount: 0,
+    selectedBlockIds: new Set<string>(),
+    setAllBlocksSelected: vi.fn(),
+    setMode: vi.fn(),
+    speakerLabels: [],
+    speakerMappings: [],
+    toggleBlockSelection: vi.fn(),
+    updateBlockSpeakerLabel: vi.fn(),
+    updateBlockText: vi.fn(),
+    updateBlockVoice: vi.fn(),
+    updateSpeakerMapping: vi.fn(),
+    ...overrides,
+  } as DialogueScriptController
+}
+
+function dialogueBlock(overrides: Partial<MultiVoiceScriptBlock> = {}): MultiVoiceScriptBlock {
+  return {
+    id: "dialogue-block-1",
+    speakerLabel: "Skippy",
+    text: "Hello world.",
+    voiceId: null,
+    voiceName: null,
+    voiceSettings: null,
+    ...overrides,
+  }
 }
 
 describe("SpeechInputPanel voice assignments", () => {
@@ -105,13 +151,13 @@ describe("SpeechInputPanel voice assignments", () => {
   })
 
   it("explains the disabled assignment action on keyboard focus", async () => {
-    const user = userEvent.setup()
     renderPanel()
 
-    await user.tab()
-    await user.tab()
+    const trigger = screen.getByRole("button", { name: /^Assign Voice$/i }).closest("[data-slot='tooltip-trigger']")
+    expect(trigger).not.toBeNull()
+    ;(trigger as HTMLElement).focus()
 
-    expect(screen.getByRole("button", { name: /^Assign Voice$/i }).closest("[data-slot='tooltip-trigger']")).toHaveFocus()
+    expect(trigger).toHaveFocus()
     expect(await screen.findByRole("tooltip")).toHaveTextContent("Select script text before assigning a voice.")
   })
 
@@ -123,6 +169,79 @@ describe("SpeechInputPanel voice assignments", () => {
     await user.click(screen.getByRole("button", { name: "Villain" }))
 
     expect(props.onAssignVoice).toHaveBeenCalledWith(villain)
+  })
+
+  it("shows multi-line selected text as a compact excerpt", () => {
+    renderPanel({ selectedText: "first line\nsecond line\nthird line" })
+
+    expect(screen.getByText("Selected: first line / second line / third line")).toBeInTheDocument()
+  })
+
+  it("switches input modes and imports dialogue from the source text", async () => {
+    const user = userEvent.setup()
+    const dialogue = dialogueController()
+    renderPanel({ dialogue, text: "Skippy: Hello." })
+
+    await user.click(screen.getByRole("radio", { name: "Dialogue Rows" }))
+    await user.click(screen.getByRole("button", { name: "Import Dialogue" }))
+
+    expect(dialogue.setMode).toHaveBeenCalledWith("dialogue")
+    expect(dialogue.importFromText).toHaveBeenCalledWith("Skippy: Hello.")
+  })
+
+  it("renders dialogue rows and mapping warnings", async () => {
+    const user = userEvent.setup()
+    const dialogue = dialogueController({
+      blocks: [dialogueBlock()],
+      mode: "dialogue",
+      segmentBuild: {
+        error: "Map voices for labeled speakers before generating: Skippy.",
+        missingSpeakerLabels: ["Skippy"],
+        segments: [],
+        text: "",
+      },
+      speakerLabels: ["Skippy"],
+      speakerMappings: [{ speakerLabel: "Skippy", voiceId: null }],
+    })
+    renderPanel({
+      assignmentError: dialogue.segmentBuild.error,
+      dialogue,
+      selectedText: "ignored in dialogue mode",
+    })
+
+    expect(screen.getByRole("region", { name: "Dialogue Rows" })).toBeInTheDocument()
+    expect(screen.getByRole("region", { name: "Speaker Voice Mapping" })).toBeInTheDocument()
+    const alerts = screen.getAllByRole("alert")
+    expect(alerts[0]).toHaveTextContent("Map voices for labeled speakers before generating: Skippy.")
+    expect(alerts[1]).toHaveTextContent("Map Skippy to a voice before generating.")
+
+    await user.clear(screen.getByLabelText("Speaker"))
+    await user.type(screen.getByLabelText("Speaker"), "Narrator")
+    await user.clear(screen.getByLabelText("Dialogue"))
+    await user.type(screen.getByLabelText("Dialogue"), "Updated line.")
+    await user.click(screen.getByRole("checkbox", { name: "Select Dialogue Row 1" }))
+
+    expect(dialogue.updateBlockSpeakerLabel).toHaveBeenCalled()
+    expect(dialogue.updateBlockText).toHaveBeenCalled()
+    expect(dialogue.toggleBlockSelection).toHaveBeenCalledWith("dialogue-block-1", true)
+  })
+
+  it("assigns selected dialogue rows through the voice picker", async () => {
+    const user = userEvent.setup()
+    const dialogue = dialogueController({
+      blocks: [dialogueBlock()],
+      mode: "dialogue",
+      selectedBlockCount: 1,
+      selectedBlockIds: new Set(["dialogue-block-1"]),
+      speakerLabels: ["Skippy"],
+      speakerMappings: [{ speakerLabel: "Skippy", voiceId: null }],
+    })
+    renderPanel({ dialogue })
+
+    await user.click(screen.getByRole("button", { name: "Assign Selected" }))
+    await user.click(screen.getByRole("button", { name: "Skippy Voice" }))
+
+    expect(dialogue.assignSelectedBlocks).toHaveBeenCalledWith(skippy)
   })
 
   it("renders edit, remove, and stale assignment states", async () => {
