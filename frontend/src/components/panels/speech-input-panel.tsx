@@ -4,6 +4,7 @@ import { useState, type FormEvent, type ReactNode, type RefObject } from "react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { Loading } from "@/components/ui/loading"
 import {
@@ -38,11 +39,13 @@ type SpeechInputPanelProps = {
   canGenerate: boolean
   characterCount: number
   isGenerating: boolean
+  naturalHandoffsEnabled: boolean
   onAssignVoice: (voice: VoiceAsset) => void
   onCancelGeneration: () => void
   onClearAssignments: () => void
   onEditAssignmentVoice: (assignmentId: string, voice: VoiceAsset) => void
   onGenerate: (event?: FormEvent<HTMLFormElement>) => void
+  onNaturalHandoffsEnabledChange: (enabled: boolean) => void
   onRemoveAssignment: (assignmentId: string) => void
   onTextChange: (text: string) => void
   onTextSelectionChange: () => void
@@ -61,11 +64,13 @@ export function SpeechInputPanel({
   canGenerate,
   characterCount,
   isGenerating,
+  naturalHandoffsEnabled,
   onAssignVoice,
   onCancelGeneration,
   onClearAssignments,
   onEditAssignmentVoice,
   onGenerate,
+  onNaturalHandoffsEnabledChange,
   onRemoveAssignment,
   onTextChange,
   onTextSelectionChange,
@@ -144,6 +149,29 @@ export function SpeechInputPanel({
           </Button>
         ) : null}
       </div>
+
+      {assignments.length > 0 ? (
+        <Field
+          className="mt-3 rounded-md border border-border bg-background/60 p-3"
+          data-disabled={isGenerating ? "" : undefined}
+        >
+          <div className="flex items-start gap-3">
+            <Checkbox
+              aria-describedby="natural-handoffs-description"
+              checked={naturalHandoffsEnabled}
+              disabled={isGenerating}
+              id="natural-handoffs"
+              onCheckedChange={(checked) => onNaturalHandoffsEnabledChange(checked === true)}
+            />
+            <div className="flex min-w-0 flex-col gap-1">
+              <FieldLabel htmlFor="natural-handoffs">Natural Handoffs</FieldLabel>
+              <FieldDescription id="natural-handoffs-description">
+                Adds a short pause between generated speech segments.
+              </FieldDescription>
+            </div>
+          </div>
+        </Field>
+      ) : null}
 
       {assignmentsStale || assignmentError ? (
         <Alert className="mt-4 border-destructive/40 bg-destructive/10 text-destructive" role="alert">

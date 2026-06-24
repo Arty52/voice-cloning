@@ -56,11 +56,13 @@ function renderPanel(overrides: Partial<Parameters<typeof SpeechInputPanel>[0]> 
     canGenerate: true,
     characterCount: 19,
     isGenerating: false,
+    naturalHandoffsEnabled: true,
     onAssignVoice: vi.fn(),
     onCancelGeneration: vi.fn(),
     onClearAssignments: vi.fn(),
     onEditAssignmentVoice: vi.fn(),
     onGenerate: vi.fn(),
+    onNaturalHandoffsEnabledChange: vi.fn(),
     onRemoveAssignment: vi.fn(),
     onTextChange: vi.fn(),
     onTextSelectionChange: vi.fn(),
@@ -80,6 +82,7 @@ describe("SpeechInputPanel voice assignments", () => {
     renderPanel()
 
     expect(screen.getByRole("button", { name: /^Assign Voice$/i })).toBeDisabled()
+    expect(screen.queryByRole("checkbox", { name: "Natural Handoffs" })).not.toBeInTheDocument()
     expect(screen.getByText("Select script text to assign a voice.")).toBeInTheDocument()
   })
 
@@ -123,6 +126,30 @@ describe("SpeechInputPanel voice assignments", () => {
     expect(assignmentsRegion).toHaveTextContent("1 Assignment")
     expect(assignmentsRegion).toHaveTextContent("3 Speech Segments")
     expect(assignmentsRegion).not.toHaveTextContent("1 Segment")
+  })
+
+  it("shows enabled natural handoffs when voice assignments exist", async () => {
+    const user = userEvent.setup()
+    const props = renderPanel({
+      assignments: [assignment],
+    })
+
+    const handoffs = screen.getByRole("checkbox", { name: "Natural Handoffs" })
+    expect(handoffs).toBeChecked()
+    expect(screen.getByText("Adds a short pause between generated speech segments.")).toBeInTheDocument()
+
+    await user.click(handoffs)
+
+    expect(props.onNaturalHandoffsEnabledChange).toHaveBeenCalledWith(false)
+  })
+
+  it("disables natural handoffs while generating", () => {
+    renderPanel({
+      assignments: [assignment],
+      isGenerating: true,
+    })
+
+    expect(screen.getByRole("checkbox", { name: "Natural Handoffs" })).toBeDisabled()
   })
 
   it("shows unique quick assignment shortcuts for assigned voices", async () => {

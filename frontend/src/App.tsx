@@ -36,6 +36,7 @@ function App() {
     latestGeneratedAudioItem,
     latestStorageError,
     metadata,
+    naturalHandoffsEnabled,
     navigateToSection,
     providerKeys,
     providerTuning,
@@ -48,6 +49,7 @@ function App() {
     sectionStatuses,
     selectedModel,
     selectedTuningPresetId,
+    setNaturalHandoffsEnabled,
     setIsVoiceTuningExpanded,
     setText,
     speech,
@@ -162,11 +164,13 @@ function App() {
             onClearAssignments={clearVoiceAssignments}
             onEditAssignmentVoice={updateVoiceAssignment}
             onGenerate={handleGenerate}
+            onNaturalHandoffsEnabledChange={setNaturalHandoffsEnabled}
             onRemoveAssignment={removeVoiceAssignment}
             onTextChange={setText}
             onTextSelectionChange={handleTextSelectionChange}
             selectedVoice={voiceLibrary.selectedVoice}
             selectedText={textSelection.text}
+            naturalHandoffsEnabled={naturalHandoffsEnabled}
             text={text}
             textRef={textRef}
             voices={voiceLibrary.voices}

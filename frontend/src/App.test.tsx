@@ -979,6 +979,7 @@ describe("App", () => {
     window.history.replaceState(null, "", "/#generate")
     let createJobBody: {
       defaultVoiceId: string
+      segmentGapMs?: number
       segments: Array<{
         assignmentKind: string
         clientSegmentId: string
@@ -1020,6 +1021,7 @@ describe("App", () => {
                 error: null,
                 id: "job-1",
                 resultSha256: "combined-hash",
+                segmentGapMs: submittedJob.segmentGapMs ?? 250,
                 segments: submittedJob.segments.map((segment, index) => ({
                   assignmentKind: segment.assignmentKind,
                   cacheState: "miss",
@@ -1079,6 +1081,10 @@ describe("App", () => {
     expect(screen.getByText("now")).toBeInTheDocument()
     expect(assignmentsRegion).toHaveTextContent("2 Assignments")
     expect(assignmentsRegion).toHaveTextContent("3 Speech Segments")
+    const naturalHandoffs = screen.getByRole("checkbox", { name: "Natural Handoffs" })
+    expect(naturalHandoffs).toBeChecked()
+    await user.click(naturalHandoffs)
+    expect(naturalHandoffs).not.toBeChecked()
 
     await waitFor(() => expect(screen.getByRole("button", { name: /^Generate$/ })).toBeEnabled())
 
@@ -1086,6 +1092,7 @@ describe("App", () => {
 
     await waitFor(() => expect(createJobBody).not.toBeNull())
     expect(createJobBody).toMatchObject({
+      segmentGapMs: 0,
       segments: [
         expect.objectContaining({
           assignmentKind: "default",

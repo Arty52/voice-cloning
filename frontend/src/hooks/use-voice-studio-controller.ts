@@ -44,6 +44,7 @@ export function useVoiceStudioController() {
   const [isAddVoiceRevealed, setIsAddVoiceRevealed] = useState(false)
   const [latestGeneratedAudioId, setLatestGeneratedAudioId] = useState<string | null>(null)
   const [latestGenerationMode, setLatestGenerationMode] = useState<"single" | "multi">("single")
+  const [naturalHandoffsEnabled, setNaturalHandoffsEnabled] = useState(true)
   const [textSelection, setTextSelection] = useState({ end: 0, start: 0, text: "" })
   const [voiceAssignments, setVoiceAssignments] = useState<VoiceTextAssignment[]>([])
   const textRef = useRef<HTMLTextAreaElement | null>(null)
@@ -234,6 +235,7 @@ export function useVoiceStudioController() {
         provider: providerKeys.activeProvider,
         providerId: providerKeys.activeProviderId,
         providerKey: providerKeys.activeProviderKey,
+        segmentGapMs: naturalHandoffsEnabled ? undefined : 0,
         segments: assignmentSegments.segments,
         selectedModelId: metadata.selectedModelId,
         selectedTuningPresetId,
@@ -382,6 +384,7 @@ export function useVoiceStudioController() {
     latestStorageError,
     metadata,
     navigateToSection,
+    naturalHandoffsEnabled,
     providerKeys,
     providerTuning,
     requestClearGeneratedAudio,
@@ -395,6 +398,7 @@ export function useVoiceStudioController() {
     setIsCostQuotaExpanded,
     setIsSampleProcessingExpanded,
     setIsVoiceTuningExpanded,
+    setNaturalHandoffsEnabled,
     setText: handleTextChange,
     speech,
     speechError: activeSpeechError,
