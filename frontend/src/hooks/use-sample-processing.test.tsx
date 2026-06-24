@@ -421,6 +421,35 @@ describe("useSampleProcessing stacked workflow state", () => {
     expect(result.current.selectedOperationIds).toEqual(["isolateVoice", "separateSpeakers", "trimSilence"])
   })
 
+  it("resets a selected stack when a single operation is selected again", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const path = String(input)
+        if (path === "/api/sample-processing/options") {
+          return okJson(stackProcessingOptions)
+        }
+        return okJson({})
+      })
+    )
+    const onVoiceSaved = vi.fn()
+    const { result } = renderHook(() =>
+      useSampleProcessing({ onVoiceSaved, selectedVoice: sourceVoice, voices: [sourceVoice] })
+    )
+
+    await waitFor(() => expect(result.current.optionsStatus).toBe("success"))
+    act(() => {
+      result.current.setWorkflowStepSelected("trimSilence", true)
+    })
+    expect(result.current.selectedOperationIds).toEqual(["isolateVoice", "trimSilence"])
+
+    act(() => {
+      result.current.setOperationId("isolateVoice")
+    })
+
+    expect(result.current.selectedOperationIds).toEqual(["isolateVoice"])
+  })
+
   it("does not select unavailable stack steps", async () => {
     const optionsWithDisabledTrim: SampleProcessingOptionsResponse = {
       ...stackProcessingOptions,

@@ -262,7 +262,7 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
   }
 
   function handleOperationChange(nextOperationId: SampleProcessingOperationId) {
-    if (nextOperationId === operationId) {
+    if (selectedOperationIds.length === 1 && selectedOperationIds[0] === nextOperationId) {
       return
     }
     const nextOperation = operations.find((operation) => operation.id === nextOperationId)

@@ -136,6 +136,30 @@ describe("voice API helpers", () => {
     expect(body.get("sourceVoiceId")).toBe("voice-clone-01")
   })
 
+  it("rejects sample processing jobs without an operation or workflow stack", async () => {
+    vi.stubGlobal("fetch", vi.fn())
+
+    await expect(createSampleProcessingJob({ sourceVoiceId: "voice-clone-01" })).rejects.toThrow(
+      "Sample processing requires operationId or workflowSteps."
+    )
+
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it("rejects sample processing jobs with both operation and workflow stack inputs", async () => {
+    vi.stubGlobal("fetch", vi.fn())
+
+    await expect(
+      createSampleProcessingJob({
+        operationId: "isolateVoice",
+        sourceVoiceId: "voice-clone-01",
+        workflowSteps: [{ operationId: "trimSilence", processingPresetId: "trimBalanced" }],
+      })
+    ).rejects.toThrow("Provide either operationId or workflowSteps, not both.")
+
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
   it("cancels a sample processing job", async () => {
     vi.stubGlobal("fetch", vi.fn(() => okJson({ job: { id: "job-1", status: "canceled" } })))
 

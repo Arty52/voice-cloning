@@ -182,10 +182,18 @@ export async function createSampleProcessingJob({
   sourceVoiceId,
   workflowSteps,
 }: CreateSampleProcessingJobRequest) {
+  const hasWorkflowSteps = Boolean(workflowSteps?.length)
+  if (!operationId && !hasWorkflowSteps) {
+    throw new Error("Sample processing requires operationId or workflowSteps.")
+  }
+  if (operationId && hasWorkflowSteps) {
+    throw new Error("Provide either operationId or workflowSteps, not both.")
+  }
+
   const formData = new FormData()
-  if (workflowSteps && workflowSteps.length > 0) {
+  if (hasWorkflowSteps) {
     formData.append("workflowSteps", JSON.stringify(workflowSteps))
-  } else if (operationId) {
+  } else {
     formData.append("operationId", operationId)
   }
   if (processingPresetId) {
