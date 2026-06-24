@@ -32,6 +32,7 @@ const sourceVoice: VoiceAsset = {
 
 const sampleProcessingOptions: SampleProcessingOptionsResponse = {
   engine: "pyannote-community-1+faster-whisper",
+  recommendedWorkflowOrder: ["isolateVoice", "separateSpeakers", "trimSilence"],
   operations: [
     {
       id: "separateSpeakers",
@@ -52,6 +53,59 @@ const sampleProcessingOptions: SampleProcessingOptionsResponse = {
           id: "balanced",
           label: "Balanced",
           description: "Balanced isolation.",
+        },
+      ],
+    },
+  ],
+}
+
+const stackProcessingOptions: SampleProcessingOptionsResponse = {
+  engine: "fake-stack",
+  recommendedWorkflowOrder: ["isolateVoice", "separateSpeakers", "trimSilence"],
+  operations: [
+    {
+      id: "trimSilence",
+      label: "Trim Silence",
+      description: "Trim silence.",
+      enabled: true,
+      defaultProcessingPresetId: "trimBalanced",
+      processingPresets: [
+        {
+          id: "trimBalanced",
+          label: "Balanced",
+          description: "Balanced trimming.",
+        },
+        {
+          id: "trimAggressive",
+          label: "Aggressive",
+          description: "Aggressive trimming.",
+        },
+      ],
+    },
+    {
+      id: "separateSpeakers",
+      label: "Separate Speakers",
+      description: "Split speakers.",
+      enabled: true,
+      defaultProcessingPresetId: null,
+      processingPresets: [],
+    },
+    {
+      id: "isolateVoice",
+      label: "Isolate Voice",
+      description: "Isolate voice.",
+      enabled: true,
+      defaultProcessingPresetId: "balanced",
+      processingPresets: [
+        {
+          id: "balanced",
+          label: "Balanced",
+          description: "Balanced isolation.",
+        },
+        {
+          id: "clean",
+          label: "Clean",
+          description: "Clean isolation.",
         },
       ],
     },
@@ -120,10 +174,116 @@ const speakerJob: SampleProcessingJobResponse = {
     sourceSha256: "source-hash",
     sourcePreference: "original",
     engine: "pyannote-community-1+faster-whisper",
+    workflowMode: "single",
+    steps: [
+      {
+        id: "job-1",
+        operationId: "separateSpeakers",
+        operationLabel: "Separate Speakers",
+        status: "success",
+        engine: "pyannote-community-1+faster-whisper",
+        processingPresetId: null,
+        processingPresetLabel: null,
+        startedAt: "2026-06-23T00:00:00+00:00",
+        completedAt: "2026-06-23T00:00:01+00:00",
+        error: null,
+        sourceSha256: "source-hash",
+        resultSha256: "speaker-result-hash",
+      },
+    ],
+    activeStepId: null,
     createdAt: "2026-06-23T00:00:00+00:00",
     updatedAt: "2026-06-23T00:00:01+00:00",
     error: null,
     result: speakerSeparationResult,
+  },
+}
+
+const runningStackJob: SampleProcessingJobResponse = {
+  job: {
+    id: "job-stack",
+    operationId: "trimSilence",
+    operationLabel: "Trim Silence",
+    status: "running",
+    processingPresetId: "balanced",
+    processingPresetLabel: "Balanced",
+    sourceName: "Upload",
+    sourceFilename: "upload.wav",
+    sourceContentType: "audio/wav",
+    sourceSha256: "source-hash",
+    sourcePreference: "original",
+    engine: "fake-stack",
+    workflowMode: "stack",
+    steps: [
+      {
+        id: "job-stack-step-1",
+        operationId: "isolateVoice",
+        operationLabel: "Isolate Voice",
+        status: "running",
+        engine: "fake-isolate",
+        processingPresetId: "balanced",
+        processingPresetLabel: "Balanced",
+        startedAt: "2026-06-23T00:00:00+00:00",
+        completedAt: null,
+        error: null,
+        sourceSha256: "source-hash",
+        resultSha256: null,
+      },
+      {
+        id: "job-stack-step-2",
+        operationId: "trimSilence",
+        operationLabel: "Trim Silence",
+        status: "pending",
+        engine: "fake-trim",
+        processingPresetId: "trimBalanced",
+        processingPresetLabel: "Balanced",
+        startedAt: null,
+        completedAt: null,
+        error: null,
+        sourceSha256: null,
+        resultSha256: null,
+      },
+    ],
+    activeStepId: "job-stack-step-1",
+    createdAt: "2026-06-23T00:00:00+00:00",
+    updatedAt: "2026-06-23T00:00:00+00:00",
+    error: null,
+    result: null,
+  },
+}
+
+const successfulStackJob: SampleProcessingJobResponse = {
+  job: {
+    ...runningStackJob.job,
+    status: "success",
+    activeStepId: null,
+    updatedAt: "2026-06-23T00:00:01+00:00",
+    steps: runningStackJob.job.steps.map((step) => ({
+      ...step,
+      status: "success",
+      completedAt: "2026-06-23T00:00:01+00:00",
+      resultSha256: `${step.operationId}-hash`,
+    })),
+    result: {
+      filename: "result.wav",
+      contentType: "audio/wav",
+      sha256: "result-hash",
+    },
+  },
+}
+
+const canceledStackJob: SampleProcessingJobResponse = {
+  job: {
+    ...runningStackJob.job,
+    status: "canceled",
+    activeStepId: null,
+    error: "Sample processing was canceled.",
+    steps: runningStackJob.job.steps.map((step) => ({
+      ...step,
+      status: step.id === "job-stack-step-1" ? "canceled" : step.status,
+      completedAt: step.id === "job-stack-step-1" ? "2026-06-23T00:00:01+00:00" : step.completedAt,
+      error: step.id === "job-stack-step-1" ? "Sample processing was canceled." : step.error,
+    })),
   },
 }
 
@@ -169,6 +329,268 @@ function jsonResponse(payload: unknown, status = 200) {
 function formEvent() {
   return { preventDefault: vi.fn() } as unknown as FormEvent<HTMLFormElement>
 }
+
+describe("useSampleProcessing stacked workflow state", () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it("keeps one-step jobs on the legacy operation fields", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path === "/api/sample-processing/options" && !init) {
+          return okJson(stackProcessingOptions)
+        }
+        if (path === "/api/sample-processing/jobs" && init?.method === "POST") {
+          return okJson(successfulStackJob, 202)
+        }
+        return okJson({})
+      })
+    )
+    const onVoiceSaved = vi.fn()
+    const { result } = renderHook(() =>
+      useSampleProcessing({ onVoiceSaved, selectedVoice: sourceVoice, voices: [sourceVoice] })
+    )
+
+    await waitFor(() => expect(result.current.optionsStatus).toBe("success"))
+    await act(async () => {
+      await result.current.handleStartProcessing(formEvent())
+    })
+
+    const createCall = vi
+      .mocked(fetch)
+      .mock.calls.find(([url, init]) => String(url) === "/api/sample-processing/jobs" && init?.method === "POST")
+    const body = createCall?.[1]?.body as FormData
+    expect(body.get("operationId")).toBe("isolateVoice")
+    expect(body.get("workflowSteps")).toBeNull()
+    expect(body.get("sourceVoiceId")).toBe("default")
+    expect(body.get("sourcePreference")).toBe("original")
+    expect(result.current.status).toBe("success")
+  })
+
+  it("submits selected stack steps in recommended order from an upload", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path === "/api/sample-processing/options" && !init) {
+          return okJson(stackProcessingOptions)
+        }
+        if (path === "/api/sample-processing/jobs" && init?.method === "POST") {
+          return okJson(successfulStackJob, 202)
+        }
+        return okJson({})
+      })
+    )
+    const onVoiceSaved = vi.fn()
+    const sourceFile = new File(["source"], "conversation.wav", { type: "audio/wav" })
+    const { result } = renderHook(() =>
+      useSampleProcessing({ onVoiceSaved, selectedVoice: sourceVoice, voices: [sourceVoice] })
+    )
+
+    await waitFor(() => expect(result.current.optionsStatus).toBe("success"))
+    act(() => {
+      result.current.setWorkflowStepSelected("separateSpeakers", true)
+    })
+    act(() => {
+      result.current.setWorkflowStepSelected("trimSilence", true)
+    })
+    act(() => {
+      result.current.setProcessingPresetIdForOperation("trimSilence", "trimAggressive")
+      result.current.handleSourceModeChange("upload")
+      result.current.handleSourceFileSelect(sourceFile)
+    })
+    await act(async () => {
+      await result.current.handleStartProcessing(formEvent())
+    })
+
+    const createCall = vi
+      .mocked(fetch)
+      .mock.calls.find(([url, init]) => String(url) === "/api/sample-processing/jobs" && init?.method === "POST")
+    const body = createCall?.[1]?.body as FormData
+    expect(body.get("operationId")).toBeNull()
+    expect(JSON.parse(body.get("workflowSteps") as string)).toEqual([
+      { operationId: "isolateVoice", processingPresetId: "balanced" },
+      { operationId: "separateSpeakers", processingPresetId: null },
+      { operationId: "trimSilence", processingPresetId: "trimAggressive" },
+    ])
+    expect(body.get("sourceFile")).toBe(sourceFile)
+    expect(result.current.selectedOperationIds).toEqual(["isolateVoice", "separateSpeakers", "trimSilence"])
+  })
+
+  it("resets a selected stack when a single operation is selected again", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const path = String(input)
+        if (path === "/api/sample-processing/options") {
+          return okJson(stackProcessingOptions)
+        }
+        return okJson({})
+      })
+    )
+    const onVoiceSaved = vi.fn()
+    const { result } = renderHook(() =>
+      useSampleProcessing({ onVoiceSaved, selectedVoice: sourceVoice, voices: [sourceVoice] })
+    )
+
+    await waitFor(() => expect(result.current.optionsStatus).toBe("success"))
+    act(() => {
+      result.current.setWorkflowStepSelected("trimSilence", true)
+    })
+    expect(result.current.selectedOperationIds).toEqual(["isolateVoice", "trimSilence"])
+
+    act(() => {
+      result.current.setOperationId("isolateVoice")
+    })
+
+    expect(result.current.selectedOperationIds).toEqual(["isolateVoice"])
+  })
+
+  it("does not select unavailable stack steps", async () => {
+    const optionsWithDisabledTrim: SampleProcessingOptionsResponse = {
+      ...stackProcessingOptions,
+      operations: stackProcessingOptions.operations.map((operation) =>
+        operation.id === "trimSilence" ? { ...operation, enabled: false } : operation
+      ),
+    }
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path === "/api/sample-processing/options" && !init) {
+          return okJson(optionsWithDisabledTrim)
+        }
+        return okJson({})
+      })
+    )
+    const onVoiceSaved = vi.fn()
+    const { result } = renderHook(() =>
+      useSampleProcessing({ onVoiceSaved, selectedVoice: sourceVoice, voices: [sourceVoice] })
+    )
+
+    await waitFor(() => expect(result.current.optionsStatus).toBe("success"))
+    act(() => {
+      result.current.setWorkflowStepSelected("trimSilence", true)
+    })
+
+    expect(result.current.selectedOperationIds).toEqual(["isolateVoice"])
+    expect(result.current.selectedWorkflowSteps.map((step) => step.operationId)).toEqual(["isolateVoice"])
+  })
+
+  it("tracks active step progress and cancels a running job", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path === "/api/sample-processing/options" && !init) {
+          return okJson(stackProcessingOptions)
+        }
+        if (path === "/api/sample-processing/jobs" && init?.method === "POST") {
+          return okJson(runningStackJob, 202)
+        }
+        if (path === "/api/sample-processing/jobs/job-stack" && !init) {
+          return okJson(runningStackJob)
+        }
+        if (path === "/api/sample-processing/jobs/job-stack/cancel" && init?.method === "POST") {
+          return okJson(canceledStackJob)
+        }
+        return okJson({})
+      })
+    )
+    const onVoiceSaved = vi.fn()
+    const { result } = renderHook(() =>
+      useSampleProcessing({ onVoiceSaved, selectedVoice: sourceVoice, voices: [sourceVoice] })
+    )
+
+    await waitFor(() => expect(result.current.optionsStatus).toBe("success"))
+    act(() => {
+      result.current.setWorkflowStepSelected("trimSilence", true)
+    })
+    await act(async () => {
+      await result.current.handleStartProcessing(formEvent())
+    })
+
+    expect(result.current.status).toBe("processing")
+    expect(result.current.activeStep?.operationId).toBe("isolateVoice")
+    expect(result.current.canCancel).toBe(true)
+
+    await act(async () => {
+      await result.current.handleCancelProcessing()
+    })
+
+    expect(result.current.status).toBe("canceled")
+    expect(result.current.job?.status).toBe("canceled")
+    expect(result.current.canSave).toBe(false)
+    expect(result.current.canCancel).toBe(false)
+  })
+
+  it("keeps speaker stack results on speaker-specific preview URLs", async () => {
+    const speakerStackJob: SampleProcessingJobResponse = {
+      job: {
+        ...speakerJob.job,
+        workflowMode: "stack",
+        steps: [
+          {
+            ...runningStackJob.job.steps[0],
+            status: "success",
+            completedAt: "2026-06-23T00:00:01+00:00",
+            resultSha256: "isolate-hash",
+          },
+          {
+            id: "job-1-step-2",
+            operationId: "separateSpeakers",
+            operationLabel: "Separate Speakers",
+            status: "success",
+            engine: "fake-separate",
+            processingPresetId: null,
+            processingPresetLabel: null,
+            startedAt: "2026-06-23T00:00:01+00:00",
+            completedAt: "2026-06-23T00:00:02+00:00",
+            error: null,
+            sourceSha256: "isolate-hash",
+            resultSha256: "speaker-result-hash",
+          },
+        ],
+      },
+    }
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path === "/api/sample-processing/options" && !init) {
+          return okJson(stackProcessingOptions)
+        }
+        if (path === "/api/sample-processing/jobs" && init?.method === "POST") {
+          return okJson(speakerStackJob, 202)
+        }
+        return okJson({})
+      })
+    )
+    const onVoiceSaved = vi.fn()
+    const { result } = renderHook(() =>
+      useSampleProcessing({ onVoiceSaved, selectedVoice: sourceVoice, voices: [sourceVoice] })
+    )
+
+    await waitFor(() => expect(result.current.optionsStatus).toBe("success"))
+    act(() => {
+      result.current.setWorkflowStepSelected("separateSpeakers", true)
+    })
+    await act(async () => {
+      await result.current.handleStartProcessing(formEvent())
+    })
+
+    expect(result.current.isSpeakerSeparationJob).toBe(true)
+    expect(result.current.resultUrl).toBeNull()
+    expect(result.current.speakerSourceUrl).toBe("/api/sample-processing/jobs/job-1/source")
+    expect(result.current.speakerResultUrls["speaker-1"]).toBe(
+      "/api/sample-processing/jobs/job-1/speakers/speaker-1/result"
+    )
+  })
+})
 
 describe("useSampleProcessing speaker separation state", () => {
   afterEach(() => {
