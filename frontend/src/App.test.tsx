@@ -1361,6 +1361,91 @@ describe("App", () => {
     expectElementBefore(workflowStackLabel, startButton)
   })
 
+  it("shows saved voice source cards with compact playback and submits the selected voice", async () => {
+    const playSpy = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined)
+    const pauseSpy = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined)
+    const baseFetch = mockFetch()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "default", voices: [defaultVoice, voiceCloneVoice] })
+        }
+        return baseFetch(input, init)
+      })
+    )
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+
+    expect(sampleProcessingPanel().getByText("Select Voice")).toBeInTheDocument()
+    expect(sampleProcessingPanel().getAllByText("Saved Voice")).toHaveLength(1)
+    expect(sampleProcessingPanel().queryByRole("button", { name: /Sample Processing Saved Voice/i })).not.toBeInTheDocument()
+    const defaultCard = within(sampleProcessingPanel().getByRole("group", { name: "Default voice Source Voice" }))
+    const cloneCard = within(sampleProcessingPanel().getByRole("group", { name: "Voice_Clone_01 Source Voice" }))
+    expect(defaultCard.getByText("Standard Narration")).toBeInTheDocument()
+    expect(defaultCard.getByText("Default")).toBeInTheDocument()
+    expect(cloneCard.getByText("Source: voice-clone-01.mp3")).toBeInTheDocument()
+    expect(cloneCard.getByRole("button", { name: "Select Voice_Clone_01" })).toHaveAttribute("aria-pressed", "false")
+    expect(document.querySelector('audio[src="/api/voices/voice-clone-01/sample"]')).toHaveAttribute("preload", "none")
+
+    await user.click(cloneCard.getByRole("button", { name: "Play Voice_Clone_01 Preview" }))
+    expect(playSpy).toHaveBeenCalled()
+    expect(cloneCard.getByRole("button", { name: "Select Voice_Clone_01" })).toHaveAttribute("aria-pressed", "false")
+    await user.click(cloneCard.getByRole("button", { name: "Pause Voice_Clone_01 Preview" }))
+    expect(pauseSpy).toHaveBeenCalled()
+
+    await user.click(cloneCard.getByRole("button", { name: "Select Voice_Clone_01" }))
+    expect(cloneCard.getByRole("button", { name: "Select Voice_Clone_01" })).toHaveAttribute("aria-pressed", "true")
+
+    const startButton = sampleProcessingPanel().getByRole("button", { name: "Start Processing" })
+    await waitFor(() => expect(startButton).toBeEnabled())
+    await user.click(startButton)
+
+    const jobCall = vi.mocked(fetch).mock.calls.find(
+      ([url, init]) => String(url) === "/api/sample-processing/jobs" && init?.method === "POST"
+    )
+    const jobBody = jobCall?.[1]?.body as FormData
+    expect(jobBody.get("sourceVoiceId")).toBe("voice-clone-01")
+  })
+
+  it("switches from the saved voice carousel to audio upload", async () => {
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Use Audio File" }))
+
+    expect(sampleProcessingPanel().getByLabelText("Audio File")).toHaveAttribute("tabindex", "-1")
+    expect(sampleProcessingPanel().queryByText("Source Preference")).not.toBeInTheDocument()
+  })
+
+  it("shows an empty saved voice source state until audio is uploaded", async () => {
+    const baseFetch = mockFetch()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "", voices: [] })
+        }
+        return baseFetch(input, init)
+      })
+    )
+    const user = userEvent.setup()
+    renderApp()
+
+    expect(await sampleProcessingPanel().findByText("No Saved Voices")).toBeInTheDocument()
+    expect(sampleProcessingPanel().getByRole("button", { name: "Start Processing" })).toBeDisabled()
+
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Use Audio File" }))
+    expect(sampleProcessingPanel().getByRole("button", { name: "Start Processing" })).toBeDisabled()
+    await user.upload(sampleProcessingPanel().getByLabelText("Audio File"), new File(["source"], "sample.wav", { type: "audio/wav" }))
+    await waitFor(() => expect(sampleProcessingPanel().getByRole("button", { name: "Start Processing" })).toBeEnabled())
+  })
+
   it("shows unavailable sample processing state", async () => {
     const baseFetch = mockFetch()
     vi.stubGlobal(

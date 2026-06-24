@@ -69,11 +69,11 @@ export const WORKFLOW_SECTIONS: WorkflowSection[] = [
     stepLabel: "Start",
   },
   {
-    description: "Prepare or clean source audio before saving it as a voice.",
+    description: "Prepare source audio before saving it as a voice.",
     hash: "#prepare",
     icon: Wand2,
     id: "prepare",
-    label: "Prepare Samples",
+    label: "Prepare Audio",
     optional: true,
     stepLabel: "0",
   },

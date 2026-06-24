@@ -336,6 +336,28 @@ describe("useSampleProcessing stacked workflow state", () => {
     vi.unstubAllGlobals()
   })
 
+  it("exposes saved voice metadata for source selection presentation", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input) === "/api/sample-processing/options" && !init) {
+          return okJson(stackProcessingOptions)
+        }
+        return okJson({})
+      })
+    )
+    const voices = [sourceVoice, { ...sourceVoice, id: "clone", name: "Clone", filePath: "voices/clone.wav" }]
+    const { result } = renderHook(() => useSampleProcessing({ onVoiceSaved: vi.fn(), selectedVoice: sourceVoice, voices }))
+
+    await waitFor(() => expect(result.current.optionsStatus).toBe("success"))
+
+    expect(result.current.sourceVoices).toEqual(voices)
+    expect(result.current.voiceOptions).toEqual([
+      { label: "Default voice", value: "default" },
+      { label: "Clone", value: "clone" },
+    ])
+  })
+
   it("keeps one-step jobs on the legacy operation fields", async () => {
     vi.stubGlobal(
       "fetch",

@@ -2,6 +2,7 @@ import { type CSSProperties, useEffect, useRef, useState } from "react"
 import {
   AudioLines,
   Ban,
+  Check,
   CheckCircle2,
   ChevronDown,
   Circle,
@@ -10,6 +11,7 @@ import {
   Info,
   Loader2,
   Mic,
+  Pause,
   Play,
   Save,
   Scissors,
@@ -46,12 +48,14 @@ import { VoicePresetToggleGroup } from "@/components/voice-preset-toggle-group"
 import type { SampleProcessingController } from "@/hooks/use-sample-processing"
 import { formatElapsedTime } from "@/lib/formatters"
 import { cn } from "@/lib/utils"
+import { voicePresetLabel } from "@/lib/voice-presets"
 import type {
   SampleProcessingOperationId,
   SampleProcessingPresetId,
   SpeakerSeparationResult,
   SpeakerSeparationSpeaker,
   SpeakerTranscriptItem,
+  VoiceAsset,
   VoicePresetId,
 } from "@/types"
 
@@ -84,7 +88,6 @@ export function SampleProcessingPanel({
   processing,
   voicePresets,
 }: SampleProcessingPanelProps) {
-  const voiceOptions = processing.voiceOptions.length > 0 ? processing.voiceOptions : [{ label: "No Voices", value: "" }]
   const isUnavailable =
     processing.optionsStatus === "success" &&
     processing.enabledOperations.length === 0 &&
@@ -108,7 +111,7 @@ export function SampleProcessingPanel({
               </span>
             ) : null}
           </div>
-          <p className="mt-1 text-sm text-muted-foreground">Prepare samples before adding them to the Voice Library.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Prepare source audio before saving it as a voice.</p>
         </div>
         {isCollapsible ? (
           <Button
@@ -148,7 +151,7 @@ export function SampleProcessingPanel({
 
           <form className="space-y-3" onSubmit={processing.handleStartProcessing}>
             <FieldGroup>
-              <SourceSelection processing={processing} voiceOptions={voiceOptions} />
+              <SourceSelection processing={processing} voicePresets={voicePresets} />
               <WorkflowStackSelection processing={processing} />
             </FieldGroup>
 
@@ -295,10 +298,10 @@ function WorkflowSelectionIndicator({ isSelected }: { isSelected: boolean }) {
 
 function SourceSelection({
   processing,
-  voiceOptions,
+  voicePresets,
 }: {
   processing: SampleProcessingController
-  voiceOptions: { label: string; value: string }[]
+  voicePresets: { id: VoicePresetId; label: string; description: string }[]
 }) {
   return (
     <>
@@ -333,13 +336,14 @@ function SourceSelection({
       {processing.sourceMode === "voice" ? (
         <>
           <Field>
-            <FieldLabel id="sample-processing-voice-label">Saved Voice</FieldLabel>
-            <MenuSelect
-              ariaLabel="Sample Processing Saved Voice"
-              disabled={processing.isProcessing || voiceOptions.length === 0 || voiceOptions[0]?.value === ""}
-              onChange={processing.setSourceVoiceId}
-              options={voiceOptions}
-              value={processing.sourceVoiceId}
+            <FieldLabel id="sample-processing-voice-label">Select Voice</FieldLabel>
+            <SavedVoiceCarousel
+              disabled={processing.isProcessing}
+              onSelectVoice={processing.setSourceVoiceId}
+              onUseAudioFile={() => processing.handleSourceModeChange("upload")}
+              selectedVoiceId={processing.sourceVoiceId}
+              voicePresets={voicePresets}
+              voices={processing.sourceVoices}
             />
           </Field>
           <Field>
@@ -421,6 +425,173 @@ function SourceSelection({
           selectedFileName={processing.sourceFile?.name ?? null}
         />
       )}
+    </>
+  )
+}
+
+function SavedVoiceCarousel({
+  disabled,
+  onSelectVoice,
+  onUseAudioFile,
+  selectedVoiceId,
+  voicePresets,
+  voices,
+}: {
+  disabled: boolean
+  onSelectVoice: (voiceId: string) => void
+  onUseAudioFile: () => void
+  selectedVoiceId: string
+  voicePresets: { id: VoicePresetId; label: string; description: string }[]
+  voices: VoiceAsset[]
+}) {
+  return (
+    <div
+      aria-labelledby="sample-processing-voice-label"
+      className="flex gap-2 overflow-x-auto rounded-md border border-border bg-background/60 p-2"
+      role="group"
+    >
+      {voices.length === 0 ? <SavedVoiceEmptyCard /> : null}
+      {voices.map((voice) => (
+        <SavedVoiceSourceCard
+          disabled={disabled}
+          isSelected={voice.id === selectedVoiceId}
+          key={voice.id}
+          onSelectVoice={onSelectVoice}
+          voice={voice}
+          voicePreset={voicePresetLabel(voicePresets, voice.voicePresetId)}
+        />
+      ))}
+      <button
+        aria-label="Use Audio File"
+        className="flex min-h-32 min-w-56 snap-start flex-col items-start justify-between gap-4 rounded-md border border-dashed border-border bg-background/70 p-3 text-left outline-none transition hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+        disabled={disabled}
+        onClick={onUseAudioFile}
+        type="button"
+      >
+        <span className="flex w-full items-start justify-between gap-3">
+          <span className="flex min-w-0 items-center gap-2 text-sm font-medium text-foreground">
+            <Upload aria-hidden="true" className="size-4 shrink-0 text-primary" />
+            <span className="truncate">Use Audio File</span>
+          </span>
+        </span>
+        <span className="text-xs leading-5 text-muted-foreground">
+          Upload a source sample instead of choosing a saved voice.
+        </span>
+      </button>
+    </div>
+  )
+}
+
+function SavedVoiceEmptyCard() {
+  return (
+    <div className="flex min-h-32 min-w-64 snap-start flex-col justify-center gap-2 rounded-md border border-dashed border-border bg-background/50 p-3">
+      <span className="text-sm font-medium text-foreground">No Saved Voices</span>
+      <FieldDescription>Upload an audio file to prepare a sample without saving a voice first.</FieldDescription>
+    </div>
+  )
+}
+
+function SavedVoiceSourceCard({
+  disabled,
+  isSelected,
+  onSelectVoice,
+  voice,
+  voicePreset,
+}: {
+  disabled: boolean
+  isSelected: boolean
+  onSelectVoice: (voiceId: string) => void
+  voice: VoiceAsset
+  voicePreset: string
+}) {
+  const descriptionId = `sample-processing-source-voice-${voice.id}-description`
+  const sourceLabel = voice.source === "default" ? "Default" : "Uploaded"
+  const fileLabel = voice.sourceFilePath ?? voice.filePath
+
+  return (
+    <div
+      aria-label={`${voice.name} Source Voice`}
+      className={cn(
+        "relative min-h-32 min-w-64 snap-start rounded-md border border-border bg-background/70 p-1 transition hover:bg-muted/50",
+        isSelected && "border-primary bg-primary/10 hover:bg-primary/10"
+      )}
+      role="group"
+    >
+      <button
+        aria-describedby={descriptionId}
+        aria-label={`Select ${voice.name}`}
+        aria-pressed={isSelected}
+        className="flex size-full min-h-28 flex-col items-start justify-between gap-3 rounded px-2 py-2 pr-12 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+        disabled={disabled}
+        onClick={() => onSelectVoice(voice.id)}
+        type="button"
+      >
+        <span className="flex min-w-0 flex-col gap-1">
+          <span className="line-clamp-2 text-sm font-medium text-foreground">{voice.name}</span>
+          <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+            <Badge className="px-1.5 py-0.5" variant="secondary">
+              {voicePreset}
+            </Badge>
+            <Badge className="px-1.5 py-0.5" variant="secondary">
+              {sourceLabel}
+            </Badge>
+          </span>
+        </span>
+        <span className="min-w-0 max-w-full truncate font-mono text-xs text-muted-foreground" id={descriptionId}>
+          Source: {fileLabel}
+        </span>
+        {isSelected ? <Check aria-label="Selected voice" className="absolute right-3 top-3 size-4 text-primary" /> : null}
+      </button>
+      <CompactVoicePreviewButton disabled={disabled} voice={voice} />
+    </div>
+  )
+}
+
+function CompactVoicePreviewButton({ disabled, voice }: { disabled: boolean; voice: VoiceAsset }) {
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const [isPlaying, setIsPlaying] = useState(false)
+
+  async function handlePreviewToggle() {
+    const audio = audioRef.current
+    if (!audio) {
+      return
+    }
+
+    if (isPlaying) {
+      audio.pause()
+      setIsPlaying(false)
+      return
+    }
+
+    try {
+      await audio.play()
+      setIsPlaying(true)
+    } catch {
+      setIsPlaying(false)
+    }
+  }
+
+  return (
+    <>
+      <audio
+        onEnded={() => setIsPlaying(false)}
+        onPause={() => setIsPlaying(false)}
+        onPlay={() => setIsPlaying(true)}
+        preload="none"
+        ref={audioRef}
+        src={`/api/voices/${encodeURIComponent(voice.id)}/sample`}
+      />
+      <Button
+        aria-label={`${isPlaying ? "Pause" : "Play"} ${voice.name} Preview`}
+        className="absolute bottom-3 right-3 size-8"
+        disabled={disabled}
+        onClick={handlePreviewToggle}
+        size="icon"
+        type="button"
+        variant="secondary"
+      >
+        {isPlaying ? <Pause aria-hidden="true" data-icon="inline-start" /> : <Play aria-hidden="true" data-icon="inline-start" />}
+      </Button>
     </>
   )
 }
