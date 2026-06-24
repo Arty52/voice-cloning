@@ -206,22 +206,18 @@ export function AddVoicePanel({
             />
           ) : null}
 
-          <div className="rounded-md border border-border bg-background/60 p-3">
-            <div className="mb-2 text-sm font-medium">
-              {voiceSampleInputMode === "record" ? "Recording Preview" : "Upload Preview"}
-            </div>
-            {uploadPreviewUrl ? (
+          {uploadPreviewUrl ? (
+            <div className="rounded-md border border-border bg-background/60 p-3">
+              <div className="mb-2 text-sm font-medium">
+                {voiceSampleInputMode === "record" ? "Recording Preview" : "Upload Preview"}
+              </div>
               <audio
                 aria-label={voiceSampleInputMode === "record" ? "Recorded voice sample preview" : "Uploaded voice sample preview"}
                 controls
                 src={uploadPreviewUrl}
               />
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                {voiceSampleInputMode === "record" ? "No recording captured." : "No upload selected."}
-              </p>
-            )}
-          </div>
+            </div>
+          ) : null}
 
           <VoicePresetToggleGroup
             disabled={isUploading}

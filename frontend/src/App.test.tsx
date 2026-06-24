@@ -2098,6 +2098,7 @@ describe("App", () => {
 
   it("orders add voice controls by source preview preset name and save", async () => {
     window.history.replaceState(null, "", "/#voices")
+    stubDecodedAudio(3)
     const user = userEvent.setup()
     renderApp()
 
@@ -2105,6 +2106,12 @@ describe("App", () => {
     await revealAddVoicePanel(user)
 
     const source = addVoicePanel().getByRole("group", { name: "Audio Drop Zone" })
+    expect(addVoicePanel().queryByText("Upload Preview")).not.toBeInTheDocument()
+    expect(addVoicePanel().queryByText("No upload selected.")).not.toBeInTheDocument()
+
+    await user.upload(screen.getByLabelText(/sample file/i), new File(["sample"], "workflow-order.wav", { type: "audio/wav" }))
+    expect(await screen.findByLabelText(/uploaded voice sample preview/i)).toBeInTheDocument()
+
     const preview = addVoicePanel().getByText("Upload Preview")
     const preset = addVoicePanel().getByRole("radiogroup", { name: "Voice Preset" })
     const name = addVoicePanel().getByRole("textbox", { name: "Voice Name" })
