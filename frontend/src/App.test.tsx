@@ -1419,7 +1419,7 @@ describe("App", () => {
     await user.click(sampleProcessingPanel().getByRole("button", { name: "Use Audio File" }))
 
     expect(sampleProcessingPanel().getByLabelText("Audio File")).toHaveAttribute("tabindex", "-1")
-    expect(sampleProcessingPanel().queryByText("Source Preference")).not.toBeInTheDocument()
+    expect(sampleProcessingPanel().queryByText("Process From")).not.toBeInTheDocument()
   })
 
   it("shows an empty saved voice source state until audio is uploaded", async () => {
@@ -1540,45 +1540,19 @@ describe("App", () => {
     expect(sampleProcessingPanel().getByLabelText("Voice Name")).toHaveValue("Default voice Trimmed")
   })
 
-  it("explains source preference without implying the selected voice is overwritten", async () => {
-    const user = userEvent.setup()
+  it("shows process-from copy without relying on tooltip help", async () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
 
-    const sourcePreferenceHelp = await sampleProcessingPanel().findByRole("button", {
-      name: "Explain Source Preference",
-    })
-    expect(sourcePreferenceHelp).toBeVisible()
-
-    await user.hover(sourcePreferenceHelp)
-
-    const tooltip = await waitFor(() => {
-      const sourcePreferenceTooltip = screen
-        .getAllByRole("tooltip")
-        .find((element) => within(element).queryByText("Original Source"))
-      expect(sourcePreferenceTooltip).toBeDefined()
-      return sourcePreferenceTooltip as HTMLElement
-    })
-    expect(within(tooltip).getByText("Original Source")).toBeInTheDocument()
-    expect(
-      within(tooltip).getByText(
-        "Uses the retained full upload/source file when one exists; otherwise falls back to the active sample."
-      )
-    ).toBeInTheDocument()
-    expect(within(tooltip).getByText("Active Sample")).toBeInTheDocument()
-    expect(within(tooltip).getByText("Uses the provider-facing sample currently stored for the selected voice.")).toBeInTheDocument()
-    expect(
-      within(tooltip).getByText(
-        "Processing creates a preview only. Add To Voice Library saves that preview as a new voice and does not replace the selected voice."
-      )
-    ).toBeInTheDocument()
-
-    expect(sampleProcessingPanel().getByRole("button", { name: "Original Source" })).toHaveAccessibleDescription(
-      "Uses the retained full upload/source file when one exists; otherwise falls back to the active sample. Processing creates a preview only. Add To Voice Library saves that preview as a new voice and does not replace the selected voice."
+    expect(sampleProcessingPanel().getByText("Process From")).toBeInTheDocument()
+    expect(sampleProcessingPanel().getByText("Choose which version of this saved voice to prepare.")).toBeVisible()
+    expect(sampleProcessingPanel().queryByRole("button", { name: "Explain Source Preference" })).not.toBeInTheDocument()
+    expect(sampleProcessingPanel().getByRole("button", { name: "Original Recording" })).toHaveAccessibleDescription(
+      "Uses the full uploaded source when available."
     )
-    expect(sampleProcessingPanel().getByRole("button", { name: "Active Sample" })).toHaveAccessibleDescription(
-      "Uses the provider-facing sample currently stored for the selected voice. Processing creates a preview only. Add To Voice Library saves that preview as a new voice and does not replace the selected voice."
+    expect(sampleProcessingPanel().getByRole("button", { name: "Saved Sample" })).toHaveAccessibleDescription(
+      "Uses the current library sample."
     )
   })
 
@@ -1973,7 +1947,7 @@ describe("App", () => {
     expect(await sampleProcessingPanel().findByLabelText("Processed sample preview")).toBeInTheDocument()
     expect(sampleProcessingPanel().getByLabelText("Sample Processing Elapsed Time")).toHaveTextContent("Finished In")
 
-    await user.click(sampleProcessingPanel().getByRole("button", { name: "Active Sample" }))
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Saved Sample" }))
 
     await waitFor(() => {
       expect(sampleProcessingPanel().queryByLabelText("Processed sample preview")).not.toBeInTheDocument()
@@ -2080,7 +2054,7 @@ describe("App", () => {
 
     await screen.findByText("default/default-voice.mp3")
     await user.click(sampleProcessingPanel().getByRole("button", { name: "Audio File" }))
-    expect(sampleProcessingPanel().queryByText("Source Preference")).not.toBeInTheDocument()
+    expect(sampleProcessingPanel().queryByText("Process From")).not.toBeInTheDocument()
     expect(sampleProcessingPanel().queryByRole("button", { name: "Explain Source Preference" })).not.toBeInTheDocument()
     expect(sampleProcessingPanel().getByLabelText("Audio File")).toHaveAttribute("tabindex", "-1")
     await user.upload(sampleProcessingPanel().getByLabelText("Audio File"), sourceFile)

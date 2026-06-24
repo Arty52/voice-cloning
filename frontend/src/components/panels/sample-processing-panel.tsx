@@ -8,7 +8,6 @@ import {
   Circle,
   CircleAlert,
   FileAudio,
-  Info,
   Loader2,
   Mic,
   Pause,
@@ -43,7 +42,6 @@ import { MenuSelect } from "@/components/ui/menu-select"
 import { Popover, PopoverContent, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { VoicePresetToggleGroup } from "@/components/voice-preset-toggle-group"
 import type { SampleProcessingController } from "@/hooks/use-sample-processing"
 import { formatElapsedTime } from "@/lib/formatters"
@@ -67,11 +65,9 @@ type SampleProcessingPanelProps = {
   voicePresets: { id: VoicePresetId; label: string; description: string }[]
 }
 
-const SOURCE_PREFERENCE_ORIGINAL_DESCRIPTION =
-  "Uses the retained full upload/source file when one exists; otherwise falls back to the active sample."
-const SOURCE_PREFERENCE_ACTIVE_DESCRIPTION = "Uses the provider-facing sample currently stored for the selected voice."
-const SOURCE_PREFERENCE_SAVE_DESCRIPTION =
-  "Processing creates a preview only. Add To Voice Library saves that preview as a new voice and does not replace the selected voice."
+const PROCESS_FROM_DESCRIPTION = "Choose which version of this saved voice to prepare."
+const SOURCE_PREFERENCE_ORIGINAL_DESCRIPTION = "Uses the full uploaded source when available."
+const SOURCE_PREFERENCE_ACTIVE_DESCRIPTION = "Uses the current library sample."
 const SPEAKER_COLORS = [
   "oklch(0.74 0.17 36)",
   "oklch(0.72 0.14 184)",
@@ -347,43 +343,15 @@ function SourceSelection({
             />
           </Field>
           <Field>
-            <div className="flex items-center gap-1.5">
-              <FieldLabel id="sample-processing-source-preference-label">Source Preference</FieldLabel>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    aria-label="Explain Source Preference"
-                    className="size-6 shrink-0"
-                    disabled={processing.isProcessing}
-                    size="icon"
-                    type="button"
-                    variant="ghost"
-                  >
-                    <Info aria-hidden="true" data-icon="inline-start" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent className="max-w-72" side="top" sideOffset={6}>
-                  <div className="flex flex-col gap-2">
-                    <div className="flex flex-col gap-1">
-                      <span className="font-medium">Original Source</span>
-                      <span>{SOURCE_PREFERENCE_ORIGINAL_DESCRIPTION}</span>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <span className="font-medium">Active Sample</span>
-                      <span>{SOURCE_PREFERENCE_ACTIVE_DESCRIPTION}</span>
-                    </div>
-                    <span>{SOURCE_PREFERENCE_SAVE_DESCRIPTION}</span>
-                  </div>
-                </TooltipContent>
-              </Tooltip>
-            </div>
+            <FieldLabel id="sample-processing-source-preference-label">Process From</FieldLabel>
+            <FieldDescription>{PROCESS_FROM_DESCRIPTION}</FieldDescription>
             <div
               className="grid grid-cols-2 gap-1 rounded-md border border-border bg-background/60 p-1"
               role="group"
               aria-labelledby="sample-processing-source-preference-label"
             >
               <Button
-                aria-describedby="sample-processing-original-source-description sample-processing-source-save-description"
+                aria-describedby="sample-processing-original-source-description"
                 aria-pressed={processing.sourcePreference === "original"}
                 className={cn(processing.sourcePreference !== "original" && "bg-transparent")}
                 disabled={processing.isProcessing}
@@ -391,10 +359,10 @@ function SourceSelection({
                 type="button"
                 variant={processing.sourcePreference === "original" ? "secondary" : "ghost"}
               >
-                Original Source
+                Original Recording
               </Button>
               <Button
-                aria-describedby="sample-processing-active-sample-description sample-processing-source-save-description"
+                aria-describedby="sample-processing-active-sample-description"
                 aria-pressed={processing.sourcePreference === "active"}
                 className={cn(processing.sourcePreference !== "active" && "bg-transparent")}
                 disabled={processing.isProcessing}
@@ -402,7 +370,7 @@ function SourceSelection({
                 type="button"
                 variant={processing.sourcePreference === "active" ? "secondary" : "ghost"}
               >
-                Active Sample
+                Saved Sample
               </Button>
             </div>
             <FieldDescription className="sr-only" id="sample-processing-original-source-description">
@@ -410,9 +378,6 @@ function SourceSelection({
             </FieldDescription>
             <FieldDescription className="sr-only" id="sample-processing-active-sample-description">
               {SOURCE_PREFERENCE_ACTIVE_DESCRIPTION}
-            </FieldDescription>
-            <FieldDescription className="sr-only" id="sample-processing-source-save-description">
-              {SOURCE_PREFERENCE_SAVE_DESCRIPTION}
             </FieldDescription>
           </Field>
         </>
