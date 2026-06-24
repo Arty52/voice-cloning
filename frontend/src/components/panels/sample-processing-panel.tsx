@@ -464,6 +464,7 @@ function SavedVoiceCarousel({
   voicePresets: { id: VoicePresetId; label: string; description: string }[]
   voices: VoiceAsset[]
 }) {
+  const carouselRef = useRef<HTMLDivElement | null>(null)
   const [activePreviewVoiceId, setActivePreviewVoiceId] = useState<string | null>(null)
   const handlePreviewStart = useCallback((voiceId: string) => {
     setActivePreviewVoiceId(voiceId)
@@ -473,10 +474,23 @@ function SavedVoiceCarousel({
   }, [])
   const visibleActivePreviewVoiceId = disabled ? null : activePreviewVoiceId
 
+  useEffect(() => {
+    const carousel = carouselRef.current
+    if (!carousel) {
+      return undefined
+    }
+
+    carousel.addEventListener("wheel", containSavedVoiceCarouselWheel, { passive: false })
+    return () => {
+      carousel.removeEventListener("wheel", containSavedVoiceCarouselWheel)
+    }
+  }, [])
+
   return (
     <div
       aria-labelledby="sample-processing-voice-label"
-      className="flex gap-2 overflow-x-auto rounded-md border border-border bg-background/60 p-2"
+      className="flex gap-2 overflow-x-auto overscroll-x-contain rounded-md border border-border bg-background/60 p-2"
+      ref={carouselRef}
       role="group"
     >
       {voices.length === 0 ? <SavedVoiceEmptyCard /> : null}
@@ -512,6 +526,50 @@ function SavedVoiceCarousel({
       </button>
     </div>
   )
+}
+
+function containSavedVoiceCarouselWheel(event: WheelEvent) {
+  const carousel = event.currentTarget as HTMLElement | null
+  if (!carousel) {
+    return
+  }
+
+  const horizontalDelta = horizontalCarouselWheelDelta(event, carousel)
+  if (horizontalDelta === 0) {
+    return
+  }
+
+  const maxScrollLeft = Math.max(0, carousel.scrollWidth - carousel.clientWidth)
+  if (maxScrollLeft === 0) {
+    return
+  }
+
+  event.preventDefault()
+  carousel.scrollLeft = Math.min(maxScrollLeft, Math.max(0, carousel.scrollLeft + horizontalDelta))
+}
+
+function horizontalCarouselWheelDelta(event: WheelEvent, carousel: HTMLElement) {
+  const absoluteDeltaX = Math.abs(event.deltaX)
+  const absoluteDeltaY = Math.abs(event.deltaY)
+
+  if (!event.shiftKey && absoluteDeltaX <= absoluteDeltaY) {
+    return 0
+  }
+
+  const horizontalDelta = event.shiftKey && absoluteDeltaY > absoluteDeltaX ? event.deltaY : event.deltaX
+  if (horizontalDelta === 0) {
+    return 0
+  }
+
+  if (event.deltaMode === 1) {
+    return horizontalDelta * 16
+  }
+
+  if (event.deltaMode === 2) {
+    return horizontalDelta * carousel.clientWidth
+  }
+
+  return horizontalDelta
 }
 
 function SavedVoiceEmptyCard() {

@@ -1456,6 +1456,53 @@ describe("App", () => {
     await waitFor(() => expect(pauseSpy).toHaveBeenCalled())
   })
 
+  it("contains horizontal wheel gestures inside the saved voice carousel", async () => {
+    const baseFetch = mockFetch()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "default", voices: [defaultVoice, voiceCloneVoice] })
+        }
+        return baseFetch(input, init)
+      })
+    )
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+
+    const carousel = sampleProcessingPanel().getByRole("group", { name: "Select Voice" })
+    Object.defineProperties(carousel, {
+      clientWidth: { configurable: true, value: 320 },
+      scrollWidth: { configurable: true, value: 900 },
+    })
+
+    expect(carousel).toHaveClass("overscroll-x-contain")
+
+    carousel.scrollLeft = 0
+    const leftBoundaryWheel = new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaX: -80 })
+    fireEvent(carousel, leftBoundaryWheel)
+    expect(leftBoundaryWheel.defaultPrevented).toBe(true)
+    expect(carousel.scrollLeft).toBe(0)
+
+    const rightWheel = new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaX: 120 })
+    fireEvent(carousel, rightWheel)
+    expect(rightWheel.defaultPrevented).toBe(true)
+    expect(carousel.scrollLeft).toBe(120)
+
+    carousel.scrollLeft = 580
+    const rightBoundaryWheel = new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaX: 120 })
+    fireEvent(carousel, rightBoundaryWheel)
+    expect(rightBoundaryWheel.defaultPrevented).toBe(true)
+    expect(carousel.scrollLeft).toBe(580)
+
+    const verticalWheel = new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaX: 8, deltaY: 80 })
+    fireEvent(carousel, verticalWheel)
+    expect(verticalWheel.defaultPrevented).toBe(false)
+    expect(carousel.scrollLeft).toBe(580)
+  })
+
   it("switches from the saved voice carousel to audio upload", async () => {
     const user = userEvent.setup()
     renderApp()
