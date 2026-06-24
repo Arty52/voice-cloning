@@ -14,6 +14,7 @@ import {
   Play,
   Save,
   Scissors,
+  Sparkles,
   Upload,
   Users,
   Wand2,
@@ -42,6 +43,7 @@ import { MenuSelect } from "@/components/ui/menu-select"
 import { Popover, PopoverContent, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { VoicePresetToggleGroup } from "@/components/voice-preset-toggle-group"
 import type { SampleProcessingController } from "@/hooks/use-sample-processing"
 import { formatElapsedTime } from "@/lib/formatters"
@@ -601,7 +603,8 @@ function SavedVoiceSourceCard({
   voicePreset: string
 }) {
   const descriptionId = `sample-processing-source-voice-${voice.id}-description`
-  const sourceLabel = voice.source === "default" ? "Default" : "Uploaded"
+  const includedVoiceDescriptionId = `sample-processing-source-voice-${voice.id}-included-description`
+  const isIncludedVoice = voice.source === "default"
   const fileLabel = voice.sourceFilePath ?? voice.filePath
 
   return (
@@ -614,7 +617,7 @@ function SavedVoiceSourceCard({
       role="group"
     >
       <button
-        aria-describedby={descriptionId}
+        aria-describedby={isIncludedVoice ? `${descriptionId} ${includedVoiceDescriptionId}` : descriptionId}
         aria-label={`Select ${voice.name}`}
         aria-pressed={isSelected}
         className="flex size-full min-h-28 flex-col items-start justify-between gap-3 rounded px-2 py-2 pr-12 text-left outline-none transition-[background-color,box-shadow] focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
@@ -628,14 +631,17 @@ function SavedVoiceSourceCard({
             <Badge className="px-1.5 py-0.5" variant="secondary">
               {voicePreset}
             </Badge>
-            <Badge className="px-1.5 py-0.5" variant="secondary">
-              {sourceLabel}
-            </Badge>
+            {isIncludedVoice ? <IncludedVoiceIndicator /> : null}
           </span>
         </span>
         <span className="min-w-0 max-w-full truncate font-mono text-xs text-muted-foreground" id={descriptionId}>
           Source: {fileLabel}
         </span>
+        {isIncludedVoice ? (
+          <span className="sr-only" id={includedVoiceDescriptionId}>
+            Included default voice
+          </span>
+        ) : null}
         {isSelected ? <Check aria-label="Selected voice" className="absolute right-3 top-3 size-4 text-primary" /> : null}
       </button>
       <CompactVoicePreviewButton
@@ -646,6 +652,24 @@ function SavedVoiceSourceCard({
         voice={voice}
       />
     </div>
+  )
+}
+
+function IncludedVoiceIndicator() {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          aria-label="Included default voice"
+          className="inline-flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground"
+        >
+          <Sparkles aria-hidden="true" className="size-3.5" />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top" sideOffset={6}>
+        <p>Included Voice</p>
+      </TooltipContent>
+    </Tooltip>
   )
 }
 
