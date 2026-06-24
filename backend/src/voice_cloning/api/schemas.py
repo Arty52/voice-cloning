@@ -49,6 +49,7 @@ class SpeechJobSegmentRequest(BaseModel):
     text: str
     voiceId: str
     assignmentKind: Literal["assigned", "default"] = "assigned"
+    voiceSettings: dict[str, Any] | None = None
 
 
 class CreateSpeechJobRequest(BaseModel):
@@ -63,3 +64,4 @@ class CreateSpeechJobRequest(BaseModel):
 
 class RegenerateSpeechSegmentRequest(BaseModel):
     voiceId: str | None = None
+    voiceSettings: dict[str, Any] | None = None

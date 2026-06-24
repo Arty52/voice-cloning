@@ -66,6 +66,7 @@ class SpeechJobService:
             text=text,
             default_voice_id=default_voice_id,
             segments=segments,
+            voice_settings=voice_settings,
         )
         effective_segment_gap_ms = self._validate_segment_gap(segment_gap_ms)
         job_id = uuid4().hex
@@ -95,7 +96,6 @@ class SpeechJobService:
                     job_id,
                     provider=provider,
                     model_id=model_id,
-                    voice_settings=voice_settings,
                     provider_key=provider_key,
                 )
             )
@@ -135,6 +135,7 @@ class SpeechJobService:
         provider: VoiceProvider,
         provider_key: str | None,
         voice_id: str | None = None,
+        voice_settings: Mapping[str, Any] | None = None,
     ) -> SpeechJob:
         job = self.get_job(job_id)
         if job.status == "running" or job_id in self._tasks:
@@ -148,6 +149,9 @@ class SpeechJobService:
             segment,
             voice_id=asset.id,
             voice_name=asset.name,
+            voice_settings=(
+                _copy_voice_settings(voice_settings) if voice_settings is not None else segment.voice_settings
+            ),
             status="pending",
             error=None,
         )
@@ -160,7 +164,6 @@ class SpeechJobService:
                 segment_id=segment_id,
                 provider=provider,
                 model_id=next_job.model_id,
-                voice_settings=next_job.voice_settings,
                 provider_key=provider_key,
             )
         )
@@ -187,7 +190,6 @@ class SpeechJobService:
         *,
         provider: VoiceProvider,
         model_id: str | None,
-        voice_settings: Mapping[str, Any] | None,
         provider_key: str | None,
     ) -> None:
         self._update_job(job_id, status="running", error=None)
@@ -198,7 +200,7 @@ class SpeechJobService:
                     segment,
                     provider=provider,
                     model_id=model_id,
-                    voice_settings=voice_settings,
+                    voice_settings=segment.voice_settings,
                     provider_key=provider_key,
                 )
             await self._rebuild_result(job_id)
@@ -222,7 +224,6 @@ class SpeechJobService:
         segment_id: str,
         provider: VoiceProvider,
         model_id: str | None,
-        voice_settings: Mapping[str, Any] | None,
         provider_key: str | None,
     ) -> None:
         self._update_job(job_id, status="running", error=None)
@@ -233,7 +234,7 @@ class SpeechJobService:
                 segment,
                 provider=provider,
                 model_id=model_id,
-                voice_settings=voice_settings,
+                voice_settings=segment.voice_settings,
                 provider_key=provider_key,
             )
             await self._rebuild_result(job_id)
@@ -313,6 +314,7 @@ class SpeechJobService:
         text: str,
         default_voice_id: str,
         segments: tuple[SpeechJobSegmentInput, ...],
+        voice_settings: Mapping[str, Any] | None,
     ) -> tuple[SpeechJobSegment, ...]:
         if not text.strip():
             raise SpeechJobServiceError("Text is required.", 422)
@@ -334,6 +336,7 @@ class SpeechJobService:
             asset = self.voice_library.get_asset(segment.voice_id)
             segment_id = _segment_id(segment.client_segment_id, seen_ids)
             seen_ids.add(segment_id)
+            segment_voice_settings = segment.voice_settings if segment.voice_settings is not None else voice_settings
             resolved_segments.append(
                 SpeechJobSegment(
                     id=segment_id,
@@ -342,6 +345,7 @@ class SpeechJobService:
                     voice_id=asset.id,
                     voice_name=asset.name,
                     assignment_kind=segment.assignment_kind,
+                    voice_settings=_copy_voice_settings(segment_voice_settings),
                 )
             )
         return tuple(resolved_segments)
@@ -406,11 +410,13 @@ class SpeechJobSegmentInput:
         voice_id: str,
         assignment_kind: SpeechSegmentAssignmentKind,
         client_segment_id: str | None = None,
+        voice_settings: Mapping[str, Any] | None = None,
     ) -> None:
         self.client_segment_id = client_segment_id
         self.text = text
         self.voice_id = voice_id
         self.assignment_kind = "default" if assignment_kind == "default" else "assigned"
+        self.voice_settings = _copy_voice_settings(voice_settings)
 
 
 async def _never_disconnected() -> bool:
@@ -419,6 +425,10 @@ async def _never_disconnected() -> bool:
 
 def _utc_now() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _copy_voice_settings(voice_settings: Mapping[str, Any] | None) -> dict[str, object] | None:
+    return dict(voice_settings) if voice_settings is not None else None
 
 
 def _segment_id(candidate: str | None, existing_ids: set[str]) -> str:

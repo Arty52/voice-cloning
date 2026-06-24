@@ -37,6 +37,7 @@ def create_speech_jobs_router(
                         text=segment.text,
                         voice_id=segment.voiceId,
                         assignment_kind=segment.assignmentKind,
+                        voice_settings=segment.voiceSettings,
                     )
                     for segment in request.segments
                 ),
@@ -95,6 +96,7 @@ def create_speech_jobs_router(
                 provider=provider,
                 provider_key=provider_key,
                 voice_id=request.voiceId,
+                voice_settings=request.voiceSettings,
             )
         except ProviderError as exc:
             raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc

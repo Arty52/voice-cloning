@@ -241,6 +241,7 @@ class SpeechJobSegment:
     voice_id: str
     voice_name: str
     assignment_kind: SpeechSegmentAssignmentKind
+    voice_settings: dict[str, object] | None = None
     status: SpeechSegmentStatus = "pending"
     generation_count: int = 0
     character_count: int | None = None

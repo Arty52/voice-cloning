@@ -293,6 +293,7 @@ def speech_job_segment_payload(segment: SpeechJobSegment) -> dict[str, object]:
         "voiceId": segment.voice_id,
         "voiceName": segment.voice_name,
         "assignmentKind": segment.assignment_kind,
+        "voiceSettings": segment.voice_settings,
         "status": segment.status,
         "generationCount": segment.generation_count,
         "characterCount": segment.character_count,
