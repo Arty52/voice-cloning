@@ -8,6 +8,7 @@ import {
   createSpeechJob,
   providerHeaders,
   fetchSpeechJob,
+  regenerateSpeechJobVoice,
   regenerateSpeechJobSegment,
   saveProcessedVoice,
   saveSpeakerVoices,
@@ -409,6 +410,27 @@ describe("voice API helpers", () => {
       "/api/speech/jobs/job-1/segments/segment-one/regenerate",
       expect.objectContaining({
         body: JSON.stringify({ voiceId: "", voiceSettings: null }),
+      })
+    )
+  })
+
+  it("regenerates all speech job segments for a voice with tuning", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => okJson({ job: { id: "job-1", status: "running" } }, 202)))
+
+    await regenerateSpeechJobVoice("job-1", "voice/id", {
+      providerKey: "browser-secret",
+      voiceSettings: { speed: 1.2 },
+    })
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/speech/jobs/job-1/voices/voice%2Fid/regenerate",
+      expect.objectContaining({
+        body: JSON.stringify({ voiceSettings: { speed: 1.2 } }),
+        headers: {
+          "Content-Type": "application/json",
+          [VOICE_PROVIDER_KEY_HEADER]: "browser-secret",
+        },
+        method: "POST",
       })
     )
   })

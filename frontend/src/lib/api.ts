@@ -119,6 +119,11 @@ export type RegenerateSpeechJobSegmentRequest = {
   voiceSettings?: VoiceTuningValues | null
 }
 
+export type RegenerateSpeechJobVoiceRequest = {
+  providerKey: string | null
+  voiceSettings: VoiceTuningValues
+}
+
 export type SpeechApiResult =
   | { status: "canceled" }
   | {
@@ -421,6 +426,24 @@ export async function regenerateSpeechJobSegment(
         ...providerHeaders({ providerKey }),
       },
       body: JSON.stringify({ voiceId: voiceId ?? null, voiceSettings: voiceSettings ?? null }),
+    }
+  )
+}
+
+export async function regenerateSpeechJobVoice(
+  jobId: string,
+  voiceId: string,
+  { providerKey, voiceSettings }: RegenerateSpeechJobVoiceRequest
+) {
+  return fetchJson<SpeechJobResponse>(
+    `/api/speech/jobs/${encodeURIComponent(jobId)}/voices/${encodeURIComponent(voiceId)}/regenerate`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...providerHeaders({ providerKey }),
+      },
+      body: JSON.stringify({ voiceSettings }),
     }
   )
 }
