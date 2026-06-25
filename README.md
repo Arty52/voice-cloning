@@ -74,7 +74,7 @@ http://localhost:6420
 The Voice Studio opens on `Overview`. Use the sidebar to move between stable workflow sections:
 
 1. `Prepare Audio` (`#prepare`, optional step 0): choose Add Voice for ready samples or Process Audio for cleanup, trimming, and speaker extraction before saving.
-2. `Voices` (`#voices`, step 1): select, preview, rename, tune, and manage local voice samples.
+2. `Voices` (`#voices`, step 1): select, preview, rename, and manage local voice samples, then save default voice tuning for future generations.
 3. `Generate Speech` (`#generate`, step 2): enter text, optionally assign selected text spans to saved voices, generate speech with saved voice defaults, play combined and segment results, and regenerate individual multi-voice segments with contextual overrides.
 4. `Generated Audio` (`#archive`, optional): review, download, remove, or clear browser-saved generated audio, including Multi-Voice metadata for combined speech jobs.
 5. `Provider & Usage` (`#provider`): add browser-local provider keys, confirm `.env` fallback, choose models, and review quota/cost metadata.

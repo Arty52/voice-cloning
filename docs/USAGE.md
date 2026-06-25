@@ -104,7 +104,7 @@ http://localhost:4340
 The UI opens on `Overview`. The sidebar is the top-level workflow map:
 
 1. `Prepare Audio` (`#prepare`, optional step 0): choose Add Voice for ready samples or Process Audio for cleanup, trimming, and speaker extraction before saving.
-2. `Voices` (`#voices`, step 1): select, preview, rename, tune, and manage local voice samples.
+2. `Voices` (`#voices`, step 1): select, preview, rename, and manage local voice samples, then save default voice tuning for future generations.
 3. `Generate Speech` (`#generate`, step 2): enter text, optionally assign selected text spans to saved voices, review the latest result, play combined and segment results, and regenerate multi-voice segments with contextual voice or tuning overrides. Selecting a saved voice uses that voice's saved tuning for the active provider when present, otherwise its mapped voice preset or provider defaults.
 4. `Generated Audio` (`#archive`, optional): play, download, remove, or clear saved generated MP3s from browser IndexedDB, including Multi-Voice archive metadata.
 5. `Provider & Usage` (`#provider`): add an ElevenLabs key if `.env` does not provide one, confirm `.env` fallback, check Cost & Quota, and choose a model if model metadata is available.
@@ -119,13 +119,13 @@ http://localhost:6420
 
 Each local voice has a provider-independent voice preset assignment. Choose Standard Narration for balanced reading, or Animated Dialogue for more expressive delivery, when saving a new voice or editing the selected voice in the Voice Library.
 
-The assignment is saved as local voice metadata and is not a provider clone id or provider secret. In `#voices`, Voice Tuning starts from saved tuning for the active provider when that voice has it. Otherwise it starts from the active provider preset mapped to the voice assignment. If the active provider has no saved tuning and no matching mapped preset, Voice Tuning uses that provider's default values instead. Saving tuning in `#voices` updates the voice default; segment-level tuning in `#generate` remains a one-off override unless you explicitly save generated segment tuning back to that voice.
+The assignment is saved as local voice metadata and is not a provider clone id or provider secret. In `#voices`, Voice Tuning starts from saved tuning for the active provider when that voice has it. Otherwise it starts from the active provider preset mapped to the voice assignment. If the active provider has no saved tuning and no matching mapped preset, Voice Tuning uses that provider's default values instead. Edits are local draft changes until you choose Save Voice Tuning. Saving tuning in `#voices` updates the voice default; segment-level tuning in `#generate` remains a one-off override unless you explicitly save generated segment tuning back to that voice.
 
 Existing voices or older manifests without an assignment default to Standard Narration. Existing voices without saved provider tuning behave as before and resolve tuning from their preset assignment.
 
 ## Multi-Voice Generation
 
-In `#generate`, select script text in the native textarea and choose `Assign Voice` to attach that span to a saved voice. Desktop uses a Popover voice picker; mobile uses a Sheet. Unassigned text uses the currently selected Source voice when generation starts, so single-voice generation remains the default path when no assignments exist.
+In `#generate`, select script text in the native textarea and choose `Assign Voice` to attach that span to a saved voice. Desktop uses a Popover voice picker; mobile uses a Sheet. Unassigned text uses the currently selected Source voice when generation starts, so single-voice generation remains the default path when no assignments exist. Generate Speech uses saved voice tuning defaults from `#voices`; only row and segment tuning controls act as contextual overrides on this page.
 
 Assignments are tied to the exact script text that existed when the span was selected. Editing the textarea after assigning voices marks the assignment set stale and blocks multi-voice generation until you clear/reassign voices or restore the exact text. The frontend sends ordered text segments to the backend rather than character offsets, and the backend verifies that the segment text joins back to the submitted script exactly.
 
