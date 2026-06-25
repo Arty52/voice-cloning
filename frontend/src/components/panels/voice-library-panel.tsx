@@ -1,4 +1,4 @@
-import { ArrowRight, Check, FileAudio, Pencil, Star, Trash2, Volume2 } from "lucide-react"
+import { ArrowRight, Check, FileAudio, Pencil, Star, Trash2, Upload, Volume2 } from "lucide-react"
 
 import { AudioPlayer } from "@/components/audio-player"
 import { ActionMenu } from "@/components/ui/action-menu"
@@ -50,7 +50,12 @@ export function VoiceLibraryPanel({
           <h2 className="text-base font-medium">Voice Library</h2>
           <p className="mt-1 text-sm text-muted-foreground">Select, preview, and set the local default voice.</p>
         </div>
-        <FileAudio aria-hidden="true" className="size-5 text-primary" />
+        <Button asChild size="sm" variant="secondary">
+          <a href="#prepare">
+            <Upload aria-hidden="true" data-icon="inline-start" />
+            Add Voice Sample
+          </a>
+        </Button>
       </div>
 
       {voiceError ? (
@@ -64,8 +69,20 @@ export function VoiceLibraryPanel({
           <VoiceLibrarySkeletonRows />
         ) : null}
         {voiceStatus !== "loading" && voices.length === 0 ? (
-          <div className="rounded-md border border-dashed border-border bg-background/50 p-4 text-sm text-muted-foreground">
-            No voices saved yet. Add or record a voice to proceed.
+          <div className="flex flex-col items-start gap-3 rounded-md border border-dashed border-border bg-background/50 p-4 text-sm text-muted-foreground">
+            <div className="flex items-start gap-3">
+              <FileAudio aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-primary" />
+              <div className="flex min-w-0 flex-col gap-1">
+                <div className="font-medium text-foreground">No Voices Saved Yet</div>
+                <p>Prepare an audio sample before selecting a voice.</p>
+              </div>
+            </div>
+            <Button asChild size="sm" variant="secondary">
+              <a href="#prepare">
+                Prepare Audio
+                <ArrowRight aria-hidden="true" data-icon="inline-end" />
+              </a>
+            </Button>
           </div>
         ) : null}
         {voices.map((voice) => {

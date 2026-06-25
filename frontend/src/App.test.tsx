@@ -1700,6 +1700,22 @@ describe("App", () => {
     expect(document.querySelector('[data-section-id="voices"]')).toHaveClass("hidden")
   })
 
+  it("links from the voice library to prepare audio for new samples", async () => {
+    window.history.replaceState(null, "", "/#voices")
+    const user = userEvent.setup()
+    renderApp()
+
+    expect(await screen.findByText("default/default-voice.mp3")).toBeInTheDocument()
+    const addVoiceSampleLink = voiceLibraryPanel().getByRole("link", { name: "Add Voice Sample" })
+    expect(addVoiceSampleLink).toHaveAttribute("href", "#prepare")
+
+    await user.click(addVoiceSampleLink)
+
+    await waitFor(() => expect(window.location.hash).toBe("#prepare"))
+    expect(screen.getByRole("button", { name: "Prepare Audio" })).toHaveAttribute("aria-current", "page")
+    expect(screen.getByRole("form", { name: "Add Voice" })).toBeInTheDocument()
+  })
+
   it("keeps add voice in prepare and out of voices", async () => {
     window.history.replaceState(null, "", "/#voices")
     const user = userEvent.setup()
@@ -1721,6 +1737,7 @@ describe("App", () => {
 
   it("keeps empty voice selection separate from add voice", async () => {
     window.history.replaceState(null, "", "/#voices")
+    const user = userEvent.setup()
     const baseFetch = mockFetch()
     vi.stubGlobal(
       "fetch",
@@ -1734,9 +1751,17 @@ describe("App", () => {
     )
     renderApp()
 
-    expect(await voiceLibraryPanel().findByText("No voices saved yet. Add or record a voice to proceed.")).toBeInTheDocument()
+    expect(await voiceLibraryPanel().findByText("No Voices Saved Yet")).toBeInTheDocument()
+    expect(voiceLibraryPanel().getByText("Prepare an audio sample before selecting a voice.")).toBeInTheDocument()
+    const prepareAudioLink = voiceLibraryPanel().getByRole("link", { name: "Prepare Audio" })
+    expect(prepareAudioLink).toHaveAttribute("href", "#prepare")
     const voicesSection = document.querySelector('[data-section-id="voices"]') as HTMLElement
     expect(within(voicesSection).queryByRole("form", { name: "Add Voice" })).not.toBeInTheDocument()
+
+    await user.click(prepareAudioLink)
+
+    await waitFor(() => expect(window.location.hash).toBe("#prepare"))
+    expect(screen.getByRole("form", { name: "Add Voice" })).toBeInTheDocument()
   })
 
   it("closes mobile workflow navigation after selecting a section", async () => {
@@ -3602,7 +3627,8 @@ describe("App", () => {
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith("/api/voices/voice-clone-01", expect.objectContaining({ method: "DELETE" }))
     )
-    expect(await screen.findByText(/add or record a voice to proceed/i)).toBeInTheDocument()
+    expect(await screen.findByText("No Voices Saved Yet")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Prepare Audio" })).toHaveAttribute("href", "#prepare")
     expect(screen.getByRole("button", { name: /^Generate$/ })).toBeDisabled()
   })
 
