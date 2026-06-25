@@ -342,6 +342,32 @@ export function useVoiceStudioController() {
     }
   }
 
+  async function regenerateMultiVoiceSegmentsForVoice(voiceId: string, voiceSettings: VoiceTuningValues) {
+    setLatestGenerationMode("multi")
+    const generatedResult = await multiVoiceSpeech.regenerateVoiceSegments({
+      providerKey: providerKeys.activeProviderKey,
+      storageLimitBytes: generatedAudio.storageLimitBytes,
+      voiceId,
+      voiceSettings,
+    })
+    if (generatedResult) {
+      setLatestGeneratedAudioId(generatedResult.id)
+    }
+  }
+
+  async function saveGeneratedSegmentTuningToVoice(voiceId: string, voiceSettings: VoiceTuningValues) {
+    if (!activeProviderId) {
+      voiceLibrary.setVoiceError("Select a provider before saving voice tuning.")
+      return
+    }
+    const voice = voiceLibrary.voices.find((candidate) => candidate.id === voiceId)
+    if (!voice) {
+      voiceLibrary.setVoiceError("Voice is no longer in the Voice Library.")
+      return
+    }
+    await voiceLibrary.updateVoiceSettings(voice, activeProviderId, voiceSettings)
+  }
+
   function cancelGeneration() {
     if (multiVoiceSpeech.isGenerating) {
       void multiVoiceSpeech.cancelGeneration()
@@ -464,9 +490,11 @@ export function useVoiceStudioController() {
     requestClearGeneratedAudio,
     requestDeleteVoice,
     regenerateMultiVoiceSegment,
+    regenerateMultiVoiceSegmentsForVoice,
     result,
     revealAddVoice,
     sampleProcessing,
+    saveGeneratedSegmentTuningToVoice,
     sectionStatuses,
     selectedModel,
     selectedTuningPresetId,

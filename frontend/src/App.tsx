@@ -46,10 +46,12 @@ function App() {
     requestClearGeneratedAudio,
     requestDeleteVoice,
     regenerateMultiVoiceSegment,
+    regenerateMultiVoiceSegmentsForVoice,
     result,
     removeVoiceAssignment,
     revealAddVoice,
     sampleProcessing,
+    saveGeneratedSegmentTuningToVoice,
     sectionStatuses,
     selectedModel,
     selectedTuningPresetId,
@@ -156,6 +158,7 @@ function App() {
 
         <WorkflowSectionPanel activeSectionId={activeSectionId} id="generate">
           <SpeechInputPanel
+            activeProviderId={providerKeys.activeProviderId}
             assignmentError={voiceAssignmentError}
             assignmentSpeechSegmentCount={voiceAssignmentSpeechSegmentCount}
             assignments={voiceAssignments}
@@ -174,21 +177,31 @@ function App() {
             onRemoveAssignment={removeVoiceAssignment}
             onTextChange={setText}
             onTextSelectionChange={handleTextSelectionChange}
+            providerTuningControls={providerTuning.controls}
             selectedVoice={voiceLibrary.selectedVoice}
             selectedText={textSelection.text}
             naturalHandoffsEnabled={naturalHandoffsEnabled}
             text={text}
             textRef={textRef}
+            tuning={tuning}
             voices={voiceLibrary.voices}
           />
 
           <LatestGeneratedAudioPanel
+            activeProviderId={providerKeys.activeProviderId}
             error={speechError}
             isDeleteDisabled={generatedAudio.generatedAudioMutation === "delete"}
+            isSavingVoiceTuning={voiceLibrary.isUpdatingVoice}
             item={latestGeneratedAudioItem}
             onDelete={(id) => void generatedAudio.handleDeleteGeneratedAudio(id)}
             onRegenerateSegment={(segmentId, voiceId, voiceSettings) =>
               void regenerateMultiVoiceSegment(segmentId, voiceId, voiceSettings)
+            }
+            onRegenerateVoiceSegments={(voiceId, voiceSettings) =>
+              void regenerateMultiVoiceSegmentsForVoice(voiceId, voiceSettings)
+            }
+            onSaveVoiceTuning={(voiceId, voiceSettings) =>
+              void saveGeneratedSegmentTuningToVoice(voiceId, voiceSettings)
             }
             providerTuningControls={providerTuning.controls}
             segmentResultUrls={multiVoiceSegmentResultUrls}

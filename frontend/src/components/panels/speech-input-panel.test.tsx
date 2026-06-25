@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest"
 import type { DialogueScriptController } from "@/hooks/use-dialogue-script"
 import { speakerColorClassName, type MultiVoiceScriptBlock } from "@/lib/dialogue-script"
 import type { VoiceTextAssignment } from "@/lib/voice-assignments"
-import type { VoiceAsset } from "@/types"
+import type { ProviderTuningControl, VoiceAsset } from "@/types"
 import { TooltipProvider } from "@/components/ui/tooltip"
 
 import { SpeechInputPanel } from "./speech-input-panel"
@@ -30,6 +30,18 @@ const duplicateVoiceAssignment: VoiceTextAssignment = {
   start: 0,
   text: "Hello",
 }
+const dialogueTuningControls: ProviderTuningControl[] = [
+  {
+    defaultValue: 0.5,
+    description: "Controls stability.",
+    id: "stability",
+    label: "Stability",
+    max: 1,
+    min: 0,
+    step: 0.01,
+    type: "slider",
+  },
+]
 
 function voice(id: string, name: string): VoiceAsset {
   return {
@@ -54,6 +66,7 @@ function voice(id: string, name: string): VoiceAsset {
 
 function renderPanel(overrides: Partial<Parameters<typeof SpeechInputPanel>[0]> = {}) {
   const props = {
+    activeProviderId: "elevenlabs",
     assignmentError: null,
     assignmentSpeechSegmentCount: null,
     assignments: [],
@@ -73,10 +86,12 @@ function renderPanel(overrides: Partial<Parameters<typeof SpeechInputPanel>[0]> 
     onRemoveAssignment: vi.fn(),
     onTextChange: vi.fn(),
     onTextSelectionChange: vi.fn(),
+    providerTuningControls: [],
     selectedText: "",
     selectedVoice: narrator,
     text: "Hello villain line.",
     textRef: createRef<HTMLTextAreaElement>(),
+    tuning: {},
     voices: [narrator, villain, skippy],
     ...overrides,
   }
@@ -91,6 +106,7 @@ function renderPanel(overrides: Partial<Parameters<typeof SpeechInputPanel>[0]> 
 function dialogueController(overrides: Partial<DialogueScriptController> = {}): DialogueScriptController {
   return {
     allBlocksSelected: false,
+    applyBlockVoiceSettingsToMatchingVoice: vi.fn(),
     assignSelectedBlocks: vi.fn(),
     blocks: [],
     clearSelectedBlocks: vi.fn(),
@@ -112,6 +128,7 @@ function dialogueController(overrides: Partial<DialogueScriptController> = {}): 
     updateBlockSpeakerLabel: vi.fn(),
     updateBlockText: vi.fn(),
     updateBlockVoice: vi.fn(),
+    updateBlockVoiceSettings: vi.fn(),
     updateSpeakerMapping: vi.fn(),
     ...overrides,
   } as DialogueScriptController
@@ -232,6 +249,119 @@ describe("SpeechInputPanel voice assignments", () => {
     expect(dialogue.updateBlockSpeakerLabel).toHaveBeenCalled()
     expect(dialogue.updateBlockText).toHaveBeenCalled()
     expect(dialogue.toggleBlockSelection).toHaveBeenCalledWith("dialogue-block-1", true)
+  })
+
+  it("opens tuning controls for imported dialogue rows before generation", async () => {
+    const user = userEvent.setup()
+    const dialogue = dialogueController({
+      blocks: [dialogueBlock()],
+      mode: "dialogue",
+      segmentBuild: {
+        error: null,
+        missingSpeakerLabels: [],
+        segments: [
+          {
+            assignmentId: "dialogue-block-1",
+            assignmentKind: "assigned",
+            clientSegmentId: "dialogue-block-1",
+            end: "Hello world.".length,
+            start: 0,
+            text: "Hello world.",
+            voiceId: "skippy",
+            voiceName: "Skippy Voice",
+          },
+        ],
+        text: "Hello world.",
+      },
+      speakerLabels: ["Skippy"],
+      speakerMappings: [{ speakerLabel: "Skippy", voiceId: "skippy" }],
+    })
+    renderPanel({
+      dialogue,
+      providerTuningControls: dialogueTuningControls,
+      tuning: { speed: 1, stability: 0.5 },
+    })
+
+    await user.click(screen.getByRole("button", { name: "Tune Dialogue Row 1" }))
+
+    expect(screen.getByRole("heading", { name: "Dialogue Row 1 Tuning" })).toBeInTheDocument()
+    expect(screen.getByText("Adjust settings for this dialogue row before generation.")).toBeInTheDocument()
+    const rowActions = screen.getByRole("button", { name: "Open Dialogue Row 1 Tuning Actions" })
+    await user.click(rowActions)
+    expect(screen.getByRole("menuitem", { name: "Apply To Same Voice" })).toBeDisabled()
+    await user.click(rowActions)
+    expect(screen.getByRole("slider", { name: "Stability" })).toHaveValue("0.5")
+
+    fireEvent.change(screen.getByRole("slider", { name: "Stability" }), { target: { value: "0.34" } })
+
+    expect(dialogue.updateBlockVoiceSettings).toHaveBeenCalledWith("dialogue-block-1", {
+      speed: 1,
+      stability: 0.34,
+    })
+  })
+
+  it("applies dialogue row tuning to rows that resolve to the same voice", async () => {
+    const user = userEvent.setup()
+    const dialogue = dialogueController({
+      applyBlockVoiceSettingsToMatchingVoice: vi.fn(),
+      blocks: [
+        dialogueBlock({ voiceSettings: { stability: 0.34 } }),
+        dialogueBlock({ id: "dialogue-block-2", speakerLabel: "Skippy", text: "Another line." }),
+      ],
+      mode: "dialogue",
+      segmentBuild: {
+        error: null,
+        missingSpeakerLabels: [],
+        segments: [],
+        text: "Hello world.\nAnother line.",
+      },
+      speakerLabels: ["Skippy"],
+      speakerMappings: [{ speakerLabel: "Skippy", voiceId: "skippy" }],
+    })
+    renderPanel({
+      dialogue,
+      providerTuningControls: dialogueTuningControls,
+      tuning: { stability: 0.5 },
+    })
+
+    await user.click(screen.getByRole("button", { name: "Tune Dialogue Row 1" }))
+    await user.click(screen.getByRole("button", { name: "Open Dialogue Row 1 Tuning Actions" }))
+    await user.click(screen.getByRole("menuitem", { name: "Apply To Same Voice" }))
+
+    expect(dialogue.applyBlockVoiceSettingsToMatchingVoice).toHaveBeenCalledWith("dialogue-block-1", {
+      stability: 0.34,
+    })
+  })
+
+  it("marks dialogue rows with explicit tuning", () => {
+    const dialogue = dialogueController({
+      blocks: [dialogueBlock({ voiceSettings: { stability: 0.34 } })],
+      mode: "dialogue",
+      segmentBuild: {
+        error: null,
+        missingSpeakerLabels: [],
+        segments: [
+          {
+            assignmentId: "dialogue-block-1",
+            assignmentKind: "assigned",
+            clientSegmentId: "dialogue-block-1",
+            end: "Hello world.".length,
+            start: 0,
+            text: "Hello world.",
+            voiceId: "skippy",
+            voiceName: "Skippy Voice",
+            voiceSettings: { stability: 0.34 },
+          },
+        ],
+        text: "Hello world.",
+      },
+      speakerLabels: ["Skippy"],
+      speakerMappings: [{ speakerLabel: "Skippy", voiceId: "skippy" }],
+    })
+
+    renderPanel({ dialogue, providerTuningControls: dialogueTuningControls })
+
+    expect(screen.getByText("Custom Tuning")).toBeInTheDocument()
   })
 
   it("does not show range assignment stale warnings in dialogue mode", () => {

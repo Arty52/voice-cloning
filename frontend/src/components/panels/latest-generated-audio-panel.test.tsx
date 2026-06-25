@@ -113,11 +113,15 @@ describe("LatestGeneratedAudioPanel multi-voice results", () => {
     const user = userEvent.setup()
     renderLatestPanel(
       <LatestGeneratedAudioPanel
+        activeProviderId="elevenlabs"
         error={null}
         isDeleteDisabled={false}
+        isSavingVoiceTuning={false}
         item={item}
         onDelete={vi.fn()}
         onRegenerateSegment={vi.fn()}
+        onRegenerateVoiceSegments={vi.fn()}
+        onSaveVoiceTuning={vi.fn()}
         segmentResultUrls={{
           "segment-one": "/api/speech/jobs/job-1/segments/segment-one/result",
           "segment-two": "/api/speech/jobs/job-1/segments/segment-two/result",
@@ -152,11 +156,15 @@ describe("LatestGeneratedAudioPanel multi-voice results", () => {
     const onRegenerateSegment = vi.fn()
     renderLatestPanel(
       <LatestGeneratedAudioPanel
+        activeProviderId="elevenlabs"
         error={null}
         isDeleteDisabled={false}
+        isSavingVoiceTuning={false}
         item={item}
         onDelete={vi.fn()}
         onRegenerateSegment={onRegenerateSegment}
+        onRegenerateVoiceSegments={vi.fn()}
+        onSaveVoiceTuning={vi.fn()}
         segmentResultUrls={{
           "segment-one": "/api/speech/jobs/job-1/segments/segment-one/result",
           "segment-two": "/api/speech/jobs/job-1/segments/segment-two/result",
@@ -186,11 +194,15 @@ describe("LatestGeneratedAudioPanel multi-voice results", () => {
     const onRegenerateSegment = vi.fn()
     const renderPanel = (panelItem: GeneratedResult) => (
       <LatestGeneratedAudioPanel
+        activeProviderId="elevenlabs"
         error={null}
         isDeleteDisabled={false}
+        isSavingVoiceTuning={false}
         item={panelItem}
         onDelete={vi.fn()}
         onRegenerateSegment={onRegenerateSegment}
+        onRegenerateVoiceSegments={vi.fn()}
+        onSaveVoiceTuning={vi.fn()}
         segmentResultUrls={{
           "segment-one": `/api/speech/jobs/${panelItem.multiVoiceMetadata?.jobId}/segments/segment-one/result`,
         }}
@@ -233,11 +245,15 @@ describe("LatestGeneratedAudioPanel multi-voice results", () => {
     const onRegenerateSegment = vi.fn()
     renderLatestPanel(
       <LatestGeneratedAudioPanel
+        activeProviderId="elevenlabs"
         error={null}
         isDeleteDisabled={false}
+        isSavingVoiceTuning={false}
         item={item}
         onDelete={vi.fn()}
         onRegenerateSegment={onRegenerateSegment}
+        onRegenerateVoiceSegments={vi.fn()}
+        onSaveVoiceTuning={vi.fn()}
         segmentResultUrls={{ "segment-one": "/api/speech/jobs/job-1/segments/segment-one/result" }}
         status="success"
         storageError={null}
@@ -267,11 +283,15 @@ describe("LatestGeneratedAudioPanel multi-voice results", () => {
 
     renderLatestPanel(
       <LatestGeneratedAudioPanel
+        activeProviderId="elevenlabs"
         error={null}
         isDeleteDisabled={false}
+        isSavingVoiceTuning={false}
         item={archivedVoiceItem}
         onDelete={vi.fn()}
         onRegenerateSegment={vi.fn()}
+        onRegenerateVoiceSegments={vi.fn()}
+        onSaveVoiceTuning={vi.fn()}
         segmentResultUrls={{ "segment-one": "/api/speech/jobs/job-1/segments/segment-one/result" }}
         status="success"
         storageError={null}
@@ -293,11 +313,15 @@ describe("LatestGeneratedAudioPanel multi-voice results", () => {
     const user = userEvent.setup()
     renderLatestPanel(
       <LatestGeneratedAudioPanel
+        activeProviderId="elevenlabs"
         error={null}
         isDeleteDisabled={false}
+        isSavingVoiceTuning={false}
         item={item}
         onDelete={vi.fn()}
         onRegenerateSegment={vi.fn()}
+        onRegenerateVoiceSegments={vi.fn()}
+        onSaveVoiceTuning={vi.fn()}
         providerTuningControls={segmentTuningControls}
         segmentResultUrls={{ "segment-one": "/api/speech/jobs/job-1/segments/segment-one/result" }}
         status="success"
@@ -313,6 +337,7 @@ describe("LatestGeneratedAudioPanel multi-voice results", () => {
     const stabilityHelp = screen.getByRole("button", { name: "Stability help" })
     expect(screen.getByRole("heading", { name: "Segment 1 Tuning" })).toBeInTheDocument()
     expect(screen.getByText("Adjust settings for the next time this segment regenerates.")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Open Segment 1 Tuning Actions" })).toBeInTheDocument()
     expect(document.body.querySelector('label[for="segment-segment-one-tuning-stability"]')).toHaveTextContent(
       "Stability"
     )
@@ -324,11 +349,15 @@ describe("LatestGeneratedAudioPanel multi-voice results", () => {
     const onRegenerateSegment = vi.fn()
     renderLatestPanel(
       <LatestGeneratedAudioPanel
+        activeProviderId="elevenlabs"
         error={null}
         isDeleteDisabled={false}
+        isSavingVoiceTuning={false}
         item={item}
         onDelete={vi.fn()}
         onRegenerateSegment={onRegenerateSegment}
+        onRegenerateVoiceSegments={vi.fn()}
+        onSaveVoiceTuning={vi.fn()}
         providerTuningControls={segmentTuningControls}
         segmentResultUrls={{ "segment-one": "/api/speech/jobs/job-1/segments/segment-one/result" }}
         status="success"
@@ -344,5 +373,135 @@ describe("LatestGeneratedAudioPanel multi-voice results", () => {
     await user.click(screen.getAllByRole("button", { name: /^Regenerate$/i })[0])
 
     expect(onRegenerateSegment).toHaveBeenCalledWith("segment-one", null, { useSpeakerBoost: true })
+  })
+
+  it("regenerates all segments for a shared voice with the selected tuning", async () => {
+    const user = userEvent.setup()
+    const onRegenerateVoiceSegments = vi.fn()
+    const sharedVoiceItem: GeneratedResult = {
+      ...item,
+      multiVoiceMetadata: {
+        ...item.multiVoiceMetadata!,
+        segments: item.multiVoiceMetadata!.segments.map((segment) => ({
+          ...segment,
+          voiceId: "narrator",
+          voiceName: "Narrator",
+        })),
+        voices: [{ segmentCount: 2, voiceId: "narrator", voiceName: "Narrator" }],
+      },
+    }
+    renderLatestPanel(
+      <LatestGeneratedAudioPanel
+        activeProviderId="elevenlabs"
+        error={null}
+        isDeleteDisabled={false}
+        isSavingVoiceTuning={false}
+        item={sharedVoiceItem}
+        onDelete={vi.fn()}
+        onRegenerateSegment={vi.fn()}
+        onRegenerateVoiceSegments={onRegenerateVoiceSegments}
+        onSaveVoiceTuning={vi.fn()}
+        providerTuningControls={segmentTuningControls}
+        segmentResultUrls={{
+          "segment-one": "/api/speech/jobs/job-1/segments/segment-one/result",
+          "segment-two": "/api/speech/jobs/job-1/segments/segment-two/result",
+        }}
+        status="success"
+        storageError={null}
+        tuning={{ useSpeakerBoost: false }}
+        voices={[narrator, villain]}
+      />
+    )
+
+    await user.click(screen.getByRole("button", { name: /show segments/i }))
+    expect(screen.queryByRole("button", { name: "Regenerate All For Voice" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Save Tuning To Voice" })).not.toBeInTheDocument()
+    await user.click(screen.getAllByRole("button", { name: /^Tune$/i })[0])
+    const segmentActions = screen.getByRole("button", { name: "Open Segment 1 Tuning Actions" })
+    await user.click(segmentActions)
+    expect(screen.getByRole("menuitem", { name: "Regenerate Same Voice Segments" })).toBeDisabled()
+    await user.click(segmentActions)
+    await user.click(screen.getByRole("checkbox", { name: "Speaker Boost" }))
+    await user.click(screen.getByRole("button", { name: "Open Segment 1 Tuning Actions" }))
+    await user.click(screen.getByRole("menuitem", { name: "Regenerate Same Voice Segments" }))
+
+    expect(onRegenerateVoiceSegments).toHaveBeenCalledWith("narrator", { useSpeakerBoost: true })
+  })
+
+  it("uses the currently selected voice for same-voice regeneration", async () => {
+    const user = userEvent.setup()
+    const onRegenerateVoiceSegments = vi.fn()
+    renderLatestPanel(
+      <LatestGeneratedAudioPanel
+        activeProviderId="elevenlabs"
+        error={null}
+        isDeleteDisabled={false}
+        isSavingVoiceTuning={false}
+        item={item}
+        onDelete={vi.fn()}
+        onRegenerateSegment={vi.fn()}
+        onRegenerateVoiceSegments={onRegenerateVoiceSegments}
+        onSaveVoiceTuning={vi.fn()}
+        providerTuningControls={segmentTuningControls}
+        segmentResultUrls={{
+          "segment-one": "/api/speech/jobs/job-1/segments/segment-one/result",
+          "segment-two": "/api/speech/jobs/job-1/segments/segment-two/result",
+        }}
+        status="success"
+        storageError={null}
+        tuning={{ useSpeakerBoost: false }}
+        voices={[narrator, villain]}
+      />
+    )
+
+    await user.click(screen.getByRole("button", { name: /show segments/i }))
+    await user.click(screen.getByRole("button", { name: "Voice For Segment 2: Villain" }))
+    await user.click(screen.getByRole("menuitemradio", { name: "Narrator" }))
+    await user.click(screen.getAllByRole("button", { name: /^Tune$/i })[1])
+    await user.click(screen.getByRole("checkbox", { name: "Speaker Boost" }))
+    await user.click(screen.getByRole("button", { name: "Open Segment 2 Tuning Actions" }))
+    const regenerateSameVoice = screen.getByRole("menuitem", { name: "Regenerate Same Voice Segments" })
+
+    expect(regenerateSameVoice).not.toBeDisabled()
+    await user.click(regenerateSameVoice)
+
+    expect(onRegenerateVoiceSegments).toHaveBeenCalledWith("narrator", { useSpeakerBoost: true })
+  })
+
+  it("saves segment tuning to the selected voice", async () => {
+    const user = userEvent.setup()
+    const onSaveVoiceTuning = vi.fn()
+    renderLatestPanel(
+      <LatestGeneratedAudioPanel
+        activeProviderId="elevenlabs"
+        error={null}
+        isDeleteDisabled={false}
+        isSavingVoiceTuning={false}
+        item={item}
+        onDelete={vi.fn()}
+        onRegenerateSegment={vi.fn()}
+        onRegenerateVoiceSegments={vi.fn()}
+        onSaveVoiceTuning={onSaveVoiceTuning}
+        providerTuningControls={segmentTuningControls}
+        segmentResultUrls={{ "segment-one": "/api/speech/jobs/job-1/segments/segment-one/result" }}
+        status="success"
+        storageError={null}
+        tuning={{ useSpeakerBoost: false }}
+        voices={[narrator, villain]}
+      />
+    )
+
+    await user.click(screen.getByRole("button", { name: /show segments/i }))
+    expect(screen.queryByRole("button", { name: "Save Tuning To Voice" })).not.toBeInTheDocument()
+    await user.click(screen.getAllByRole("button", { name: /^Tune$/i })[0])
+    const segmentActions = screen.getByRole("button", { name: "Open Segment 1 Tuning Actions" })
+    await user.click(segmentActions)
+    expect(screen.getByRole("menuitem", { name: "Save Tuning To Voice" })).toBeDisabled()
+    await user.click(segmentActions)
+    await user.click(screen.getByRole("checkbox", { name: "Speaker Boost" }))
+    await user.click(screen.getByRole("button", { name: "Open Segment 1 Tuning Actions" }))
+    await user.click(screen.getByRole("menuitem", { name: "Save Tuning To Voice" }))
+
+    expect(onSaveVoiceTuning).toHaveBeenCalledWith("narrator", { useSpeakerBoost: true })
   })
 })

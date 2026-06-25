@@ -73,11 +73,17 @@ export function presetValues(providerTuning: ProviderTuningMetadata, preset: Pro
   }
 }
 
-function findMatchingPresetId(presets: ProviderTuningPreset[], values: VoiceTuningValues) {
-  return presets.find((preset) => tuningValuesMatch(preset.values, values))?.id ?? null
-}
+export function voiceTuningValuesEqual(
+  left: VoiceTuningValues | null | undefined,
+  right: VoiceTuningValues | null | undefined
+) {
+  if (!left && !right) {
+    return true
+  }
+  if (!left || !right) {
+    return false
+  }
 
-function tuningValuesMatch(left: VoiceTuningValues, right: VoiceTuningValues) {
   const keys = new Set([...Object.keys(left), ...Object.keys(right)])
   for (const key of keys) {
     if (left[key] !== right[key]) {
@@ -85,4 +91,8 @@ function tuningValuesMatch(left: VoiceTuningValues, right: VoiceTuningValues) {
     }
   }
   return true
+}
+
+function findMatchingPresetId(presets: ProviderTuningPreset[], values: VoiceTuningValues) {
+  return presets.find((preset) => voiceTuningValuesEqual(preset.values, values))?.id ?? null
 }
