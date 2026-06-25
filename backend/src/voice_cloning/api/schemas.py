@@ -67,3 +67,7 @@ class CreateSpeechJobRequest(BaseModel):
 class RegenerateSpeechSegmentRequest(BaseModel):
     voiceId: str | None = None
     voiceSettings: dict[str, Any] | None = None
+
+
+class RegenerateSpeechVoiceRequest(BaseModel):
+    voiceSettings: dict[str, Any]

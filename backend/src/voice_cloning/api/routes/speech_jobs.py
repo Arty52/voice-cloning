@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse
 from ...providers import ProviderError, ProviderRegistry, VOICE_PROVIDER_KEY_HEADER
 from ...services.speech_audio import SPEECH_RESULT_CONTENT_TYPE
 from ...services.speech_jobs import SpeechJobSegmentInput, SpeechJobService, SpeechJobServiceError
-from ..schemas import CreateSpeechJobRequest, RegenerateSpeechSegmentRequest
+from ..schemas import CreateSpeechJobRequest, RegenerateSpeechSegmentRequest, RegenerateSpeechVoiceRequest
 from ..serializers import speech_job_payload
 
 
@@ -96,6 +96,29 @@ def create_speech_jobs_router(
                 provider=provider,
                 provider_key=provider_key,
                 voice_id=request.voiceId,
+                voice_settings=request.voiceSettings,
+            )
+        except ProviderError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        except SpeechJobServiceError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+        return {"job": speech_job_payload(job)}
+
+    @router.post("/api/speech/jobs/{job_id}/voices/{voice_id}/regenerate", status_code=202)
+    async def regenerate_speech_job_voice_segments(
+        job_id: str,
+        voice_id: str,
+        request: RegenerateSpeechVoiceRequest,
+        provider_key: str | None = Header(default=None, alias=VOICE_PROVIDER_KEY_HEADER),
+    ) -> dict[str, object]:
+        try:
+            existing_job = speech_jobs.get_job(job_id)
+            provider = provider_registry.get(existing_job.provider_id)
+            job = await speech_jobs.regenerate_segments_for_voice(
+                job_id,
+                voice_id,
+                provider=provider,
+                provider_key=provider_key,
                 voice_settings=request.voiceSettings,
             )
         except ProviderError as exc:

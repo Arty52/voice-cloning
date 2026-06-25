@@ -171,6 +171,53 @@ class SpeechJobService:
         )
         return next_job
 
+    async def regenerate_segments_for_voice(
+        self,
+        job_id: str,
+        voice_id: str,
+        *,
+        provider: VoiceProvider,
+        provider_key: str | None,
+        voice_settings: Mapping[str, Any],
+    ) -> SpeechJob:
+        job = self.get_job(job_id)
+        if job.status == "running" or job_id in self._tasks:
+            raise SpeechJobServiceError("Speech job is already running.", 409)
+        if job.status != "success":
+            raise SpeechJobServiceError("Speech voice segments can be regenerated only after a successful job.", 409)
+
+        target_voice_id = voice_id.strip()
+        asset = self.voice_library.get_asset(target_voice_id)
+        matching_segment_ids = {
+            segment.id for segment in job.segments if segment.voice_id == asset.id and segment.status == "success"
+        }
+        if not matching_segment_ids:
+            raise SpeechJobServiceError("Speech job has no successful segments for that voice.", 404)
+
+        updated_segments = tuple(
+            replace(
+                segment,
+                voice_settings=_copy_voice_settings(voice_settings),
+                status="pending",
+                error=None,
+            )
+            if segment.id in matching_segment_ids
+            else segment
+            for segment in job.segments
+        )
+        self._update_job(job_id, status="pending", active_segment_id=None, error=None, segments=updated_segments)
+        next_job = self.get_job(job_id)
+        self._tasks[job_id] = asyncio.create_task(
+            self._run_voice_regeneration(
+                job_id,
+                voice_id=asset.id,
+                provider=provider,
+                model_id=next_job.model_id,
+                provider_key=provider_key,
+            )
+        )
+        return next_job
+
     def result_path(self, job_id: str) -> Path:
         job = self.get_job(job_id)
         path = self._job_dir(job_id) / SPEECH_RESULT_FILENAME
@@ -250,6 +297,41 @@ class SpeechJobService:
         except Exception:
             self._fail_active_segment(job_id, "Speech segment regeneration failed.")
             self._update_job(job_id, status="error", error="Speech segment regeneration failed.", active_segment_id=None)
+        finally:
+            self._tasks.pop(job_id, None)
+
+    async def _run_voice_regeneration(
+        self,
+        job_id: str,
+        *,
+        voice_id: str,
+        provider: VoiceProvider,
+        model_id: str | None,
+        provider_key: str | None,
+    ) -> None:
+        self._update_job(job_id, status="running", error=None)
+        try:
+            segments = tuple(segment for segment in self.get_job(job_id).segments if segment.voice_id == voice_id)
+            for segment in segments:
+                await self._generate_segment(
+                    job_id,
+                    segment,
+                    provider=provider,
+                    model_id=model_id,
+                    voice_settings=segment.voice_settings,
+                    provider_key=provider_key,
+                )
+            await self._rebuild_result(job_id)
+        except asyncio.CancelledError:
+            self._cancel_job_state(job_id)
+            raise
+        except (SpeechServiceError, SpeechAudioProcessorError) as exc:
+            detail = exc.detail
+            self._fail_active_segment(job_id, detail)
+            self._update_job(job_id, status="error", error=detail, active_segment_id=None)
+        except Exception:
+            self._fail_active_segment(job_id, "Speech voice regeneration failed.")
+            self._update_job(job_id, status="error", error="Speech voice regeneration failed.", active_segment_id=None)
         finally:
             self._tasks.pop(job_id, None)
 

@@ -1273,6 +1273,153 @@ def test_speech_job_regenerates_segment_and_rebuilds_result(tmp_path: Path) -> N
     assert len(json.loads(args_log_path.read_text(encoding="utf-8"))) == 3
 
 
+def test_speech_job_regenerates_all_segments_for_voice(tmp_path: Path) -> None:
+    args_log_path = tmp_path / "ffmpeg-calls.json"
+    ffmpeg_command = ffmpeg_fake_command(
+        tmp_path / "ffmpeg-fake",
+        output=b"combined-mp3",
+        args_log_path=args_log_path,
+    )
+    settings = replace(
+        make_settings(tmp_path),
+        sample_processing_ffmpeg_command=str(ffmpeg_command),
+    )
+    voice_library = VoiceLibrary(settings)
+    second_voice = voice_library.add_processed_sample(
+        "Second Voice",
+        VoiceSample(
+            content=b"second-sample",
+            filename="second.wav",
+            content_type="audio/wav",
+            sha256=sample_hash(b"second-sample"),
+        ),
+        processing_steps=(),
+    )
+    fake_provider = FakeElevenLabsProvider().bind_settings(settings)
+    app = create_app(
+        settings=settings,
+        provider_registry=ProviderRegistry([fake_provider]),
+        voice_cache=VoiceCache(settings.storage_dir / "voice-cache.json"),
+        voice_library=voice_library,
+    )
+    with TestClient(app) as client:
+        create = client.post(
+            "/api/speech/jobs",
+            json={
+                "text": "One. Two. Three.",
+                "defaultVoiceId": "default",
+                "segmentGapMs": 0,
+                "voiceSettings": {"stability": 0.42},
+                "segments": [
+                    {"clientSegmentId": "segment-one", "text": "One. ", "voiceId": "default"},
+                    {"clientSegmentId": "segment-two", "text": "Two. ", "voiceId": second_voice.id},
+                    {"clientSegmentId": "segment-three", "text": "Three.", "voiceId": "default"},
+                ],
+            },
+        )
+        job_id = create.json()["job"]["id"]
+        initial_job = wait_for_speech_job(client, job_id)
+        regenerate = client.post(
+            f"/api/speech/jobs/{job_id}/voices/default/regenerate",
+            json={"voiceSettings": {"speed": 1.2}},
+        )
+        job = wait_for_speech_job(client, job_id)
+        result = client.get(f"/api/speech/jobs/{job_id}/result")
+
+    assert regenerate.status_code == 202
+    assert initial_job["segments"][0]["voiceSettings"] == {"stability": 0.42}
+    assert initial_job["segments"][1]["voiceSettings"] == {"stability": 0.42}
+    assert initial_job["segments"][2]["voiceSettings"] == {"stability": 0.42}
+    assert job["status"] == "success"
+    assert [segment["generationCount"] for segment in job["segments"]] == [2, 1, 2]
+    assert job["segments"][0]["voiceSettings"] == {"speed": 1.2}
+    assert job["segments"][1]["voiceSettings"] == {"stability": 0.42}
+    assert job["segments"][2]["voiceSettings"] == {"speed": 1.2}
+    assert fake_provider.speech_requests[3][1] == "One."
+    assert fake_provider.speech_requests[3][2]["speed"] == 1.2
+    assert fake_provider.speech_requests[4][1] == "Three."
+    assert fake_provider.speech_requests[4][2]["speed"] == 1.2
+    assert result.content == b"combined-mp3"
+    assert len(json.loads(args_log_path.read_text(encoding="utf-8"))) == 2
+
+
+def test_speech_job_voice_regeneration_rejects_missing_matching_segments(tmp_path: Path) -> None:
+    settings = replace(
+        make_settings(tmp_path),
+        sample_processing_ffmpeg_command=str(ffmpeg_fake_command(tmp_path / "ffmpeg-fake")),
+    )
+    voice_library = VoiceLibrary(settings)
+    second_voice = voice_library.add_processed_sample(
+        "Second Voice",
+        VoiceSample(
+            content=b"second-sample",
+            filename="second.wav",
+            content_type="audio/wav",
+            sha256=sample_hash(b"second-sample"),
+        ),
+        processing_steps=(),
+    )
+    fake_provider = FakeElevenLabsProvider().bind_settings(settings)
+    app = create_app(
+        settings=settings,
+        provider_registry=ProviderRegistry([fake_provider]),
+        voice_cache=VoiceCache(settings.storage_dir / "voice-cache.json"),
+        voice_library=voice_library,
+    )
+    with TestClient(app) as client:
+        create = client.post(
+            "/api/speech/jobs",
+            json={
+                "text": "Hello.",
+                "defaultVoiceId": "default",
+                "segments": [{"clientSegmentId": "segment-one", "text": "Hello.", "voiceId": "default"}],
+            },
+        )
+        job_id = create.json()["job"]["id"]
+        wait_for_speech_job(client, job_id)
+        response = client.post(
+            f"/api/speech/jobs/{job_id}/voices/{second_voice.id}/regenerate",
+            json={"voiceSettings": {"speed": 1.2}},
+        )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Speech job has no successful segments for that voice."
+
+
+def test_speech_job_voice_regeneration_requires_successful_job(tmp_path: Path) -> None:
+    settings = replace(
+        make_settings(tmp_path),
+        sample_processing_ffmpeg_command=str(ffmpeg_fake_command(tmp_path / "ffmpeg-fake")),
+    )
+    fake_provider = FakeElevenLabsProvider().bind_settings(settings)
+    fake_provider.create_speech_delay = 5
+    app = create_app(
+        settings=settings,
+        provider_registry=ProviderRegistry([fake_provider]),
+        voice_cache=VoiceCache(settings.storage_dir / "voice-cache.json"),
+        voice_library=VoiceLibrary(settings),
+    )
+    with TestClient(app) as client:
+        create = client.post(
+            "/api/speech/jobs",
+            json={
+                "text": "Hello.",
+                "defaultVoiceId": "default",
+                "segments": [{"clientSegmentId": "segment-one", "text": "Hello.", "voiceId": "default"}],
+            },
+        )
+        job_id = create.json()["job"]["id"]
+        response = client.post(
+            f"/api/speech/jobs/{job_id}/voices/default/regenerate",
+            json={"voiceSettings": {"speed": 1.2}},
+        )
+        cancel = client.post(f"/api/speech/jobs/{job_id}/cancel")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Speech job is already running."
+    assert cancel.status_code == 200
+
+
 def test_speech_job_cancel_marks_running_job_canceled(tmp_path: Path) -> None:
     settings = replace(
         make_settings(tmp_path),
