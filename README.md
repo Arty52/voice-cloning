@@ -71,11 +71,11 @@ http://localhost:6420
 
 ## Common Workflow
 
-The Voice Studio opens on `Voices`. Use the sidebar to move between stable workflow sections:
+The Voice Studio opens on `Overview`. Use the sidebar to move between stable workflow sections:
 
-1. `Prepare Audio` (`#prepare`, optional step 0): process uploaded or saved source audio before adding it to the library.
-2. `Voices` (`#voices`, step 1): upload, record, select, preview, rename, and assign local voice presets.
-3. `Generate Speech` (`#generate`, step 2): enter text, optionally assign selected text spans to saved voices, tune the request, choose model settings, generate speech, play combined and segment results, and regenerate individual multi-voice segments.
+1. `Prepare Audio` (`#prepare`, optional step 0): upload, record, or process source audio before adding it to the library.
+2. `Voices` (`#voices`, step 1): select, preview, rename, tune, and manage local voice samples.
+3. `Generate Speech` (`#generate`, step 2): enter text, optionally assign selected text spans to saved voices, generate speech with saved voice defaults, play combined and segment results, and regenerate individual multi-voice segments with contextual overrides.
 4. `Generated Audio` (`#archive`, optional): review, download, remove, or clear browser-saved generated audio, including Multi-Voice metadata for combined speech jobs.
 5. `Provider & Usage` (`#provider`): add browser-local provider keys, confirm `.env` fallback, choose models, and review quota/cost metadata.
 

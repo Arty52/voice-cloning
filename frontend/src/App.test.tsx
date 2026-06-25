@@ -713,6 +713,14 @@ function expectSubtleSelectorSelection(control: HTMLElement, selected: boolean) 
   }
 }
 
+function workflowCardLink(workflowMap: HTMLElement, hash: string) {
+  const link = within(workflowMap)
+    .getAllByRole("link")
+    .find((candidate) => candidate.getAttribute("href") === hash)
+  expect(link).toBeDefined()
+  return link as HTMLAnchorElement
+}
+
 function voiceTuningPanel() {
   return scopedPanelByHeading("Voice Tuning")
 }
@@ -982,7 +990,7 @@ describe("App", () => {
 
     const workflowMap = await screen.findByRole("list", { name: "Voice Studio Workflow" })
 
-    await user.click(within(workflowMap).getByRole("link", { name: /Voices/i }))
+    await user.click(workflowCardLink(workflowMap, "#voices"))
 
     await waitFor(() => expect(window.location.hash).toBe("#voices"))
     expect(screen.getByRole("button", { name: "Voices" })).toHaveAttribute("aria-current", "page")
@@ -991,7 +999,7 @@ describe("App", () => {
 
     await user.click(screen.getByRole("button", { name: "Overview" }))
     const refreshedWorkflowMap = await screen.findByRole("list", { name: "Voice Studio Workflow" })
-    await user.click(within(refreshedWorkflowMap).getByRole("link", { name: /Generate Speech/i }))
+    await user.click(workflowCardLink(refreshedWorkflowMap, "#generate"))
 
     await waitFor(() => expect(window.location.hash).toBe("#generate"))
     expect(screen.getByRole("button", { name: "Generate Speech" })).toHaveAttribute("aria-current", "page")

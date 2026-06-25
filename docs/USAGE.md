@@ -101,11 +101,11 @@ Open the UI:
 http://localhost:4340
 ```
 
-The UI opens on `Voices`. The sidebar is the top-level workflow map:
+The UI opens on `Overview`. The sidebar is the top-level workflow map:
 
-1. `Prepare Audio` (`#prepare`, optional step 0): optionally process an uploaded file or saved source audio before creating a library voice.
-2. `Voices` (`#voices`, step 1): upload or record a voice sample, choose a local name such as `Voice_Clone_01`, choose Standard Narration or Animated Dialogue, save it, select it, and preview it.
-3. `Generate Speech` (`#generate`, step 2): enter text, optionally assign selected text spans to saved voices, review the latest result, play combined and segment results, regenerate multi-voice segments, and adjust Voice Tuning. Selecting a saved voice initializes tuning from that voice's assigned preset when the active provider maps it, otherwise from provider defaults. Multi-voice segment controls can regenerate one segment with a different voice or a segment-specific tuning snapshot without changing the rest of the result.
+1. `Prepare Audio` (`#prepare`, optional step 0): upload, record, or process source audio before creating a library voice.
+2. `Voices` (`#voices`, step 1): select, preview, rename, tune, and manage local voice samples.
+3. `Generate Speech` (`#generate`, step 2): enter text, optionally assign selected text spans to saved voices, review the latest result, play combined and segment results, and regenerate multi-voice segments with contextual voice or tuning overrides. Selecting a saved voice uses that voice's saved tuning for the active provider when present, otherwise its mapped voice preset or provider defaults.
 4. `Generated Audio` (`#archive`, optional): play, download, remove, or clear saved generated MP3s from browser IndexedDB, including Multi-Voice archive metadata.
 5. `Provider & Usage` (`#provider`): add an ElevenLabs key if `.env` does not provide one, confirm `.env` fallback, check Cost & Quota, and choose a model if model metadata is available.
 
@@ -119,7 +119,7 @@ http://localhost:6420
 
 Each local voice has a provider-independent voice preset assignment. Choose Standard Narration for balanced reading, or Animated Dialogue for more expressive delivery, when saving a new voice or editing the selected voice in the Voice Library.
 
-The assignment is saved as local voice metadata and is not a provider clone id or provider secret. When you select a voice, Voice Tuning starts from saved tuning for the active provider when that voice has it. Otherwise it starts from the active provider preset mapped to the voice assignment. If the active provider has no saved tuning and no matching mapped preset, Voice Tuning uses that provider's default values instead. Manual slider, toggle, or select changes remain per-request until you explicitly save generated segment tuning back to that voice.
+The assignment is saved as local voice metadata and is not a provider clone id or provider secret. In `#voices`, Voice Tuning starts from saved tuning for the active provider when that voice has it. Otherwise it starts from the active provider preset mapped to the voice assignment. If the active provider has no saved tuning and no matching mapped preset, Voice Tuning uses that provider's default values instead. Saving tuning in `#voices` updates the voice default; segment-level tuning in `#generate` remains a one-off override unless you explicitly save generated segment tuning back to that voice.
 
 Existing voices or older manifests without an assignment default to Standard Narration. Existing voices without saved provider tuning behave as before and resolve tuning from their preset assignment.
 
@@ -188,13 +188,13 @@ This calls ElevenLabs with the real API key, may consume credits, and writes `st
 
 ## Browser Voice Recording
 
-The Add Voice panel can record through the browser microphone or fall back to file upload. Browser recordings are encoded as local WAV files before they are sent to the backend, avoiding browser-specific `MediaRecorder` container differences across Safari, Chrome, Edge on Windows, and Firefox. Recordings stop before the backend's 10 MB upload cap; most devices can record up to 90 seconds, while very high sample-rate devices may stop sooner.
+The Add Voice panel in `#prepare` can record through the browser microphone or fall back to file upload. Browser recordings are encoded as local WAV files before they are sent to the backend, avoiding browser-specific `MediaRecorder` container differences across Safari, Chrome, Edge on Windows, and Firefox. Recordings stop before the backend's 10 MB upload cap; most devices can record up to 90 seconds, while very high sample-rate devices may stop sooner.
 
 Recording requires a browser that supports microphone access on `localhost` and user permission for the microphone. If permission is denied or the microphone API is unavailable, use Sample File upload instead.
 
 ## Long Uploaded Samples
 
-The Add Voice panel can prepare a provider-sized window from a longer local upload. The browser decodes the selected file, defaults short files to their full duration, and defaults long files to the first provider-sized window. For the built-in ElevenLabs provider, the window maximum is 120 seconds and the recommended range is 60-120 seconds.
+The Add Voice panel in `#prepare` can prepare a provider-sized window from a longer local upload. The browser decodes the selected file, defaults short files to their full duration, and defaults long files to the first provider-sized window. For the built-in ElevenLabs provider, the window maximum is 120 seconds and the recommended range is 60-120 seconds.
 
 The cropper has two save modes:
 
