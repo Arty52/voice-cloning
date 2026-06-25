@@ -1402,7 +1402,8 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
 
     await waitFor(() => expect(createJobBody).not.toBeNull())
-    expect(createJobBody?.segments[0].voiceSettings).toEqual({
+    const submittedJob = createJobBody as NonNullable<Parameters<typeof speechJobFromSubmitted>[0]>
+    expect(submittedJob.segments[0].voiceSettings).toEqual({
       stability: 0.5,
       similarityBoost: 0.75,
       style: 0,
@@ -1417,7 +1418,7 @@ describe("App", () => {
     await waitFor(() => expect(patchVoiceBody).not.toBeNull())
     expect(patchVoiceBody).toEqual({
       providerId: "elevenlabs",
-      voiceSettings: createJobBody?.segments[0].voiceSettings,
+      voiceSettings: submittedJob.segments[0].voiceSettings,
     })
   })
 
@@ -1492,7 +1493,9 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "Map Voice" }))
     await user.click(screen.getByRole("button", { name: "Default voice" }))
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
-    await waitFor(() => expect(createJobBody?.segments).toHaveLength(2))
+    await waitFor(() => expect(createJobBody).not.toBeNull())
+    const submittedJob = createJobBody as NonNullable<Parameters<typeof speechJobFromSubmitted>[0]>
+    expect(submittedJob.segments).toHaveLength(2)
 
     await screen.findByRole("heading", { name: "Latest Generated Audio" })
     const latestPanel = latestGeneratedAudioPanel()
