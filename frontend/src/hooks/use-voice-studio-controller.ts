@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { type FormEvent, useLayoutEffect, useMemo, useRef, useState } from "react"
 
 import { DEFAULT_TEXT, MAX_SPEECH_TEXT_LENGTH } from "@/constants"
 import { useConfirmation } from "@/hooks/use-confirmation"
@@ -80,7 +80,6 @@ export function useVoiceStudioController() {
   const voiceInput = useVoiceSampleInput({
     onVoiceSaved: (voice) => {
       voiceLibrary.addSavedVoice(voice)
-      setIsAddVoiceRevealed(false)
     },
     providerSample: providerKeys.activeProvider?.sample,
   })
