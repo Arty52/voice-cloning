@@ -1,5 +1,5 @@
 import { Mic, RotateCcw, Save, Square, Upload } from "lucide-react"
-import { type FormEvent, useEffect, useRef } from "react"
+import { type FormEvent } from "react"
 
 import { AudioFileDropZone } from "@/components/audio-file-drop-zone"
 import { AudioWindowCropper } from "@/components/audio-window-cropper"
@@ -28,12 +28,10 @@ type AddVoicePanelProps = {
   handleStopRecording: () => void
   handleUpload: (event: FormEvent<HTMLFormElement>) => void
   handleUploadFileSelect: (file: File | null) => void
-  isCovered: boolean
   isRecorderBusy: boolean
   isRecording: boolean
   isPreparingSample: boolean
   isUploading: boolean
-  onReveal: () => void
   recorderError: string | null
   recorderStatus: RecorderStatus
   recordingDurationSeconds: number
@@ -61,12 +59,10 @@ export function AddVoicePanel({
   handleStopRecording,
   handleUpload,
   handleUploadFileSelect,
-  isCovered,
   isRecorderBusy,
   isRecording,
   isPreparingSample,
   isUploading,
-  onReveal,
   recorderError,
   recorderStatus,
   recordingDurationSeconds,
@@ -84,8 +80,6 @@ export function AddVoicePanel({
   voicePresets,
   voiceSampleInputMode,
 }: AddVoicePanelProps) {
-  const contentRef = useRef<HTMLDivElement | null>(null)
-  const revealButtonRef = useRef<HTMLButtonElement | null>(null)
   const recorderLoadingLabel =
     recorderStatus === "starting" ? "Starting Recorder" : recorderStatus === "stopping" ? "Finalizing Recording" : null
   const recorderPanelVisible = voiceSampleInputMode === "record" || recorderError !== null
@@ -98,30 +92,15 @@ export function AddVoicePanel({
           ? "Finalizing"
           : recorderStatus === "recorded"
             ? "Record Again"
-            : "Record"
-
-  useEffect(() => {
-    if (!isCovered) {
-      return
-    }
-    const activeElement = document.activeElement
-    if (activeElement && contentRef.current?.contains(activeElement)) {
-      revealButtonRef.current?.focus()
-    }
-  }, [isCovered])
+          : "Record"
 
   return (
     <form
       aria-label="Add Voice"
-      className="relative overflow-hidden rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5"
+      className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5"
       onSubmit={handleUpload}
     >
-      <div
-        aria-hidden={isCovered ? true : undefined}
-        className="flex flex-col gap-4"
-        inert={isCovered ? true : undefined}
-        ref={contentRef}
-      >
+      <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-medium">Add Voice</h2>
@@ -258,23 +237,6 @@ export function AddVoicePanel({
           </Button>
         </FieldGroup>
       </div>
-
-      {isCovered ? (
-        <div className="absolute inset-0 flex items-center justify-center bg-card/95 p-5 text-center backdrop-blur-sm">
-          <div className="flex max-w-sm flex-col items-center gap-3">
-            <Upload aria-hidden="true" className="size-5 text-primary" />
-            <div className="flex flex-col gap-1">
-              <h2 className="text-base font-medium">Add Another Voice</h2>
-              <p className="text-sm leading-6 text-muted-foreground">
-                Your Voice Library is ready. Keep this panel tucked away until you want to upload or record a new sample.
-              </p>
-            </div>
-            <Button onClick={onReveal} ref={revealButtonRef} type="button" variant="secondary">
-              Add Another Voice
-            </Button>
-          </div>
-        </div>
-      ) : null}
     </form>
   )
 }

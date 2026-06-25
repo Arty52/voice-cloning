@@ -32,7 +32,6 @@ function App() {
     handleStorageLimitChange,
     handleTextSelectionChange,
     hasModelRate,
-    isAddVoiceRevealed,
     isSpeechGenerating,
     isVoiceTuningExpanded,
     latestGeneratedAudioItem,
@@ -51,7 +50,6 @@ function App() {
     regenerateMultiVoiceSegmentsForVoice,
     result,
     removeVoiceAssignment,
-    revealAddVoice,
     sampleProcessing,
     saveNaturalHandoffsDefault,
     saveGeneratedSegmentTuningToVoice,
@@ -92,32 +90,13 @@ function App() {
           <StudioOverviewPanel sections={workflowSections} />
         </WorkflowSectionPanel>
 
-        <WorkflowSectionPanel activeSectionId={activeSectionId} id="prepare">
+        <WorkflowSectionPanel activeSectionId={activeSectionId} className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]" id="prepare">
           <SampleProcessingPanel
             isCollapsible={false}
             isExpanded
             onToggleExpanded={() => undefined}
             processing={sampleProcessing}
             voicePresets={providerKeys.voicePresets}
-          />
-        </WorkflowSectionPanel>
-
-        <WorkflowSectionPanel activeSectionId={activeSectionId} className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]" id="voices">
-          <VoiceLibraryPanel
-            defaultVoiceId={voiceLibrary.defaultVoiceId}
-            isGenerating={speech.isGenerating}
-            isSettingDefault={voiceLibrary.isSettingDefault}
-            isUpdatingVoice={voiceLibrary.isUpdatingVoice}
-            onDeleteRequest={requestDeleteVoice}
-            onPlayVoice={voiceLibrary.playVoice}
-            onRenameRequest={voiceLibrary.requestRename}
-            onSelectVoice={voiceLibrary.setSelectedVoiceId}
-            onSetDefault={(voice) => void voiceLibrary.setDefault(voice.id)}
-            selectedVoiceId={voiceLibrary.selectedVoiceId}
-            voiceError={voiceLibrary.voiceError}
-            voicePresets={providerKeys.voicePresets}
-            voices={voiceLibrary.voices}
-            voiceStatus={voiceLibrary.voiceStatus}
           />
 
           <AddVoicePanel
@@ -129,17 +108,10 @@ function App() {
             handleSampleWindowChange={voiceInput.handleSampleWindowChange}
             handleUpload={voiceInput.handleUpload}
             handleUploadFileSelect={voiceInput.handleUploadFileSelect}
-            isCovered={
-              activeSectionId === "voices" &&
-              voiceLibrary.voiceStatus === "success" &&
-              voiceLibrary.voices.length > 0 &&
-              !isAddVoiceRevealed
-            }
             isRecorderBusy={voiceInput.isRecorderBusy}
             isRecording={voiceInput.isRecording}
             isPreparingSample={voiceInput.isPreparingSample}
             isUploading={voiceInput.isUploading}
-            onReveal={revealAddVoice}
             recorderError={voiceInput.recorderError}
             recorderStatus={voiceInput.recorderStatus}
             recordingDurationSeconds={voiceInput.recordingDurationSeconds}
@@ -156,6 +128,25 @@ function App() {
             uploadWindow={voiceInput.uploadWindow}
             voicePresets={providerKeys.voicePresets}
             voiceSampleInputMode={voiceInput.voiceSampleInputMode}
+          />
+        </WorkflowSectionPanel>
+
+        <WorkflowSectionPanel activeSectionId={activeSectionId} id="voices">
+          <VoiceLibraryPanel
+            defaultVoiceId={voiceLibrary.defaultVoiceId}
+            isGenerating={speech.isGenerating}
+            isSettingDefault={voiceLibrary.isSettingDefault}
+            isUpdatingVoice={voiceLibrary.isUpdatingVoice}
+            onDeleteRequest={requestDeleteVoice}
+            onPlayVoice={voiceLibrary.playVoice}
+            onRenameRequest={voiceLibrary.requestRename}
+            onSelectVoice={voiceLibrary.setSelectedVoiceId}
+            onSetDefault={(voice) => void voiceLibrary.setDefault(voice.id)}
+            selectedVoiceId={voiceLibrary.selectedVoiceId}
+            voiceError={voiceLibrary.voiceError}
+            voicePresets={providerKeys.voicePresets}
+            voices={voiceLibrary.voices}
+            voiceStatus={voiceLibrary.voiceStatus}
           />
         </WorkflowSectionPanel>
 
