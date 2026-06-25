@@ -119,9 +119,9 @@ http://localhost:6420
 
 Each local voice has a provider-independent voice preset assignment. Choose Standard Narration for balanced reading, or Animated Dialogue for more expressive delivery, when saving a new voice or editing the selected voice in the Voice Library.
 
-The assignment is saved as local voice metadata and is not a provider clone id or provider secret. When you select a voice, Voice Tuning starts from the active provider preset mapped to that assignment. If the active provider has no matching mapped preset, Voice Tuning uses that provider's default values instead. Manual slider, toggle, or select changes are per-request only; they show as Custom and do not overwrite the saved assignment. Segment-level tuning for multi-voice regeneration is stored only with that runtime speech job and the browser's generated-audio metadata.
+The assignment is saved as local voice metadata and is not a provider clone id or provider secret. When you select a voice, Voice Tuning starts from saved tuning for the active provider when that voice has it. Otherwise it starts from the active provider preset mapped to the voice assignment. If the active provider has no saved tuning and no matching mapped preset, Voice Tuning uses that provider's default values instead. Manual slider, toggle, or select changes remain per-request until you explicitly save generated segment tuning back to that voice.
 
-Existing voices or older manifests without an assignment default to Standard Narration. This iteration persists only the preset id, not custom tuning overrides.
+Existing voices or older manifests without an assignment default to Standard Narration. Existing voices without saved provider tuning behave as before and resolve tuning from their preset assignment.
 
 ## Multi-Voice Generation
 
