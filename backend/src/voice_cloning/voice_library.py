@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 import json
 from pathlib import Path
-from typing import Any, get_args
+from typing import Any, Mapping, get_args
 
 from fastapi import HTTPException, UploadFile
 
@@ -209,14 +209,19 @@ class VoiceLibrary:
         voice_id: str,
         *,
         name: str | None = None,
+        provider_id: str | None = None,
         voice_preset_id: str | None = None,
+        voice_settings: Mapping[str, object] | None = None,
     ) -> dict[str, object]:
-        if name is None and voice_preset_id is None:
-            raise HTTPException(status_code=422, detail="Voice name or preset is required.")
+        if name is None and voice_preset_id is None and voice_settings is None:
+            raise HTTPException(status_code=422, detail="Voice name, preset, or settings are required.")
 
         display_name = name.strip() if name is not None else None
         if display_name == "":
             raise HTTPException(status_code=422, detail="Voice name is required.")
+        normalized_provider_id = provider_id.strip() if provider_id is not None else None
+        if voice_settings is not None and not normalized_provider_id:
+            raise HTTPException(status_code=422, detail="Provider id is required to save voice settings.")
         resolved_voice_preset_id = (
             _normalize_voice_preset_id(voice_preset_id) if voice_preset_id is not None else None
         )
@@ -236,6 +241,14 @@ class VoiceLibrary:
             voices[voice_index]["name"] = display_name
         if resolved_voice_preset_id is not None:
             voices[voice_index]["voicePresetId"] = resolved_voice_preset_id
+        if voice_settings is not None and normalized_provider_id is not None:
+            settings_by_provider = _voice_settings_by_provider_from_payload(
+                voices[voice_index].get("voiceSettingsByProvider")
+            )
+            settings_by_provider[normalized_provider_id] = dict(voice_settings)
+            voices[voice_index]["voiceSettingsByProvider"] = _voice_settings_by_provider_to_payload(
+                settings_by_provider
+            )
 
         self._write_manifest(manifest)
         return {

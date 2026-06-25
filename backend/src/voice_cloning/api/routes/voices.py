@@ -3,12 +3,13 @@ from __future__ import annotations
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
+from ...providers import ProviderError, ProviderRegistry
 from ...voice_library import VoiceLibrary
 from ..schemas import DefaultVoiceRequest, VoiceUpdateRequest
 from ..serializers import voice_asset_payload
 
 
-def create_voices_router(voice_library: VoiceLibrary) -> APIRouter:
+def create_voices_router(voice_library: VoiceLibrary, provider_registry: ProviderRegistry) -> APIRouter:
     router = APIRouter()
 
     @router.get("/api/samples/default")
@@ -46,10 +47,24 @@ def create_voices_router(voice_library: VoiceLibrary) -> APIRouter:
 
     @router.patch("/api/voices/{voice_id}")
     def update_voice(voice_id: str, request: VoiceUpdateRequest) -> dict[str, object]:
+        normalized_voice_settings: dict[str, object] | None = None
+        if "voiceSettings" in request.model_fields_set:
+            if request.voiceSettings is None:
+                raise HTTPException(status_code=422, detail="Voice settings are required.")
+            if not request.providerId or not request.providerId.strip():
+                raise HTTPException(status_code=422, detail="Provider id is required to save voice settings.")
+            try:
+                provider = provider_registry.get(request.providerId)
+                normalized_voice_settings = provider.normalize_voice_settings(request.voiceSettings)
+            except ProviderError as exc:
+                raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
         return voice_library.update_asset(
             voice_id,
             name=request.name,
+            provider_id=request.providerId,
             voice_preset_id=request.voicePresetId,
+            voice_settings=normalized_voice_settings,
         )
 
     @router.delete("/api/voices/{voice_id}")

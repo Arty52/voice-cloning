@@ -34,7 +34,9 @@ export type AddVoiceOptions = {
 
 export type VoiceUpdate = {
   name?: string
+  providerId?: string
   voicePresetId?: VoicePresetId
+  voiceSettings?: VoiceTuningValues
 }
 
 export type CreateSampleProcessingJobRequest = {

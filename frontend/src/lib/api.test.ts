@@ -87,6 +87,27 @@ describe("voice API helpers", () => {
     )
   })
 
+  it("updates a voice with provider tuning settings", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => okJson({ defaultVoiceId: "default", voices: [] })))
+
+    await updateVoice("default", {
+      providerId: "elevenlabs",
+      voiceSettings: { speed: 1.15, useSpeakerBoost: true },
+    })
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/voices/default",
+      expect.objectContaining({
+        body: JSON.stringify({
+          providerId: "elevenlabs",
+          voiceSettings: { speed: 1.15, useSpeakerBoost: true },
+        }),
+        headers: { "Content-Type": "application/json" },
+        method: "PATCH",
+      })
+    )
+  })
+
   it("creates a sample processing job from a saved voice", async () => {
     vi.stubGlobal("fetch", vi.fn(() => okJson({ job: { id: "job-1", status: "running" } })))
 

@@ -3883,13 +3883,42 @@ def test_patch_voice_updates_preset_without_renaming(tmp_path: Path) -> None:
     assert voice["voicePresetId"] == "animatedDialogue"
 
 
+def test_patch_voice_saves_normalized_provider_tuning(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    fake_provider = FakeElevenLabsProvider().bind_settings(settings)
+    app = create_app(
+        settings=settings,
+        provider_registry=ProviderRegistry([fake_provider]),
+        voice_cache=VoiceCache(settings.storage_dir / "voice-cache.json"),
+        voice_library=VoiceLibrary(settings),
+    )
+
+    with TestClient(app) as client:
+        response = client.patch(
+            "/api/voices/default",
+            json={"providerId": "elevenlabs", "voiceSettings": {"speed": 1.15}},
+        )
+
+    assert response.status_code == 200
+    voice = response.json()["voices"][0]
+    assert voice["voiceSettingsByProvider"]["elevenlabs"] == {
+        "similarityBoost": 0.75,
+        "speed": 1.15,
+        "stability": 0.5,
+        "style": 0,
+        "useSpeakerBoost": True,
+    }
+    manifest_voice = json.loads(settings.voice_manifest_path.read_text(encoding="utf-8"))["voices"][0]
+    assert manifest_voice["voiceSettingsByProvider"] == voice["voiceSettingsByProvider"]
+
+
 def test_patch_voice_rejects_empty_payload(tmp_path: Path) -> None:
     client, _ = make_client(tmp_path)
 
     response = client.patch("/api/voices/default", json={})
 
     assert response.status_code == 422
-    assert response.json()["detail"] == "Voice name or preset is required."
+    assert response.json()["detail"] == "Voice name, preset, or settings are required."
 
 
 def test_patch_voice_rejects_unknown_preset(tmp_path: Path) -> None:
@@ -3899,6 +3928,39 @@ def test_patch_voice_rejects_unknown_preset(tmp_path: Path) -> None:
 
     assert response.status_code == 422
     assert response.json()["detail"] == "Voice preset must be standardNarration or animatedDialogue."
+
+
+def test_patch_voice_rejects_tuning_without_provider(tmp_path: Path) -> None:
+    client, _ = make_client(tmp_path)
+
+    response = client.patch("/api/voices/default", json={"voiceSettings": {"speed": 1.15}})
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Provider id is required to save voice settings."
+
+
+def test_patch_voice_rejects_unknown_provider_tuning(tmp_path: Path) -> None:
+    client, _ = make_client(tmp_path)
+
+    response = client.patch(
+        "/api/voices/default",
+        json={"providerId": "missing", "voiceSettings": {"speed": 1.15}},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Unknown provider: missing."
+
+
+def test_patch_voice_rejects_unsupported_provider_tuning(tmp_path: Path) -> None:
+    client, _ = make_client(tmp_path)
+
+    response = client.patch(
+        "/api/voices/default",
+        json={"providerId": "elevenlabs", "voiceSettings": {"unsupported": 1}},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Unsupported ElevenLabs voice setting: unsupported."
 
 
 def test_rename_voice_rejects_duplicate_normalized_name(tmp_path: Path) -> None:
