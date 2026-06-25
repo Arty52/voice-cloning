@@ -18,6 +18,10 @@ import { useVoiceTuning } from "@/hooks/use-voice-tuning"
 import { useWorkflowNavigation } from "@/hooks/use-workflow-navigation"
 import { isTemporaryGeneratedAudioId } from "@/lib/generated-audio-view-model"
 import { formatBytes } from "@/lib/formatters"
+import {
+  loadNaturalHandoffsPreference,
+  saveNaturalHandoffsPreference,
+} from "@/lib/natural-handoffs-preference"
 import { readTextareaSelection } from "@/lib/text-selection"
 import { resolveSavedVoiceTuning } from "@/lib/voice-tuning"
 import {
@@ -49,7 +53,13 @@ export function useVoiceStudioController() {
   const [isAddVoiceRevealed, setIsAddVoiceRevealed] = useState(false)
   const [latestGeneratedAudioId, setLatestGeneratedAudioId] = useState<string | null>(null)
   const [latestGenerationMode, setLatestGenerationMode] = useState<"single" | "multi">("single")
-  const [naturalHandoffsEnabled, setNaturalHandoffsEnabled] = useState(true)
+  const [savedNaturalHandoffsEnabled, setSavedNaturalHandoffsEnabled] = useState(() =>
+    loadNaturalHandoffsPreference()
+  )
+  const [naturalHandoffsEnabled, setNaturalHandoffsEnabled] = useState(() =>
+    loadNaturalHandoffsPreference()
+  )
+  const [naturalHandoffsSaveError, setNaturalHandoffsSaveError] = useState<string | null>(null)
   const [textSelection, setTextSelection] = useState({ end: 0, start: 0, text: "" })
   const [voiceAssignments, setVoiceAssignments] = useState<VoiceTextAssignment[]>([])
   const textRef = useRef<HTMLTextAreaElement | null>(null)
@@ -253,6 +263,23 @@ export function useVoiceStudioController() {
 
   function revealAddVoice() {
     setIsAddVoiceRevealed(true)
+  }
+
+  function handleNaturalHandoffsEnabledChange(enabled: boolean) {
+    setNaturalHandoffsEnabled(enabled)
+    setNaturalHandoffsSaveError(null)
+  }
+
+  function saveNaturalHandoffsDefault() {
+    try {
+      const saved = saveNaturalHandoffsPreference(naturalHandoffsEnabled)
+      setSavedNaturalHandoffsEnabled(saved)
+      setNaturalHandoffsSaveError(null)
+    } catch (caught) {
+      setNaturalHandoffsSaveError(
+        caught instanceof Error ? caught.message : "Unable to save natural handoffs preference."
+      )
+    }
   }
 
   async function generateSpeech() {
@@ -484,7 +511,10 @@ export function useVoiceStudioController() {
     latestStorageError,
     metadata,
     navigateToSection,
+    naturalHandoffsDefaultEnabled: savedNaturalHandoffsEnabled,
     naturalHandoffsEnabled,
+    naturalHandoffsSaveError,
+    naturalHandoffsUnsaved: naturalHandoffsEnabled !== savedNaturalHandoffsEnabled,
     providerKeys,
     providerTuning,
     requestClearGeneratedAudio,
@@ -494,6 +524,7 @@ export function useVoiceStudioController() {
     result,
     revealAddVoice,
     sampleProcessing,
+    saveNaturalHandoffsDefault,
     saveGeneratedSegmentTuningToVoice,
     sectionStatuses,
     selectedModel,
@@ -501,7 +532,7 @@ export function useVoiceStudioController() {
     setIsCostQuotaExpanded,
     setIsSampleProcessingExpanded,
     setIsVoiceTuningExpanded,
-    setNaturalHandoffsEnabled,
+    setNaturalHandoffsEnabled: handleNaturalHandoffsEnabledChange,
     setText: handleTextChange,
     speech,
     speechError: activeSpeechError,
