@@ -424,6 +424,13 @@ class VoiceLibrary:
         if not isinstance(payload.get("voiceSettingsByProvider"), dict):
             payload["voiceSettingsByProvider"] = {}
             migrated = True
+        else:
+            normalized_voice_settings_by_provider = _voice_settings_by_provider_to_payload(
+                _voice_settings_by_provider_from_payload(payload.get("voiceSettingsByProvider"))
+            )
+            if payload["voiceSettingsByProvider"] != normalized_voice_settings_by_provider:
+                payload["voiceSettingsByProvider"] = normalized_voice_settings_by_provider
+                migrated = True
         if not isinstance(payload.get("processingSteps"), list):
             payload["processingSteps"] = []
             migrated = True
@@ -456,12 +463,13 @@ def _voice_settings_by_provider_from_payload(value: Any) -> dict[str, dict[str, 
     for provider_id, settings in value.items():
         if not isinstance(provider_id, str) or not provider_id.strip() or not isinstance(settings, dict):
             continue
+        normalized_provider_id = provider_id.strip()
         normalized_settings = {
             key: setting
             for key, setting in settings.items()
             if isinstance(key, str) and isinstance(setting, bool | int | float | str)
         }
-        settings_by_provider[provider_id] = normalized_settings
+        settings_by_provider[normalized_provider_id] = normalized_settings
     return settings_by_provider
 
 
@@ -469,7 +477,7 @@ def _voice_settings_by_provider_to_payload(
     value: dict[str, dict[str, object]]
 ) -> dict[str, dict[str, object]]:
     return {
-        provider_id: dict(settings)
+        provider_id.strip(): dict(settings)
         for provider_id, settings in value.items()
         if provider_id.strip()
     }

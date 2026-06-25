@@ -1418,6 +1418,45 @@ def test_voice_manifest_migrates_legacy_assets_with_excerpt_defaults(tmp_path: P
     assert migrated_voice["processingSteps"] == []
 
 
+def test_voice_manifest_normalizes_provider_tuning_keys(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path, with_default_sample=False)
+    sample_path = settings.voice_assets_dir / "legacy.mp3"
+    sample_path.parent.mkdir(parents=True)
+    sample_path.write_bytes(b"legacy-sample")
+    settings.voice_manifest_path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "defaultVoiceId": "legacy",
+                "voices": [
+                    {
+                        "id": "legacy",
+                        "name": "Legacy Voice",
+                        "filePath": "legacy.mp3",
+                        "contentType": "audio/mpeg",
+                        "sha256": "legacy-hash",
+                        "source": "upload",
+                        "createdAt": "2026-05-28T00:00:00+00:00",
+                        "voicePresetId": "standardNarration",
+                        "voiceSettingsByProvider": {
+                            " elevenlabs ": {"speed": 1.15},
+                            "  ": {"speed": 1.2},
+                        },
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    payload = VoiceLibrary(settings).list_payload()
+
+    voice = payload["voices"][0]
+    assert voice["voiceSettingsByProvider"] == {"elevenlabs": {"speed": 1.15}}
+    migrated_voice = json.loads(settings.voice_manifest_path.read_text(encoding="utf-8"))["voices"][0]
+    assert migrated_voice["voiceSettingsByProvider"] == {"elevenlabs": {"speed": 1.15}}
+
+
 def test_voice_manifest_loads_legacy_processing_steps_without_preset_metadata(tmp_path: Path) -> None:
     settings = make_settings(tmp_path, with_default_sample=False)
     sample_path = settings.voice_assets_dir / "legacy.wav"
