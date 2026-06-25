@@ -680,7 +680,7 @@ function DialogueRow({
                         {
                           disabled: !hasCustomRowTuning || !hasMatchingVoiceRows,
                           icon: <SlidersHorizontal aria-hidden="true" className="size-4" />,
-                          label: "Apply Tuning To Same Voice Rows",
+                          label: "Apply To Same Voice",
                           onSelect: () => dialogue.applyBlockVoiceSettingsToMatchingVoice(block.id, rowTuning),
                         },
                       ]}

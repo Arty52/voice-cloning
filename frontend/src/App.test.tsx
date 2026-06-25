@@ -1387,7 +1387,7 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "Tune Dialogue Row 1" }))
     fireEvent.change(screen.getByRole("slider", { name: "Speed" }), { target: { value: "1.12" } })
     await user.click(screen.getByRole("button", { name: "Open Dialogue Row 1 Tuning Actions" }))
-    await user.click(screen.getByRole("menuitem", { name: "Apply Tuning To Same Voice Rows" }))
+    await user.click(screen.getByRole("menuitem", { name: "Apply To Same Voice" }))
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
 
     await waitFor(() => expect(createJobBody).not.toBeNull())

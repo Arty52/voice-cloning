@@ -288,7 +288,7 @@ describe("SpeechInputPanel voice assignments", () => {
     expect(screen.getByText("Adjust settings for this dialogue row before generation.")).toBeInTheDocument()
     const rowActions = screen.getByRole("button", { name: "Open Dialogue Row 1 Tuning Actions" })
     await user.click(rowActions)
-    expect(screen.getByRole("menuitem", { name: "Apply Tuning To Same Voice Rows" })).toBeDisabled()
+    expect(screen.getByRole("menuitem", { name: "Apply To Same Voice" })).toBeDisabled()
     await user.click(rowActions)
     expect(screen.getByRole("slider", { name: "Stability" })).toHaveValue("0.5")
 
@@ -326,7 +326,7 @@ describe("SpeechInputPanel voice assignments", () => {
 
     await user.click(screen.getByRole("button", { name: "Tune Dialogue Row 1" }))
     await user.click(screen.getByRole("button", { name: "Open Dialogue Row 1 Tuning Actions" }))
-    await user.click(screen.getByRole("menuitem", { name: "Apply Tuning To Same Voice Rows" }))
+    await user.click(screen.getByRole("menuitem", { name: "Apply To Same Voice" }))
 
     expect(dialogue.applyBlockVoiceSettingsToMatchingVoice).toHaveBeenCalledWith("dialogue-block-1", {
       stability: 0.34,
