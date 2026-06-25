@@ -359,6 +359,7 @@ class VoiceLibrary:
             source_content_type=_optional_str(payload.get("sourceContentType")),
             source_sha256=_optional_str(payload.get("sourceSha256")),
             voice_preset_id=_normalize_voice_preset_id(payload.get("voicePresetId")),
+            voice_settings_by_provider=_voice_settings_by_provider_from_payload(payload.get("voiceSettingsByProvider")),
             processing_steps=_processing_steps_from_payload(payload.get("processingSteps")),
         )
 
@@ -379,6 +380,7 @@ class VoiceLibrary:
             "sourceContentType": asset.source_content_type,
             "sourceSha256": asset.source_sha256,
             "voicePresetId": asset.voice_preset_id,
+            "voiceSettingsByProvider": _voice_settings_by_provider_to_payload(asset.voice_settings_by_provider),
             "processingSteps": [_processing_step_to_payload(step) for step in asset.processing_steps],
         }
 
@@ -393,6 +395,7 @@ class VoiceLibrary:
             "sourceContentType": None,
             "sourceSha256": None,
             "voicePresetId": DEFAULT_VOICE_PRESET_ID,
+            "voiceSettingsByProvider": {},
             "processingSteps": [],
         }
         for key, value in defaults.items():
@@ -404,6 +407,9 @@ class VoiceLibrary:
             migrated = True
         if payload.get("voicePresetId") not in VOICE_PRESET_IDS:
             payload["voicePresetId"] = DEFAULT_VOICE_PRESET_ID
+            migrated = True
+        if not isinstance(payload.get("voiceSettingsByProvider"), dict):
+            payload["voiceSettingsByProvider"] = {}
             migrated = True
         if not isinstance(payload.get("processingSteps"), list):
             payload["processingSteps"] = []
@@ -428,6 +434,32 @@ def _optional_str(value: Any) -> str | None:
     if isinstance(value, str) and value.strip():
         return value
     return None
+
+
+def _voice_settings_by_provider_from_payload(value: Any) -> dict[str, dict[str, object]]:
+    if not isinstance(value, dict):
+        return {}
+    settings_by_provider: dict[str, dict[str, object]] = {}
+    for provider_id, settings in value.items():
+        if not isinstance(provider_id, str) or not provider_id.strip() or not isinstance(settings, dict):
+            continue
+        normalized_settings = {
+            key: setting
+            for key, setting in settings.items()
+            if isinstance(key, str) and isinstance(setting, bool | int | float | str)
+        }
+        settings_by_provider[provider_id] = normalized_settings
+    return settings_by_provider
+
+
+def _voice_settings_by_provider_to_payload(
+    value: dict[str, dict[str, object]]
+) -> dict[str, dict[str, object]]:
+    return {
+        provider_id: dict(settings)
+        for provider_id, settings in value.items()
+        if provider_id.strip()
+    }
 
 
 def _processing_steps_from_payload(value: Any) -> tuple[VoiceProcessingStep, ...]:

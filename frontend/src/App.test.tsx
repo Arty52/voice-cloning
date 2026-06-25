@@ -33,6 +33,7 @@ const defaultVoice = {
   sourceContentType: null,
   sourceSha256: null,
   voicePresetId: "standardNarration" as const,
+  voiceSettingsByProvider: {},
   processingSteps: [],
 }
 
@@ -58,6 +59,7 @@ const voiceCloneVoice = {
   sourceContentType: null,
   sourceSha256: null,
   voicePresetId: "standardNarration" as const,
+  voiceSettingsByProvider: {},
   processingSteps: [],
 }
 

@@ -27,6 +27,7 @@ const sourceVoice: VoiceAsset = {
   sourceContentType: null,
   sourceSha256: null,
   voicePresetId: "animatedDialogue",
+  voiceSettingsByProvider: {},
   processingSteps: [],
 }
 

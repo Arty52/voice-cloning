@@ -166,6 +166,7 @@ def voice_asset_payload(asset: VoiceAsset) -> dict[str, object]:
         "sourceContentType": asset.source_content_type,
         "sourceSha256": asset.source_sha256,
         "voicePresetId": asset.voice_preset_id,
+        "voiceSettingsByProvider": asset.voice_settings_by_provider,
         "processingSteps": [voice_processing_step_payload(step) for step in asset.processing_steps],
     }
 

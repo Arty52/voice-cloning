@@ -29,6 +29,7 @@ const defaultVoice: VoiceAsset = {
   sourceContentType: null,
   sourceSha256: null,
   voicePresetId: "standardNarration",
+  voiceSettingsByProvider: {},
   processingSteps: [],
 }
 

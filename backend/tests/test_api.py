@@ -1371,6 +1371,7 @@ def test_voice_manifest_bootstraps_default_voice(tmp_path: Path) -> None:
     assert response.json()["voices"][0]["name"] == "Default voice"
     assert response.json()["voices"][0]["filePath"] == "default/default-voice.mp3"
     assert response.json()["voices"][0]["voicePresetId"] == "standardNarration"
+    assert response.json()["voices"][0]["voiceSettingsByProvider"] == {}
 
 
 def test_voice_manifest_migrates_legacy_assets_with_excerpt_defaults(tmp_path: Path) -> None:
@@ -1408,10 +1409,12 @@ def test_voice_manifest_migrates_legacy_assets_with_excerpt_defaults(tmp_path: P
     assert voice["windowDurationSeconds"] is None
     assert voice["sourceFilePath"] is None
     assert voice["voicePresetId"] == "standardNarration"
+    assert voice["voiceSettingsByProvider"] == {}
     assert voice["processingSteps"] == []
     migrated_voice = json.loads(settings.voice_manifest_path.read_text(encoding="utf-8"))["voices"][0]
     assert migrated_voice["sampleMode"] == "excerpt"
     assert migrated_voice["voicePresetId"] == "standardNarration"
+    assert migrated_voice["voiceSettingsByProvider"] == {}
     assert migrated_voice["processingSteps"] == []
 
 
@@ -3607,6 +3610,7 @@ def test_add_uploaded_voice_stores_named_asset(tmp_path: Path) -> None:
     assert response.json()["voice"]["windowDurationSeconds"] is None
     assert response.json()["voice"]["sourceFilePath"] is None
     assert response.json()["voice"]["voicePresetId"] == "standardNarration"
+    assert response.json()["voice"]["voiceSettingsByProvider"] == {}
     assert (tmp_path / "assets" / "voices" / "voice-clone-01.mp3").read_bytes() == b"uploaded-sample"
 
 

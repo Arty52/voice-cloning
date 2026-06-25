@@ -107,6 +107,7 @@ export type VoiceAsset = {
   sourceContentType: string | null
   sourceSha256: string | null
   voicePresetId: VoicePresetId
+  voiceSettingsByProvider: Record<string, VoiceTuningValues>
   processingSteps: VoiceProcessingStep[]
 }
 
