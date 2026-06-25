@@ -90,3 +90,45 @@ audio {
   width: 100%;
   min-height: 42px;
 }
+
+.dialogue-speaker-row {
+  border-left-width: 3px;
+  background-image: linear-gradient(
+    90deg,
+    color-mix(in oklch, var(--dialogue-speaker-color) 12%, transparent),
+    transparent 42%
+  );
+}
+
+.dialogue-speaker-0 {
+  --dialogue-speaker-color: oklch(0.78 0.13 176);
+}
+
+.dialogue-speaker-1 {
+  --dialogue-speaker-color: oklch(0.78 0.15 72);
+}
+
+.dialogue-speaker-2 {
+  --dialogue-speaker-color: oklch(0.74 0.17 24);
+}
+
+.dialogue-speaker-3 {
+  --dialogue-speaker-color: oklch(0.74 0.16 306);
+}
+
+.dialogue-speaker-4 {
+  --dialogue-speaker-color: oklch(0.76 0.14 226);
+}
+
+.dialogue-speaker-5 {
+  --dialogue-speaker-color: oklch(0.75 0.15 142);
+}
+
+.dialogue-speaker-0,
+.dialogue-speaker-1,
+.dialogue-speaker-2,
+.dialogue-speaker-3,
+.dialogue-speaker-4,
+.dialogue-speaker-5 {
+  border-left-color: color-mix(in oklch, var(--dialogue-speaker-color) 48%, var(--border));
+}
