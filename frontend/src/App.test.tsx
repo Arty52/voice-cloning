@@ -533,6 +533,65 @@ function okAudio(headers: Record<string, string> = {}, body: Blob = audioBlob) {
   )
 }
 
+function speechJobFromSubmitted(
+  submittedJob: {
+    defaultVoiceId: string
+    segmentGapMs?: number
+    segments: Array<{
+      assignmentKind: string
+      clientSegmentId: string
+      text: string
+      voiceId: string
+      voiceSettings?: Record<string, unknown> | null
+    }>
+    text: string
+    voiceSettings?: Record<string, unknown> | null
+  } | null,
+  overrides: {
+    generationCount?: number
+    resultSha256?: string
+    voiceSettings?: Record<string, unknown> | null
+  } = {}
+) {
+  const job = submittedJob ?? {
+    defaultVoiceId: "default",
+    segments: [],
+    text: "",
+    voiceSettings: null,
+  }
+  return {
+    activeSegmentId: null,
+    createdAt: "2026-06-23T00:00:00.000Z",
+    defaultVoiceId: job.defaultVoiceId,
+    error: null,
+    id: "job-1",
+    resultSha256: overrides.resultSha256 ?? "combined-hash",
+    segmentGapMs: job.segmentGapMs ?? 250,
+    segments: job.segments.map((segment, index) => ({
+      assignmentKind: segment.assignmentKind,
+      cacheState: "miss",
+      characterCount: segment.text.length,
+      error: null,
+      generationCount: overrides.generationCount ?? 1,
+      id: segment.clientSegmentId,
+      index,
+      requestId: `request-${index + 1}`,
+      resultSha256: `segment-${index + 1}-hash`,
+      status: "success",
+      text: segment.text,
+      voiceId: segment.voiceId,
+      voiceName: segment.voiceId === "voice-clone-01" ? "Voice_Clone_01" : "Default voice",
+      voiceSettings:
+        overrides.voiceSettings !== undefined
+          ? overrides.voiceSettings
+          : segment.voiceSettings ?? job.voiceSettings ?? null,
+    })),
+    status: "success",
+    text: job.text,
+    updatedAt: "2026-06-23T00:00:01.000Z",
+  }
+}
+
 function deferredResponse() {
   let resolve: (value: Response) => void = () => undefined
   const promise = new Promise<Response>((nextResolve) => {
@@ -1264,6 +1323,192 @@ describe("App", () => {
 
     expect(screen.getByText(`${MAX_SPEECH_TEXT_LENGTH + 1}/${MAX_SPEECH_TEXT_LENGTH}`)).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /^Generate$/ })).toBeDisabled()
+  })
+
+  it("saves generated dialogue row tuning to the voice library", async () => {
+    window.history.replaceState(null, "", "/#generate")
+    let createJobBody: {
+      defaultVoiceId: string
+      segments: Array<{
+        assignmentKind: string
+        clientSegmentId: string
+        text: string
+        voiceId: string
+        voiceSettings?: Record<string, unknown> | null
+      }>
+      text: string
+      voiceSettings?: Record<string, unknown> | null
+    } | null = null
+    let patchVoiceBody: { providerId?: string; voiceSettings?: Record<string, unknown> } | null = null
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/providers" && !init) {
+          return okJson(providersResponse)
+        }
+        if (path === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "default", voices: [defaultVoice] })
+        }
+        if (path === "/api/voices/default" && init?.method === "PATCH") {
+          patchVoiceBody = JSON.parse(String(init.body))
+          return okJson({
+            defaultVoiceId: "default",
+            voices: [
+              {
+                ...defaultVoice,
+                voiceSettingsByProvider: {
+                  elevenlabs: patchVoiceBody?.voiceSettings ?? {},
+                },
+              },
+            ],
+          })
+        }
+        if (path === "/api/subscription" && !init) {
+          return okJson(subscription)
+        }
+        if (path === "/api/models" && !init) {
+          return okJson({
+            available: true,
+            error: null,
+            defaultModelId: "eleven_multilingual_v2",
+            models: [multilingualModel, flashModel],
+          })
+        }
+        if (path === "/api/speech/jobs" && init?.method === "POST") {
+          createJobBody = JSON.parse(String(init.body))
+          return okJson({ job: speechJobFromSubmitted(createJobBody) })
+        }
+        if (path === "/api/speech/jobs/job-1/result" && !init) {
+          return okAudio()
+        }
+        if (path.startsWith("/api/speech/jobs/job-1/segments/") && path.endsWith("/result") && !init) {
+          return okAudio()
+        }
+        return okJson({})
+      })
+    )
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    fireEvent.change(screen.getByLabelText(/text to speak/i), { target: { value: "Skippy: Hello." } })
+    await user.click(screen.getByRole("radio", { name: "Dialogue Rows" }))
+    await user.click(screen.getByRole("button", { name: "Import Dialogue" }))
+    await user.click(screen.getByRole("button", { name: "Map Voice" }))
+    await user.click(screen.getByRole("button", { name: "Default voice" }))
+    await user.click(screen.getByRole("button", { name: "Tune Dialogue Row 1" }))
+    fireEvent.change(screen.getByRole("slider", { name: "Speed" }), { target: { value: "1.12" } })
+    await user.click(screen.getByRole("button", { name: /^Generate$/ }))
+
+    await waitFor(() => expect(createJobBody).not.toBeNull())
+    expect(createJobBody?.segments[0].voiceSettings).toEqual({
+      stability: 0.5,
+      similarityBoost: 0.75,
+      style: 0,
+      speed: 1.12,
+      useSpeakerBoost: true,
+    })
+
+    await user.click(latestGeneratedAudioPanel().getByRole("button", { name: /show segments/i }))
+    await user.click(latestGeneratedAudioPanel().getByRole("button", { name: "Save Tuning To Voice" }))
+
+    await waitFor(() => expect(patchVoiceBody).not.toBeNull())
+    expect(patchVoiceBody).toEqual({
+      providerId: "elevenlabs",
+      voiceSettings: createJobBody?.segments[0].voiceSettings,
+    })
+  })
+
+  it("regenerates all generated segments for a shared voice", async () => {
+    window.history.replaceState(null, "", "/#generate")
+    let createJobBody: {
+      defaultVoiceId: string
+      segments: Array<{
+        assignmentKind: string
+        clientSegmentId: string
+        text: string
+        voiceId: string
+        voiceSettings?: Record<string, unknown> | null
+      }>
+      text: string
+      voiceSettings?: Record<string, unknown> | null
+    } | null = null
+    let regenerateVoiceBody: { voiceSettings?: Record<string, unknown> } | null = null
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/providers" && !init) {
+          return okJson(providersResponse)
+        }
+        if (path === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "default", voices: [defaultVoice] })
+        }
+        if (path === "/api/subscription" && !init) {
+          return okJson(subscription)
+        }
+        if (path === "/api/models" && !init) {
+          return okJson({
+            available: true,
+            error: null,
+            defaultModelId: "eleven_multilingual_v2",
+            models: [multilingualModel, flashModel],
+          })
+        }
+        if (path === "/api/speech/jobs" && init?.method === "POST") {
+          createJobBody = JSON.parse(String(init.body))
+          return okJson({ job: speechJobFromSubmitted(createJobBody) })
+        }
+        if (path === "/api/speech/jobs/job-1/voices/default/regenerate" && init?.method === "POST") {
+          regenerateVoiceBody = JSON.parse(String(init.body))
+          return okJson({
+            job: speechJobFromSubmitted(createJobBody, {
+              generationCount: 2,
+              resultSha256: "combined-hash-2",
+              voiceSettings: regenerateVoiceBody?.voiceSettings ?? null,
+            }),
+          })
+        }
+        if (path === "/api/speech/jobs/job-1/result" && !init) {
+          return okAudio()
+        }
+        if (path.startsWith("/api/speech/jobs/job-1/segments/") && path.endsWith("/result") && !init) {
+          return okAudio()
+        }
+        return okJson({})
+      })
+    )
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    fireEvent.change(screen.getByLabelText(/text to speak/i), {
+      target: { value: "Skippy: One.\nSkippy: Two." },
+    })
+    await user.click(screen.getByRole("radio", { name: "Dialogue Rows" }))
+    await user.click(screen.getByRole("button", { name: "Import Dialogue" }))
+    await user.click(screen.getByRole("button", { name: "Map Voice" }))
+    await user.click(screen.getByRole("button", { name: "Default voice" }))
+    await user.click(screen.getByRole("button", { name: /^Generate$/ }))
+    await waitFor(() => expect(createJobBody?.segments).toHaveLength(2))
+
+    const latestPanel = latestGeneratedAudioPanel()
+    await user.click(latestPanel.getByRole("button", { name: /show segments/i }))
+    await user.click(latestPanel.getAllByRole("button", { name: /^Tune$/i })[0])
+    fireEvent.change(screen.getByRole("slider", { name: "Speed" }), { target: { value: "1.08" } })
+    await user.click(latestPanel.getAllByRole("button", { name: "Regenerate All For Voice" })[0])
+
+    await waitFor(() => expect(regenerateVoiceBody).not.toBeNull())
+    expect(regenerateVoiceBody).toEqual({
+      voiceSettings: {
+        stability: 0.5,
+        similarityBoost: 0.75,
+        style: 0,
+        speed: 1.08,
+        useSpeakerBoost: true,
+      },
+    })
   })
 
   it("links from the voice library to speech generation", async () => {
