@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 
@@ -79,6 +79,7 @@ class VoiceAsset:
     source_content_type: str | None = None
     source_sha256: str | None = None
     voice_preset_id: VoicePresetId = DEFAULT_VOICE_PRESET_ID
+    voice_settings_by_provider: dict[str, dict[str, object]] = field(default_factory=dict)
     processing_steps: tuple[VoiceProcessingStep, ...] = ()
 
 

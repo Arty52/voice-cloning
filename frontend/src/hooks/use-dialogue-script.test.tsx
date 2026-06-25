@@ -160,6 +160,7 @@ function voice(id: string, name: string): VoiceAsset {
     sourceFilePath: null,
     sourceSha256: null,
     voicePresetId: "standardNarration",
+    voiceSettingsByProvider: {},
     windowDurationSeconds: null,
     windowStartSeconds: null,
   }

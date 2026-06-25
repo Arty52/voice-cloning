@@ -155,17 +155,23 @@ If model metadata is unavailable, generation still works by omitting `modelId` a
 - `windowDurationSeconds`: optional selected window duration in seconds
 - `voicePresetId`: optional local preset assignment, either `standardNarration` or `animatedDialogue`; defaults to `standardNarration`
 
-Voice payloads include `voicePresetId` alongside the active sample metadata. Active provider samples are capped at 10 MB. Original source files retained for `sourceWindow` assets are local-only and capped at 50 MB. For the built-in ElevenLabs provider, `/api/providers` reports a 120-second maximum sample window with a 60-120 second recommended window. Existing voice manifest entries without sample-window metadata are treated as `excerpt` assets.
+Voice payloads include `voicePresetId` and `voiceSettingsByProvider` alongside the active sample metadata. `voiceSettingsByProvider` is keyed by provider id and stores normalized provider-specific tuning that should replace preset-derived tuning for that voice when the same provider is active. Active provider samples are capped at 10 MB. Original source files retained for `sourceWindow` assets are local-only and capped at 50 MB. For the built-in ElevenLabs provider, `/api/providers` reports a 120-second maximum sample window with a 60-120 second recommended window. Existing voice manifest entries without sample-window metadata are treated as `excerpt` assets.
 Existing voice manifest entries without preset metadata, or with an unsupported preset id, are migrated to `standardNarration`.
+Existing voice manifest entries without saved provider tuning are migrated to `voiceSettingsByProvider: {}`.
 Existing voice manifest entries without processing metadata are migrated to `processingSteps: []`.
 
 `PATCH /api/voices/{voiceId}` accepts JSON and updates a local voice without changing its stable local id or sample file:
 
 ```json
-{ "name": "Voice_Clone_01", "voicePresetId": "animatedDialogue" }
+{
+  "name": "Voice_Clone_01",
+  "voicePresetId": "animatedDialogue",
+  "providerId": "elevenlabs",
+  "voiceSettings": { "speed": 1.15 }
+}
 ```
 
-Both fields are optional, but at least one of `name` or `voicePresetId` is required. Existing clients that send only `name` keep working.
+All fields are optional, but at least one of `name`, `voicePresetId`, or `voiceSettings` is required. When `voiceSettings` is present, `providerId` is required and the settings are validated and normalized by that provider before being saved under `voiceSettingsByProvider[providerId]`. Existing clients that send only `name` keep working.
 
 `DELETE /api/voices/{voiceId}` removes a local voice sample and reassigns the default to the first remaining voice, or to none when the library is empty.
 

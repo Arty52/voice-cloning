@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 import json
 from pathlib import Path
-from typing import Any, get_args
+from typing import Any, Mapping, get_args
 
 from fastapi import HTTPException, UploadFile
 
@@ -209,14 +209,19 @@ class VoiceLibrary:
         voice_id: str,
         *,
         name: str | None = None,
+        provider_id: str | None = None,
         voice_preset_id: str | None = None,
+        voice_settings: Mapping[str, object] | None = None,
     ) -> dict[str, object]:
-        if name is None and voice_preset_id is None:
-            raise HTTPException(status_code=422, detail="Voice name or preset is required.")
+        if name is None and voice_preset_id is None and voice_settings is None:
+            raise HTTPException(status_code=422, detail="Voice name, preset, or settings are required.")
 
         display_name = name.strip() if name is not None else None
         if display_name == "":
             raise HTTPException(status_code=422, detail="Voice name is required.")
+        normalized_provider_id = provider_id.strip() if provider_id is not None else None
+        if voice_settings is not None and not normalized_provider_id:
+            raise HTTPException(status_code=422, detail="Provider id is required to save voice settings.")
         resolved_voice_preset_id = (
             _normalize_voice_preset_id(voice_preset_id) if voice_preset_id is not None else None
         )
@@ -236,6 +241,14 @@ class VoiceLibrary:
             voices[voice_index]["name"] = display_name
         if resolved_voice_preset_id is not None:
             voices[voice_index]["voicePresetId"] = resolved_voice_preset_id
+        if voice_settings is not None and normalized_provider_id is not None:
+            settings_by_provider = _voice_settings_by_provider_from_payload(
+                voices[voice_index].get("voiceSettingsByProvider")
+            )
+            settings_by_provider[normalized_provider_id] = dict(voice_settings)
+            voices[voice_index]["voiceSettingsByProvider"] = _voice_settings_by_provider_to_payload(
+                settings_by_provider
+            )
 
         self._write_manifest(manifest)
         return {
@@ -359,6 +372,7 @@ class VoiceLibrary:
             source_content_type=_optional_str(payload.get("sourceContentType")),
             source_sha256=_optional_str(payload.get("sourceSha256")),
             voice_preset_id=_normalize_voice_preset_id(payload.get("voicePresetId")),
+            voice_settings_by_provider=_voice_settings_by_provider_from_payload(payload.get("voiceSettingsByProvider")),
             processing_steps=_processing_steps_from_payload(payload.get("processingSteps")),
         )
 
@@ -379,6 +393,7 @@ class VoiceLibrary:
             "sourceContentType": asset.source_content_type,
             "sourceSha256": asset.source_sha256,
             "voicePresetId": asset.voice_preset_id,
+            "voiceSettingsByProvider": _voice_settings_by_provider_to_payload(asset.voice_settings_by_provider),
             "processingSteps": [_processing_step_to_payload(step) for step in asset.processing_steps],
         }
 
@@ -393,6 +408,7 @@ class VoiceLibrary:
             "sourceContentType": None,
             "sourceSha256": None,
             "voicePresetId": DEFAULT_VOICE_PRESET_ID,
+            "voiceSettingsByProvider": {},
             "processingSteps": [],
         }
         for key, value in defaults.items():
@@ -405,6 +421,16 @@ class VoiceLibrary:
         if payload.get("voicePresetId") not in VOICE_PRESET_IDS:
             payload["voicePresetId"] = DEFAULT_VOICE_PRESET_ID
             migrated = True
+        if not isinstance(payload.get("voiceSettingsByProvider"), dict):
+            payload["voiceSettingsByProvider"] = {}
+            migrated = True
+        else:
+            normalized_voice_settings_by_provider = _voice_settings_by_provider_to_payload(
+                _voice_settings_by_provider_from_payload(payload.get("voiceSettingsByProvider"))
+            )
+            if payload["voiceSettingsByProvider"] != normalized_voice_settings_by_provider:
+                payload["voiceSettingsByProvider"] = normalized_voice_settings_by_provider
+                migrated = True
         if not isinstance(payload.get("processingSteps"), list):
             payload["processingSteps"] = []
             migrated = True
@@ -428,6 +454,33 @@ def _optional_str(value: Any) -> str | None:
     if isinstance(value, str) and value.strip():
         return value
     return None
+
+
+def _voice_settings_by_provider_from_payload(value: Any) -> dict[str, dict[str, object]]:
+    if not isinstance(value, dict):
+        return {}
+    settings_by_provider: dict[str, dict[str, object]] = {}
+    for provider_id, settings in value.items():
+        if not isinstance(provider_id, str) or not provider_id.strip() or not isinstance(settings, dict):
+            continue
+        normalized_provider_id = provider_id.strip()
+        normalized_settings = {
+            key: setting
+            for key, setting in settings.items()
+            if isinstance(key, str) and isinstance(setting, bool | int | float | str)
+        }
+        settings_by_provider[normalized_provider_id] = normalized_settings
+    return settings_by_provider
+
+
+def _voice_settings_by_provider_to_payload(
+    value: dict[str, dict[str, object]]
+) -> dict[str, dict[str, object]]:
+    return {
+        provider_id.strip(): dict(settings)
+        for provider_id, settings in value.items()
+        if provider_id.strip()
+    }
 
 
 def _processing_steps_from_payload(value: Any) -> tuple[VoiceProcessingStep, ...]:

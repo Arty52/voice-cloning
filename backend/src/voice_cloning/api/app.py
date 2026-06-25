@@ -63,7 +63,7 @@ def create_app(
     )
 
     app.include_router(create_health_router(resolved_settings, resolved_library, resolved_provider_registry))
-    app.include_router(create_voices_router(resolved_library))
+    app.include_router(create_voices_router(resolved_library, resolved_provider_registry))
     app.include_router(create_sample_processing_router(resolved_sample_processing))
     app.include_router(create_metadata_router(resolved_settings, resolved_provider_registry))
     app.include_router(create_speech_jobs_router(resolved_provider_registry, resolved_speech_jobs))

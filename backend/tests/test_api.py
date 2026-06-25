@@ -1371,6 +1371,7 @@ def test_voice_manifest_bootstraps_default_voice(tmp_path: Path) -> None:
     assert response.json()["voices"][0]["name"] == "Default voice"
     assert response.json()["voices"][0]["filePath"] == "default/default-voice.mp3"
     assert response.json()["voices"][0]["voicePresetId"] == "standardNarration"
+    assert response.json()["voices"][0]["voiceSettingsByProvider"] == {}
 
 
 def test_voice_manifest_migrates_legacy_assets_with_excerpt_defaults(tmp_path: Path) -> None:
@@ -1408,11 +1409,52 @@ def test_voice_manifest_migrates_legacy_assets_with_excerpt_defaults(tmp_path: P
     assert voice["windowDurationSeconds"] is None
     assert voice["sourceFilePath"] is None
     assert voice["voicePresetId"] == "standardNarration"
+    assert voice["voiceSettingsByProvider"] == {}
     assert voice["processingSteps"] == []
     migrated_voice = json.loads(settings.voice_manifest_path.read_text(encoding="utf-8"))["voices"][0]
     assert migrated_voice["sampleMode"] == "excerpt"
     assert migrated_voice["voicePresetId"] == "standardNarration"
+    assert migrated_voice["voiceSettingsByProvider"] == {}
     assert migrated_voice["processingSteps"] == []
+
+
+def test_voice_manifest_normalizes_provider_tuning_keys(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path, with_default_sample=False)
+    sample_path = settings.voice_assets_dir / "legacy.mp3"
+    sample_path.parent.mkdir(parents=True)
+    sample_path.write_bytes(b"legacy-sample")
+    settings.voice_manifest_path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "defaultVoiceId": "legacy",
+                "voices": [
+                    {
+                        "id": "legacy",
+                        "name": "Legacy Voice",
+                        "filePath": "legacy.mp3",
+                        "contentType": "audio/mpeg",
+                        "sha256": "legacy-hash",
+                        "source": "upload",
+                        "createdAt": "2026-05-28T00:00:00+00:00",
+                        "voicePresetId": "standardNarration",
+                        "voiceSettingsByProvider": {
+                            " elevenlabs ": {"speed": 1.15},
+                            "  ": {"speed": 1.2},
+                        },
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    payload = VoiceLibrary(settings).list_payload()
+
+    voice = payload["voices"][0]
+    assert voice["voiceSettingsByProvider"] == {"elevenlabs": {"speed": 1.15}}
+    migrated_voice = json.loads(settings.voice_manifest_path.read_text(encoding="utf-8"))["voices"][0]
+    assert migrated_voice["voiceSettingsByProvider"] == {"elevenlabs": {"speed": 1.15}}
 
 
 def test_voice_manifest_loads_legacy_processing_steps_without_preset_metadata(tmp_path: Path) -> None:
@@ -3607,6 +3649,7 @@ def test_add_uploaded_voice_stores_named_asset(tmp_path: Path) -> None:
     assert response.json()["voice"]["windowDurationSeconds"] is None
     assert response.json()["voice"]["sourceFilePath"] is None
     assert response.json()["voice"]["voicePresetId"] == "standardNarration"
+    assert response.json()["voice"]["voiceSettingsByProvider"] == {}
     assert (tmp_path / "assets" / "voices" / "voice-clone-01.mp3").read_bytes() == b"uploaded-sample"
 
 
@@ -3879,13 +3922,42 @@ def test_patch_voice_updates_preset_without_renaming(tmp_path: Path) -> None:
     assert voice["voicePresetId"] == "animatedDialogue"
 
 
+def test_patch_voice_saves_normalized_provider_tuning(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    fake_provider = FakeElevenLabsProvider().bind_settings(settings)
+    app = create_app(
+        settings=settings,
+        provider_registry=ProviderRegistry([fake_provider]),
+        voice_cache=VoiceCache(settings.storage_dir / "voice-cache.json"),
+        voice_library=VoiceLibrary(settings),
+    )
+
+    with TestClient(app) as client:
+        response = client.patch(
+            "/api/voices/default",
+            json={"providerId": "elevenlabs", "voiceSettings": {"speed": 1.15}},
+        )
+
+    assert response.status_code == 200
+    voice = response.json()["voices"][0]
+    assert voice["voiceSettingsByProvider"]["elevenlabs"] == {
+        "similarityBoost": 0.75,
+        "speed": 1.15,
+        "stability": 0.5,
+        "style": 0,
+        "useSpeakerBoost": True,
+    }
+    manifest_voice = json.loads(settings.voice_manifest_path.read_text(encoding="utf-8"))["voices"][0]
+    assert manifest_voice["voiceSettingsByProvider"] == voice["voiceSettingsByProvider"]
+
+
 def test_patch_voice_rejects_empty_payload(tmp_path: Path) -> None:
     client, _ = make_client(tmp_path)
 
     response = client.patch("/api/voices/default", json={})
 
     assert response.status_code == 422
-    assert response.json()["detail"] == "Voice name or preset is required."
+    assert response.json()["detail"] == "Voice name, preset, or settings are required."
 
 
 def test_patch_voice_rejects_unknown_preset(tmp_path: Path) -> None:
@@ -3895,6 +3967,39 @@ def test_patch_voice_rejects_unknown_preset(tmp_path: Path) -> None:
 
     assert response.status_code == 422
     assert response.json()["detail"] == "Voice preset must be standardNarration or animatedDialogue."
+
+
+def test_patch_voice_rejects_tuning_without_provider(tmp_path: Path) -> None:
+    client, _ = make_client(tmp_path)
+
+    response = client.patch("/api/voices/default", json={"voiceSettings": {"speed": 1.15}})
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Provider id is required to save voice settings."
+
+
+def test_patch_voice_rejects_unknown_provider_tuning(tmp_path: Path) -> None:
+    client, _ = make_client(tmp_path)
+
+    response = client.patch(
+        "/api/voices/default",
+        json={"providerId": "missing", "voiceSettings": {"speed": 1.15}},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Unknown provider: missing."
+
+
+def test_patch_voice_rejects_unsupported_provider_tuning(tmp_path: Path) -> None:
+    client, _ = make_client(tmp_path)
+
+    response = client.patch(
+        "/api/voices/default",
+        json={"providerId": "elevenlabs", "voiceSettings": {"unsupported": 1}},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Unsupported ElevenLabs voice setting: unsupported."
 
 
 def test_rename_voice_rejects_duplicate_normalized_name(tmp_path: Path) -> None:

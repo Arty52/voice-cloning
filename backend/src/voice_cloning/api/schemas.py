@@ -11,7 +11,9 @@ class DefaultVoiceRequest(BaseModel):
 
 class VoiceUpdateRequest(BaseModel):
     name: str | None = None
+    providerId: str | None = None
     voicePresetId: str | None = None
+    voiceSettings: dict[str, Any] | None = None
 
 
 class SaveProcessedVoiceRequest(BaseModel):
