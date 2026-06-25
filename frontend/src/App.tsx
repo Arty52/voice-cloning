@@ -90,7 +90,7 @@ function App() {
           <StudioOverviewPanel sections={workflowSections} />
         </WorkflowSectionPanel>
 
-        <WorkflowSectionPanel activeSectionId={activeSectionId} className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]" id="prepare">
+        <WorkflowSectionPanel activeSectionId={activeSectionId} className="grid grid-cols-1 gap-4 2xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]" id="prepare">
           <SampleProcessingPanel
             isCollapsible={false}
             isExpanded
