@@ -428,6 +428,46 @@ describe("LatestGeneratedAudioPanel multi-voice results", () => {
     expect(onRegenerateVoiceSegments).toHaveBeenCalledWith("narrator", { useSpeakerBoost: true })
   })
 
+  it("uses the currently selected voice for same-voice regeneration", async () => {
+    const user = userEvent.setup()
+    const onRegenerateVoiceSegments = vi.fn()
+    renderLatestPanel(
+      <LatestGeneratedAudioPanel
+        activeProviderId="elevenlabs"
+        error={null}
+        isDeleteDisabled={false}
+        isSavingVoiceTuning={false}
+        item={item}
+        onDelete={vi.fn()}
+        onRegenerateSegment={vi.fn()}
+        onRegenerateVoiceSegments={onRegenerateVoiceSegments}
+        onSaveVoiceTuning={vi.fn()}
+        providerTuningControls={segmentTuningControls}
+        segmentResultUrls={{
+          "segment-one": "/api/speech/jobs/job-1/segments/segment-one/result",
+          "segment-two": "/api/speech/jobs/job-1/segments/segment-two/result",
+        }}
+        status="success"
+        storageError={null}
+        tuning={{ useSpeakerBoost: false }}
+        voices={[narrator, villain]}
+      />
+    )
+
+    await user.click(screen.getByRole("button", { name: /show segments/i }))
+    await user.click(screen.getByRole("button", { name: "Voice For Segment 2: Villain" }))
+    await user.click(screen.getByRole("menuitemradio", { name: "Narrator" }))
+    await user.click(screen.getAllByRole("button", { name: /^Tune$/i })[1])
+    await user.click(screen.getByRole("checkbox", { name: "Speaker Boost" }))
+    await user.click(screen.getByRole("button", { name: "Open Segment 2 Tuning Actions" }))
+    const regenerateSameVoice = screen.getByRole("menuitem", { name: "Regenerate Same Voice Segments" })
+
+    expect(regenerateSameVoice).not.toBeDisabled()
+    await user.click(regenerateSameVoice)
+
+    expect(onRegenerateVoiceSegments).toHaveBeenCalledWith("narrator", { useSpeakerBoost: true })
+  })
+
   it("saves segment tuning to the selected voice", async () => {
     const user = userEvent.setup()
     const onSaveVoiceTuning = vi.fn()

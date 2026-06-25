@@ -169,8 +169,9 @@ function MultiVoiceSegmentResults({
   const [isOpen, setIsOpen] = useState(false)
   const [segmentTuning, setSegmentTuning] = useState<Record<string, VoiceTuningValues>>({})
   const [voiceSelections, setVoiceSelections] = useState<Record<string, string>>({})
-  const segmentCountByVoiceId = segments.reduce<Record<string, number>>((counts, segment) => {
-    counts[segment.voiceId] = (counts[segment.voiceId] ?? 0) + 1
+  const selectedSegmentCountByVoiceId = segments.reduce<Record<string, number>>((counts, segment) => {
+    const voiceId = voiceSelections[segment.id] ?? segment.voiceId
+    counts[voiceId] = (counts[voiceId] ?? 0) + 1
     return counts
   }, {})
 
@@ -225,7 +226,7 @@ function MultiVoiceSegmentResults({
               const selectedTuning = segmentTuning[segment.id] ?? segment.voiceSettings ?? tuning
               const segmentUrl = segmentResultUrls[segment.id]
               const hasPendingSegmentTuning = segmentTuning[segment.id] !== undefined
-              const sharesVoice = (segmentCountByVoiceId[segment.voiceId] ?? 0) > 1
+              const sharesVoice = (selectedSegmentCountByVoiceId[selectedVoiceId] ?? 0) > 1
               const selectedVoice = voices.find((voice) => voice.id === selectedVoiceId) ?? null
               const selectedVoiceExists = selectedVoice !== null
               const savedVoiceTuning = resolveSavedVoiceTuning(activeProviderId, selectedVoice)
@@ -287,7 +288,7 @@ function MultiVoiceSegmentResults({
                                   disabled: !hasActionableSegmentTuning || !sharesVoice,
                                   icon: <RefreshCw aria-hidden="true" className="size-4" />,
                                   label: "Regenerate Same Voice Segments",
-                                  onSelect: () => onRegenerateVoiceSegments(segment.voiceId, selectedTuning),
+                                  onSelect: () => onRegenerateVoiceSegments(selectedVoiceId, selectedTuning),
                                 },
                                 {
                                   disabled:
