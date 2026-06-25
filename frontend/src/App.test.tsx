@@ -1325,6 +1325,91 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: /^Generate$/ })).toBeDisabled()
   })
 
+  it("applies dialogue row tuning to same-voice rows before generation", async () => {
+    window.history.replaceState(null, "", "/#generate")
+    let createJobBody: {
+      defaultVoiceId: string
+      segments: Array<{
+        assignmentKind: string
+        clientSegmentId: string
+        text: string
+        voiceId: string
+        voiceSettings?: Record<string, unknown> | null
+      }>
+      text: string
+      voiceSettings?: Record<string, unknown> | null
+    } | null = null
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/providers" && !init) {
+          return okJson(providersResponse)
+        }
+        if (path === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "default", voices: [defaultVoice] })
+        }
+        if (path === "/api/subscription" && !init) {
+          return okJson(subscription)
+        }
+        if (path === "/api/models" && !init) {
+          return okJson({
+            available: true,
+            error: null,
+            defaultModelId: "eleven_multilingual_v2",
+            models: [multilingualModel, flashModel],
+          })
+        }
+        if (path === "/api/speech/jobs" && init?.method === "POST") {
+          createJobBody = JSON.parse(String(init.body))
+          return okJson({ job: speechJobFromSubmitted(createJobBody) })
+        }
+        if (path === "/api/speech/jobs/job-1/result" && !init) {
+          return okAudio()
+        }
+        if (path.startsWith("/api/speech/jobs/job-1/segments/") && path.endsWith("/result") && !init) {
+          return okAudio()
+        }
+        return okJson({})
+      })
+    )
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    fireEvent.change(screen.getByLabelText(/text to speak/i), {
+      target: { value: "Skippy: One.\nSkippy: Two." },
+    })
+    await user.click(screen.getByRole("radio", { name: "Dialogue Rows" }))
+    await user.click(screen.getByRole("button", { name: "Import Dialogue" }))
+    await user.click(screen.getByRole("button", { name: "Map Voice" }))
+    await user.click(screen.getByRole("button", { name: "Default voice" }))
+    await user.click(screen.getByRole("button", { name: "Tune Dialogue Row 1" }))
+    fireEvent.change(screen.getByRole("slider", { name: "Speed" }), { target: { value: "1.12" } })
+    await user.click(screen.getByRole("button", { name: "Open Dialogue Row 1 Tuning Actions" }))
+    await user.click(screen.getByRole("menuitem", { name: "Apply Tuning To Same Voice Rows" }))
+    await user.click(screen.getByRole("button", { name: /^Generate$/ }))
+
+    await waitFor(() => expect(createJobBody).not.toBeNull())
+    const submittedJob = createJobBody as unknown as NonNullable<Parameters<typeof speechJobFromSubmitted>[0]>
+    expect(submittedJob.segments.map((segment) => segment.voiceSettings)).toEqual([
+      {
+        stability: 0.5,
+        similarityBoost: 0.75,
+        style: 0,
+        speed: 1.12,
+        useSpeakerBoost: true,
+      },
+      {
+        stability: 0.5,
+        similarityBoost: 0.75,
+        style: 0,
+        speed: 1.12,
+        useSpeakerBoost: true,
+      },
+    ])
+  })
+
   it("saves generated dialogue row tuning to the voice library", async () => {
     window.history.replaceState(null, "", "/#generate")
     let createJobBody: {
@@ -1412,8 +1497,12 @@ describe("App", () => {
     })
 
     await screen.findByRole("heading", { name: "Latest Generated Audio" })
-    await user.click(latestGeneratedAudioPanel().getByRole("button", { name: /show segments/i }))
-    await user.click(latestGeneratedAudioPanel().getByRole("button", { name: "Save Tuning To Voice" }))
+    const latestPanel = latestGeneratedAudioPanel()
+    await user.click(latestPanel.getByRole("button", { name: /show segments/i }))
+    expect(latestPanel.queryByRole("button", { name: "Save Tuning To Voice" })).not.toBeInTheDocument()
+    await user.click(latestPanel.getAllByRole("button", { name: /^Tune$/i })[0])
+    await user.click(screen.getByRole("button", { name: "Open Segment 1 Tuning Actions" }))
+    await user.click(screen.getByRole("menuitem", { name: "Save Tuning To Voice" }))
 
     await waitFor(() => expect(patchVoiceBody).not.toBeNull())
     expect(patchVoiceBody).toEqual({
@@ -1502,7 +1591,9 @@ describe("App", () => {
     await user.click(latestPanel.getByRole("button", { name: /show segments/i }))
     await user.click(latestPanel.getAllByRole("button", { name: /^Tune$/i })[0])
     fireEvent.change(screen.getByRole("slider", { name: "Speed" }), { target: { value: "1.08" } })
-    await user.click(latestPanel.getAllByRole("button", { name: "Regenerate All For Voice" })[0])
+    expect(latestPanel.queryByRole("button", { name: "Regenerate All For Voice" })).not.toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "Open Segment 1 Tuning Actions" }))
+    await user.click(screen.getByRole("menuitem", { name: "Regenerate Same Voice Segments" }))
 
     await waitFor(() => expect(regenerateVoiceBody).not.toBeNull())
     expect(regenerateVoiceBody).toEqual({

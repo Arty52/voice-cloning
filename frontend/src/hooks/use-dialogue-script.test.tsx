@@ -176,6 +176,40 @@ describe("useDialogueScript", () => {
     })
   })
 
+  it("applies row tuning to blocks that resolve to the same effective voice", () => {
+    const { result } = renderHook(() => useDialogueScript({ defaultVoice: narrator, voices }))
+
+    act(() => {
+      result.current.importFromText(
+        "Skippy: One.\nUnlabeled one.\nVegeta: Two.\nUnlabeled two.\nNarrator: Three."
+      )
+    })
+    act(() => {
+      result.current.updateSpeakerMapping("Skippy", skippy)
+      result.current.updateSpeakerMapping("Vegeta", vegeta)
+      result.current.updateSpeakerMapping("Narrator", narrator)
+      result.current.updateBlockVoice("dialogue-block-3", narrator)
+    })
+    act(() => {
+      result.current.applyBlockVoiceSettingsToMatchingVoice("dialogue-block-2", { speed: 1.11 })
+    })
+
+    expect(result.current.blocks.map((block) => block.voiceSettings)).toEqual([
+      null,
+      { speed: 1.11 },
+      { speed: 1.11 },
+      { speed: 1.11 },
+      { speed: 1.11 },
+    ])
+    expect(result.current.segmentBuild.segments.map((segment) => segment.voiceSettings)).toEqual([
+      null,
+      { speed: 1.11 },
+      { speed: 1.11 },
+      { speed: 1.11 },
+      { speed: 1.11 },
+    ])
+  })
+
   it("falls back to saved mapped-voice tuning after row tuning is cleared", () => {
     const { result } = renderHook(() =>
       useDialogueScript({

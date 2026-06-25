@@ -106,6 +106,7 @@ function renderPanel(overrides: Partial<Parameters<typeof SpeechInputPanel>[0]> 
 function dialogueController(overrides: Partial<DialogueScriptController> = {}): DialogueScriptController {
   return {
     allBlocksSelected: false,
+    applyBlockVoiceSettingsToMatchingVoice: vi.fn(),
     assignSelectedBlocks: vi.fn(),
     blocks: [],
     clearSelectedBlocks: vi.fn(),
@@ -285,12 +286,49 @@ describe("SpeechInputPanel voice assignments", () => {
 
     expect(screen.getByRole("heading", { name: "Dialogue Row 1 Tuning" })).toBeInTheDocument()
     expect(screen.getByText("Adjust settings for this dialogue row before generation.")).toBeInTheDocument()
+    const rowActions = screen.getByRole("button", { name: "Open Dialogue Row 1 Tuning Actions" })
+    await user.click(rowActions)
+    expect(screen.getByRole("menuitem", { name: "Apply Tuning To Same Voice Rows" })).toBeDisabled()
+    await user.click(rowActions)
     expect(screen.getByRole("slider", { name: "Stability" })).toHaveValue("0.5")
 
     fireEvent.change(screen.getByRole("slider", { name: "Stability" }), { target: { value: "0.34" } })
 
     expect(dialogue.updateBlockVoiceSettings).toHaveBeenCalledWith("dialogue-block-1", {
       speed: 1,
+      stability: 0.34,
+    })
+  })
+
+  it("applies dialogue row tuning to rows that resolve to the same voice", async () => {
+    const user = userEvent.setup()
+    const dialogue = dialogueController({
+      applyBlockVoiceSettingsToMatchingVoice: vi.fn(),
+      blocks: [
+        dialogueBlock({ voiceSettings: { stability: 0.34 } }),
+        dialogueBlock({ id: "dialogue-block-2", speakerLabel: "Skippy", text: "Another line." }),
+      ],
+      mode: "dialogue",
+      segmentBuild: {
+        error: null,
+        missingSpeakerLabels: [],
+        segments: [],
+        text: "Hello world.\nAnother line.",
+      },
+      speakerLabels: ["Skippy"],
+      speakerMappings: [{ speakerLabel: "Skippy", voiceId: "skippy" }],
+    })
+    renderPanel({
+      dialogue,
+      providerTuningControls: dialogueTuningControls,
+      tuning: { stability: 0.5 },
+    })
+
+    await user.click(screen.getByRole("button", { name: "Tune Dialogue Row 1" }))
+    await user.click(screen.getByRole("button", { name: "Open Dialogue Row 1 Tuning Actions" }))
+    await user.click(screen.getByRole("menuitem", { name: "Apply Tuning To Same Voice Rows" }))
+
+    expect(dialogue.applyBlockVoiceSettingsToMatchingVoice).toHaveBeenCalledWith("dialogue-block-1", {
       stability: 0.34,
     })
   })

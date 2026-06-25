@@ -337,6 +337,7 @@ describe("LatestGeneratedAudioPanel multi-voice results", () => {
     const stabilityHelp = screen.getByRole("button", { name: "Stability help" })
     expect(screen.getByRole("heading", { name: "Segment 1 Tuning" })).toBeInTheDocument()
     expect(screen.getByText("Adjust settings for the next time this segment regenerates.")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Open Segment 1 Tuning Actions" })).toBeInTheDocument()
     expect(document.body.querySelector('label[for="segment-segment-one-tuning-stability"]')).toHaveTextContent(
       "Stability"
     )
@@ -413,9 +414,16 @@ describe("LatestGeneratedAudioPanel multi-voice results", () => {
     )
 
     await user.click(screen.getByRole("button", { name: /show segments/i }))
+    expect(screen.queryByRole("button", { name: "Regenerate All For Voice" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Save Tuning To Voice" })).not.toBeInTheDocument()
     await user.click(screen.getAllByRole("button", { name: /^Tune$/i })[0])
+    const segmentActions = screen.getByRole("button", { name: "Open Segment 1 Tuning Actions" })
+    await user.click(segmentActions)
+    expect(screen.getByRole("menuitem", { name: "Regenerate Same Voice Segments" })).toBeDisabled()
+    await user.click(segmentActions)
     await user.click(screen.getByRole("checkbox", { name: "Speaker Boost" }))
-    await user.click(screen.getAllByRole("button", { name: "Regenerate All For Voice" })[0])
+    await user.click(screen.getByRole("button", { name: "Open Segment 1 Tuning Actions" }))
+    await user.click(screen.getByRole("menuitem", { name: "Regenerate Same Voice Segments" }))
 
     expect(onRegenerateVoiceSegments).toHaveBeenCalledWith("narrator", { useSpeakerBoost: true })
   })
@@ -444,8 +452,16 @@ describe("LatestGeneratedAudioPanel multi-voice results", () => {
     )
 
     await user.click(screen.getByRole("button", { name: /show segments/i }))
-    await user.click(screen.getAllByRole("button", { name: "Save Tuning To Voice" })[0])
+    expect(screen.queryByRole("button", { name: "Save Tuning To Voice" })).not.toBeInTheDocument()
+    await user.click(screen.getAllByRole("button", { name: /^Tune$/i })[0])
+    const segmentActions = screen.getByRole("button", { name: "Open Segment 1 Tuning Actions" })
+    await user.click(segmentActions)
+    expect(screen.getByRole("menuitem", { name: "Save Tuning To Voice" })).toBeDisabled()
+    await user.click(segmentActions)
+    await user.click(screen.getByRole("checkbox", { name: "Speaker Boost" }))
+    await user.click(screen.getByRole("button", { name: "Open Segment 1 Tuning Actions" }))
+    await user.click(screen.getByRole("menuitem", { name: "Save Tuning To Voice" }))
 
-    expect(onSaveVoiceTuning).toHaveBeenCalledWith("narrator", { useSpeakerBoost: false })
+    expect(onSaveVoiceTuning).toHaveBeenCalledWith("narrator", { useSpeakerBoost: true })
   })
 })
