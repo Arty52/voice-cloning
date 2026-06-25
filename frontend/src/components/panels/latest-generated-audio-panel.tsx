@@ -30,11 +30,15 @@ import type {
 } from "@/types"
 
 type LatestGeneratedAudioPanelProps = {
+  activeProviderId?: string | null
   error: string | null
   isDeleteDisabled: boolean
+  isSavingVoiceTuning?: boolean
   item: GeneratedResult | null
   onDelete: (id: string) => void
   onRegenerateSegment: (segmentId: string, voiceId?: string | null, voiceSettings?: VoiceTuningValues | null) => void
+  onRegenerateVoiceSegments?: (voiceId: string, voiceSettings: VoiceTuningValues) => void
+  onSaveVoiceTuning?: (voiceId: string, voiceSettings: VoiceTuningValues) => void
   providerTuningControls?: ProviderTuningControl[]
   segmentResultUrls: Record<string, string>
   status: RequestStatus
@@ -44,11 +48,15 @@ type LatestGeneratedAudioPanelProps = {
 }
 
 export function LatestGeneratedAudioPanel({
+  activeProviderId = null,
   error,
   isDeleteDisabled,
+  isSavingVoiceTuning = false,
   item,
   onDelete,
   onRegenerateSegment,
+  onRegenerateVoiceSegments = noopRegenerateVoiceSegments,
+  onSaveVoiceTuning = noopSaveVoiceTuning,
   providerTuningControls = [],
   segmentResultUrls,
   status,
@@ -110,8 +118,12 @@ export function LatestGeneratedAudioPanel({
           {item.multiVoiceMetadata ? (
             <MultiVoiceSegmentResults
               disabled={isGenerating}
+              activeProviderId={activeProviderId}
+              isSavingVoiceTuning={isSavingVoiceTuning}
               key={`${item.multiVoiceMetadata.jobId}:${item.multiVoiceMetadata.resultSha256 ?? ""}`}
               onRegenerateSegment={onRegenerateSegment}
+              onRegenerateVoiceSegments={onRegenerateVoiceSegments}
+              onSaveVoiceTuning={onSaveVoiceTuning}
               providerTuningControls={providerTuningControls}
               segmentResultUrls={segmentResultUrls}
               segments={item.multiVoiceMetadata.segments}
@@ -126,8 +138,12 @@ export function LatestGeneratedAudioPanel({
 }
 
 type MultiVoiceSegmentResultsProps = {
+  activeProviderId: string | null
   disabled: boolean
+  isSavingVoiceTuning: boolean
   onRegenerateSegment: (segmentId: string, voiceId?: string | null, voiceSettings?: VoiceTuningValues | null) => void
+  onRegenerateVoiceSegments: (voiceId: string, voiceSettings: VoiceTuningValues) => void
+  onSaveVoiceTuning: (voiceId: string, voiceSettings: VoiceTuningValues) => void
   providerTuningControls: ProviderTuningControl[]
   segmentResultUrls: Record<string, string>
   segments: GeneratedAudioMultiVoiceSegmentMetadata[]
@@ -136,8 +152,12 @@ type MultiVoiceSegmentResultsProps = {
 }
 
 function MultiVoiceSegmentResults({
+  activeProviderId,
   disabled,
+  isSavingVoiceTuning,
   onRegenerateSegment,
+  onRegenerateVoiceSegments,
+  onSaveVoiceTuning,
   providerTuningControls,
   segmentResultUrls,
   segments,
@@ -147,6 +167,10 @@ function MultiVoiceSegmentResults({
   const [isOpen, setIsOpen] = useState(false)
   const [segmentTuning, setSegmentTuning] = useState<Record<string, VoiceTuningValues>>({})
   const [voiceSelections, setVoiceSelections] = useState<Record<string, string>>({})
+  const segmentCountByVoiceId = segments.reduce<Record<string, number>>((counts, segment) => {
+    counts[segment.voiceId] = (counts[segment.voiceId] ?? 0) + 1
+    return counts
+  }, {})
 
   function handleSegmentTuningValueChange(
     segment: GeneratedAudioMultiVoiceSegmentMetadata,
@@ -198,6 +222,11 @@ function MultiVoiceSegmentResults({
               const voiceOptions = segmentVoiceOptions(voices, segment)
               const selectedTuning = segmentTuning[segment.id] ?? segment.voiceSettings ?? tuning
               const segmentUrl = segmentResultUrls[segment.id]
+              const hasCustomSegmentTuning = segment.voiceSettings !== null && segment.voiceSettings !== undefined
+              const hasPendingSegmentTuning = segmentTuning[segment.id] !== undefined
+              const canSaveTuning = hasCustomSegmentTuning || hasPendingSegmentTuning
+              const sharesVoice = (segmentCountByVoiceId[segment.voiceId] ?? 0) > 1
+              const selectedVoiceExists = voices.some((voice) => voice.id === selectedVoiceId)
               return (
                 <article className="rounded-md border border-border/70 bg-background/40 p-3" key={segment.id}>
                   <div className="mb-3 flex flex-col gap-2">
@@ -254,6 +283,34 @@ function MultiVoiceSegmentResults({
                         </PopoverContent>
                       </Popover>
                     ) : null}
+                    {providerTuningControls.length > 0 && sharesVoice ? (
+                      <Button
+                        disabled={disabled || !segmentUrl}
+                        onClick={() => onRegenerateVoiceSegments(segment.voiceId, selectedTuning)}
+                        size="sm"
+                        type="button"
+                        variant="secondary"
+                      >
+                        <RefreshCw aria-hidden="true" data-icon="inline-start" />
+                        Regenerate All For Voice
+                      </Button>
+                    ) : null}
+                    {providerTuningControls.length > 0 && canSaveTuning ? (
+                      <Button
+                        disabled={disabled || isSavingVoiceTuning || !activeProviderId || !selectedVoiceExists}
+                        onClick={() => onSaveVoiceTuning(selectedVoiceId, selectedTuning)}
+                        size="sm"
+                        type="button"
+                        variant="secondary"
+                      >
+                        {isSavingVoiceTuning ? (
+                          <Loading aria-hidden="true" size="sm" />
+                        ) : (
+                          <SlidersHorizontal aria-hidden="true" data-icon="inline-start" />
+                        )}
+                        Save Tuning To Voice
+                      </Button>
+                    ) : null}
                     <MenuSelect
                       ariaLabel={`Voice For Segment ${segment.index + 1}`}
                       disabled={disabled || voiceOptions.length === 0}
@@ -308,4 +365,12 @@ function segmentVoiceOptions(voices: VoiceAsset[], segment: GeneratedAudioMultiV
     options.unshift({ label: segment.voiceName, value: segment.voiceId })
   }
   return options
+}
+
+function noopRegenerateVoiceSegments(_voiceId: string, _voiceSettings: VoiceTuningValues) {
+  return undefined
+}
+
+function noopSaveVoiceTuning(_voiceId: string, _voiceSettings: VoiceTuningValues) {
+  return undefined
 }
