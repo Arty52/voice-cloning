@@ -47,6 +47,19 @@ describe("useDialogueScript", () => {
     expect(result.current.segmentBuild.segments.map((segment) => segment.voiceId)).toEqual(["skippy", "vegeta"])
   })
 
+  it("keeps omitted saved tuning options stable across rerenders", () => {
+    const { rerender, result } = renderHook(() => useDialogueScript({ defaultVoice: narrator, voices }))
+
+    act(() => {
+      result.current.importFromText("Narration only.")
+    })
+
+    const segmentBuild = result.current.segmentBuild
+    rerender()
+
+    expect(result.current.segmentBuild).toBe(segmentBuild)
+  })
+
   it("normalizes labels when updating speaker mappings", () => {
     const { result } = renderHook(() => useDialogueScript({ defaultVoice: narrator, voices }))
 
@@ -142,6 +155,50 @@ describe("useDialogueScript", () => {
     expect(result.current.blocks.map((block) => block.voiceId)).toEqual(["vegeta", "vegeta"])
     expect(result.current.segmentBuild.error).toBeNull()
     expect(result.current.segmentBuild.segments.map((segment) => segment.voiceId)).toEqual(["vegeta", "vegeta"])
+  })
+
+  it("carries imported row tuning into generated segment drafts", () => {
+    const { result } = renderHook(() => useDialogueScript({ defaultVoice: narrator, voices }))
+
+    act(() => {
+      result.current.importFromText("Skippy: One.")
+      result.current.updateSpeakerMapping("Skippy", skippy)
+      result.current.updateBlockVoiceSettings("dialogue-block-1", { speed: 1.18 })
+    })
+
+    expect(result.current.blocks[0]).toMatchObject({
+      voiceSettings: { speed: 1.18 },
+    })
+    expect(result.current.segmentBuild.segments[0]).toMatchObject({
+      clientSegmentId: "dialogue-block-1",
+      voiceId: "skippy",
+      voiceSettings: { speed: 1.18 },
+    })
+  })
+
+  it("falls back to saved mapped-voice tuning after row tuning is cleared", () => {
+    const { result } = renderHook(() =>
+      useDialogueScript({
+        defaultVoice: narrator,
+        voiceSettingsByVoiceId: { skippy: { stability: 0.31 } },
+        voices,
+      })
+    )
+
+    act(() => {
+      result.current.importFromText("Skippy: One.")
+      result.current.updateSpeakerMapping("Skippy", skippy)
+      result.current.updateBlockVoiceSettings("dialogue-block-1", { speed: 1.18 })
+    })
+    act(() => {
+      result.current.updateBlockVoiceSettings("dialogue-block-1", null)
+    })
+
+    expect(result.current.blocks[0].voiceSettings).toBeNull()
+    expect(result.current.segmentBuild.segments[0]).toMatchObject({
+      voiceId: "skippy",
+      voiceSettings: { stability: 0.31 },
+    })
   })
 })
 

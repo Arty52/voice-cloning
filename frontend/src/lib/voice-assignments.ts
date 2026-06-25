@@ -44,6 +44,11 @@ type SpanDraft = {
   text: string
   voiceId: string
   voiceName: string
+  voiceSettings?: VoiceTuningValues
+}
+
+type BuildSpeechJobSegmentsOptions = {
+  voiceSettingsByVoiceId?: Record<string, VoiceTuningValues>
 }
 
 export function areVoiceAssignmentsStale(text: string, assignments: VoiceTextAssignment[]) {
@@ -126,7 +131,8 @@ export function reconcileVoiceAssignmentsForTextChange(
 export function buildSpeechJobSegments(
   text: string,
   assignments: VoiceTextAssignment[],
-  defaultVoice: Pick<VoiceAsset, "id" | "name">
+  defaultVoice: Pick<VoiceAsset, "id" | "name">,
+  options: BuildSpeechJobSegmentsOptions = {}
 ): AssignmentSegmentBuildResult {
   const orderedAssignments = [...assignments].sort(compareAssignments)
   const validationError = validateAssignments(text, orderedAssignments)
@@ -153,6 +159,8 @@ export function buildSpeechJobSegments(
       text: text.slice(assignment.start, assignment.end),
       voiceId: assignment.voiceId,
       voiceName: assignment.voiceName,
+      voiceSettings:
+        assignment.voiceId === defaultVoice.id ? undefined : options.voiceSettingsByVoiceId?.[assignment.voiceId],
     })
     cursor = assignment.end
   }
@@ -303,6 +311,9 @@ function toSpeakableSegments(spans: SpanDraft[]) {
       voiceId: span.voiceId,
       voiceName: span.voiceName,
     })
+    if (span.voiceSettings !== undefined) {
+      segments[segments.length - 1].voiceSettings = span.voiceSettings
+    }
   }
 
   if (leadingWhitespace && segments.length > 0) {

@@ -128,6 +128,78 @@ Narration between them.
     })
   })
 
+  it("applies saved voice tuning to mapped speaker rows", () => {
+    const blocks = parseSpeakerLabeledScript("Skippy: Hello.\nNarration.")
+
+    const result = buildDialogueSpeechJobSegments({
+      blocks,
+      defaultVoice: narrator,
+      speakerMappings: mappings([["Skippy", "skippy"]]),
+      voiceSettingsByVoiceId: {
+        narrator: { stability: 0.2 },
+        skippy: { speed: 1.12 },
+      },
+      voices,
+    })
+
+    expect(result.error).toBeNull()
+    expect(result.segments).toEqual([
+      expect.objectContaining({
+        assignmentKind: "assigned",
+        voiceId: "skippy",
+        voiceSettings: { speed: 1.12 },
+      }),
+      expect.objectContaining({
+        assignmentKind: "default",
+        voiceId: "narrator",
+        voiceSettings: null,
+      }),
+    ])
+  })
+
+  it("keeps mapped default voice rows on job-level tuning", () => {
+    const blocks = parseSpeakerLabeledScript("Narrator: Hello.")
+
+    const result = buildDialogueSpeechJobSegments({
+      blocks,
+      defaultVoice: narrator,
+      speakerMappings: mappings([["Narrator", "narrator"]]),
+      voiceSettingsByVoiceId: {
+        narrator: { stability: 0.2 },
+      },
+      voices,
+    })
+
+    expect(result.error).toBeNull()
+    expect(result.segments[0]).toMatchObject({
+      assignmentKind: "assigned",
+      voiceId: "narrator",
+      voiceSettings: null,
+    })
+  })
+
+  it("keeps explicit row tuning ahead of saved voice tuning", () => {
+    const blocks = withOverrides(parseSpeakerLabeledScript("Skippy: Hello."), {
+      voiceSettings: { stability: 0.44 },
+    })
+
+    const result = buildDialogueSpeechJobSegments({
+      blocks,
+      defaultVoice: narrator,
+      speakerMappings: mappings([["Skippy", "skippy"]]),
+      voiceSettingsByVoiceId: {
+        skippy: { speed: 1.12 },
+      },
+      voices,
+    })
+
+    expect(result.error).toBeNull()
+    expect(result.segments[0]).toMatchObject({
+      voiceId: "skippy",
+      voiceSettings: { stability: 0.44 },
+    })
+  })
+
   it("blocks generation when labeled speakers are not mapped", () => {
     const result = buildDialogueSpeechJobSegments({
       blocks: parseSpeakerLabeledScript("Skippy: Hello.\nVegeta: Hello."),

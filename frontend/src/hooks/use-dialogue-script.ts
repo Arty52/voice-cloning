@@ -7,16 +7,23 @@ import {
   type MultiVoiceScriptBlock,
   type SpeakerVoiceMapping,
 } from "@/lib/dialogue-script"
-import type { VoiceAsset } from "@/types"
+import type { VoiceAsset, VoiceTuningValues } from "@/types"
 
 export type DialogueInputMode = "range" | "dialogue"
 
 export type UseDialogueScriptOptions = {
   defaultVoice: VoiceAsset | null
+  voiceSettingsByVoiceId?: Record<string, VoiceTuningValues>
   voices: VoiceAsset[]
 }
 
-export function useDialogueScript({ defaultVoice, voices }: UseDialogueScriptOptions) {
+const EMPTY_VOICE_SETTINGS_BY_VOICE_ID: Record<string, VoiceTuningValues> = {}
+
+export function useDialogueScript({
+  defaultVoice,
+  voiceSettingsByVoiceId = EMPTY_VOICE_SETTINGS_BY_VOICE_ID,
+  voices,
+}: UseDialogueScriptOptions) {
   const [mode, setMode] = useState<DialogueInputMode>("range")
   const [blocks, setBlocks] = useState<MultiVoiceScriptBlock[]>([])
   const [speakerMappings, setSpeakerMappings] = useState<SpeakerVoiceMapping[]>([])
@@ -39,9 +46,10 @@ export function useDialogueScript({ defaultVoice, voices }: UseDialogueScriptOpt
       blocks,
       defaultVoice,
       speakerMappings,
+      voiceSettingsByVoiceId,
       voices,
     })
-  }, [blocks, defaultVoice, speakerMappings, voices])
+  }, [blocks, defaultVoice, speakerMappings, voiceSettingsByVoiceId, voices])
 
   function importFromText(text: string) {
     const nextBlocks = parseSpeakerLabeledScript(text)
@@ -80,6 +88,19 @@ export function useDialogueScript({ defaultVoice, voices }: UseDialogueScriptOpt
               ...block,
               voiceId: voice?.id ?? null,
               voiceName: voice?.name ?? null,
+            }
+          : block
+      )
+    )
+  }
+
+  function updateBlockVoiceSettings(blockId: string, voiceSettings: VoiceTuningValues | null) {
+    setBlocks((current) =>
+      current.map((block) =>
+        block.id === blockId
+          ? {
+              ...block,
+              voiceSettings: voiceSettings ? { ...voiceSettings } : null,
             }
           : block
       )
@@ -164,6 +185,7 @@ export function useDialogueScript({ defaultVoice, voices }: UseDialogueScriptOpt
     updateBlockSpeakerLabel,
     updateBlockText,
     updateBlockVoice,
+    updateBlockVoiceSettings,
     updateSpeakerMapping,
   }
 }

@@ -44,6 +44,13 @@ type RegenerateSegmentInput = {
   voiceSettings?: VoiceTuningValues | null
 }
 
+type RegenerateVoiceInput = {
+  providerKey: string | null
+  storageLimitBytes?: number
+  voiceId: string
+  voiceSettings: VoiceTuningValues
+}
+
 type PersistContext = {
   backendDefaultModelId: string | null
   defaultVoice: VoiceAsset
@@ -209,6 +216,47 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
       return await handleJobUpdate(payload.job, runId, nextPersistContext)
     } catch (caught) {
       return failActiveRun(runId, caught, "Unable to regenerate speech segment.")
+    }
+  }
+
+  async function regenerateVoiceSegments({
+    providerKey,
+    storageLimitBytes,
+    voiceId,
+    voiceSettings,
+  }: RegenerateVoiceInput) {
+    const activeJob = job
+    const persistContext = lastPersistContextRef.current
+    if (!activeJob || activeJob.status !== "success") {
+      setStatus("error")
+      setError("Generate multi-voice speech before regenerating segments for a voice.")
+      return null
+    }
+    if (!persistContext) {
+      setStatus("error")
+      setError("Multi-voice generation context is unavailable.")
+      return null
+    }
+
+    const runId = startRun({ clearJob: false })
+    const nextPersistContext = {
+      ...persistContext,
+      storageLimitBytes: storageLimitBytes ?? persistContext.storageLimitBytes,
+    }
+    lastPersistContextRef.current = nextPersistContext
+
+    try {
+      const payload = await api.regenerateSpeechJobVoice(activeJob.id, voiceId, {
+        providerKey,
+        voiceSettings,
+      })
+      if (!isActiveRun(runId)) {
+        return null
+      }
+      updateJob(payload.job)
+      return await handleJobUpdate(payload.job, runId, nextPersistContext)
+    } catch (caught) {
+      return failActiveRun(runId, caught, "Unable to regenerate speech segments for voice.")
     }
   }
 
@@ -413,6 +461,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
     isGenerating,
     job,
     regenerateSegment,
+    regenerateVoiceSegments,
     resetGeneration,
     resultUrl,
     segmentResultUrls,

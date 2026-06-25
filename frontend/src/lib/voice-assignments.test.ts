@@ -142,6 +142,68 @@ describe("voice assignment segment building", () => {
     ])
   })
 
+  it("applies saved tuning only to assigned non-default voice segments", () => {
+    const text = "Narrator. Villain speaks. Narrator again."
+
+    const result = buildSpeechJobSegments(text, [assignment()], defaultVoice, {
+      voiceSettingsByVoiceId: {
+        narrator: { stability: 0.2 },
+        villain: { speed: 1.14 },
+      },
+    })
+
+    expect(result.error).toBeNull()
+    expect(result.segments[0]).not.toHaveProperty("voiceSettings")
+    expect(result.segments[2]).not.toHaveProperty("voiceSettings")
+    expect(result.segments).toEqual([
+      expect.objectContaining({
+        assignmentKind: "default",
+        voiceId: "narrator",
+      }),
+      expect.objectContaining({
+        assignmentKind: "assigned",
+        voiceId: "villain",
+        voiceSettings: { speed: 1.14 },
+      }),
+      expect.objectContaining({
+        assignmentKind: "default",
+        voiceId: "narrator",
+      }),
+    ])
+  })
+
+  it("keeps explicitly assigned default voice ranges on job-level tuning", () => {
+    const text = "Narrator. Villain speaks. Narrator again."
+    const end = "Narrator.".length
+
+    const result = buildSpeechJobSegments(
+      text,
+      [
+        assignment({
+          end,
+          id: "default-voice-range",
+          start: 0,
+          text: text.slice(0, end),
+          voiceId: defaultVoice.id,
+          voiceName: defaultVoice.name,
+        }),
+      ],
+      defaultVoice,
+      {
+        voiceSettingsByVoiceId: {
+          narrator: { stability: 0.2 },
+        },
+      }
+    )
+
+    expect(result.error).toBeNull()
+    expect(result.segments[0]).toMatchObject({
+      assignmentKind: "assigned",
+      voiceId: "narrator",
+    })
+    expect(result.segments[0]).not.toHaveProperty("voiceSettings")
+  })
+
   it("folds whitespace-only gaps into neighboring speakable segments", () => {
     const text = "  Hello\n\nWorld  "
     const helloStart = text.indexOf("Hello")

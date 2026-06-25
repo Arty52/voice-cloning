@@ -142,6 +142,18 @@ const regeneratedJob: SpeechJob = {
   updatedAt: "2026-06-23T00:00:02.000Z",
 }
 
+const voiceRegeneratedJob: SpeechJob = {
+  ...successJob,
+  resultSha256: "combined-hash-voice",
+  segments: successJob.segments.map((segment, index) => ({
+    ...segment,
+    generationCount: 2,
+    resultSha256: `voice-segment-${index + 1}-hash`,
+    voiceSettings: { stability: 0.86 },
+  })),
+  updatedAt: "2026-06-23T00:00:03.000Z",
+}
+
 const canceledJob: SpeechJob = {
   ...runningJob,
   activeSegmentId: null,
@@ -500,6 +512,74 @@ describe("useMultiVoiceSpeechGeneration", () => {
               voiceSettings: { stability: 0.8 },
             }),
           ]),
+        }),
+      }),
+      80
+    )
+  })
+
+  it("regenerates all segments for a voice and persists refreshed combined audio metadata", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path === "/api/speech/jobs" && init?.method === "POST") {
+          return okJson({ job: successJob }, 202)
+        }
+        if (path === "/api/speech/jobs/job-1/result" && !init) {
+          return okAudio("combined")
+        }
+        if (path === "/api/speech/jobs/job-1/voices/narrator/regenerate" && init?.method === "POST") {
+          return okJson({ job: runningJob }, 202)
+        }
+        if (path === "/api/speech/jobs/job-1" && !init) {
+          return okJson({ job: voiceRegeneratedJob })
+        }
+        return okJson({})
+      })
+    )
+    const persistGeneratedAudio = vi.fn(async () => generatedResult)
+    const { result } = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+
+    await act(async () => {
+      await result.current.generateSpeech(generationInput())
+    })
+    await act(async () => {
+      await result.current.regenerateVoiceSegments({
+        providerKey: "browser-secret",
+        storageLimitBytes: 80,
+        voiceId: "narrator",
+        voiceSettings: { stability: 0.86 },
+      })
+    })
+
+    const regenerateCall = vi
+      .mocked(fetch)
+      .mock.calls.find(([url, init]) => String(url).includes("/voices/narrator/regenerate") && init?.method === "POST")
+    expect(regenerateCall?.[1]?.headers).toMatchObject({
+      "Content-Type": "application/json",
+      "X-Voice-Provider-Key": "browser-secret",
+    })
+    expect(regenerateCall?.[1]?.body).toBe(JSON.stringify({ voiceSettings: { stability: 0.86 } }))
+    expect(persistGeneratedAudio).toHaveBeenCalledTimes(2)
+    expect(persistGeneratedAudio).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        multiVoiceMetadata: expect.objectContaining({
+          resultSha256: "combined-hash-voice",
+          segments: [
+            expect.objectContaining({
+              generationCount: 2,
+              id: "segment-one",
+              resultSha256: "voice-segment-1-hash",
+              voiceSettings: { stability: 0.86 },
+            }),
+            expect.objectContaining({
+              generationCount: 2,
+              id: "segment-two",
+              resultSha256: "voice-segment-2-hash",
+              voiceSettings: { stability: 0.86 },
+            }),
+          ],
         }),
       }),
       80
