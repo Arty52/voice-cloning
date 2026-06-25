@@ -114,7 +114,9 @@ export function buildDialogueSpeechJobSegments({
       voiceName: resolvedVoice.voice.name,
       voiceSettings:
         block.voiceSettings ??
-        (resolvedVoice.assignmentKind === "assigned" ? voiceSettingsByVoiceId[resolvedVoice.voice.id] ?? null : null),
+        (resolvedVoice.assignmentKind === "assigned" && resolvedVoice.voice.id !== defaultVoice.id
+          ? voiceSettingsByVoiceId[resolvedVoice.voice.id] ?? null
+          : null),
     })
   }
 

@@ -17,7 +17,13 @@ export type UseDialogueScriptOptions = {
   voices: VoiceAsset[]
 }
 
-export function useDialogueScript({ defaultVoice, voiceSettingsByVoiceId = {}, voices }: UseDialogueScriptOptions) {
+const EMPTY_VOICE_SETTINGS_BY_VOICE_ID: Record<string, VoiceTuningValues> = {}
+
+export function useDialogueScript({
+  defaultVoice,
+  voiceSettingsByVoiceId = EMPTY_VOICE_SETTINGS_BY_VOICE_ID,
+  voices,
+}: UseDialogueScriptOptions) {
   const [mode, setMode] = useState<DialogueInputMode>("range")
   const [blocks, setBlocks] = useState<MultiVoiceScriptBlock[]>([])
   const [speakerMappings, setSpeakerMappings] = useState<SpeakerVoiceMapping[]>([])

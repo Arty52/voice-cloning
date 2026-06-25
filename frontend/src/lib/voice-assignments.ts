@@ -159,7 +159,8 @@ export function buildSpeechJobSegments(
       text: text.slice(assignment.start, assignment.end),
       voiceId: assignment.voiceId,
       voiceName: assignment.voiceName,
-      voiceSettings: options.voiceSettingsByVoiceId?.[assignment.voiceId],
+      voiceSettings:
+        assignment.voiceId === defaultVoice.id ? undefined : options.voiceSettingsByVoiceId?.[assignment.voiceId],
     })
     cursor = assignment.end
   }

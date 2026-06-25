@@ -47,6 +47,19 @@ describe("useDialogueScript", () => {
     expect(result.current.segmentBuild.segments.map((segment) => segment.voiceId)).toEqual(["skippy", "vegeta"])
   })
 
+  it("keeps omitted saved tuning options stable across rerenders", () => {
+    const { rerender, result } = renderHook(() => useDialogueScript({ defaultVoice: narrator, voices }))
+
+    act(() => {
+      result.current.importFromText("Narration only.")
+    })
+
+    const segmentBuild = result.current.segmentBuild
+    rerender()
+
+    expect(result.current.segmentBuild).toBe(segmentBuild)
+  })
+
   it("normalizes labels when updating speaker mappings", () => {
     const { result } = renderHook(() => useDialogueScript({ defaultVoice: narrator, voices }))
 

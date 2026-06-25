@@ -157,6 +157,27 @@ Narration between them.
     ])
   })
 
+  it("keeps mapped default voice rows on job-level tuning", () => {
+    const blocks = parseSpeakerLabeledScript("Narrator: Hello.")
+
+    const result = buildDialogueSpeechJobSegments({
+      blocks,
+      defaultVoice: narrator,
+      speakerMappings: mappings([["Narrator", "narrator"]]),
+      voiceSettingsByVoiceId: {
+        narrator: { stability: 0.2 },
+      },
+      voices,
+    })
+
+    expect(result.error).toBeNull()
+    expect(result.segments[0]).toMatchObject({
+      assignmentKind: "assigned",
+      voiceId: "narrator",
+      voiceSettings: null,
+    })
+  })
+
   it("keeps explicit row tuning ahead of saved voice tuning", () => {
     const blocks = withOverrides(parseSpeakerLabeledScript("Skippy: Hello."), {
       voiceSettings: { stability: 0.44 },
