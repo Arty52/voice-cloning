@@ -759,9 +759,7 @@ function voiceTuningPanel() {
   return scopedPanelByHeading("Voice Tuning")
 }
 
-function openVoiceTuningPanel() {
-  const panel = voiceTuningPanel()
-  fireEvent.click(panel.getByRole("button", { name: "Show Controls" }))
+function selectedVoiceTuningPanel() {
   return voiceTuningPanel()
 }
 
@@ -1720,7 +1718,7 @@ describe("App", () => {
 
     expect(await screen.findByText("default/default-voice.mp3")).toBeInTheDocument()
     expect(voiceLibraryPanel().queryByText("Selected Preview")).not.toBeInTheDocument()
-    expect(voiceLibraryPanel().queryByRole("radiogroup", { name: "Voice Preset" })).not.toBeInTheDocument()
+    expect(voiceLibraryPanel().getByRole("radiogroup", { name: "Voice Preset" })).toBeInTheDocument()
 
     const defaultVoiceRow = voiceLibraryRow("Default voice")
     expect(defaultVoiceRow.getByRole("group", { name: "Voice sample preview for Default voice" })).toBeInTheDocument()
@@ -3121,9 +3119,8 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: /cancel/i })).toBeInTheDocument()
     const latestHeading = screen.getByRole("heading", { name: "Latest Generated Audio" })
     const textLabel = screen.getByText("Text to Speak")
-    const tuningHeading = screen.getByRole("heading", { name: "Voice Tuning" })
     expect(textLabel.compareDocumentPosition(latestHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(latestHeading.compareDocumentPosition(tuningHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.queryByRole("heading", { name: "Voice Tuning" })).not.toBeInTheDocument()
     expect(screen.getByText("Generating Speech")).toBeInTheDocument()
     resolveSpeech(
       new Response(audioBlob, {
@@ -3826,70 +3823,106 @@ describe("App", () => {
     expect(addVoicePanel().getByRole("button", { name: /choose audio/i })).toBeEnabled()
   })
 
-  it("shows tuning help and selects standard narration by default", async () => {
+  it("shows saved voice tuning help and selects standard narration by default", async () => {
+    window.history.replaceState(null, "", "/#voices")
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    openVoiceTuningPanel()
+    const panel = selectedVoiceTuningPanel()
 
-    expect(screen.getByRole("button", { name: /stability help/i })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: /similarity help/i })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: /style help/i })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: /speed help/i })).toBeInTheDocument()
+    expect(panel.getByRole("button", { name: /stability help/i })).toBeInTheDocument()
+    expect(panel.getByRole("button", { name: /similarity help/i })).toBeInTheDocument()
+    expect(panel.getByRole("button", { name: /style help/i })).toBeInTheDocument()
+    expect(panel.getByRole("button", { name: /speed help/i })).toBeInTheDocument()
     expect(screen.getByText(/lower values allow more expressive/i)).toBeInTheDocument()
     expect(screen.getByText(/very high similarity can preserve them/i)).toBeInTheDocument()
     expect(screen.getByText(/zero is the most natural/i)).toBeInTheDocument()
     expect(screen.getByText(/one point zero is the baseline pace/i)).toBeInTheDocument()
-    expect(voiceTuningPanel().getByRole("button", { name: /standard narration/i })).toHaveAttribute("aria-pressed", "true")
-    expect(voiceTuningPanel().getByRole("button", { name: /animated dialogue/i })).toHaveAttribute("aria-pressed", "false")
-    expect(screen.getByRole("slider", { name: /stability/i })).toHaveValue("0.5")
-    expect(screen.getByRole("slider", { name: /similarity/i })).toHaveValue("0.75")
-    expect(screen.getByRole("slider", { name: /style/i })).toHaveValue("0")
-    expect(screen.getByRole("slider", { name: /speed/i })).toHaveValue("1")
-    expect(screen.queryByText("Custom")).not.toBeInTheDocument()
+    expect(panel.getByRole("radio", { name: "Standard Narration" })).toHaveAttribute("aria-checked", "true")
+    expect(panel.getByRole("radio", { name: "Animated Dialogue" })).toHaveAttribute("aria-checked", "false")
+    expect(panel.getByRole("slider", { name: /stability/i })).toHaveValue("0.5")
+    expect(panel.getByRole("slider", { name: /similarity/i })).toHaveValue("0.75")
+    expect(panel.getByRole("slider", { name: /style/i })).toHaveValue("0")
+    expect(panel.getByRole("slider", { name: /speed/i })).toHaveValue("1")
+    expect(panel.queryByText("Custom")).not.toBeInTheDocument()
+    expect(panel.getByRole("button", { name: "Save Voice Tuning" })).toBeDisabled()
   })
 
-  it("collapses voice tuning controls by default and preserves changed values", async () => {
+  it("saves selected voice preset and provider tuning only after Save Voice Tuning", async () => {
+    window.history.replaceState(null, "", "/#voices")
+    const patchedBodies: Array<Record<string, unknown>> = []
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/providers" && !init) {
+          return okJson(providersResponse)
+        }
+        if (path === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "default", voices: [defaultVoice] })
+        }
+        if (path === "/api/voices/default" && init?.method === "PATCH") {
+          const body = JSON.parse(String(init.body)) as Record<string, unknown>
+          patchedBodies.push(body)
+          return okJson({
+            defaultVoiceId: "default",
+            voices: [
+              {
+                ...defaultVoice,
+                voicePresetId: body.voicePresetId === "animatedDialogue" ? "animatedDialogue" : "standardNarration",
+                voiceSettingsByProvider:
+                  body.providerId === "elevenlabs"
+                    ? { elevenlabs: body.voiceSettings as Record<string, unknown> }
+                    : {},
+              },
+            ],
+          })
+        }
+        return okJson({})
+      })
+    )
+    const user = userEvent.setup()
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    const showControls = voiceTuningPanel().getByRole("button", { name: "Show Controls" })
+    const panel = selectedVoiceTuningPanel()
+    await user.click(panel.getByRole("radio", { name: "Animated Dialogue" }))
+    fireEvent.change(panel.getByRole("slider", { name: /speed/i }), { target: { value: "1.1" } })
 
-    expect(showControls).toHaveAttribute("aria-expanded", "false")
-    expect(screen.queryByRole("slider", { name: /stability/i })).not.toBeInTheDocument()
+    expect(patchedBodies).toHaveLength(0)
+    expect(panel.getByText("Custom")).toBeInTheDocument()
+    expect(panel.getByText("Unsaved")).toBeInTheDocument()
 
-    fireEvent.click(showControls)
+    await user.click(panel.getByRole("button", { name: "Save Voice Tuning" }))
 
-    const hideControls = voiceTuningPanel().getByRole("button", { name: "Hide Controls" })
-    expect(hideControls).toHaveAttribute("aria-expanded", "true")
-    expect(screen.getByRole("slider", { name: /stability/i })).toHaveValue("0.5")
-
-    fireEvent.change(screen.getByRole("slider", { name: /stability/i }), { target: { value: "0.42" } })
-    expect(screen.getByText("Custom")).toBeInTheDocument()
-
-    fireEvent.click(hideControls)
-    expect(voiceTuningPanel().getByRole("button", { name: "Show Controls" })).toHaveAttribute("aria-expanded", "false")
-    expect(screen.queryByRole("slider", { name: /stability/i })).not.toBeInTheDocument()
-
-    openVoiceTuningPanel()
-
-    expect(screen.getByRole("slider", { name: /stability/i })).toHaveValue("0.42")
+    await waitFor(() => expect(patchedBodies).toHaveLength(2))
+    expect(patchedBodies[0]).toEqual({ voicePresetId: "animatedDialogue" })
+    expect(patchedBodies[1]).toEqual({
+      providerId: "elevenlabs",
+      voiceSettings: {
+        stability: 0.4,
+        similarityBoost: 0.75,
+        style: 0.35,
+        speed: 1.1,
+        useSpeakerBoost: true,
+      },
+    })
   })
 
-  it("hides voice tuning when the active provider has no controls", async () => {
+  it("keeps Generate free of standalone tuning and sends resolved selected-voice defaults", async () => {
+    window.history.replaceState(null, "", "/#generate")
+    const baseFetch = mockFetch()
     vi.stubGlobal(
       "fetch",
-      mockFetchWithProviders({
-        defaultProviderId: "plain",
-        providers: [
-          {
-            ...providersResponse.providers[0],
-            id: "plain",
-            label: "Plain Provider",
-            links: [],
-            tuning: { controls: [], presets: [], defaultValues: {} },
-          },
-        ],
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/voices" && !init) {
+          return okJson({
+            defaultVoiceId: "default",
+            voices: [{ ...defaultVoice, voiceSettingsByProvider: { elevenlabs: { speed: 1.12 } } }],
+          })
+        }
+        return baseFetch(input, init)
       })
     )
     const user = userEvent.setup()
@@ -3905,11 +3938,12 @@ describe("App", () => {
       ([url, init]) => String(url) === "/api/speech" && init?.method === "POST"
     )
     const body = speechCall?.[1]?.body as FormData
-    expect(body.get("providerId")).toBe("plain")
-    expect(JSON.parse(String(body.get("voiceSettings")))).toEqual({})
+    expect(body.get("providerId")).toBe("elevenlabs")
+    expect(JSON.parse(String(body.get("voiceSettings")))).toEqual({ speed: 1.12 })
   })
 
   it("maps selected voices to provider tuning presets by voice preset id", async () => {
+    window.history.replaceState(null, "", "/#voices")
     const animatedVoice = { ...voiceCloneVoice, voicePresetId: "animatedDialogue" as const }
     const mappedProviderTuning = {
       ...elevenLabsTuning,
@@ -3966,20 +4000,17 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    openVoiceTuningPanel()
-    fireEvent.change(screen.getByRole("slider", { name: /stability/i }), { target: { value: "0.9" } })
-    expect(screen.getByText("Custom")).toBeInTheDocument()
-
     await user.click(screen.getByRole("button", { name: /^Voice_Clone_01/i }))
 
-    expect(screen.queryByText("Custom")).not.toBeInTheDocument()
-    expect(voiceTuningPanel().getByRole("button", { name: /standard narration/i })).toHaveAttribute("aria-pressed", "false")
-    expect(voiceTuningPanel().getByRole("button", { name: /animated dialogue/i })).toHaveAttribute("aria-pressed", "true")
-    expect(screen.getByRole("slider", { name: /stability/i })).toHaveValue("0.31")
-    expect(screen.getByRole("slider", { name: /similarity/i })).toHaveValue("0.81")
-    expect(screen.getByRole("slider", { name: /style/i })).toHaveValue("0.51")
-    expect(screen.getByRole("slider", { name: /speed/i })).toHaveValue("1.05")
-    expect(screen.getByRole("checkbox", { name: /Speaker boost/i })).not.toBeChecked()
+    const panel = selectedVoiceTuningPanel()
+    expect(panel.queryByText("Custom")).not.toBeInTheDocument()
+    expect(panel.getByRole("radio", { name: "Standard Narration" })).toHaveAttribute("aria-checked", "false")
+    expect(panel.getByRole("radio", { name: "Animated Dialogue" })).toHaveAttribute("aria-checked", "true")
+    expect(panel.getByRole("slider", { name: /stability/i })).toHaveValue("0.31")
+    expect(panel.getByRole("slider", { name: /similarity/i })).toHaveValue("0.81")
+    expect(panel.getByRole("slider", { name: /style/i })).toHaveValue("0.51")
+    expect(panel.getByRole("slider", { name: /speed/i })).toHaveValue("1.05")
+    expect(panel.getByRole("checkbox", { name: /Speaker boost/i })).not.toBeChecked()
 
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
 
@@ -4000,6 +4031,7 @@ describe("App", () => {
   })
 
   it("renders provider controls when presets are unavailable", async () => {
+    window.history.replaceState(null, "", "/#voices")
     vi.stubGlobal(
       "fetch",
       mockFetchWithProviders({
@@ -4033,209 +4065,146 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    openVoiceTuningPanel()
-    expect(screen.getByText("Voice Tuning")).toBeInTheDocument()
-    expect(screen.queryByText("Preset")).not.toBeInTheDocument()
-    expect(screen.getByRole("slider", { name: /warmth/i })).toHaveValue("0.2")
+    const panel = selectedVoiceTuningPanel()
+    expect(panel.getByText("Voice Tuning")).toBeInTheDocument()
+    expect(panel.queryByText("Provider Tuning Preset")).not.toBeInTheDocument()
+    expect(panel.getByRole("slider", { name: /warmth/i })).toHaveValue("0.2")
   })
 
-  it("preserves selected provider option value types", async () => {
+  it("preserves selected provider option value types in saved voice tuning", async () => {
+    window.history.replaceState(null, "", "/#voices")
+    let patchVoiceBody: { providerId?: string; voiceSettings?: Record<string, unknown> } | null = null
     vi.stubGlobal(
       "fetch",
-      mockFetchWithProviders({
-        defaultProviderId: "select-provider",
-        providers: [
-          {
-            ...providersResponse.providers[0],
-            id: "select-provider",
-            label: "Select Provider",
-            tuning: {
-              controls: [
-                {
-                  id: "mode",
-                  label: "Mode",
-                  description: "Selects provider generation mode.",
-                  type: "select" as const,
-                  defaultValue: 1,
-                  options: [
-                    { label: "One", value: 1 },
-                    { label: "Two", value: 2 },
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/providers" && !init) {
+          return okJson({
+            ...providersResponse,
+            defaultProviderId: "select-provider",
+            providers: [
+              {
+                ...providersResponse.providers[0],
+                id: "select-provider",
+                label: "Select Provider",
+                tuning: {
+                  controls: [
+                    {
+                      id: "mode",
+                      label: "Mode",
+                      description: "Selects provider generation mode.",
+                      type: "select" as const,
+                      defaultValue: 1,
+                      options: [
+                        { label: "One", value: 1 },
+                        { label: "Two", value: 2 },
+                      ],
+                    },
+                    {
+                      id: "enhanced",
+                      label: "Enhanced",
+                      description: "Selects enhanced processing.",
+                      type: "select" as const,
+                      defaultValue: false,
+                      options: [
+                        { label: "Off", value: false },
+                        { label: "On", value: true },
+                      ],
+                    },
                   ],
+                  presets: [],
+                  defaultValues: { mode: 1, enhanced: false },
                 },
-                {
-                  id: "enhanced",
-                  label: "Enhanced",
-                  description: "Selects enhanced processing.",
-                  type: "select" as const,
-                  defaultValue: false,
-                  options: [
-                    { label: "Off", value: false },
-                    { label: "On", value: true },
-                  ],
-                },
-              ],
-              presets: [],
-              defaultValues: { mode: 1, enhanced: false },
-            },
-          },
-        ],
+              },
+            ],
+          })
+        }
+        if (path === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "default", voices: [defaultVoice] })
+        }
+        if (path === "/api/voices/default" && init?.method === "PATCH") {
+          patchVoiceBody = JSON.parse(String(init.body))
+          return okJson({ defaultVoiceId: "default", voices: [defaultVoice] })
+        }
+        return okJson({})
       })
     )
     const user = userEvent.setup()
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    openVoiceTuningPanel()
-    await user.selectOptions(screen.getByRole("combobox", { name: "Mode" }), "2")
-    await user.selectOptions(screen.getByRole("combobox", { name: "Enhanced" }), "true")
-    await user.click(screen.getByRole("button", { name: /^Generate$/ }))
+    const panel = selectedVoiceTuningPanel()
+    await user.selectOptions(panel.getByRole("combobox", { name: "Mode" }), "2")
+    await user.selectOptions(panel.getByRole("combobox", { name: "Enhanced" }), "true")
+    await user.click(panel.getByRole("button", { name: "Save Voice Tuning" }))
 
-    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/speech", expect.objectContaining({ method: "POST" })))
-    const speechCall = vi.mocked(fetch).mock.calls.find(
-      ([url, init]) => String(url) === "/api/speech" && init?.method === "POST"
-    )
-    const body = speechCall?.[1]?.body as FormData
-    expect(body.get("providerId")).toBe("select-provider")
-    expect(JSON.parse(String(body.get("voiceSettings")))).toEqual({ mode: 2, enhanced: true })
-    const latestPanel = screen.getByRole("heading", { name: "Latest Generated Audio" }).closest("section")
-    expect(latestPanel).not.toBeNull()
-    expect(await within(latestPanel as HTMLElement).findByLabelText("Generated Audio Metadata")).toBeInTheDocument()
-    expect(within(latestPanel as HTMLElement).getByText("Select Provider")).toBeInTheDocument()
-    expect(within(latestPanel as HTMLElement).getByText("Custom Settings")).toBeInTheDocument()
-    expect(within(latestPanel as HTMLElement).getByText("Mode Two")).toBeInTheDocument()
-    expect(within(latestPanel as HTMLElement).getByText("Enhanced On")).toBeInTheDocument()
+    await waitFor(() => expect(patchVoiceBody).not.toBeNull())
+    expect(patchVoiceBody).toEqual({
+      providerId: "select-provider",
+      voiceSettings: { mode: 2, enhanced: true },
+    })
   })
 
-  it("keeps string toggle values unchecked and toggles from the label", async () => {
+  it("keeps string toggle values unchecked and toggles from the label in saved voice tuning", async () => {
+    window.history.replaceState(null, "", "/#voices")
+    let patchVoiceBody: { providerId?: string; voiceSettings?: Record<string, unknown> } | null = null
     vi.stubGlobal(
       "fetch",
-      mockFetchWithProviders({
-        defaultProviderId: "toggle-provider",
-        providers: [
-          {
-            ...providersResponse.providers[0],
-            id: "toggle-provider",
-            label: "Toggle Provider",
-            tuning: {
-              controls: [
-                {
-                  id: "expressive",
-                  label: "Expressive",
-                  description: "Enables expressive delivery.",
-                  type: "toggle" as const,
-                  defaultValue: "false",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/providers" && !init) {
+          return okJson({
+            ...providersResponse,
+            defaultProviderId: "toggle-provider",
+            providers: [
+              {
+                ...providersResponse.providers[0],
+                id: "toggle-provider",
+                label: "Toggle Provider",
+                tuning: {
+                  controls: [
+                    {
+                      id: "expressive",
+                      label: "Expressive",
+                      description: "Enables expressive delivery.",
+                      type: "toggle" as const,
+                      defaultValue: "false",
+                    },
+                  ],
+                  presets: [],
+                  defaultValues: { expressive: "false" },
                 },
-              ],
-              presets: [],
-              defaultValues: { expressive: "false" },
-            },
-          },
-        ],
+              },
+            ],
+          })
+        }
+        if (path === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "default", voices: [defaultVoice] })
+        }
+        if (path === "/api/voices/default" && init?.method === "PATCH") {
+          patchVoiceBody = JSON.parse(String(init.body))
+          return okJson({ defaultVoiceId: "default", voices: [defaultVoice] })
+        }
+        return okJson({})
       })
     )
     const user = userEvent.setup()
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    openVoiceTuningPanel()
-    const checkbox = screen.getByRole("checkbox", { name: "Expressive" })
+    const panel = selectedVoiceTuningPanel()
+    const checkbox = panel.getByRole("checkbox", { name: "Expressive" })
     expect(checkbox).not.toBeChecked()
 
-    await user.click(screen.getByText("Expressive", { selector: "label" }))
+    await user.click(panel.getByText("Expressive", { selector: "label" }))
     expect(checkbox).toBeChecked()
-    await user.click(screen.getByRole("button", { name: /^Generate$/ }))
+    await user.click(panel.getByRole("button", { name: "Save Voice Tuning" }))
 
-    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/speech", expect.objectContaining({ method: "POST" })))
-    const speechCall = vi.mocked(fetch).mock.calls.find(
-      ([url, init]) => String(url) === "/api/speech" && init?.method === "POST"
-    )
-    const body = speechCall?.[1]?.body as FormData
-    expect(body.get("providerId")).toBe("toggle-provider")
-    expect(JSON.parse(String(body.get("voiceSettings")))).toEqual({ expressive: true })
-    const latestPanel = screen.getByRole("heading", { name: "Latest Generated Audio" }).closest("section")
-    expect(latestPanel).not.toBeNull()
-    expect(await within(latestPanel as HTMLElement).findByLabelText("Generated Audio Metadata")).toBeInTheDocument()
-    expect(within(latestPanel as HTMLElement).getByText("Toggle Provider")).toBeInTheDocument()
-    expect(within(latestPanel as HTMLElement).getByText("Custom Settings")).toBeInTheDocument()
-    expect(within(latestPanel as HTMLElement).getByText("Expressive On")).toBeInTheDocument()
-  })
-
-  it("applies animated dialogue and marks manual tuning as custom", async () => {
-    const user = userEvent.setup()
-    renderApp()
-
-    await screen.findByText("default/default-voice.mp3")
-    openVoiceTuningPanel()
-    await user.click(voiceTuningPanel().getByRole("button", { name: /animated dialogue/i }))
-
-    expect(voiceTuningPanel().getByRole("button", { name: /standard narration/i })).toHaveAttribute("aria-pressed", "false")
-    expect(voiceTuningPanel().getByRole("button", { name: /animated dialogue/i })).toHaveAttribute("aria-pressed", "true")
-    expect(screen.getByRole("slider", { name: /stability/i })).toHaveValue("0.4")
-    expect(screen.getByRole("slider", { name: /similarity/i })).toHaveValue("0.75")
-    expect(screen.getByRole("slider", { name: /style/i })).toHaveValue("0.35")
-    expect(screen.getByRole("slider", { name: /speed/i })).toHaveValue("1")
-
-    fireEvent.change(screen.getByRole("slider", { name: /speed/i }), { target: { value: "1.1" } })
-
-    expect(screen.getByText("Custom")).toBeInTheDocument()
-    expect(voiceTuningPanel().getByRole("button", { name: /animated dialogue/i })).toHaveAttribute("aria-pressed", "false")
-    expect(screen.getByRole("slider", { name: /speed/i })).toHaveValue("1.1")
-  })
-
-  it("marks tuning as custom when speaker boost changes", async () => {
-    const user = userEvent.setup()
-    renderApp()
-
-    await screen.findByText("default/default-voice.mp3")
-    openVoiceTuningPanel()
-    expect(voiceTuningPanel().getByRole("button", { name: /standard narration/i })).toHaveAttribute("aria-pressed", "true")
-
-    await user.click(screen.getByRole("checkbox", { name: /Speaker boost/i }))
-
-    expect(screen.getByText("Custom")).toBeInTheDocument()
-    expect(voiceTuningPanel().getByRole("button", { name: /standard narration/i })).toHaveAttribute("aria-pressed", "false")
-  })
-
-  it("sends tuning values with speech generation", async () => {
-    const user = userEvent.setup()
-    renderApp()
-
-    await screen.findByText("default/default-voice.mp3")
-    openVoiceTuningPanel()
-    fireEvent.change(screen.getByRole("slider", { name: /stability/i }), { target: { value: "0.42" } })
-    fireEvent.change(screen.getByRole("slider", { name: /similarity/i }), { target: { value: "0.84" } })
-    fireEvent.change(screen.getByRole("slider", { name: /style/i }), { target: { value: "0.2" } })
-    fireEvent.change(screen.getByRole("slider", { name: /speed/i }), { target: { value: "1.1" } })
-    await user.click(screen.getByRole("checkbox", { name: /Speaker boost/i }))
-    await user.click(screen.getByRole("button", { name: /^Generate$/ }))
-
-    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/speech", expect.objectContaining({ method: "POST" })))
-    const speechCall = vi.mocked(fetch).mock.calls.find(
-      ([url, init]) => String(url) === "/api/speech" && init?.method === "POST"
-    )
-    const body = speechCall?.[1]?.body as FormData
-    expect(body.get("voiceId")).toBe("default")
-    expect(body.get("providerId")).toBe("elevenlabs")
-    expect(body.get("modelId")).toBe("eleven_multilingual_v2")
-    expect(JSON.parse(String(body.get("voiceSettings")))).toEqual({
-      stability: 0.42,
-      similarityBoost: 0.84,
-      style: 0.2,
-      speed: 1.1,
-      useSpeakerBoost: false,
+    await waitFor(() => expect(patchVoiceBody).not.toBeNull())
+    expect(patchVoiceBody).toEqual({
+      providerId: "toggle-provider",
+      voiceSettings: { expressive: true },
     })
-    const latestPanel = screen.getByRole("heading", { name: "Latest Generated Audio" }).closest("section")
-    expect(latestPanel).not.toBeNull()
-    await waitFor(() =>
-      expect(within(latestPanel as HTMLElement).getByLabelText("Generated Audio Metadata")).toBeInTheDocument()
-    )
-    expect(within(latestPanel as HTMLElement).getByText("ElevenLabs")).toBeInTheDocument()
-    expect(within(latestPanel as HTMLElement).getByText("Custom Settings")).toBeInTheDocument()
-    expect(within(latestPanel as HTMLElement).getByText("Stability 0.42")).toBeInTheDocument()
-    expect(within(latestPanel as HTMLElement).getByText("Similarity 0.84")).toBeInTheDocument()
-    expect(within(latestPanel as HTMLElement).getByText("Style 0.2")).toBeInTheDocument()
-    expect(within(latestPanel as HTMLElement).getByText("Speed 1.1")).toBeInTheDocument()
-    expect(within(latestPanel as HTMLElement).getByText("Speaker Boost Off")).toBeInTheDocument()
   })
 
   it("sends selected model and shows actual usage metadata", async () => {

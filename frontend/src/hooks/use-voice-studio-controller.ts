@@ -48,7 +48,6 @@ export function useVoiceStudioController() {
   const [text, setText] = useState(DEFAULT_TEXT)
   const [isCostQuotaExpanded, setIsCostQuotaExpanded] = useState(false)
   const [isSampleProcessingExpanded, setIsSampleProcessingExpanded] = useState(false)
-  const [isVoiceTuningExpanded, setIsVoiceTuningExpanded] = useState(false)
   const [latestGeneratedAudioId, setLatestGeneratedAudioId] = useState<string | null>(null)
   const [latestGenerationMode, setLatestGenerationMode] = useState<"single" | "multi">("single")
   const [savedNaturalHandoffsEnabled, setSavedNaturalHandoffsEnabled] = useState(() =>
@@ -484,7 +483,6 @@ export function useVoiceStudioController() {
     hasVoiceAssignments,
     isCostQuotaExpanded,
     isSampleProcessingExpanded,
-    isVoiceTuningExpanded,
     latestGeneratedAudioItem,
     latestStorageError,
     metadata,
@@ -508,7 +506,6 @@ export function useVoiceStudioController() {
     selectedTuningPresetId,
     setIsCostQuotaExpanded,
     setIsSampleProcessingExpanded,
-    setIsVoiceTuningExpanded,
     setNaturalHandoffsEnabled: handleNaturalHandoffsEnabledChange,
     setText: handleTextChange,
     speech,
@@ -532,7 +529,6 @@ export function useVoiceStudioController() {
     removeVoiceAssignment,
     updateVoiceAssignment,
     voiceLibrary,
-    voiceTuning,
     workflowSections: WORKFLOW_SECTIONS,
   }
 }
