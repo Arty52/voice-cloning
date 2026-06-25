@@ -28,6 +28,7 @@ type BuildDialogueSpeechJobSegmentsInput = {
   blocks: MultiVoiceScriptBlock[]
   defaultVoice: VoiceChoice
   speakerMappings: SpeakerVoiceMapping[]
+  voiceSettingsByVoiceId?: Record<string, VoiceTuningValues>
   voices: VoiceChoice[]
 }
 
@@ -69,6 +70,7 @@ export function buildDialogueSpeechJobSegments({
   blocks,
   defaultVoice,
   speakerMappings,
+  voiceSettingsByVoiceId = {},
   voices,
 }: BuildDialogueSpeechJobSegmentsInput): DialogueSpeechSegmentBuildResult {
   const voicesById = new Map(voices.map((voice) => [voice.id, voice]))
@@ -110,7 +112,9 @@ export function buildDialogueSpeechJobSegments({
       text: segmentText,
       voiceId: resolvedVoice.voice.id,
       voiceName: resolvedVoice.voice.name,
-      voiceSettings: block.voiceSettings ?? null,
+      voiceSettings:
+        block.voiceSettings ??
+        (resolvedVoice.assignmentKind === "assigned" ? voiceSettingsByVoiceId[resolvedVoice.voice.id] ?? null : null),
     })
   }
 

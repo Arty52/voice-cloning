@@ -142,6 +142,36 @@ describe("voice assignment segment building", () => {
     ])
   })
 
+  it("applies saved tuning only to assigned non-default voice segments", () => {
+    const text = "Narrator. Villain speaks. Narrator again."
+
+    const result = buildSpeechJobSegments(text, [assignment()], defaultVoice, {
+      voiceSettingsByVoiceId: {
+        narrator: { stability: 0.2 },
+        villain: { speed: 1.14 },
+      },
+    })
+
+    expect(result.error).toBeNull()
+    expect(result.segments[0]).not.toHaveProperty("voiceSettings")
+    expect(result.segments[2]).not.toHaveProperty("voiceSettings")
+    expect(result.segments).toEqual([
+      expect.objectContaining({
+        assignmentKind: "default",
+        voiceId: "narrator",
+      }),
+      expect.objectContaining({
+        assignmentKind: "assigned",
+        voiceId: "villain",
+        voiceSettings: { speed: 1.14 },
+      }),
+      expect.objectContaining({
+        assignmentKind: "default",
+        voiceId: "narrator",
+      }),
+    ])
+  })
+
   it("folds whitespace-only gaps into neighboring speakable segments", () => {
     const text = "  Hello\n\nWorld  "
     const helloStart = text.indexOf("Hello")

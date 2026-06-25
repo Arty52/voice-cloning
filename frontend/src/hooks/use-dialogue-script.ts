@@ -7,16 +7,17 @@ import {
   type MultiVoiceScriptBlock,
   type SpeakerVoiceMapping,
 } from "@/lib/dialogue-script"
-import type { VoiceAsset } from "@/types"
+import type { VoiceAsset, VoiceTuningValues } from "@/types"
 
 export type DialogueInputMode = "range" | "dialogue"
 
 export type UseDialogueScriptOptions = {
   defaultVoice: VoiceAsset | null
+  voiceSettingsByVoiceId?: Record<string, VoiceTuningValues>
   voices: VoiceAsset[]
 }
 
-export function useDialogueScript({ defaultVoice, voices }: UseDialogueScriptOptions) {
+export function useDialogueScript({ defaultVoice, voiceSettingsByVoiceId = {}, voices }: UseDialogueScriptOptions) {
   const [mode, setMode] = useState<DialogueInputMode>("range")
   const [blocks, setBlocks] = useState<MultiVoiceScriptBlock[]>([])
   const [speakerMappings, setSpeakerMappings] = useState<SpeakerVoiceMapping[]>([])
@@ -39,9 +40,10 @@ export function useDialogueScript({ defaultVoice, voices }: UseDialogueScriptOpt
       blocks,
       defaultVoice,
       speakerMappings,
+      voiceSettingsByVoiceId,
       voices,
     })
-  }, [blocks, defaultVoice, speakerMappings, voices])
+  }, [blocks, defaultVoice, speakerMappings, voiceSettingsByVoiceId, voices])
 
   function importFromText(text: string) {
     const nextBlocks = parseSpeakerLabeledScript(text)
