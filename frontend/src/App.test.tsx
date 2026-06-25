@@ -1410,6 +1410,7 @@ describe("App", () => {
       useSpeakerBoost: true,
     })
 
+    await screen.findByRole("heading", { name: "Latest Generated Audio" })
     await user.click(latestGeneratedAudioPanel().getByRole("button", { name: /show segments/i }))
     await user.click(latestGeneratedAudioPanel().getByRole("button", { name: "Save Tuning To Voice" }))
 
@@ -1493,6 +1494,7 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
     await waitFor(() => expect(createJobBody?.segments).toHaveLength(2))
 
+    await screen.findByRole("heading", { name: "Latest Generated Audio" })
     const latestPanel = latestGeneratedAudioPanel()
     await user.click(latestPanel.getByRole("button", { name: /show segments/i }))
     await user.click(latestPanel.getAllByRole("button", { name: /^Tune$/i })[0])
