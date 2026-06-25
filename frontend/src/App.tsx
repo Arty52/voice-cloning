@@ -24,6 +24,8 @@ function App() {
     characterCount,
     clearVoiceAssignments,
     confirmation,
+    dialogue,
+    dialogueSpeechSegmentCount,
     estimatedCredits,
     generatedAudio,
     handleGenerate,
@@ -160,6 +162,8 @@ function App() {
             assignmentsStale={voiceAssignmentsStale}
             canGenerate={canGenerate}
             characterCount={characterCount}
+            dialogue={dialogue}
+            dialogueSpeechSegmentCount={dialogueSpeechSegmentCount}
             isGenerating={isSpeechGenerating}
             onAssignVoice={assignVoiceToSelection}
             onCancelGeneration={cancelGeneration}

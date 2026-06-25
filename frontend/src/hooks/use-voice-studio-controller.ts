@@ -1,7 +1,8 @@
 import { type FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 
-import { DEFAULT_TEXT } from "@/constants"
+import { DEFAULT_TEXT, MAX_SPEECH_TEXT_LENGTH } from "@/constants"
 import { useConfirmation } from "@/hooks/use-confirmation"
+import { useDialogueScript } from "@/hooks/use-dialogue-script"
 import { useGeneratedAudioLibrary } from "@/hooks/use-generated-audio-library"
 import { useProviderKeys } from "@/hooks/use-provider-keys"
 import { useSampleProcessing } from "@/hooks/use-sample-processing"
@@ -17,9 +18,11 @@ import { useVoiceTuning } from "@/hooks/use-voice-tuning"
 import { useWorkflowNavigation } from "@/hooks/use-workflow-navigation"
 import { isTemporaryGeneratedAudioId } from "@/lib/generated-audio-view-model"
 import { formatBytes } from "@/lib/formatters"
+import { readTextareaSelection } from "@/lib/text-selection"
 import {
   buildSpeechJobSegments,
   compareAssignments,
+  createVoiceTextAssignment,
   reconcileVoiceAssignmentsForTextChange,
   type VoiceTextAssignment,
 } from "@/lib/voice-assignments"
@@ -77,6 +80,10 @@ export function useVoiceStudioController() {
     selectedVoice: voiceLibrary.selectedVoice,
     voices: voiceLibrary.voices,
   })
+  const dialogue = useDialogueScript({
+    defaultVoice: voiceLibrary.selectedVoice,
+    voices: voiceLibrary.voices,
+  })
   const workflowNavigation = useWorkflowNavigation()
 
   const selectedModel = metadata.models.find((model) => model.modelId === metadata.selectedModelId) ?? null
@@ -101,7 +108,12 @@ export function useVoiceStudioController() {
       : null
   const archiveStorageError = latestStorageError ? null : generatedAudio.generatedAudioStorageError
   const result = latestGeneratedAudioItem ?? generatedAudio.generatedAudioItems[0] ?? null
-  const characterCount = useMemo(() => text.trim().length, [text])
+  const isDialogueMode = dialogue.mode === "dialogue"
+  const dialogueText = dialogue.segmentBuild.text
+  const characterCount = useMemo(
+    () => (isDialogueMode ? dialogueText.trim().length : text.trim().length),
+    [dialogueText, isDialogueMode, text]
+  )
   const assignmentSegments = useMemo(
     () =>
       voiceLibrary.selectedVoice
@@ -118,12 +130,14 @@ export function useVoiceStudioController() {
       ? "Some assigned voices are no longer in the Voice Library. Remove or update those assignments before generating."
       : null
   }, [voiceAssignments, voiceLibrary.voices])
-  const voiceAssignmentError = assignmentSegments.error ?? missingAssignedVoiceError
+  const voiceAssignmentError = isDialogueMode ? dialogue.segmentBuild.error : assignmentSegments.error ?? missingAssignedVoiceError
   const hasVoiceAssignments = voiceAssignments.length > 0
   const voiceAssignmentSpeechSegmentCount =
-    hasVoiceAssignments && !assignmentSegments.stale && !voiceAssignmentError
+    !isDialogueMode && hasVoiceAssignments && !assignmentSegments.stale && !voiceAssignmentError
       ? assignmentSegments.segments.length
       : null
+  const dialogueSpeechSegmentCount =
+    isDialogueMode && !dialogue.segmentBuild.error ? dialogue.segmentBuild.segments.length : null
   const isSpeechGenerating = speech.isGenerating || multiVoiceSpeech.isGenerating
   const activeSpeechStatus =
     latestGenerationMode === "multi" ? requestStatusFromMultiVoiceStatus(multiVoiceSpeech.status) : speech.status
@@ -131,12 +145,16 @@ export function useVoiceStudioController() {
   const modelMultiplier = selectedModel?.characterCostMultiplier ?? null
   const estimatedCredits = modelMultiplier === null ? characterCount : Math.ceil(characterCount * modelMultiplier)
   const hasModelRate = modelMultiplier !== null
+  const isWithinSpeechTextLimit = characterCount <= MAX_SPEECH_TEXT_LENGTH
   const canGenerate =
-    text.trim().length > 0 &&
+    characterCount > 0 &&
+    isWithinSpeechTextLimit &&
     voiceLibrary.selectedVoice !== null &&
     providerKeys.canUseProvider &&
     !isSpeechGenerating &&
-    (!hasVoiceAssignments || (!assignmentSegments.stale && !voiceAssignmentError && assignmentSegments.segments.length > 0))
+    (isDialogueMode
+      ? !voiceAssignmentError && dialogue.segmentBuild.segments.length > 0
+      : !hasVoiceAssignments || (!assignmentSegments.stale && !voiceAssignmentError && assignmentSegments.segments.length > 0))
   const sectionStatuses = useMemo(
     () =>
       buildWorkflowSectionStatuses({
@@ -212,17 +230,11 @@ export function useVoiceStudioController() {
   }
 
   function handleTextSelectionChange() {
-    const textarea = textRef.current
-    if (!textarea) {
+    const selection = readTextareaSelection(textRef.current)
+    if (!selection) {
       return
     }
-    const start = Math.min(textarea.selectionStart, textarea.selectionEnd)
-    const end = Math.max(textarea.selectionStart, textarea.selectionEnd)
-    setTextSelection({
-      end,
-      start,
-      text: textarea.value.slice(start, end),
-    })
+    setTextSelection(selection)
   }
 
   function handleTextChange(nextText: string) {
@@ -236,6 +248,30 @@ export function useVoiceStudioController() {
   }
 
   async function generateSpeech() {
+    if (isDialogueMode) {
+      setLatestGenerationMode("multi")
+      const generatedResult = await multiVoiceSpeech.generateSpeech({
+        backendDefaultModelId: metadata.backendDefaultModelId,
+        canUseProvider: providerKeys.canUseProvider,
+        defaultVoice: voiceLibrary.selectedVoice,
+        models: metadata.models,
+        provider: providerKeys.activeProvider,
+        providerId: providerKeys.activeProviderId,
+        providerKey: providerKeys.activeProviderKey,
+        segmentGapMs: naturalHandoffsEnabled ? undefined : 0,
+        segments: dialogue.segmentBuild.segments,
+        selectedModelId: metadata.selectedModelId,
+        selectedTuningPresetId,
+        storageLimitBytes: generatedAudio.storageLimitBytes,
+        text: dialogue.segmentBuild.text,
+        tuning,
+      })
+      if (generatedResult) {
+        setLatestGeneratedAudioId(generatedResult.id)
+      }
+      return
+    }
+
     if (hasVoiceAssignments) {
       setLatestGenerationMode("multi")
       const generatedResult = await multiVoiceSpeech.generateSpeech({
@@ -307,18 +343,17 @@ export function useVoiceStudioController() {
   }
 
   function assignVoiceToSelection(voice: VoiceAsset) {
-    if (textSelection.start === textSelection.end || !textSelection.text.trim()) {
+    const selection = readTextareaSelection(textRef.current) ?? textSelection
+    const assignment = createVoiceTextAssignment({
+      id: createVoiceAssignmentId(),
+      selection,
+      sourceText: text,
+      voice,
+    })
+    if (!assignment) {
       return
     }
-    const assignment: VoiceTextAssignment = {
-      end: textSelection.end,
-      id: createVoiceAssignmentId(),
-      sourceText: text,
-      start: textSelection.start,
-      text: text.slice(textSelection.start, textSelection.end),
-      voiceId: voice.id,
-      voiceName: voice.name,
-    }
+    setTextSelection(selection)
     setVoiceAssignments((current) =>
       [...current.filter((candidate) => candidate.end <= assignment.start || candidate.start >= assignment.end), assignment].sort(
         compareAssignments
@@ -398,6 +433,8 @@ export function useVoiceStudioController() {
     cancelGeneration,
     characterCount,
     confirmation,
+    dialogue,
+    dialogueSpeechSegmentCount,
     estimatedCredits,
     generatedAudio,
     handleGenerate,
