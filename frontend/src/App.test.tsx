@@ -1402,7 +1402,7 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
 
     await waitFor(() => expect(createJobBody).not.toBeNull())
-    const submittedJob = createJobBody as NonNullable<Parameters<typeof speechJobFromSubmitted>[0]>
+    const submittedJob = createJobBody as unknown as NonNullable<Parameters<typeof speechJobFromSubmitted>[0]>
     expect(submittedJob.segments[0].voiceSettings).toEqual({
       stability: 0.5,
       similarityBoost: 0.75,
@@ -1494,7 +1494,7 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "Default voice" }))
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
     await waitFor(() => expect(createJobBody).not.toBeNull())
-    const submittedJob = createJobBody as NonNullable<Parameters<typeof speechJobFromSubmitted>[0]>
+    const submittedJob = createJobBody as unknown as NonNullable<Parameters<typeof speechJobFromSubmitted>[0]>
     expect(submittedJob.segments).toHaveLength(2)
 
     await screen.findByRole("heading", { name: "Latest Generated Audio" })
