@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
   areVoiceAssignmentsStale,
   buildSpeechJobSegments,
+  createVoiceTextAssignment,
   reconcileVoiceAssignmentsForTextChange,
   type VoiceTextAssignment,
 } from "./voice-assignments"
@@ -27,6 +28,90 @@ function assignment(overrides: Partial<VoiceTextAssignment> = {}): VoiceTextAssi
 }
 
 describe("voice assignment segment building", () => {
+  it("creates assignments from multi-line selections", () => {
+    const sourceText = "Narrator starts.\nVillain speaks.\nNarrator ends."
+    const start = sourceText.indexOf("Villain")
+    const end = sourceText.indexOf("Narrator ends.")
+
+    expect(
+      createVoiceTextAssignment({
+        id: "multi-line-selection",
+        selection: {
+          end,
+          start,
+          text: sourceText.slice(start, end),
+        },
+        sourceText,
+        voice: characterVoice,
+      })
+    ).toEqual({
+      end,
+      id: "multi-line-selection",
+      sourceText,
+      start,
+      text: "Villain speaks.\n",
+      voiceId: "villain",
+      voiceName: "Villain",
+    })
+  })
+
+  it("ignores whitespace-only selections", () => {
+    expect(
+      createVoiceTextAssignment({
+        id: "empty",
+        selection: { end: 2, start: 0, text: "\n " },
+        sourceText: "\n ",
+        voice: characterVoice,
+      })
+    ).toBeNull()
+  })
+
+  it("creates assignments from normalized source text ranges", () => {
+    const sourceText = "Say hello now."
+    const start = sourceText.indexOf("hello")
+    const end = start + "hello".length
+
+    expect(
+      createVoiceTextAssignment({
+        id: "reversed-selection",
+        selection: {
+          end: start,
+          start: end,
+          text: "stale selection payload",
+        },
+        sourceText,
+        voice: characterVoice,
+      })
+    ).toEqual({
+      end,
+      id: "reversed-selection",
+      sourceText,
+      start,
+      text: "hello",
+      voiceId: "villain",
+      voiceName: "Villain",
+    })
+  })
+
+  it("rejects stale or out-of-bounds selection ranges", () => {
+    expect(
+      createVoiceTextAssignment({
+        id: "stale-empty-slice",
+        selection: { end: 3, start: 0, text: "real text" },
+        sourceText: "   ",
+        voice: characterVoice,
+      })
+    ).toBeNull()
+    expect(
+      createVoiceTextAssignment({
+        id: "outside",
+        selection: { end: 8, start: 0, text: "outside" },
+        sourceText: "short",
+        voice: characterVoice,
+      })
+    ).toBeNull()
+  })
+
   it("expands assignments and default spans into ordered speech job segments", () => {
     const text = "Narrator. Villain speaks. Narrator again."
 

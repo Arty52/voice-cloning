@@ -1,4 +1,5 @@
 import type { SpeechSegmentAssignmentKind, VoiceAsset, VoiceTuningValues } from "@/types"
+import type { TextSelectionRange } from "@/lib/text-selection"
 
 export type VoiceTextAssignment = {
   id: string
@@ -28,6 +29,13 @@ export type AssignmentSegmentBuildResult = {
   stale: boolean
 }
 
+export type VoiceTextAssignmentInput = {
+  id: string
+  selection: TextSelectionRange
+  sourceText: string
+  voice: Pick<VoiceAsset, "id" | "name">
+}
+
 type SpanDraft = {
   assignmentId: string | null
   assignmentKind: SpeechSegmentAssignmentKind
@@ -40,6 +48,34 @@ type SpanDraft = {
 
 export function areVoiceAssignmentsStale(text: string, assignments: VoiceTextAssignment[]) {
   return assignments.some((assignment) => isAssignmentStale(text, assignment))
+}
+
+export function createVoiceTextAssignment({
+  id,
+  selection,
+  sourceText,
+  voice,
+}: VoiceTextAssignmentInput): VoiceTextAssignment | null {
+  const start = Math.min(selection.start, selection.end)
+  const end = Math.max(selection.start, selection.end)
+  if (start < 0 || end > sourceText.length || start === end) {
+    return null
+  }
+
+  const selectedText = sourceText.slice(start, end)
+  if (selectedText.trim().length === 0) {
+    return null
+  }
+
+  return {
+    end,
+    id,
+    sourceText,
+    start,
+    text: selectedText,
+    voiceId: voice.id,
+    voiceName: voice.name,
+  }
 }
 
 export function reconcileVoiceAssignmentsForTextChange(
