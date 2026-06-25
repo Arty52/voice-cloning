@@ -107,6 +107,30 @@ export function useDialogueScript({
     )
   }
 
+  function applyBlockVoiceSettingsToMatchingVoice(blockId: string, voiceSettings: VoiceTuningValues) {
+    setBlocks((current) => {
+      const sourceBlock = current.find((block) => block.id === blockId)
+      if (!sourceBlock) {
+        return current
+      }
+
+      const voiceIds = new Set(voices.map((voice) => voice.id))
+      const sourceVoiceId = resolveBlockVoiceId(sourceBlock, speakerMappings, defaultVoice, voiceIds)
+      if (!sourceVoiceId) {
+        return current
+      }
+
+      return current.map((block) =>
+        resolveBlockVoiceId(block, speakerMappings, defaultVoice, voiceIds) === sourceVoiceId
+          ? {
+              ...block,
+              voiceSettings: { ...voiceSettings },
+            }
+          : block
+      )
+    })
+  }
+
   function updateSpeakerMapping(speakerLabel: string, voice: VoiceAsset | null) {
     const normalizedLabel = normalizeSpeakerLabel(speakerLabel)
     if (!normalizedLabel) {
@@ -169,6 +193,7 @@ export function useDialogueScript({
 
   return {
     allBlocksSelected,
+    applyBlockVoiceSettingsToMatchingVoice,
     assignSelectedBlocks,
     blocks,
     clearSelectedBlocks,
@@ -231,6 +256,25 @@ function ensureSpeakerMapping(mappings: SpeakerVoiceMapping[], speakerLabel: str
     return mappings
   }
   return [...mappings, { speakerLabel, voiceId: null }]
+}
+
+function resolveBlockVoiceId(
+  block: MultiVoiceScriptBlock,
+  speakerMappings: SpeakerVoiceMapping[],
+  defaultVoice: VoiceAsset | null,
+  voiceIds: Set<string>
+) {
+  if (block.voiceId) {
+    return voiceIds.has(block.voiceId) ? block.voiceId : null
+  }
+
+  if (block.speakerLabel) {
+    const mappedVoiceId =
+      speakerMappings.find((mapping) => mapping.speakerLabel === block.speakerLabel)?.voiceId ?? null
+    return mappedVoiceId && voiceIds.has(mappedVoiceId) ? mappedVoiceId : null
+  }
+
+  return defaultVoice && voiceIds.has(defaultVoice.id) ? defaultVoice.id : null
 }
 
 function sharedSelectedSpeakerLabel(blocks: MultiVoiceScriptBlock[]) {

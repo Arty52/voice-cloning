@@ -2,6 +2,7 @@ import { Pencil, RefreshCw, SlidersHorizontal, Sparkles, Trash2, UserPlus, X } f
 import { useState, type FormEvent, type KeyboardEvent, type ReactNode, type RefObject } from "react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { ActionMenu } from "@/components/ui/action-menu"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -564,18 +565,33 @@ function DialogueRow({
   tuning,
   voices,
 }: DialogueRowProps) {
-  const mapping = block.speakerLabel
-    ? dialogue.speakerMappings.find((candidate) => candidate.speakerLabel === block.speakerLabel)
-    : null
-  const overrideVoice = voices.find((voice) => voice.id === block.voiceId) ?? null
-  const mappedVoice = voices.find((voice) => voice.id === mapping?.voiceId) ?? null
-  const effectiveVoice = overrideVoice ?? mappedVoice ?? (block.speakerLabel ? null : defaultVoice)
+  const { effectiveVoice, mappedVoice, overrideVoice } = resolveDialogueRowVoice({
+    block,
+    defaultVoice,
+    speakerMappings: dialogue.speakerMappings,
+    voices,
+  })
   const mappingMissing = Boolean(block.speakerLabel && !effectiveVoice)
   const isAssignedVoice = Boolean(overrideVoice || mappedVoice)
   const savedVoiceTuning =
     isAssignedVoice && effectiveVoice ? resolveSavedVoiceTuning(activeProviderId, effectiveVoice) : null
   const rowTuning = block.voiceSettings ?? savedVoiceTuning ?? tuning
   const hasCustomRowTuning = block.voiceSettings !== null && block.voiceSettings !== undefined
+  const hasMatchingVoiceRows =
+    effectiveVoice !== null &&
+    dialogue.blocks.some((candidate) => {
+      if (candidate.id === block.id) {
+        return false
+      }
+      return (
+        resolveDialogueRowVoice({
+          block: candidate,
+          defaultVoice,
+          speakerMappings: dialogue.speakerMappings,
+          voices,
+        }).effectiveVoice?.id === effectiveVoice.id
+      )
+    })
   const speakerId = `${block.id}-speaker`
   const textId = `${block.id}-text`
 
@@ -652,10 +668,24 @@ function DialogueRow({
                   className="w-80 sm:w-96"
                   onOpenAutoFocus={(event) => event.preventDefault()}
                 >
-                  <PopoverHeader>
-                    <PopoverTitle>Dialogue Row {index + 1} Tuning</PopoverTitle>
-                    <PopoverDescription>Adjust settings for this dialogue row before generation.</PopoverDescription>
-                  </PopoverHeader>
+                  <div className="flex items-start justify-between gap-3">
+                    <PopoverHeader className="min-w-0 flex-1">
+                      <PopoverTitle>Dialogue Row {index + 1} Tuning</PopoverTitle>
+                      <PopoverDescription>Adjust settings for this dialogue row before generation.</PopoverDescription>
+                    </PopoverHeader>
+                    <ActionMenu
+                      ariaLabel={`Open Dialogue Row ${index + 1} Tuning Actions`}
+                      disabled={isGenerating || !effectiveVoice}
+                      items={[
+                        {
+                          disabled: !hasCustomRowTuning || !hasMatchingVoiceRows,
+                          icon: <SlidersHorizontal aria-hidden="true" className="size-4" />,
+                          label: "Apply Tuning To Same Voice Rows",
+                          onSelect: () => dialogue.applyBlockVoiceSettingsToMatchingVoice(block.id, rowTuning),
+                        },
+                      ]}
+                    />
+                  </div>
                   <VoiceTuningControls
                     className="mt-4 grid-cols-1"
                     controls={providerTuningControls}
@@ -701,6 +731,31 @@ function DialogueRow({
       </div>
     </article>
   )
+}
+
+function resolveDialogueRowVoice({
+  block,
+  defaultVoice,
+  speakerMappings,
+  voices,
+}: {
+  block: MultiVoiceScriptBlock
+  defaultVoice: VoiceAsset | null
+  speakerMappings: DialogueScriptController["speakerMappings"]
+  voices: VoiceAsset[]
+}) {
+  const mapping = block.speakerLabel
+    ? speakerMappings.find((candidate) => candidate.speakerLabel === block.speakerLabel)
+    : null
+  const overrideVoice = voices.find((voice) => voice.id === block.voiceId) ?? null
+  const mappedVoice = voices.find((voice) => voice.id === mapping?.voiceId) ?? null
+  const effectiveVoice = overrideVoice ?? mappedVoice ?? (block.speakerLabel ? null : defaultVoice)
+
+  return {
+    effectiveVoice,
+    mappedVoice,
+    overrideVoice,
+  }
 }
 
 function preventFormSubmitOnEnter(event: KeyboardEvent<HTMLInputElement>) {
