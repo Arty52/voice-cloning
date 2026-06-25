@@ -367,10 +367,10 @@ function segmentVoiceOptions(voices: VoiceAsset[], segment: GeneratedAudioMultiV
   return options
 }
 
-function noopRegenerateVoiceSegments(_voiceId: string, _voiceSettings: VoiceTuningValues) {
+function noopRegenerateVoiceSegments() {
   return undefined
 }
 
-function noopSaveVoiceTuning(_voiceId: string, _voiceSettings: VoiceTuningValues) {
+function noopSaveVoiceTuning() {
   return undefined
 }
