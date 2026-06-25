@@ -1,4 +1,4 @@
-import { Pencil, RefreshCw, Sparkles, Trash2, UserPlus, X } from "lucide-react"
+import { Pencil, RefreshCw, SlidersHorizontal, Sparkles, Trash2, UserPlus, X } from "lucide-react"
 import { useState, type FormEvent, type KeyboardEvent, type ReactNode, type RefObject } from "react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -29,15 +29,18 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { VoiceTuningControls } from "@/components/voice-tuning-controls"
 import { MAX_SPEECH_TEXT_LENGTH } from "@/constants"
 import { useIsMobile } from "@/hooks/use-mobile"
 import type { DialogueScriptController } from "@/hooks/use-dialogue-script"
 import { speakerColorClassName, type MultiVoiceScriptBlock } from "@/lib/dialogue-script"
 import { cn } from "@/lib/utils"
+import { resolveSavedVoiceTuning } from "@/lib/voice-tuning"
 import type { VoiceTextAssignment } from "@/lib/voice-assignments"
-import type { VoiceAsset } from "@/types"
+import type { ProviderTuningControl, ProviderTuningValue, VoiceAsset, VoiceTuningValues } from "@/types"
 
 type SpeechInputPanelProps = {
+  activeProviderId?: string | null
   assignmentError: string | null
   assignmentSpeechSegmentCount: number | null
   assignments: VoiceTextAssignment[]
@@ -57,14 +60,17 @@ type SpeechInputPanelProps = {
   onRemoveAssignment: (assignmentId: string) => void
   onTextChange: (text: string) => void
   onTextSelectionChange: () => void
+  providerTuningControls?: ProviderTuningControl[]
   selectedVoice: VoiceAsset | null
   selectedText: string
   text: string
   textRef: RefObject<HTMLTextAreaElement | null>
+  tuning?: VoiceTuningValues
   voices: VoiceAsset[]
 }
 
 export function SpeechInputPanel({
+  activeProviderId = null,
   assignmentError,
   assignmentSpeechSegmentCount,
   assignments,
@@ -84,10 +90,12 @@ export function SpeechInputPanel({
   onRemoveAssignment,
   onTextChange,
   onTextSelectionChange,
+  providerTuningControls = [],
   selectedVoice,
   selectedText,
   text,
   textRef,
+  tuning = {},
   voices,
 }: SpeechInputPanelProps) {
   const isDialogueMode = dialogue.mode === "dialogue"
@@ -258,10 +266,13 @@ export function SpeechInputPanel({
 
       {isDialogueMode ? (
         <DialogueEditor
+          activeProviderId={activeProviderId}
           defaultVoice={selectedVoice}
           dialogue={dialogue}
           dialogueSpeechSegmentCount={dialogueSpeechSegmentCount}
           isGenerating={isGenerating}
+          providerTuningControls={providerTuningControls}
+          tuning={tuning}
           voices={voices}
         />
       ) : null}
@@ -386,18 +397,24 @@ function VoiceAssignmentsList({
 }
 
 type DialogueEditorProps = {
+  activeProviderId: string | null
   defaultVoice: VoiceAsset | null
   dialogue: DialogueScriptController
   dialogueSpeechSegmentCount: number | null
   isGenerating: boolean
+  providerTuningControls: ProviderTuningControl[]
+  tuning: VoiceTuningValues
   voices: VoiceAsset[]
 }
 
 function DialogueEditor({
+  activeProviderId,
   defaultVoice,
   dialogue,
   dialogueSpeechSegmentCount,
   isGenerating,
+  providerTuningControls,
+  tuning,
   voices,
 }: DialogueEditorProps) {
   const selectedRowsLabel = formatCount(dialogue.selectedBlockCount, "Selected Row")
@@ -456,11 +473,14 @@ function DialogueEditor({
         <div className="grid gap-3">
           {dialogue.blocks.map((block, index) => (
             <DialogueRow
+              activeProviderId={activeProviderId}
               block={block}
               defaultVoice={defaultVoice}
               dialogue={dialogue}
               index={index}
               isGenerating={isGenerating}
+              providerTuningControls={providerTuningControls}
+              tuning={tuning}
               key={block.id}
               voices={voices}
             />
@@ -522,15 +542,28 @@ function SpeakerMappings({ dialogue, isGenerating, voices }: SpeakerMappingsProp
 }
 
 type DialogueRowProps = {
+  activeProviderId: string | null
   block: MultiVoiceScriptBlock
   defaultVoice: VoiceAsset | null
   dialogue: DialogueScriptController
   index: number
   isGenerating: boolean
+  providerTuningControls: ProviderTuningControl[]
+  tuning: VoiceTuningValues
   voices: VoiceAsset[]
 }
 
-function DialogueRow({ block, defaultVoice, dialogue, index, isGenerating, voices }: DialogueRowProps) {
+function DialogueRow({
+  activeProviderId,
+  block,
+  defaultVoice,
+  dialogue,
+  index,
+  isGenerating,
+  providerTuningControls,
+  tuning,
+  voices,
+}: DialogueRowProps) {
   const mapping = block.speakerLabel
     ? dialogue.speakerMappings.find((candidate) => candidate.speakerLabel === block.speakerLabel)
     : null
@@ -538,8 +571,20 @@ function DialogueRow({ block, defaultVoice, dialogue, index, isGenerating, voice
   const mappedVoice = voices.find((voice) => voice.id === mapping?.voiceId) ?? null
   const effectiveVoice = overrideVoice ?? mappedVoice ?? (block.speakerLabel ? null : defaultVoice)
   const mappingMissing = Boolean(block.speakerLabel && !effectiveVoice)
+  const isAssignedVoice = Boolean(overrideVoice || mappedVoice)
+  const savedVoiceTuning =
+    isAssignedVoice && effectiveVoice ? resolveSavedVoiceTuning(activeProviderId, effectiveVoice) : null
+  const rowTuning = block.voiceSettings ?? savedVoiceTuning ?? tuning
+  const hasCustomRowTuning = block.voiceSettings !== null && block.voiceSettings !== undefined
   const speakerId = `${block.id}-speaker`
   const textId = `${block.id}-text`
+
+  function handleRowTuningValueChange(control: ProviderTuningControl, value: ProviderTuningValue) {
+    dialogue.updateBlockVoiceSettings(block.id, {
+      ...rowTuning,
+      [control.id]: value,
+    })
+  }
 
   return (
     <article
@@ -587,6 +632,41 @@ function DialogueRow({ block, defaultVoice, dialogue, index, isGenerating, voice
             <Badge variant={overrideVoice ? "accent" : "secondary"}>
               {effectiveVoice?.name ?? "Mapping Required"}
             </Badge>
+            {hasCustomRowTuning ? <Badge variant="accent">Custom Tuning</Badge> : null}
+            {providerTuningControls.length > 0 ? (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    aria-label={`Tune Dialogue Row ${index + 1}`}
+                    disabled={isGenerating || !effectiveVoice}
+                    size="sm"
+                    type="button"
+                    variant="secondary"
+                  >
+                    <SlidersHorizontal aria-hidden="true" data-icon="inline-start" />
+                    Tune
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  align="end"
+                  className="w-80 sm:w-96"
+                  onOpenAutoFocus={(event) => event.preventDefault()}
+                >
+                  <PopoverHeader>
+                    <PopoverTitle>Dialogue Row {index + 1} Tuning</PopoverTitle>
+                    <PopoverDescription>Adjust settings for this dialogue row before generation.</PopoverDescription>
+                  </PopoverHeader>
+                  <VoiceTuningControls
+                    className="mt-4 grid-cols-1"
+                    controls={providerTuningControls}
+                    disabled={isGenerating || !effectiveVoice}
+                    idPrefix={`dialogue-row-${block.id}-tuning`}
+                    onTuningValueChange={handleRowTuningValueChange}
+                    tuning={rowTuning}
+                  />
+                </PopoverContent>
+              </Popover>
+            ) : null}
             <VoicePickerControl
               description="Choose a row-specific voice."
               disabled={isGenerating || voices.length === 0}
