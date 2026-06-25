@@ -527,4 +527,14 @@ The response is `202` with `{ "job": { ... } }`:
 
 Regeneration increments the segment `generationCount`, refreshes the segment and combined `resultSha256` values, and returns `202` with the updated job state while the segment is pending/running.
 
+`POST /api/speech/jobs/{jobId}/voices/{voiceId}/regenerate` starts regeneration for every successful segment in the job that currently uses `voiceId`, then rebuilds the combined result once. The JSON body must include replacement tuning for the affected segments:
+
+```json
+{
+  "voiceSettings": { "speed": 1.2, "stability": 0.36 }
+}
+```
+
+Bulk voice regeneration requires an idle successful job and at least one successful segment using that voice. It returns `409` while a job is running or before the job succeeds, and `404` when the job has no successful segments for the requested voice.
+
 Speech jobs keep runtime files under ignored `storage/speech-jobs/`. Segment generation reuses the normal provider clone cache. Final assembly requires FFmpeg through `SAMPLE_PROCESSING_FFMPEG_COMMAND`; Docker includes FFmpeg by default, and host development must have the command available on `PATH` or configured with an absolute path. Combined multi-voice results use the job's effective `segmentGapMs`; when the request omits it, the backend default comes from `SPEECH_JOB_SEGMENT_GAP_MS` and defaults to `250`.
