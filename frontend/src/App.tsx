@@ -39,6 +39,8 @@ function App() {
     latestStorageError,
     metadata,
     naturalHandoffsEnabled,
+    naturalHandoffsSaveError,
+    naturalHandoffsUnsaved,
     multiVoiceSegmentResultUrls,
     navigateToSection,
     providerKeys,
@@ -51,6 +53,7 @@ function App() {
     removeVoiceAssignment,
     revealAddVoice,
     sampleProcessing,
+    saveNaturalHandoffsDefault,
     saveGeneratedSegmentTuningToVoice,
     sectionStatuses,
     selectedModel,
@@ -174,6 +177,7 @@ function App() {
             onEditAssignmentVoice={updateVoiceAssignment}
             onGenerate={handleGenerate}
             onNaturalHandoffsEnabledChange={setNaturalHandoffsEnabled}
+            onSaveNaturalHandoffsDefault={saveNaturalHandoffsDefault}
             onRemoveAssignment={removeVoiceAssignment}
             onTextChange={setText}
             onTextSelectionChange={handleTextSelectionChange}
@@ -181,6 +185,8 @@ function App() {
             selectedVoice={voiceLibrary.selectedVoice}
             selectedText={textSelection.text}
             naturalHandoffsEnabled={naturalHandoffsEnabled}
+            naturalHandoffsSaveError={naturalHandoffsSaveError}
+            naturalHandoffsUnsaved={naturalHandoffsUnsaved}
             text={text}
             textRef={textRef}
             tuning={tuning}

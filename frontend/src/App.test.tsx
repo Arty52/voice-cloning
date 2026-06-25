@@ -1251,6 +1251,48 @@ describe("App", () => {
     expect(screen.getByRole("checkbox", { name: "Natural Handoffs" })).not.toBeChecked()
   })
 
+  it("saves natural handoffs browser default changes", async () => {
+    const user = userEvent.setup()
+
+    async function showNaturalHandoffsControl() {
+      await screen.findByText("default/default-voice.mp3")
+      const textarea = screen.getByLabelText(/text to speak/i) as HTMLTextAreaElement
+      fireEvent.change(textarea, { target: { value: "say hello world now" } })
+      textarea.setSelectionRange("say ".length, "say hello world".length)
+      fireEvent.select(textarea)
+
+      await user.click(screen.getByRole("button", { name: /^Assign Voice$/i }))
+      await user.click(screen.getByRole("button", { name: "Default voice" }))
+
+      return screen.getByRole("checkbox", { name: "Natural Handoffs" })
+    }
+
+    const firstRender = renderApp()
+    const initialHandoffs = await showNaturalHandoffsControl()
+
+    expect(initialHandoffs).toBeChecked()
+    expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument()
+
+    await user.click(initialHandoffs)
+    await user.click(screen.getByRole("button", { name: "Save" }))
+
+    expect(localStorage.getItem(NATURAL_HANDOFFS_STORAGE_KEY)).toBe("false")
+    expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument()
+
+    firstRender.unmount()
+
+    renderApp()
+    const savedHandoffs = await showNaturalHandoffsControl()
+
+    expect(savedHandoffs).not.toBeChecked()
+
+    await user.click(savedHandoffs)
+    await user.click(screen.getByRole("button", { name: "Save" }))
+
+    expect(localStorage.getItem(NATURAL_HANDOFFS_STORAGE_KEY)).toBe("true")
+    expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument()
+  })
+
   it("blocks multi-voice generation when an assigned voice is deleted", async () => {
     window.history.replaceState(null, "", "/#generate")
     const createSpeechJob = vi.fn()
