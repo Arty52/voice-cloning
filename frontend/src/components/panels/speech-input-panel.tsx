@@ -1,4 +1,4 @@
-import { Pencil, RefreshCw, SlidersHorizontal, Sparkles, Trash2, UserPlus, X } from "lucide-react"
+import { Pencil, RefreshCw, Save, SlidersHorizontal, Sparkles, Trash2, UserPlus, X } from "lucide-react"
 import { useState, type FormEvent, type KeyboardEvent, type ReactNode, type RefObject } from "react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -52,12 +52,15 @@ type SpeechInputPanelProps = {
   dialogueSpeechSegmentCount: number | null
   isGenerating: boolean
   naturalHandoffsEnabled: boolean
+  naturalHandoffsSaveError?: string | null
+  naturalHandoffsUnsaved?: boolean
   onAssignVoice: (voice: VoiceAsset) => void
   onCancelGeneration: () => void
   onClearAssignments: () => void
   onEditAssignmentVoice: (assignmentId: string, voice: VoiceAsset) => void
   onGenerate: (event?: FormEvent<HTMLFormElement>) => void
   onNaturalHandoffsEnabledChange: (enabled: boolean) => void
+  onSaveNaturalHandoffsDefault?: () => void
   onRemoveAssignment: (assignmentId: string) => void
   onTextChange: (text: string) => void
   onTextSelectionChange: () => void
@@ -82,12 +85,15 @@ export function SpeechInputPanel({
   dialogueSpeechSegmentCount,
   isGenerating,
   naturalHandoffsEnabled,
+  naturalHandoffsSaveError = null,
+  naturalHandoffsUnsaved = false,
   onAssignVoice,
   onCancelGeneration,
   onClearAssignments,
   onEditAssignmentVoice,
   onGenerate,
   onNaturalHandoffsEnabledChange,
+  onSaveNaturalHandoffsDefault = noopSaveNaturalHandoffsDefault,
   onRemoveAssignment,
   onTextChange,
   onTextSelectionChange,
@@ -218,21 +224,41 @@ export function SpeechInputPanel({
           className="mt-3 rounded-md border border-border bg-background/60 p-3"
           data-disabled={isGenerating ? "" : undefined}
         >
-          <div className="flex items-start gap-3">
-            <Checkbox
-              aria-describedby="natural-handoffs-description"
-              checked={naturalHandoffsEnabled}
-              disabled={isGenerating}
-              id="natural-handoffs"
-              onCheckedChange={(checked) => onNaturalHandoffsEnabledChange(checked === true)}
-            />
-            <div className="flex min-w-0 flex-col gap-1">
-              <FieldLabel htmlFor="natural-handoffs">Natural Handoffs</FieldLabel>
-              <FieldDescription id="natural-handoffs-description">
-                Adds a short pause between generated speech segments.
-              </FieldDescription>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex items-start gap-3">
+              <Checkbox
+                aria-describedby="natural-handoffs-description"
+                checked={naturalHandoffsEnabled}
+                disabled={isGenerating}
+                id="natural-handoffs"
+                onCheckedChange={(checked) => onNaturalHandoffsEnabledChange(checked === true)}
+              />
+              <div className="flex min-w-0 flex-col gap-1">
+                <FieldLabel htmlFor="natural-handoffs">Natural Handoffs</FieldLabel>
+                <FieldDescription id="natural-handoffs-description">
+                  Adds a short pause between generated speech segments.
+                </FieldDescription>
+              </div>
             </div>
+            {naturalHandoffsUnsaved ? (
+              <Button
+                disabled={isGenerating}
+                onClick={onSaveNaturalHandoffsDefault}
+                size="sm"
+                type="button"
+                variant="secondary"
+              >
+                <Save aria-hidden="true" data-icon="inline-start" />
+                Save
+              </Button>
+            ) : null}
           </div>
+          {naturalHandoffsSaveError ? (
+            <Alert className="border-destructive/40 bg-destructive/10 text-destructive" role="alert">
+              <AlertTitle>Save Failed</AlertTitle>
+              <AlertDescription>{naturalHandoffsSaveError}</AlertDescription>
+            </Alert>
+          ) : null}
         </Field>
       ) : null}
 
@@ -961,3 +987,5 @@ function assignedVoices(assignments: VoiceTextAssignment[], voices: VoiceAsset[]
 
   return result
 }
+
+function noopSaveNaturalHandoffsDefault() {}

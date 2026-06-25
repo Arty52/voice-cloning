@@ -492,13 +492,49 @@ describe("SpeechInputPanel voice assignments", () => {
     expect(props.onNaturalHandoffsEnabledChange).toHaveBeenCalledWith(false)
   })
 
+  it("hides the natural handoffs save action when the default is unchanged", () => {
+    renderPanel({
+      assignments: [assignment],
+      naturalHandoffsUnsaved: false,
+    })
+
+    expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument()
+  })
+
+  it("saves a changed natural handoffs browser default", async () => {
+    const user = userEvent.setup()
+    const props = renderPanel({
+      assignments: [assignment],
+      naturalHandoffsUnsaved: true,
+      onSaveNaturalHandoffsDefault: vi.fn(),
+    })
+
+    await user.click(screen.getByRole("button", { name: "Save" }))
+
+    expect(props.onSaveNaturalHandoffsDefault).toHaveBeenCalledTimes(1)
+  })
+
   it("disables natural handoffs while generating", () => {
     renderPanel({
       assignments: [assignment],
       isGenerating: true,
+      naturalHandoffsUnsaved: true,
     })
 
     expect(screen.getByRole("checkbox", { name: "Natural Handoffs" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled()
+  })
+
+  it("shows natural handoffs save failures inline", () => {
+    renderPanel({
+      assignments: [assignment],
+      naturalHandoffsSaveError: "Browser storage is blocked.",
+      naturalHandoffsUnsaved: true,
+    })
+
+    const alert = screen.getByRole("alert")
+    expect(alert).toHaveTextContent("Save Failed")
+    expect(alert).toHaveTextContent("Browser storage is blocked.")
   })
 
   it("shows unique quick assignment shortcuts for assigned voices", async () => {
