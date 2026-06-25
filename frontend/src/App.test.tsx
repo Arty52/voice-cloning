@@ -12,6 +12,7 @@ import {
   listGeneratedAudio,
   saveGeneratedAudio,
 } from "./lib/generated-audio-storage"
+import { NATURAL_HANDOFFS_STORAGE_KEY } from "./lib/natural-handoffs-preference"
 import { PROVIDER_KEYS_STORAGE_KEY } from "./lib/provider-keys"
 import type { ProvidersResponse } from "./types"
 
@@ -1231,6 +1232,23 @@ describe("App", () => {
         speed: 1.2,
       }),
     })
+  })
+
+  it("loads a saved disabled natural handoffs browser default", async () => {
+    localStorage.setItem(NATURAL_HANDOFFS_STORAGE_KEY, "false")
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    const textarea = screen.getByLabelText(/text to speak/i) as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: "say hello world now" } })
+    textarea.setSelectionRange("say ".length, "say hello world".length)
+    fireEvent.select(textarea)
+
+    await user.click(screen.getByRole("button", { name: /^Assign Voice$/i }))
+    await user.click(screen.getByRole("button", { name: "Default voice" }))
+
+    expect(screen.getByRole("checkbox", { name: "Natural Handoffs" })).not.toBeChecked()
   })
 
   it("blocks multi-voice generation when an assigned voice is deleted", async () => {
