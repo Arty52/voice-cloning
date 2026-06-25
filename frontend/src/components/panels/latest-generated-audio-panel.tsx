@@ -11,6 +11,7 @@ import {
   PopoverTitle,
   PopoverTrigger,
 } from "@/components/ui/popover"
+import { ActionMenu } from "@/components/ui/action-menu"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -19,6 +20,7 @@ import { MenuSelect } from "@/components/ui/menu-select"
 import { Separator } from "@/components/ui/separator"
 import { VoiceTuningControls } from "@/components/voice-tuning-controls"
 import { cn } from "@/lib/utils"
+import { resolveSavedVoiceTuning, voiceTuningValuesEqual } from "@/lib/voice-tuning"
 import type {
   GeneratedAudioMultiVoiceSegmentMetadata,
   GeneratedResult,
@@ -222,11 +224,17 @@ function MultiVoiceSegmentResults({
               const voiceOptions = segmentVoiceOptions(voices, segment)
               const selectedTuning = segmentTuning[segment.id] ?? segment.voiceSettings ?? tuning
               const segmentUrl = segmentResultUrls[segment.id]
-              const hasCustomSegmentTuning = segment.voiceSettings !== null && segment.voiceSettings !== undefined
               const hasPendingSegmentTuning = segmentTuning[segment.id] !== undefined
-              const canSaveTuning = hasCustomSegmentTuning || hasPendingSegmentTuning
               const sharesVoice = (segmentCountByVoiceId[segment.voiceId] ?? 0) > 1
-              const selectedVoiceExists = voices.some((voice) => voice.id === selectedVoiceId)
+              const selectedVoice = voices.find((voice) => voice.id === selectedVoiceId) ?? null
+              const selectedVoiceExists = selectedVoice !== null
+              const savedVoiceTuning = resolveSavedVoiceTuning(activeProviderId, selectedVoice)
+              const segmentDefaultTuning = savedVoiceTuning ?? tuning
+              const hasExplicitSegmentTuning =
+                segment.voiceSettings !== null &&
+                segment.voiceSettings !== undefined &&
+                !voiceTuningValuesEqual(segment.voiceSettings, segmentDefaultTuning)
+              const hasActionableSegmentTuning = hasPendingSegmentTuning || hasExplicitSegmentTuning
               return (
                 <article className="rounded-md border border-border/70 bg-background/40 p-3" key={segment.id}>
                   <div className="mb-3 flex flex-col gap-2">
@@ -264,12 +272,40 @@ function MultiVoiceSegmentResults({
                           className="w-80 sm:w-96"
                           onOpenAutoFocus={(event) => event.preventDefault()}
                         >
-                          <PopoverHeader>
-                            <PopoverTitle>Segment {segment.index + 1} Tuning</PopoverTitle>
-                            <PopoverDescription>
-                              Adjust settings for the next time this segment regenerates.
-                            </PopoverDescription>
-                          </PopoverHeader>
+                          <div className="flex items-start justify-between gap-3">
+                            <PopoverHeader className="min-w-0 flex-1">
+                              <PopoverTitle>Segment {segment.index + 1} Tuning</PopoverTitle>
+                              <PopoverDescription>
+                                Adjust settings for the next time this segment regenerates.
+                              </PopoverDescription>
+                            </PopoverHeader>
+                            <ActionMenu
+                              ariaLabel={`Open Segment ${segment.index + 1} Tuning Actions`}
+                              disabled={disabled || !segmentUrl}
+                              items={[
+                                {
+                                  disabled: !hasActionableSegmentTuning || !sharesVoice,
+                                  icon: <RefreshCw aria-hidden="true" className="size-4" />,
+                                  label: "Regenerate Same Voice Segments",
+                                  onSelect: () => onRegenerateVoiceSegments(segment.voiceId, selectedTuning),
+                                },
+                                {
+                                  disabled:
+                                    !hasActionableSegmentTuning ||
+                                    isSavingVoiceTuning ||
+                                    !activeProviderId ||
+                                    !selectedVoiceExists,
+                                  icon: isSavingVoiceTuning ? (
+                                    <Loading aria-hidden="true" size="sm" />
+                                  ) : (
+                                    <SlidersHorizontal aria-hidden="true" className="size-4" />
+                                  ),
+                                  label: "Save Tuning To Voice",
+                                  onSelect: () => onSaveVoiceTuning(selectedVoiceId, selectedTuning),
+                                },
+                              ]}
+                            />
+                          </div>
                           <VoiceTuningControls
                             className="mt-4 grid-cols-1"
                             controls={providerTuningControls}
@@ -282,34 +318,6 @@ function MultiVoiceSegmentResults({
                           />
                         </PopoverContent>
                       </Popover>
-                    ) : null}
-                    {providerTuningControls.length > 0 && sharesVoice ? (
-                      <Button
-                        disabled={disabled || !segmentUrl}
-                        onClick={() => onRegenerateVoiceSegments(segment.voiceId, selectedTuning)}
-                        size="sm"
-                        type="button"
-                        variant="secondary"
-                      >
-                        <RefreshCw aria-hidden="true" data-icon="inline-start" />
-                        Regenerate All For Voice
-                      </Button>
-                    ) : null}
-                    {providerTuningControls.length > 0 && canSaveTuning ? (
-                      <Button
-                        disabled={disabled || isSavingVoiceTuning || !activeProviderId || !selectedVoiceExists}
-                        onClick={() => onSaveVoiceTuning(selectedVoiceId, selectedTuning)}
-                        size="sm"
-                        type="button"
-                        variant="secondary"
-                      >
-                        {isSavingVoiceTuning ? (
-                          <Loading aria-hidden="true" size="sm" />
-                        ) : (
-                          <SlidersHorizontal aria-hidden="true" data-icon="inline-start" />
-                        )}
-                        Save Tuning To Voice
-                      </Button>
                     ) : null}
                     <MenuSelect
                       ariaLabel={`Voice For Segment ${segment.index + 1}`}
