@@ -88,6 +88,19 @@ export function useDialogueScript({ defaultVoice, voiceSettingsByVoiceId = {}, v
     )
   }
 
+  function updateBlockVoiceSettings(blockId: string, voiceSettings: VoiceTuningValues | null) {
+    setBlocks((current) =>
+      current.map((block) =>
+        block.id === blockId
+          ? {
+              ...block,
+              voiceSettings: voiceSettings ? { ...voiceSettings } : null,
+            }
+          : block
+      )
+    )
+  }
+
   function updateSpeakerMapping(speakerLabel: string, voice: VoiceAsset | null) {
     const normalizedLabel = normalizeSpeakerLabel(speakerLabel)
     if (!normalizedLabel) {
@@ -166,6 +179,7 @@ export function useDialogueScript({ defaultVoice, voiceSettingsByVoiceId = {}, v
     updateBlockSpeakerLabel,
     updateBlockText,
     updateBlockVoice,
+    updateBlockVoiceSettings,
     updateSpeakerMapping,
   }
 }
