@@ -69,7 +69,7 @@ export const WORKFLOW_SECTIONS: WorkflowSection[] = [
     stepLabel: "Start",
   },
   {
-    description: "Upload, record, or process source audio before saving it as a voice.",
+    description: "Choose whether to add a ready voice sample or process source audio first.",
     hash: "#prepare",
     icon: Wand2,
     id: "prepare",

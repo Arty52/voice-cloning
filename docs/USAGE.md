@@ -103,7 +103,7 @@ http://localhost:4340
 
 The UI opens on `Overview`. The sidebar is the top-level workflow map:
 
-1. `Prepare Audio` (`#prepare`, optional step 0): upload, record, or process source audio before creating a library voice.
+1. `Prepare Audio` (`#prepare`, optional step 0): choose Add Voice for ready samples or Process Audio for cleanup, trimming, and speaker extraction before saving.
 2. `Voices` (`#voices`, step 1): select, preview, rename, tune, and manage local voice samples.
 3. `Generate Speech` (`#generate`, step 2): enter text, optionally assign selected text spans to saved voices, review the latest result, play combined and segment results, and regenerate multi-voice segments with contextual voice or tuning overrides. Selecting a saved voice uses that voice's saved tuning for the active provider when present, otherwise its mapped voice preset or provider defaults.
 4. `Generated Audio` (`#archive`, optional): play, download, remove, or clear saved generated MP3s from browser IndexedDB, including Multi-Voice archive metadata.
@@ -207,7 +207,7 @@ If the browser cannot decode the selected file type, choose a shorter browser-de
 
 ## Sample Processing
 
-`Prepare Audio` is a separate optional workflow from `Voices`. It is intended for preparing source audio before saving or using it for generation. Current operations are Isolate Voice, Trim Silence, and optional Speaker Separation.
+`Prepare Audio` is a separate optional workflow from `Voices`. Start with Add Voice when the sample is ready to save, or Process Audio when the source needs cleanup before it becomes a library voice. Current processing operations are Isolate Voice, Trim Silence, and optional Speaker Separation.
 
 Set `SAMPLE_PROCESSING_ENGINE=ffmpeg` to enable only Trim Silence. Set `SAMPLE_PROCESSING_ENGINE=demucs` to enable Isolate Voice and Trim Silence together. Set `SAMPLE_PROCESSING_ENABLE_DIARIZATION=1` to add Speaker Separation alongside either engine, or by itself when `SAMPLE_PROCESSING_ENGINE` is blank. When Demucs is enabled, Isolate Voice runs the configured Demucs command with the `htdemucs` model by default, extracts the vocals stem, then runs FFmpeg to normalize the result to mono 32 kHz WAV. Trim Silence runs FFmpeg `silenceremove`, trims leading, trailing, and long interior empty sections, then normalizes the result to mono 32 kHz WAV. Speaker Separation normalizes the source with FFmpeg, runs pyannote Community-1 locally for speaker turns, runs faster-whisper locally with word timestamps, maps transcript text to speakers by time overlap, then generates one mono 32 kHz WAV per speaker. Existing saved voices show Process From choices. Original Recording is recommended when `sourceFilePath` exists and uses the retained full upload/source file. If no retained original exists, Original Recording is unavailable and Saved Sample is used instead. Choose Saved Sample to process the current library sample. Uploaded files can also be processed without first saving them as voices.
 
