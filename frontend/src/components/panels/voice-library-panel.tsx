@@ -367,9 +367,7 @@ function SelectedVoiceTuning({
             </p>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
-            {activeDraft.selectedTuningPresetId === CUSTOM_TUNING_PRESET_ID ? <Badge>Custom</Badge> : null}
             {hasChanges ? <Badge>Unsaved</Badge> : null}
-            {savedProviderTuning && !hasChanges ? <Badge>Saved Provider Tuning</Badge> : null}
             <CollapsibleTrigger asChild>
               <Button size="sm" type="button" variant="secondary">
                 {isOpen ? "Hide Voice Tuning" : "Show Voice Tuning"}

@@ -3934,7 +3934,7 @@ describe("App", () => {
     fireEvent.change(panel.getByRole("slider", { name: /speed/i }), { target: { value: "1.1" } })
 
     expect(patchedBodies).toHaveLength(0)
-    expect(panel.getByText("Custom")).toBeInTheDocument()
+    expect(panel.queryByText("Custom")).not.toBeInTheDocument()
     expect(panel.getByText("Unsaved")).toBeInTheDocument()
     expect(panel.getByRole("button", { name: "Reset Changes" })).toBeEnabled()
 
@@ -3996,6 +3996,7 @@ describe("App", () => {
 
     await screen.findByText("default/default-voice.mp3")
     const panel = await openSelectedVoiceTuningPanel(user)
+    expect(panel.queryByText("Saved Provider Tuning")).not.toBeInTheDocument()
     expect(panel.getByRole("slider", { name: /speed/i })).toHaveValue("1.12")
 
     await user.click(panel.getByRole("radio", { name: "Animated Dialogue" }))
@@ -4009,6 +4010,7 @@ describe("App", () => {
     expect(panel.getByRole("radio", { name: "Animated Dialogue" })).toHaveAttribute("aria-checked", "false")
     expect(panel.getByRole("slider", { name: /speed/i })).toHaveValue("1.12")
     expect(panel.queryByText("Unsaved")).not.toBeInTheDocument()
+    expect(panel.queryByText("Saved Provider Tuning")).not.toBeInTheDocument()
     expect(panel.queryByRole("button", { name: "Reset Changes" })).not.toBeInTheDocument()
     expect(panel.getByRole("button", { name: "Save Voice Tuning" })).toBeDisabled()
   })
