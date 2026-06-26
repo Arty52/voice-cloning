@@ -14,7 +14,7 @@ export function TuningInfo({ description, id, label }: { description: string; id
         <Info aria-hidden="true" className="size-3.5" />
       </button>
       <span
-        className="pointer-events-none absolute left-0 top-6 z-20 w-72 max-w-[min(18rem,calc(100vw-3rem))] rounded-md border border-border bg-background p-3 text-xs leading-5 text-muted-foreground opacity-0 shadow-lg transition group-focus-within:opacity-100 group-hover:opacity-100"
+        className="pointer-events-none fixed inset-x-4 bottom-4 z-20 hidden rounded-md border border-border bg-background p-3 text-xs leading-5 text-muted-foreground shadow-lg group-focus-within:block group-hover:block sm:absolute sm:bottom-auto sm:left-0 sm:right-auto sm:top-6 sm:w-72 sm:max-w-[min(18rem,calc(100vw-3rem))]"
         id={tooltipId}
         role="tooltip"
       >
