@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useRef, useState } from "react"
 
 import { AppHeader } from "@/components/app-header"
 import { ConfirmationDialog } from "@/components/dialogs/confirmation-dialog"
@@ -22,6 +22,7 @@ import { useVoiceStudioController } from "@/hooks/use-voice-studio-controller"
 
 function App() {
   const [prepareAudioWorkflow, setPrepareAudioWorkflow] = useState<PrepareAudioWorkflow | null>(null)
+  const hasEnteredProcessAudioWorkflowRef = useRef(false)
   const {
     activeSectionId,
     archiveStorageError,
@@ -91,7 +92,8 @@ function App() {
       return
     }
     setPrepareAudioWorkflow(workflow)
-    if (workflow === "processAudio") {
+    if (workflow === "processAudio" && !hasEnteredProcessAudioWorkflowRef.current) {
+      hasEnteredProcessAudioWorkflowRef.current = true
       sampleProcessing.handleSourceModeChange("upload")
     }
   }

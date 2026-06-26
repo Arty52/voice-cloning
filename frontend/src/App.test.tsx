@@ -2514,6 +2514,29 @@ describe("App", () => {
     expect(await voiceLibraryPanel().findByText("Default voice Isolated")).toBeInTheDocument()
   })
 
+  it("preserves a saved-voice processing result when returning to process audio", async () => {
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    const startButton = await sampleProcessingPanel().findByRole("button", { name: "Start Processing" })
+    await waitFor(() => expect(startButton).toBeEnabled())
+    await user.click(startButton)
+
+    expect(await sampleProcessingPanel().findByLabelText("Processed sample preview")).toBeInTheDocument()
+    expect(sampleProcessingPanel().getByRole("button", { name: "Saved Voice" })).toHaveAttribute("aria-pressed", "true")
+
+    const preparePanel = prepareAudioPanel()
+    await user.click(preparePanel.getByRole("button", { name: /upload ready voice sample/i }))
+    expect(preparePanel.getByRole("form", { name: "Add Voice" })).toBeInTheDocument()
+
+    await user.click(preparePanel.getByRole("button", { name: /process audio file/i }))
+
+    expect(await sampleProcessingPanel().findByLabelText("Processed sample preview")).toBeInTheDocument()
+    expect(sampleProcessingPanel().getByRole("button", { name: "Saved Voice" })).toHaveAttribute("aria-pressed", "true")
+    expect(sampleProcessingPanel().queryByRole("group", { name: "Audio Drop Zone" })).not.toBeInTheDocument()
+  })
+
   it("edits speaker separation transcripts and saves selected speakers", async () => {
     const playSpy = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined)
     const pauseSpy = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined)
