@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -662,7 +662,41 @@ function scopedPanelByHeading(name: string) {
   return within(panel as HTMLElement)
 }
 
+function prepareAudioPanel() {
+  const panel = document.querySelector('[data-section-id="prepare"]')
+  expect(panel).not.toBeNull()
+  return within(panel as HTMLElement)
+}
+
+function selectAddVoiceWorkflow() {
+  if (!screen.queryByRole("form", { name: "Add Voice" })) {
+    act(() => {
+      fireEvent.click(prepareAudioPanel().getByRole("button", { name: /upload ready voice sample/i }))
+    })
+  }
+}
+
+function selectSampleProcessingWorkflow(sourceMode: "upload" | "voice" = "voice") {
+  const isRevealed = Boolean(screen.queryByRole("heading", { name: "Sample Processing" }))
+  if (!isRevealed) {
+    act(() => {
+      fireEvent.click(prepareAudioPanel().getByRole("button", { name: /process audio file/i }))
+    })
+  }
+  const panel = scopedPanelByHeading("Sample Processing")
+  if (sourceMode === "voice" && !isRevealed) {
+    const savedVoiceButton = panel.queryByRole("button", { name: "Saved Voice" })
+    if (savedVoiceButton && savedVoiceButton.getAttribute("aria-pressed") !== "true") {
+      act(() => {
+        fireEvent.click(savedVoiceButton)
+      })
+    }
+  }
+  return panel
+}
+
 function addVoicePanel() {
+  selectAddVoiceWorkflow()
   return within(screen.getByRole("form", { name: "Add Voice" }))
 }
 
@@ -675,7 +709,7 @@ function voiceLibraryRow(name: string) {
 }
 
 function sampleProcessingPanel() {
-  return scopedPanelByHeading("Sample Processing")
+  return selectSampleProcessingWorkflow()
 }
 
 function sampleProcessingPresetSelect(label: string) {
@@ -1721,7 +1755,10 @@ describe("App", () => {
 
     await waitFor(() => expect(window.location.hash).toBe("#prepare"))
     expect(screen.getByRole("button", { name: "Prepare Audio" })).toHaveAttribute("aria-current", "page")
-    expect(screen.getByRole("form", { name: "Add Voice" })).toBeInTheDocument()
+    const preparePanel = prepareAudioPanel()
+    expect(preparePanel.getByRole("button", { name: /upload ready voice sample/i })).toBeInTheDocument()
+    expect(preparePanel.getByRole("button", { name: /process audio file/i })).toBeInTheDocument()
+    expect(preparePanel.queryByRole("form", { name: "Add Voice" })).not.toBeInTheDocument()
   })
 
   it("keeps add voice in prepare and out of voices", async () => {
@@ -1738,7 +1775,7 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "Prepare Audio" }))
     await waitFor(() => expect(window.location.hash).toBe("#prepare"))
 
-    expect(screen.getByRole("form", { name: "Add Voice" })).toBeInTheDocument()
+    expect(prepareAudioPanel().queryByRole("form", { name: "Add Voice" })).not.toBeInTheDocument()
     expect(addVoicePanel().getByRole("group", { name: "Audio Drop Zone" })).toBeInTheDocument()
     expect(addVoicePanel().getByRole("textbox", { name: "Voice Name" })).toBeInTheDocument()
   })
@@ -1769,7 +1806,9 @@ describe("App", () => {
     await user.click(prepareAudioLink)
 
     await waitFor(() => expect(window.location.hash).toBe("#prepare"))
-    expect(screen.getByRole("form", { name: "Add Voice" })).toBeInTheDocument()
+    const preparePanel = prepareAudioPanel()
+    expect(preparePanel.getByRole("button", { name: /upload ready voice sample/i })).toBeInTheDocument()
+    expect(preparePanel.queryByRole("form", { name: "Add Voice" })).not.toBeInTheDocument()
   })
 
   it("closes mobile workflow navigation after selecting a section", async () => {
@@ -2051,21 +2090,34 @@ describe("App", () => {
     )
   })
 
-  it("keeps sample processing and add voice in the prepare section", async () => {
+  it("starts Prepare Audio with workflow choices and reveals one workflow at a time", async () => {
     window.history.replaceState(null, "", "/#prepare")
+    const user = userEvent.setup()
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
     const prepareSection = document.querySelector('[data-section-id="prepare"]') as HTMLElement
     const voicesSection = document.querySelector('[data-section-id="voices"]') as HTMLElement
     const preparePanel = within(prepareSection)
-    const sampleProcessingHeading = preparePanel.getByText("Sample Processing")
-    const addVoiceHeading = preparePanel.getByText("Add Voice")
+    const addVoiceChoice = preparePanel.getByRole("button", { name: /upload ready voice sample/i })
+    const processAudioChoice = preparePanel.getByRole("button", { name: /process audio file/i })
 
     expect(prepareSection).not.toHaveClass("hidden")
     expect(voicesSection).toHaveClass("hidden")
-    expect(sampleProcessingHeading.compareDocumentPosition(addVoiceHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(preparePanel.getByRole("button", { name: "Start Processing" })).toBeInTheDocument()
+    expectElementBefore(addVoiceChoice, processAudioChoice)
+    expect(preparePanel.queryByRole("form", { name: "Add Voice" })).not.toBeInTheDocument()
+    expect(preparePanel.queryByRole("heading", { name: "Sample Processing" })).not.toBeInTheDocument()
+
+    await user.click(addVoiceChoice)
+
+    expect(preparePanel.getByRole("form", { name: "Add Voice" })).toBeInTheDocument()
+    expect(preparePanel.queryByRole("heading", { name: "Sample Processing" })).not.toBeInTheDocument()
+
+    await user.click(processAudioChoice)
+
+    expect(preparePanel.queryByRole("form", { name: "Add Voice" })).not.toBeInTheDocument()
+    expect(preparePanel.getByRole("heading", { name: "Sample Processing" })).toBeInTheDocument()
+    expect(preparePanel.getByRole("button", { name: "Audio File" })).toHaveAttribute("aria-pressed", "true")
     expect(preparePanel.getByRole("group", { name: "Audio Drop Zone" })).toBeInTheDocument()
   })
 
@@ -3175,11 +3227,11 @@ describe("App", () => {
     await user.click(animatedPreset)
     expectVoicePresetSelection(standardPreset, false)
     expectVoicePresetSelection(animatedPreset, true)
-    await user.type(screen.getByLabelText(/voice name/i), "Voice_Clone_01")
+    await user.type(addVoicePanel().getByLabelText(/voice name/i), "Voice_Clone_01")
     const file = new File(["sample"], "voice-clone-01.wav", { type: "audio/wav" })
-    await user.upload(screen.getByLabelText(/sample file/i), file)
+    await user.upload(addVoicePanel().getByLabelText(/sample file/i), file)
     await screen.findByRole("group", { name: /saved sample mode/i })
-    await user.click(screen.getByRole("button", { name: /save voice/i }))
+    await user.click(addVoicePanel().getByRole("button", { name: /save voice/i }))
 
     await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/voices", expect.objectContaining({ method: "POST" })))
     const uploadCall = vi.mocked(fetch).mock.calls.find(
@@ -3207,10 +3259,10 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.upload(screen.getByLabelText(/sample file/i), new File(["sample"], "fresh-voice.wav", { type: "audio/wav" }))
-    await user.type(screen.getByLabelText(/voice name/i), "Fresh_Voice")
+    await user.upload(addVoicePanel().getByLabelText(/sample file/i), new File(["sample"], "fresh-voice.wav", { type: "audio/wav" }))
+    await user.type(addVoicePanel().getByLabelText(/voice name/i), "Fresh_Voice")
     await screen.findByRole("group", { name: /saved sample mode/i })
-    await user.click(screen.getByRole("button", { name: /save voice/i }))
+    await user.click(addVoicePanel().getByRole("button", { name: /save voice/i }))
 
     await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/voices", expect.objectContaining({ method: "POST" })))
     expect(await screen.findByRole("button", { name: /^Voice_Clone_01/i })).toBeInTheDocument()
@@ -3230,7 +3282,7 @@ describe("App", () => {
     expect(addVoicePanel().queryByText("Upload Preview")).not.toBeInTheDocument()
     expect(addVoicePanel().queryByText("No upload selected.")).not.toBeInTheDocument()
 
-    await user.upload(screen.getByLabelText(/sample file/i), new File(["sample"], "workflow-order.wav", { type: "audio/wav" }))
+    await user.upload(addVoicePanel().getByLabelText(/sample file/i), new File(["sample"], "workflow-order.wav", { type: "audio/wav" }))
     expect(await screen.findByLabelText(/uploaded voice sample preview/i)).toBeInTheDocument()
 
     const preview = addVoicePanel().getByText("Upload Preview")
@@ -3250,7 +3302,7 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.type(screen.getByLabelText(/voice name/i), "Dropped_Voice")
+    await user.type(addVoicePanel().getByLabelText(/voice name/i), "Dropped_Voice")
     const dropZone = addVoicePanel().getByRole("group", { name: "Audio Drop Zone" })
     expect(addVoicePanel().queryByRole("group", { name: /voice sample source/i })).not.toBeInTheDocument()
     expect(addVoicePanel().getByLabelText(/sample file/i)).toHaveAttribute("tabindex", "-1")
@@ -3262,7 +3314,7 @@ describe("App", () => {
     })
 
     await screen.findByRole("group", { name: /saved sample mode/i })
-    await user.click(screen.getByRole("button", { name: /save voice/i }))
+    await user.click(addVoicePanel().getByRole("button", { name: /save voice/i }))
 
     await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/voices", expect.objectContaining({ method: "POST" })))
     const uploadCall = vi.mocked(fetch).mock.calls.find(
@@ -3282,9 +3334,11 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.upload(screen.getByLabelText(/sample file/i), new File(["sample"], "pending.wav", { type: "audio/wav" }))
+    await user.upload(addVoicePanel().getByLabelText(/sample file/i), new File(["sample"], "pending.wav", { type: "audio/wav" }))
 
     expect((await screen.findAllByText("Preparing Sample")).length).toBeGreaterThan(0)
+    expect(prepareAudioPanel().getByRole("button", { name: /upload ready voice sample/i })).toBeDisabled()
+    expect(prepareAudioPanel().getByRole("button", { name: /process audio file/i })).toBeDisabled()
     const recordButton = addVoicePanel().getByRole("button", { name: /^Record$/ })
     expect(recordButton).toBeDisabled()
 
@@ -3318,7 +3372,7 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.upload(screen.getByLabelText(/sample file/i), new File(["sample"], "long.wav", { type: "audio/wav" }))
+    await user.upload(addVoicePanel().getByLabelText(/sample file/i), new File(["sample"], "long.wav", { type: "audio/wav" }))
 
     expect(await screen.findByText("0:02 Selected")).toBeInTheDocument()
     expect(screen.getByText("0:02 Max")).toBeInTheDocument()
@@ -3368,8 +3422,8 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.type(screen.getByLabelText(/voice name/i), "Voice_Clone_01")
-    await user.upload(screen.getByLabelText(/sample file/i), new File(["sample"], "long.wav", { type: "audio/wav" }))
+    await user.type(addVoicePanel().getByLabelText(/voice name/i), "Voice_Clone_01")
+    await user.upload(addVoicePanel().getByLabelText(/sample file/i), new File(["sample"], "long.wav", { type: "audio/wav" }))
     expect(await screen.findByText("0:03 Selected")).toBeInTheDocument()
 
     providers.resolve(
@@ -3395,7 +3449,7 @@ describe("App", () => {
     )
 
     expect(await screen.findByText("0:02 Selected")).toBeInTheDocument()
-    await user.click(screen.getByRole("button", { name: /save voice/i }))
+    await user.click(addVoicePanel().getByRole("button", { name: /save voice/i }))
 
     await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/voices", expect.objectContaining({ method: "POST" })))
     const uploadCall = vi.mocked(fetch).mock.calls.find(
@@ -3429,10 +3483,10 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.type(screen.getByLabelText(/voice name/i), "Voice_Clone_01")
-    await user.upload(screen.getByLabelText(/sample file/i), file)
+    await user.type(addVoicePanel().getByLabelText(/voice name/i), "Voice_Clone_01")
+    await user.upload(addVoicePanel().getByLabelText(/sample file/i), file)
     await user.click(await screen.findByRole("button", { name: /keep original/i }))
-    await user.click(screen.getByRole("button", { name: /save voice/i }))
+    await user.click(addVoicePanel().getByRole("button", { name: /save voice/i }))
 
     await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/voices", expect.objectContaining({ method: "POST" })))
     const uploadCall = vi.mocked(fetch).mock.calls.find(
@@ -3453,11 +3507,11 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.type(screen.getByLabelText(/voice name/i), "Voice_Clone_01")
-    await user.upload(screen.getByLabelText(/sample file/i), new File(["sample"], "broken.wav", { type: "audio/wav" }))
+    await user.type(addVoicePanel().getByLabelText(/voice name/i), "Voice_Clone_01")
+    await user.upload(addVoicePanel().getByLabelText(/sample file/i), new File(["sample"], "broken.wav", { type: "audio/wav" }))
 
     expect(await screen.findByText(/unable to decode this audio file/i)).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: /save voice/i })).toBeDisabled()
+    expect(addVoicePanel().getByRole("button", { name: /save voice/i })).toBeDisabled()
   })
 
   it("falls back to default sample limits when provider metadata is missing", async () => {
@@ -3475,7 +3529,7 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.upload(screen.getByLabelText(/sample file/i), new File(["sample"], "voice.wav", { type: "audio/wav" }))
+    await user.upload(addVoicePanel().getByLabelText(/sample file/i), new File(["sample"], "voice.wav", { type: "audio/wav" }))
 
     expect(await screen.findByText("0:03 Selected")).toBeInTheDocument()
     expect(screen.getByText("2:00 Max")).toBeInTheDocument()
@@ -3667,7 +3721,7 @@ describe("App", () => {
     const user = userEvent.setup()
     renderApp()
 
-    await user.type(await screen.findByLabelText(/voice name/i), "Voice_Clone_01")
+    await user.type(addVoicePanel().getByLabelText(/voice name/i), "Voice_Clone_01")
     await user.click(addVoicePanel().getByRole("button", { name: /^Record$/ }))
     await waitFor(() => expect(getUserMedia).toHaveBeenCalledWith({ audio: true }))
     processor.onaudioprocess?.({
@@ -3678,7 +3732,7 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: /^Stop$/ }))
     expect(await screen.findByLabelText(/recorded voice sample preview/i)).toBeInTheDocument()
 
-    await user.click(screen.getByRole("button", { name: /save voice/i }))
+    await user.click(addVoicePanel().getByRole("button", { name: /save voice/i }))
     await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/voices", expect.objectContaining({ method: "POST" })))
     const uploadCall = vi.mocked(fetch).mock.calls.find(
       ([url, init]) => String(url) === "/api/voices" && init?.method === "POST"
@@ -3717,7 +3771,7 @@ describe("App", () => {
     const user = userEvent.setup()
     renderApp()
 
-    await user.type(await screen.findByLabelText(/voice name/i), "Voice_Clone_01")
+    await user.type(addVoicePanel().getByLabelText(/voice name/i), "Voice_Clone_01")
     await user.click(addVoicePanel().getByRole("button", { name: /^Record$/ }))
     await waitFor(() => expect(getUserMedia).toHaveBeenCalledWith({ audio: true }))
     processor.onaudioprocess?.({
@@ -3729,7 +3783,7 @@ describe("App", () => {
     expect(await screen.findByLabelText(/recorded voice sample preview/i)).toBeInTheDocument()
 
     stubDecodedAudio(2)
-    await user.upload(screen.getByLabelText(/sample file/i), new File(["sample"], "replacement.wav", { type: "audio/wav" }))
+    await user.upload(addVoicePanel().getByLabelText(/sample file/i), new File(["sample"], "replacement.wav", { type: "audio/wav" }))
 
     expect(await screen.findByLabelText(/uploaded voice sample preview/i)).toBeInTheDocument()
     expect(screen.queryByLabelText(/recorded voice sample preview/i)).not.toBeInTheDocument()
@@ -3745,7 +3799,7 @@ describe("App", () => {
     await user.click(addVoicePanel().getByRole("button", { name: /^Record$/ }))
 
     expect(await screen.findByText(/microphone recording is not supported/i)).toBeInTheDocument()
-    expect(screen.getByLabelText(/sample file/i)).toBeInTheDocument()
+    expect(addVoicePanel().getByLabelText(/sample file/i)).toBeInTheDocument()
     expect(addVoicePanel().getByRole("button", { name: /choose audio/i })).toBeEnabled()
   })
 
