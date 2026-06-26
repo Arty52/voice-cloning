@@ -370,4 +370,13 @@ export type ConfirmationState = {
 
 export type VoiceTuningValues = Partial<Record<string, ProviderTuningValue>>
 
+export type VoiceTuningSaveRequest = {
+  providerId: string | null
+  shouldSaveVoicePreset: boolean
+  shouldSaveVoiceSettings: boolean
+  voice: VoiceAsset
+  voicePresetId: VoicePresetId
+  voiceSettings: VoiceTuningValues
+}
+
 export type RenameSubmitHandler = (event: FormEvent<HTMLFormElement>) => void

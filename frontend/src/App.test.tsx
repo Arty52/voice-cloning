@@ -763,6 +763,12 @@ function selectedVoiceTuningPanel() {
   return voiceTuningPanel()
 }
 
+async function openSelectedVoiceTuningPanel(user: ReturnType<typeof userEvent.setup>) {
+  const panel = selectedVoiceTuningPanel()
+  await user.click(panel.getByRole("button", { name: "Show Voice Tuning" }))
+  return selectedVoiceTuningPanel()
+}
+
 function latestGeneratedAudioPanel() {
   return scopedPanelByHeading("Latest Generated Audio")
 }
@@ -1718,7 +1724,8 @@ describe("App", () => {
 
     expect(await screen.findByText("default/default-voice.mp3")).toBeInTheDocument()
     expect(voiceLibraryPanel().queryByText("Selected Preview")).not.toBeInTheDocument()
-    expect(voiceLibraryPanel().getByRole("radiogroup", { name: "Voice Preset" })).toBeInTheDocument()
+    expect(voiceLibraryPanel().getByRole("button", { name: "Show Voice Tuning" })).toBeInTheDocument()
+    expect(voiceLibraryPanel().queryByRole("radiogroup", { name: "Voice Preset" })).not.toBeInTheDocument()
 
     const defaultVoiceRow = voiceLibraryRow("Default voice")
     expect(defaultVoiceRow.getByRole("group", { name: "Voice sample preview for Default voice" })).toBeInTheDocument()
@@ -3825,10 +3832,17 @@ describe("App", () => {
 
   it("shows saved voice tuning help and selects standard narration by default", async () => {
     window.history.replaceState(null, "", "/#voices")
+    const user = userEvent.setup()
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    const panel = selectedVoiceTuningPanel()
+    let panel = selectedVoiceTuningPanel()
+
+    expect(panel.getByRole("button", { name: "Show Voice Tuning" })).toBeInTheDocument()
+    expect(panel.queryByRole("radio", { name: "Standard Narration" })).not.toBeInTheDocument()
+    expect(panel.queryByRole("button", { name: "Reset Changes" })).not.toBeInTheDocument()
+
+    panel = await openSelectedVoiceTuningPanel(user)
 
     expect(panel.getByRole("button", { name: /stability help/i })).toBeInTheDocument()
     expect(panel.getByRole("button", { name: /similarity help/i })).toBeInTheDocument()
@@ -3845,10 +3859,40 @@ describe("App", () => {
     expect(panel.getByRole("slider", { name: /style/i })).toHaveValue("0")
     expect(panel.getByRole("slider", { name: /speed/i })).toHaveValue("1")
     expect(panel.queryByText("Custom")).not.toBeInTheDocument()
+    expect(panel.queryByRole("button", { name: "Reset Changes" })).not.toBeInTheDocument()
     expect(panel.getByRole("button", { name: "Save Voice Tuning" })).toBeDisabled()
   })
 
-  it("saves selected voice preset and provider tuning only after Save Voice Tuning", async () => {
+  it("keeps selected voice tuning collapsed when selecting a different voice", async () => {
+    window.history.replaceState(null, "", "/#voices")
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/providers" && !init) {
+          return okJson(providersResponse)
+        }
+        if (path === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "default", voices: [defaultVoice, voiceCloneVoice] })
+        }
+        return okJson({})
+      })
+    )
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    let panel = await openSelectedVoiceTuningPanel(user)
+    expect(panel.getByRole("button", { name: "Hide Voice Tuning" })).toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: /^Voice_Clone_01/i }))
+
+    panel = selectedVoiceTuningPanel()
+    expect(panel.getByRole("button", { name: "Show Voice Tuning" })).toBeInTheDocument()
+    expect(panel.queryByRole("radio", { name: "Standard Narration" })).not.toBeInTheDocument()
+  })
+
+  it("confirms before saving selected voice preset and provider tuning", async () => {
     window.history.replaceState(null, "", "/#voices")
     const patchedBodies: Array<Record<string, unknown>> = []
     vi.stubGlobal(
@@ -3885,15 +3929,30 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    const panel = selectedVoiceTuningPanel()
+    let panel = await openSelectedVoiceTuningPanel(user)
     await user.click(panel.getByRole("radio", { name: "Animated Dialogue" }))
     fireEvent.change(panel.getByRole("slider", { name: /speed/i }), { target: { value: "1.1" } })
 
     expect(patchedBodies).toHaveLength(0)
     expect(panel.getByText("Custom")).toBeInTheDocument()
     expect(panel.getByText("Unsaved")).toBeInTheDocument()
+    expect(panel.getByRole("button", { name: "Reset Changes" })).toBeEnabled()
 
     await user.click(panel.getByRole("button", { name: "Save Voice Tuning" }))
+
+    const dialog = screen.getByRole("dialog", { name: "Save Voice Tuning?" })
+    expect(within(dialog).getByText(/updates this voice's default tuning for future generations/i)).toBeInTheDocument()
+    expect(within(dialog).getByText(/existing generated audio will not be affected/i)).toBeInTheDocument()
+    expect(patchedBodies).toHaveLength(0)
+
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }))
+    expect(patchedBodies).toHaveLength(0)
+    panel = selectedVoiceTuningPanel()
+    expect(panel.getByText("Unsaved")).toBeInTheDocument()
+    expect(panel.getByRole("slider", { name: /speed/i })).toHaveValue("1.1")
+
+    await user.click(panel.getByRole("button", { name: "Save Voice Tuning" }))
+    await user.click(within(screen.getByRole("dialog", { name: "Save Voice Tuning?" })).getByRole("button", { name: "Save Voice Tuning" }))
 
     await waitFor(() => expect(patchedBodies).toHaveLength(2))
     expect(patchedBodies[0]).toEqual({ voicePresetId: "animatedDialogue" })
@@ -3907,6 +3966,51 @@ describe("App", () => {
         useSpeakerBoost: true,
       },
     })
+  })
+
+  it("resets selected voice tuning draft to saved metadata without patching", async () => {
+    window.history.replaceState(null, "", "/#voices")
+    const patchedBodies: Array<Record<string, unknown>> = []
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/providers" && !init) {
+          return okJson(providersResponse)
+        }
+        if (path === "/api/voices" && !init) {
+          return okJson({
+            defaultVoiceId: "default",
+            voices: [{ ...defaultVoice, voiceSettingsByProvider: { elevenlabs: { speed: 1.12 } } }],
+          })
+        }
+        if (path === "/api/voices/default" && init?.method === "PATCH") {
+          patchedBodies.push(JSON.parse(String(init.body)) as Record<string, unknown>)
+          return okJson({ defaultVoiceId: "default", voices: [defaultVoice] })
+        }
+        return okJson({})
+      })
+    )
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    const panel = await openSelectedVoiceTuningPanel(user)
+    expect(panel.getByRole("slider", { name: /speed/i })).toHaveValue("1.12")
+
+    await user.click(panel.getByRole("radio", { name: "Animated Dialogue" }))
+    fireEvent.change(panel.getByRole("slider", { name: /speed/i }), { target: { value: "1.15" } })
+
+    expect(panel.getByText("Unsaved")).toBeInTheDocument()
+    await user.click(panel.getByRole("button", { name: "Reset Changes" }))
+
+    expect(patchedBodies).toHaveLength(0)
+    expect(panel.getByRole("radio", { name: "Standard Narration" })).toHaveAttribute("aria-checked", "true")
+    expect(panel.getByRole("radio", { name: "Animated Dialogue" })).toHaveAttribute("aria-checked", "false")
+    expect(panel.getByRole("slider", { name: /speed/i })).toHaveValue("1.12")
+    expect(panel.queryByText("Unsaved")).not.toBeInTheDocument()
+    expect(panel.queryByRole("button", { name: "Reset Changes" })).not.toBeInTheDocument()
+    expect(panel.getByRole("button", { name: "Save Voice Tuning" })).toBeDisabled()
   })
 
   it("keeps Generate free of standalone tuning and sends resolved selected-voice defaults", async () => {
@@ -4002,7 +4106,7 @@ describe("App", () => {
     await screen.findByText("default/default-voice.mp3")
     await user.click(screen.getByRole("button", { name: /^Voice_Clone_01/i }))
 
-    const panel = selectedVoiceTuningPanel()
+    const panel = await openSelectedVoiceTuningPanel(user)
     expect(panel.queryByText("Custom")).not.toBeInTheDocument()
     expect(panel.getByRole("radio", { name: "Standard Narration" })).toHaveAttribute("aria-checked", "false")
     expect(panel.getByRole("radio", { name: "Animated Dialogue" })).toHaveAttribute("aria-checked", "true")
@@ -4062,10 +4166,11 @@ describe("App", () => {
       })
     )
 
+    const user = userEvent.setup()
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    const panel = selectedVoiceTuningPanel()
+    const panel = await openSelectedVoiceTuningPanel(user)
     expect(panel.getByText("Voice Tuning")).toBeInTheDocument()
     expect(panel.queryByText("Provider Tuning Preset")).not.toBeInTheDocument()
     expect(panel.getByRole("slider", { name: /warmth/i })).toHaveValue("0.2")
@@ -4133,10 +4238,11 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    const panel = selectedVoiceTuningPanel()
+    const panel = await openSelectedVoiceTuningPanel(user)
     await user.selectOptions(panel.getByRole("combobox", { name: "Mode" }), "2")
     await user.selectOptions(panel.getByRole("combobox", { name: "Enhanced" }), "true")
     await user.click(panel.getByRole("button", { name: "Save Voice Tuning" }))
+    await user.click(within(screen.getByRole("dialog", { name: "Save Voice Tuning?" })).getByRole("button", { name: "Save Voice Tuning" }))
 
     await waitFor(() => expect(patchVoiceBody).not.toBeNull())
     expect(patchVoiceBody).toEqual({
@@ -4192,13 +4298,14 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    const panel = selectedVoiceTuningPanel()
+    const panel = await openSelectedVoiceTuningPanel(user)
     const checkbox = panel.getByRole("checkbox", { name: "Expressive" })
     expect(checkbox).not.toBeChecked()
 
     await user.click(panel.getByText("Expressive", { selector: "label" }))
     expect(checkbox).toBeChecked()
     await user.click(panel.getByRole("button", { name: "Save Voice Tuning" }))
+    await user.click(within(screen.getByRole("dialog", { name: "Save Voice Tuning?" })).getByRole("button", { name: "Save Voice Tuning" }))
 
     await waitFor(() => expect(patchVoiceBody).not.toBeNull())
     expect(patchVoiceBody).toEqual({

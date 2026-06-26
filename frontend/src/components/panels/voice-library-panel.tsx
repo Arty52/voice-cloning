@@ -1,10 +1,24 @@
 import { useMemo, useState } from "react"
-import { ArrowRight, Check, FileAudio, Loader2, Pencil, Save, Star, Trash2, Upload, Volume2 } from "lucide-react"
+import {
+  ArrowRight,
+  Check,
+  ChevronDown,
+  FileAudio,
+  Loader2,
+  Pencil,
+  RotateCcw,
+  Save,
+  Star,
+  Trash2,
+  Upload,
+  Volume2,
+} from "lucide-react"
 
 import { AudioPlayer } from "@/components/audio-player"
 import { ActionMenu } from "@/components/ui/action-menu"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Loading } from "@/components/ui/loading"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -16,6 +30,7 @@ import {
   resolvePresetVoiceTuningState,
   resolveSavedVoiceTuning,
   resolveVoiceTuningState,
+  voiceTuningValuesEqual,
 } from "@/lib/voice-tuning"
 import { cn } from "@/lib/utils"
 import { voicePresetLabel } from "@/lib/voice-presets"
@@ -28,6 +43,7 @@ import type {
   VoiceAsset,
   VoicePreset,
   VoicePresetId,
+  VoiceTuningSaveRequest,
   VoiceTuningValues,
 } from "@/types"
 
@@ -42,8 +58,7 @@ type VoiceLibraryPanelProps = {
   onDeleteRequest: (voice: VoiceAsset) => void
   onPlayVoice: (voice: VoiceAsset) => void
   onRenameRequest: (voice: VoiceAsset) => void
-  onSaveVoicePreset: (voice: VoiceAsset, voicePresetId: VoicePresetId) => Promise<void> | void
-  onSaveVoiceSettings: (voice: VoiceAsset, providerId: string, voiceSettings: VoiceTuningValues) => Promise<void> | void
+  onSaveVoiceTuningRequest: (request: VoiceTuningSaveRequest) => void
   onSelectVoice: (voiceId: string) => void
   onSetDefault: (voice: VoiceAsset) => void
   providerTuning: ProviderTuningMetadata
@@ -65,8 +80,7 @@ export function VoiceLibraryPanel({
   onDeleteRequest,
   onPlayVoice,
   onRenameRequest,
-  onSaveVoicePreset,
-  onSaveVoiceSettings,
+  onSaveVoiceTuningRequest,
   onSelectVoice,
   onSetDefault,
   providerTuning,
@@ -195,8 +209,8 @@ export function VoiceLibraryPanel({
                       disabled={isGenerating || isUpdatingVoice}
                       isLoading={isProviderTuningLoading}
                       isSaving={isUpdatingVoice}
-                      onSaveVoicePreset={onSaveVoicePreset}
-                      onSaveVoiceSettings={onSaveVoiceSettings}
+                      key={`${voice.id}:${activeProviderId ?? "none"}`}
+                      onSaveVoiceTuningRequest={onSaveVoiceTuningRequest}
                       providerTuning={providerTuning}
                       voice={voice}
                       voicePresets={voicePresets}
@@ -231,8 +245,7 @@ type SelectedVoiceTuningProps = {
   disabled: boolean
   isLoading: boolean
   isSaving: boolean
-  onSaveVoicePreset: (voice: VoiceAsset, voicePresetId: VoicePresetId) => Promise<void> | void
-  onSaveVoiceSettings: (voice: VoiceAsset, providerId: string, voiceSettings: VoiceTuningValues) => Promise<void> | void
+  onSaveVoiceTuningRequest: (request: VoiceTuningSaveRequest) => void
   providerTuning: ProviderTuningMetadata
   voice: VoiceAsset
   voicePresets: VoicePreset[]
@@ -243,13 +256,13 @@ function SelectedVoiceTuning({
   disabled,
   isLoading,
   isSaving,
-  onSaveVoicePreset,
-  onSaveVoiceSettings,
+  onSaveVoiceTuningRequest,
   providerTuning,
   voice,
   voicePresets,
 }: SelectedVoiceTuningProps) {
   const [draft, setDraft] = useState<TuningDraft | null>(null)
+  const [isOpen, setIsOpen] = useState(false)
   const savedProviderTuning = resolveSavedVoiceTuning(activeProviderId, voice)
   const resolvedTuning = useMemo(
     () =>
@@ -272,9 +285,10 @@ function SelectedVoiceTuning({
           voicePresetId: voice.voicePresetId,
         }
   const presetChanged = activeDraft.voicePresetId !== voice.voicePresetId
-  const providerSettingsChanged = activeDraft.providerSettingsTouched
+  const providerSettingsChanged = !voiceTuningValuesEqual(activeDraft.values, resolvedTuning.values)
+  const shouldSaveVoiceSettings = activeDraft.providerSettingsTouched && providerSettingsChanged
   const hasChanges = presetChanged || providerSettingsChanged
-  const saveDisabled = disabled || isLoading || !hasChanges || (providerSettingsChanged && !activeProviderId)
+  const saveDisabled = disabled || isLoading || !hasChanges || (shouldSaveVoiceSettings && !activeProviderId)
 
   function handleVoicePresetChange(voicePresetId: VoicePresetId) {
     setDraft((current) => {
@@ -323,86 +337,125 @@ function SelectedVoiceTuning({
     })
   }
 
-  async function handleSave() {
+  function handleResetChanges() {
+    setDraft(null)
+  }
+
+  function handleSave() {
     if (saveDisabled) {
       return
     }
 
-    if (presetChanged) {
-      await onSaveVoicePreset(voice, activeDraft.voicePresetId)
-    }
-    if (providerSettingsChanged && activeProviderId) {
-      await onSaveVoiceSettings(voice, activeProviderId, activeDraft.values)
-    }
+    onSaveVoiceTuningRequest({
+      providerId: activeProviderId,
+      shouldSaveVoicePreset: presetChanged,
+      shouldSaveVoiceSettings,
+      voice,
+      voicePresetId: activeDraft.voicePresetId,
+      voiceSettings: activeDraft.values,
+    })
   }
 
   return (
-    <section aria-busy={isLoading || isSaving} className="rounded-md border border-border bg-card/70 p-3">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="text-sm font-medium">Voice Tuning</h3>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            Save default voice behavior for selection and future generations.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {activeDraft.selectedTuningPresetId === CUSTOM_TUNING_PRESET_ID ? <Badge>Custom</Badge> : null}
-          {providerSettingsChanged ? <Badge>Unsaved</Badge> : null}
-          {savedProviderTuning && !providerSettingsChanged ? <Badge>Saved Provider Tuning</Badge> : null}
-        </div>
-      </div>
-
-      <div className="mt-3 flex flex-col gap-4">
-        <VoicePresetToggleGroup
-          disabled={disabled || isLoading}
-          id={`selected-${voice.id}-voice-preset`}
-          label="Voice Preset"
-          onChange={handleVoicePresetChange}
-          value={activeDraft.voicePresetId}
-          voicePresets={voicePresets}
-        />
-
-        {isLoading ? (
-          <div className="rounded-md border border-border bg-background/60 p-3">
-            <Loading text="Loading Voice Tuning" variant="secondary" />
+    <Collapsible onOpenChange={setIsOpen} open={isOpen}>
+      <section aria-busy={isLoading || isSaving} className="rounded-md border border-border bg-card/70 p-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="text-sm font-medium">Voice Tuning</h3>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              Save default voice behavior for selection and future generations.
+            </p>
           </div>
-        ) : null}
-
-        {!isLoading && providerTuning.controls.length > 0 ? (
-          <>
-            {providerTuning.presets.length > 0 ? (
-              <div className="flex flex-col gap-2">
-                <div className="text-sm font-medium">Provider Tuning Preset</div>
-                <ProviderTuningPresetButtons
-                  disabled={disabled}
-                  onPresetApply={handleProviderPresetApply}
-                  presets={providerTuning.presets}
-                  selectedTuningPresetId={activeDraft.selectedTuningPresetId}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {activeDraft.selectedTuningPresetId === CUSTOM_TUNING_PRESET_ID ? <Badge>Custom</Badge> : null}
+            {hasChanges ? <Badge>Unsaved</Badge> : null}
+            {savedProviderTuning && !hasChanges ? <Badge>Saved Provider Tuning</Badge> : null}
+            <CollapsibleTrigger asChild>
+              <Button size="sm" type="button" variant="secondary">
+                {isOpen ? "Hide Voice Tuning" : "Show Voice Tuning"}
+                <ChevronDown
+                  aria-hidden="true"
+                  className={cn("size-4 transition-transform", isOpen && "rotate-180")}
+                  data-icon="inline-end"
                 />
-              </div>
-            ) : null}
-            <VoiceTuningControls
-              controls={providerTuning.controls}
-              disabled={disabled}
-              idPrefix={`selected-${voice.id}-voice-tuning`}
-              onTuningValueChange={handleTuningValueChange}
-              tuning={activeDraft.values}
-            />
-          </>
-        ) : null}
-
-        {!isLoading && providerTuning.controls.length === 0 ? (
-          <div className="rounded-md border border-border bg-background/60 p-3 text-sm text-muted-foreground">
-            The active provider does not expose saved tuning controls.
+              </Button>
+            </CollapsibleTrigger>
           </div>
-        ) : null}
+        </div>
 
-        <Button className="w-full" disabled={saveDisabled} onClick={() => void handleSave()} type="button">
-          {isSaving ? <Loader2 aria-hidden="true" className="size-4 animate-spin" /> : <Save aria-hidden="true" data-icon="inline-start" />}
-          Save Voice Tuning
-        </Button>
-      </div>
-    </section>
+        {isOpen ? (
+          <CollapsibleContent>
+            <div className="mt-3 flex flex-col gap-4">
+              <VoicePresetToggleGroup
+                disabled={disabled || isLoading}
+                id={`selected-${voice.id}-voice-preset`}
+                label="Voice Preset"
+                onChange={handleVoicePresetChange}
+                value={activeDraft.voicePresetId}
+                voicePresets={voicePresets}
+              />
+
+              {isLoading ? (
+                <div className="rounded-md border border-border bg-background/60 p-3">
+                  <Loading text="Loading Voice Tuning" variant="secondary" />
+                </div>
+              ) : null}
+
+              {!isLoading && providerTuning.controls.length > 0 ? (
+                <>
+                  {providerTuning.presets.length > 0 ? (
+                    <div className="flex flex-col gap-2">
+                      <div className="text-sm font-medium">Provider Tuning Preset</div>
+                      <ProviderTuningPresetButtons
+                        disabled={disabled}
+                        onPresetApply={handleProviderPresetApply}
+                        presets={providerTuning.presets}
+                        selectedTuningPresetId={activeDraft.selectedTuningPresetId}
+                      />
+                    </div>
+                  ) : null}
+                  <VoiceTuningControls
+                    controls={providerTuning.controls}
+                    disabled={disabled}
+                    idPrefix={`selected-${voice.id}-voice-tuning`}
+                    onTuningValueChange={handleTuningValueChange}
+                    tuning={activeDraft.values}
+                  />
+                </>
+              ) : null}
+
+              {!isLoading && providerTuning.controls.length === 0 ? (
+                <div className="rounded-md border border-border bg-background/60 p-3 text-sm text-muted-foreground">
+                  The active provider does not expose saved tuning controls.
+                </div>
+              ) : null}
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                {hasChanges ? (
+                  <Button
+                    disabled={disabled || isLoading || isSaving}
+                    onClick={handleResetChanges}
+                    type="button"
+                    variant="secondary"
+                  >
+                    <RotateCcw aria-hidden="true" data-icon="inline-start" />
+                    Reset Changes
+                  </Button>
+                ) : null}
+                <Button className={cn(!hasChanges && "sm:col-span-2")} disabled={saveDisabled} onClick={handleSave} type="button">
+                  {isSaving ? (
+                    <Loader2 aria-hidden="true" className="size-4 animate-spin" />
+                  ) : (
+                    <Save aria-hidden="true" data-icon="inline-start" />
+                  )}
+                  Save Voice Tuning
+                </Button>
+              </div>
+            </div>
+          </CollapsibleContent>
+        ) : null}
+      </section>
+    </Collapsible>
   )
 }
 

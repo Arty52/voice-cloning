@@ -52,6 +52,7 @@ function App() {
     providerTuning,
     requestClearGeneratedAudio,
     requestDeleteVoice,
+    requestSaveVoiceTuningDraft,
     regenerateMultiVoiceSegment,
     regenerateMultiVoiceSegmentsForVoice,
     result,
@@ -169,8 +170,7 @@ function App() {
             onDeleteRequest={requestDeleteVoice}
             onPlayVoice={voiceLibrary.playVoice}
             onRenameRequest={voiceLibrary.requestRename}
-            onSaveVoicePreset={voiceLibrary.updateVoicePreset}
-            onSaveVoiceSettings={voiceLibrary.updateVoiceSettings}
+            onSaveVoiceTuningRequest={requestSaveVoiceTuningDraft}
             onSelectVoice={voiceLibrary.setSelectedVoiceId}
             onSetDefault={(voice) => void voiceLibrary.setDefault(voice.id)}
             providerTuning={providerTuning}

@@ -36,7 +36,13 @@ import {
   WORKFLOW_SECTIONS,
   type WorkflowSectionId,
 } from "@/lib/workflow-sections"
-import type { ProviderTuningMetadata, RequestStatus, VoiceAsset, VoiceTuningValues } from "@/types"
+import type {
+  ProviderTuningMetadata,
+  RequestStatus,
+  VoiceAsset,
+  VoiceTuningSaveRequest,
+  VoiceTuningValues,
+} from "@/types"
 
 const EMPTY_TUNING_METADATA: ProviderTuningMetadata = {
   controls: [],
@@ -373,6 +379,32 @@ export function useVoiceStudioController() {
     await voiceLibrary.updateVoiceSettings(voice, activeProviderId, voiceSettings)
   }
 
+  async function saveVoiceTuningDraft(request: VoiceTuningSaveRequest) {
+    if (request.shouldSaveVoicePreset) {
+      await voiceLibrary.updateVoicePreset(request.voice, request.voicePresetId)
+    }
+    if (request.shouldSaveVoiceSettings) {
+      if (!request.providerId) {
+        voiceLibrary.setVoiceError("Select a provider before saving voice tuning.")
+        return
+      }
+      await voiceLibrary.updateVoiceSettings(request.voice, request.providerId, request.voiceSettings)
+    }
+  }
+
+  function requestSaveVoiceTuningDraft(request: VoiceTuningSaveRequest) {
+    if (request.shouldSaveVoiceSettings && !request.providerId) {
+      voiceLibrary.setVoiceError("Select a provider before saving voice tuning.")
+      return
+    }
+    confirmation.requestConfirmation({
+      body: "Saving changes updates this voice's default tuning for future generations. Existing generated audio will not be affected.",
+      confirmLabel: "Save Voice Tuning",
+      onConfirm: () => saveVoiceTuningDraft(request),
+      title: "Save Voice Tuning?",
+    })
+  }
+
   function cancelGeneration() {
     if (multiVoiceSpeech.isGenerating) {
       void multiVoiceSpeech.cancelGeneration()
@@ -495,6 +527,7 @@ export function useVoiceStudioController() {
     providerTuning,
     requestClearGeneratedAudio,
     requestDeleteVoice,
+    requestSaveVoiceTuningDraft,
     regenerateMultiVoiceSegment,
     regenerateMultiVoiceSegmentsForVoice,
     result,
