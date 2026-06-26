@@ -51,7 +51,6 @@ type VoiceLibraryPanelProps = {
   activeProviderId: string | null
   defaultVoiceId: string
   isGenerating: boolean
-  isActive: boolean
   isProviderTuningLoading: boolean
   isSettingDefault: boolean
   isUpdatingVoice: boolean
@@ -73,7 +72,6 @@ export function VoiceLibraryPanel({
   activeProviderId,
   defaultVoiceId,
   isGenerating,
-  isActive,
   isProviderTuningLoading,
   isSettingDefault,
   isUpdatingVoice,
@@ -203,19 +201,17 @@ export function VoiceLibraryPanel({
                     ariaLabel={`Voice sample preview for ${voice.name}`}
                     src={`/api/voices/${encodeURIComponent(voice.id)}/sample`}
                   />
-                  {isActive ? (
-                    <SelectedVoiceTuning
-                      activeProviderId={activeProviderId}
-                      disabled={isGenerating || isUpdatingVoice}
-                      isLoading={isProviderTuningLoading}
-                      isSaving={isUpdatingVoice}
-                      key={`${voice.id}:${activeProviderId ?? "none"}`}
-                      onSaveVoiceTuningRequest={onSaveVoiceTuningRequest}
-                      providerTuning={providerTuning}
-                      voice={voice}
-                      voicePresets={voicePresets}
-                    />
-                  ) : null}
+                  <SelectedVoiceTuning
+                    activeProviderId={activeProviderId}
+                    disabled={isGenerating || isUpdatingVoice}
+                    isLoading={isProviderTuningLoading}
+                    isSaving={isUpdatingVoice}
+                    key={`${voice.id}:${activeProviderId ?? "none"}`}
+                    onSaveVoiceTuningRequest={onSaveVoiceTuningRequest}
+                    providerTuning={providerTuning}
+                    voice={voice}
+                    voicePresets={voicePresets}
+                  />
                   <Button asChild className="w-full">
                     <a href="#generate">
                       Generate Speech

@@ -162,7 +162,6 @@ function App() {
           <VoiceLibraryPanel
             activeProviderId={providerKeys.activeProviderId || null}
             defaultVoiceId={voiceLibrary.defaultVoiceId}
-            isActive={activeSectionId === "voices"}
             isGenerating={speech.isGenerating}
             isProviderTuningLoading={providerKeys.providerStatus === "idle" || providerKeys.providerStatus === "loading"}
             isSettingDefault={voiceLibrary.isSettingDefault}

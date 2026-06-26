@@ -3126,8 +3126,10 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: /cancel/i })).toBeInTheDocument()
     const latestHeading = screen.getByRole("heading", { name: "Latest Generated Audio" })
     const textLabel = screen.getByText("Text to Speak")
+    const generateSection = document.querySelector('[data-section-id="generate"]')
+    expect(generateSection).not.toBeNull()
     expect(textLabel.compareDocumentPosition(latestHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(screen.queryByRole("heading", { name: "Voice Tuning" })).not.toBeInTheDocument()
+    expect(within(generateSection as HTMLElement).queryByRole("heading", { name: "Voice Tuning" })).not.toBeInTheDocument()
     expect(screen.getByText("Generating Speech")).toBeInTheDocument()
     resolveSpeech(
       new Response(audioBlob, {
@@ -3954,10 +3956,10 @@ describe("App", () => {
     await user.click(panel.getByRole("button", { name: "Save Voice Tuning" }))
     await user.click(within(screen.getByRole("dialog", { name: "Save Voice Tuning?" })).getByRole("button", { name: "Save Voice Tuning" }))
 
-    await waitFor(() => expect(patchedBodies).toHaveLength(2))
-    expect(patchedBodies[0]).toEqual({ voicePresetId: "animatedDialogue" })
-    expect(patchedBodies[1]).toEqual({
+    await waitFor(() => expect(patchedBodies).toHaveLength(1))
+    expect(patchedBodies[0]).toEqual({
       providerId: "elevenlabs",
+      voicePresetId: "animatedDialogue",
       voiceSettings: {
         stability: 0.4,
         similarityBoost: 0.75,
@@ -3966,6 +3968,28 @@ describe("App", () => {
         useSpeakerBoost: true,
       },
     })
+  })
+
+  it("keeps unsaved selected voice tuning draft across workflow navigation", async () => {
+    window.history.replaceState(null, "", "/#voices")
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    let panel = await openSelectedVoiceTuningPanel(user)
+    fireEvent.change(panel.getByRole("slider", { name: /speed/i }), { target: { value: "1.1" } })
+
+    expect(panel.getByText("Unsaved")).toBeInTheDocument()
+    expect(panel.getByRole("slider", { name: /speed/i })).toHaveValue("1.1")
+
+    await user.click(screen.getByRole("button", { name: "Generate Speech" }))
+    await waitFor(() => expect(window.location.hash).toBe("#generate"))
+    await user.click(screen.getByRole("button", { name: "Voices" }))
+    await waitFor(() => expect(window.location.hash).toBe("#voices"))
+
+    panel = selectedVoiceTuningPanel()
+    expect(panel.getByText("Unsaved")).toBeInTheDocument()
+    expect(panel.getByRole("slider", { name: /speed/i })).toHaveValue("1.1")
   })
 
   it("resets selected voice tuning draft to saved metadata without patching", async () => {
@@ -4036,7 +4060,9 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    expect(screen.queryByText("Voice Tuning")).not.toBeInTheDocument()
+    const generateSection = document.querySelector('[data-section-id="generate"]')
+    expect(generateSection).not.toBeNull()
+    expect(within(generateSection as HTMLElement).queryByText("Voice Tuning")).not.toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
 
     await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/speech", expect.objectContaining({ method: "POST" })))

@@ -18,6 +18,7 @@ import { useVoiceTuning } from "@/hooks/use-voice-tuning"
 import { useWorkflowNavigation } from "@/hooks/use-workflow-navigation"
 import { isTemporaryGeneratedAudioId } from "@/lib/generated-audio-view-model"
 import { formatBytes } from "@/lib/formatters"
+import type { VoiceUpdate } from "@/lib/api"
 import {
   loadNaturalHandoffsPreference,
   saveNaturalHandoffsPreference,
@@ -380,15 +381,20 @@ export function useVoiceStudioController() {
   }
 
   async function saveVoiceTuningDraft(request: VoiceTuningSaveRequest) {
+    const update: VoiceUpdate = {}
     if (request.shouldSaveVoicePreset) {
-      await voiceLibrary.updateVoicePreset(request.voice, request.voicePresetId)
+      update.voicePresetId = request.voicePresetId
     }
     if (request.shouldSaveVoiceSettings) {
       if (!request.providerId) {
         voiceLibrary.setVoiceError("Select a provider before saving voice tuning.")
         return
       }
-      await voiceLibrary.updateVoiceSettings(request.voice, request.providerId, request.voiceSettings)
+      update.providerId = request.providerId
+      update.voiceSettings = request.voiceSettings
+    }
+    if (request.shouldSaveVoicePreset || request.shouldSaveVoiceSettings) {
+      await voiceLibrary.updateVoice(request.voice, update, "Unable to save voice tuning.")
     }
   }
 
