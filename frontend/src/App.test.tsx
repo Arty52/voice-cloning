@@ -668,6 +668,13 @@ function prepareAudioPanel() {
   return within(panel as HTMLElement)
 }
 
+function expectHiddenAudioInputDoesNotWidenPage(inputId: string) {
+  const input = document.querySelector(`#${inputId}`)
+  expect(input).not.toBeNull()
+  expect(input).toHaveClass("sr-only", "size-px", "border-0", "p-0")
+  expect(input).not.toHaveClass("h-10", "w-full")
+}
+
 function selectAddVoiceWorkflow() {
   if (!screen.queryByRole("form", { name: "Add Voice" })) {
     act(() => {
@@ -2116,6 +2123,7 @@ describe("App", () => {
     await user.click(addVoiceChoice)
 
     expect(preparePanel.getByRole("form", { name: "Add Voice" })).toBeInTheDocument()
+    expectHiddenAudioInputDoesNotWidenPage("sample-upload")
     expect(preparePanel.queryByRole("heading", { name: "Sample Processing" })).not.toBeInTheDocument()
 
     await user.click(processAudioChoice)
@@ -2123,6 +2131,7 @@ describe("App", () => {
     expect(preparePanel.queryByRole("form", { name: "Add Voice" })).not.toBeInTheDocument()
     expect(preparePanel.getByRole("heading", { name: "Sample Processing" })).toBeInTheDocument()
     expect(preparePanel.getByRole("button", { name: "Audio File" })).toHaveAttribute("aria-pressed", "true")
+    expectHiddenAudioInputDoesNotWidenPage("sample-processing-file")
     expect(preparePanel.getByRole("group", { name: "Audio Drop Zone" })).toBeInTheDocument()
   })
 

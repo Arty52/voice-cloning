@@ -73,7 +73,7 @@ export function AudioFileDropZone({
       >
         <Input
           accept={AUDIO_ACCEPT}
-          className="sr-only"
+          className="sr-only size-px border-0 p-0"
           disabled={disabled}
           id={id}
           onChange={(event) => {
