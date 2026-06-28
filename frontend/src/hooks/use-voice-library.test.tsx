@@ -55,6 +55,60 @@ describe("useVoiceLibrary", () => {
     })
     expect(result.current.voiceActionStatus).toBe("success")
   })
+
+  it("updates voice preset and provider tuning in one patch", async () => {
+    const patchedVoice = voiceAsset({
+      voicePresetId: "animatedDialogue",
+      voiceSettingsByProvider: {
+        elevenlabs: { speed: 1.16 },
+      },
+    })
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: baseVoice.id, voices: [baseVoice] })
+        }
+        if (path === "/api/voices/narrator" && init?.method === "PATCH") {
+          return okJson({ defaultVoiceId: patchedVoice.id, voices: [patchedVoice] })
+        }
+        return okJson({ defaultVoiceId: "", voices: [] })
+      })
+    )
+    const { result } = renderHook(() => useVoiceLibrary())
+
+    await waitFor(() => expect(result.current.voiceStatus).toBe("success"))
+    await act(async () => {
+      await result.current.updateVoice(
+        baseVoice,
+        {
+          providerId: "elevenlabs",
+          voicePresetId: "animatedDialogue",
+          voiceSettings: { speed: 1.16 },
+        },
+        "Unable to save voice tuning."
+      )
+    })
+
+    expect(fetch).toHaveBeenLastCalledWith(
+      "/api/voices/narrator",
+      expect.objectContaining({
+        body: JSON.stringify({
+          providerId: "elevenlabs",
+          voicePresetId: "animatedDialogue",
+          voiceSettings: { speed: 1.16 },
+        }),
+        headers: { "Content-Type": "application/json" },
+        method: "PATCH",
+      })
+    )
+    expect(result.current.voices[0].voicePresetId).toBe("animatedDialogue")
+    expect(result.current.voices[0].voiceSettingsByProvider).toEqual({
+      elevenlabs: { speed: 1.16 },
+    })
+    expect(result.current.voiceActionStatus).toBe("success")
+  })
 })
 
 function okJson(payload: VoicesResponse) {

@@ -1,4 +1,4 @@
-import { act, renderHook } from "@testing-library/react"
+import { renderHook } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
 
 import type { ProviderTuningMetadata, VoiceAsset } from "@/types"
@@ -58,7 +58,7 @@ describe("useVoiceTuning", () => {
     expect(result.current.tuning).toEqual({ speed: 0.95, stability: 0.3 })
   })
 
-  it("keeps manual changes scoped to the selected provider voice tuning", () => {
+  it("updates generation defaults when saved provider tuning changes", () => {
     const selectedVoice = voiceAsset({
       voiceSettingsByProvider: {
         elevenlabs: { speed: 0.95, stability: 0.3 },
@@ -74,11 +74,6 @@ describe("useVoiceTuning", () => {
       { initialProps: { voice: selectedVoice } }
     )
 
-    act(() => {
-      result.current.handleTuningValueChange(providerTuning.controls[0], 0.72)
-    })
-    expect(result.current.tuning).toEqual({ speed: 0.95, stability: 0.72 })
-
     rerender({
       voice: {
         ...selectedVoice,
@@ -89,6 +84,21 @@ describe("useVoiceTuning", () => {
     })
 
     expect(result.current.tuning).toEqual({ speed: 0.9, stability: 0.35 })
+  })
+
+  it("uses mapped provider preset tuning when the voice has no saved provider tuning", () => {
+    const selectedVoice = voiceAsset({ voicePresetId: "animatedDialogue" })
+
+    const { result } = renderHook(() =>
+      useVoiceTuning({
+        activeProviderId: "elevenlabs",
+        providerTuning,
+        selectedVoice,
+      })
+    )
+
+    expect(result.current.selectedTuningPresetId).toBe("dialogue")
+    expect(result.current.tuning).toEqual({ speed: 1, stability: 0.8 })
   })
 })
 

@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useRef, useState } from "react"
 
 import * as voiceApi from "@/lib/api"
+import type { VoiceUpdate } from "@/lib/api"
 import type { AsyncStatus, VoiceAsset, VoicePresetId, VoiceTuningValues, VoicesResponse } from "@/types"
 
 export function useVoiceLibrary() {
@@ -142,33 +143,28 @@ export function useVoiceLibrary() {
     }
   }
 
+  async function updateVoice(voice: VoiceAsset, update: VoiceUpdate, errorMessage = "Unable to update voice.") {
+    setVoiceActionStatus("loading")
+    setVoiceError(null)
+    try {
+      const payload = await voiceApi.updateVoice(voice.id, update)
+      applyVoicePayload(payload)
+      setVoiceActionStatus("success")
+    } catch (caught) {
+      setVoiceActionStatus("error")
+      setVoiceError(caught instanceof Error ? caught.message : errorMessage)
+    }
+  }
+
   async function updateVoicePreset(voice: VoiceAsset, voicePresetId: VoicePresetId) {
     if (voice.voicePresetId === voicePresetId) {
       return
     }
-    setVoiceActionStatus("loading")
-    setVoiceError(null)
-    try {
-      const payload = await voiceApi.updateVoice(voice.id, { voicePresetId })
-      applyVoicePayload(payload)
-      setVoiceActionStatus("success")
-    } catch (caught) {
-      setVoiceActionStatus("error")
-      setVoiceError(caught instanceof Error ? caught.message : "Unable to update voice preset.")
-    }
+    await updateVoice(voice, { voicePresetId }, "Unable to update voice preset.")
   }
 
   async function updateVoiceSettings(voice: VoiceAsset, providerId: string, voiceSettings: VoiceTuningValues) {
-    setVoiceActionStatus("loading")
-    setVoiceError(null)
-    try {
-      const payload = await voiceApi.updateVoice(voice.id, { providerId, voiceSettings })
-      applyVoicePayload(payload)
-      setVoiceActionStatus("success")
-    } catch (caught) {
-      setVoiceActionStatus("error")
-      setVoiceError(caught instanceof Error ? caught.message : "Unable to save voice tuning.")
-    }
+    await updateVoice(voice, { providerId, voiceSettings }, "Unable to save voice tuning.")
   }
 
   return {
@@ -191,6 +187,7 @@ export function useVoiceLibrary() {
     setSelectedVoiceId,
     setVoiceError,
     submitRename,
+    updateVoice,
     updateVoiceSettings,
     updateVoicePreset,
     voiceActionStatus,

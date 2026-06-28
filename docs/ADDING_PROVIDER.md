@@ -8,7 +8,7 @@ Voice Clone Lab uses ElevenLabs as the built-in provider, but backend services a
 - TTS-only provider: can generate from an existing provider voice id, but needs an explicit product decision before it can fit the local sample-to-clone workflow.
 - Provider without quota metadata: return an unavailable subscription payload through the metadata route and keep generation usable.
 - Provider without model metadata: return an unavailable models payload and use the provider default model id.
-- Provider without tuning controls: expose empty `controls`, `presets`, and `defaultValues`; the UI hides Voice Tuning for that provider.
+- Provider without tuning controls: expose empty `controls`, `presets`, and `defaultValues`; the selected-voice tuning UI shows that the active provider does not expose saved tuning controls.
 - Provider with provider-specific tuning: define controls, defaults, validation, and presets in the adapter. Map equivalent presets to semantic `voicePresetId` values when possible. Do not add provider-specific tuning constants to the frontend.
 - Providers are not expected to report generated-audio wall-clock timing. The browser records provider-agnostic `generationElapsedMs` for saved generated audio; provider-specific latency fields should remain out of the provider contract unless a future feature explicitly normalizes them.
 

@@ -17,7 +17,6 @@ import { SampleProcessingPanel } from "@/components/panels/sample-processing-pan
 import { SpeechInputPanel } from "@/components/panels/speech-input-panel"
 import { StudioOverviewPanel } from "@/components/panels/studio-overview-panel"
 import { VoiceLibraryPanel } from "@/components/panels/voice-library-panel"
-import { VoiceTuningPanel } from "@/components/panels/voice-tuning-panel"
 import { useVoiceStudioController } from "@/hooks/use-voice-studio-controller"
 
 function App() {
@@ -41,7 +40,6 @@ function App() {
     handleTextSelectionChange,
     hasModelRate,
     isSpeechGenerating,
-    isVoiceTuningExpanded,
     latestGeneratedAudioItem,
     latestStorageError,
     metadata,
@@ -54,6 +52,7 @@ function App() {
     providerTuning,
     requestClearGeneratedAudio,
     requestDeleteVoice,
+    requestSaveVoiceTuningDraft,
     regenerateMultiVoiceSegment,
     regenerateMultiVoiceSegmentsForVoice,
     result,
@@ -63,9 +62,7 @@ function App() {
     saveGeneratedSegmentTuningToVoice,
     sectionStatuses,
     selectedModel,
-    selectedTuningPresetId,
     setNaturalHandoffsEnabled,
-    setIsVoiceTuningExpanded,
     setText,
     speech,
     speechError,
@@ -81,7 +78,6 @@ function App() {
     voiceAssignmentsStale,
     updateVoiceAssignment,
     voiceLibrary,
-    voiceTuning,
     workflowSections,
   } = useVoiceStudioController()
   const isPrepareWorkflowSwitchDisabled =
@@ -164,15 +160,19 @@ function App() {
 
         <WorkflowSectionPanel activeSectionId={activeSectionId} id="voices">
           <VoiceLibraryPanel
+            activeProviderId={providerKeys.activeProviderId || null}
             defaultVoiceId={voiceLibrary.defaultVoiceId}
             isGenerating={speech.isGenerating}
+            isProviderTuningLoading={providerKeys.providerStatus === "idle" || providerKeys.providerStatus === "loading"}
             isSettingDefault={voiceLibrary.isSettingDefault}
             isUpdatingVoice={voiceLibrary.isUpdatingVoice}
             onDeleteRequest={requestDeleteVoice}
             onPlayVoice={voiceLibrary.playVoice}
             onRenameRequest={voiceLibrary.requestRename}
+            onSaveVoiceTuningRequest={requestSaveVoiceTuningDraft}
             onSelectVoice={voiceLibrary.setSelectedVoiceId}
             onSetDefault={(voice) => void voiceLibrary.setDefault(voice.id)}
+            providerTuning={providerTuning}
             selectedVoiceId={voiceLibrary.selectedVoiceId}
             voiceError={voiceLibrary.voiceError}
             voicePresets={providerKeys.voicePresets}
@@ -237,19 +237,6 @@ function App() {
             storageError={latestStorageError}
             tuning={tuning}
             voices={voiceLibrary.voices}
-          />
-
-          <VoiceTuningPanel
-            controls={providerTuning.controls}
-            isExpanded={isVoiceTuningExpanded}
-            isGenerating={isSpeechGenerating}
-            isLoading={providerKeys.providerStatus === "idle" || providerKeys.providerStatus === "loading"}
-            onExpandedChange={setIsVoiceTuningExpanded}
-            onPresetApply={voiceTuning.handlePresetApply}
-            onTuningValueChange={voiceTuning.handleTuningValueChange}
-            presets={providerTuning.presets}
-            selectedTuningPresetId={selectedTuningPresetId}
-            tuning={tuning}
           />
         </WorkflowSectionPanel>
 

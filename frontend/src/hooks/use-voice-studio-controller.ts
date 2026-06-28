@@ -18,6 +18,7 @@ import { useVoiceTuning } from "@/hooks/use-voice-tuning"
 import { useWorkflowNavigation } from "@/hooks/use-workflow-navigation"
 import { isTemporaryGeneratedAudioId } from "@/lib/generated-audio-view-model"
 import { formatBytes } from "@/lib/formatters"
+import type { VoiceUpdate } from "@/lib/api"
 import {
   loadNaturalHandoffsPreference,
   saveNaturalHandoffsPreference,
@@ -36,7 +37,13 @@ import {
   WORKFLOW_SECTIONS,
   type WorkflowSectionId,
 } from "@/lib/workflow-sections"
-import type { ProviderTuningMetadata, RequestStatus, VoiceAsset, VoiceTuningValues } from "@/types"
+import type {
+  ProviderTuningMetadata,
+  RequestStatus,
+  VoiceAsset,
+  VoiceTuningSaveRequest,
+  VoiceTuningValues,
+} from "@/types"
 
 const EMPTY_TUNING_METADATA: ProviderTuningMetadata = {
   controls: [],
@@ -48,7 +55,6 @@ export function useVoiceStudioController() {
   const [text, setText] = useState(DEFAULT_TEXT)
   const [isCostQuotaExpanded, setIsCostQuotaExpanded] = useState(false)
   const [isSampleProcessingExpanded, setIsSampleProcessingExpanded] = useState(false)
-  const [isVoiceTuningExpanded, setIsVoiceTuningExpanded] = useState(false)
   const [latestGeneratedAudioId, setLatestGeneratedAudioId] = useState<string | null>(null)
   const [latestGenerationMode, setLatestGenerationMode] = useState<"single" | "multi">("single")
   const [savedNaturalHandoffsEnabled, setSavedNaturalHandoffsEnabled] = useState(() =>
@@ -374,6 +380,37 @@ export function useVoiceStudioController() {
     await voiceLibrary.updateVoiceSettings(voice, activeProviderId, voiceSettings)
   }
 
+  async function saveVoiceTuningDraft(request: VoiceTuningSaveRequest) {
+    const update: VoiceUpdate = {}
+    if (request.shouldSaveVoicePreset) {
+      update.voicePresetId = request.voicePresetId
+    }
+    if (request.shouldSaveVoiceSettings) {
+      if (!request.providerId) {
+        voiceLibrary.setVoiceError("Select a provider before saving voice tuning.")
+        return
+      }
+      update.providerId = request.providerId
+      update.voiceSettings = request.voiceSettings
+    }
+    if (request.shouldSaveVoicePreset || request.shouldSaveVoiceSettings) {
+      await voiceLibrary.updateVoice(request.voice, update, "Unable to save voice tuning.")
+    }
+  }
+
+  function requestSaveVoiceTuningDraft(request: VoiceTuningSaveRequest) {
+    if (request.shouldSaveVoiceSettings && !request.providerId) {
+      voiceLibrary.setVoiceError("Select a provider before saving voice tuning.")
+      return
+    }
+    confirmation.requestConfirmation({
+      body: "Saving changes updates this voice's default tuning for future generations. Existing generated audio will not be affected.",
+      confirmLabel: "Save Voice Tuning",
+      onConfirm: () => saveVoiceTuningDraft(request),
+      title: "Save Voice Tuning?",
+    })
+  }
+
   function cancelGeneration() {
     if (multiVoiceSpeech.isGenerating) {
       void multiVoiceSpeech.cancelGeneration()
@@ -484,7 +521,6 @@ export function useVoiceStudioController() {
     hasVoiceAssignments,
     isCostQuotaExpanded,
     isSampleProcessingExpanded,
-    isVoiceTuningExpanded,
     latestGeneratedAudioItem,
     latestStorageError,
     metadata,
@@ -497,6 +533,7 @@ export function useVoiceStudioController() {
     providerTuning,
     requestClearGeneratedAudio,
     requestDeleteVoice,
+    requestSaveVoiceTuningDraft,
     regenerateMultiVoiceSegment,
     regenerateMultiVoiceSegmentsForVoice,
     result,
@@ -508,7 +545,6 @@ export function useVoiceStudioController() {
     selectedTuningPresetId,
     setIsCostQuotaExpanded,
     setIsSampleProcessingExpanded,
-    setIsVoiceTuningExpanded,
     setNaturalHandoffsEnabled: handleNaturalHandoffsEnabledChange,
     setText: handleTextChange,
     speech,
@@ -532,7 +568,6 @@ export function useVoiceStudioController() {
     removeVoiceAssignment,
     updateVoiceAssignment,
     voiceLibrary,
-    voiceTuning,
     workflowSections: WORKFLOW_SECTIONS,
   }
 }
