@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import hashlib
-import shutil
 from pathlib import Path
 import re
+import shutil
 
 from fastapi import HTTPException, UploadFile
 
@@ -24,6 +25,15 @@ ALLOWED_AUDIO_CONTENT_TYPES = {
     "audio/x-wav",
     "application/octet-stream",
 }
+UPLOAD_CHUNK_SIZE_BYTES = 1024 * 1024
+
+
+@dataclass(frozen=True)
+class StoredSampleFile:
+    path: Path
+    filename: str
+    content_type: str
+    sha256: str
 
 
 def _sample_hash(content: bytes) -> str:
@@ -105,6 +115,51 @@ async def load_uploaded_sample(upload: UploadFile, settings: Settings, max_bytes
     )
 
 
+async def save_uploaded_sample_stream(
+    upload: UploadFile,
+    destination: Path,
+    settings: Settings,
+    max_bytes: int | None = None,
+) -> StoredSampleFile:
+    filename = upload.filename or "uploaded-sample"
+    content_type = upload.content_type or "application/octet-stream"
+    _validate_audio_file(filename, content_type)
+
+    resolved_max_bytes = settings.max_upload_bytes if max_bytes is None else max_bytes
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = destination.with_suffix(f"{destination.suffix}.tmp")
+    digest = hashlib.sha256()
+    total_bytes = 0
+    try:
+        with temp_path.open("wb") as output:
+            while True:
+                chunk = await upload.read(UPLOAD_CHUNK_SIZE_BYTES)
+                if not chunk:
+                    break
+                total_bytes += len(chunk)
+                if total_bytes > resolved_max_bytes:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"Uploaded voice sample must be {_upload_limit_label(resolved_max_bytes)} or smaller.",
+                    )
+                digest.update(chunk)
+                output.write(chunk)
+        if total_bytes == 0:
+            raise HTTPException(status_code=422, detail="Uploaded voice sample is empty.")
+        shutil.move(str(temp_path), str(destination))
+    except Exception:
+        temp_path.unlink(missing_ok=True)
+        destination.unlink(missing_ok=True)
+        raise
+
+    return StoredSampleFile(
+        path=destination,
+        filename=filename,
+        content_type=content_type,
+        sha256=digest.hexdigest(),
+    )
+
+
 def save_sample_file(sample: VoiceSample, destination: Path) -> VoiceSample:
     destination.parent.mkdir(parents=True, exist_ok=True)
     temp_path = destination.with_suffix(f"{destination.suffix}.tmp")
@@ -124,6 +179,8 @@ async def save_uploaded_sample(upload: UploadFile, destination: Path, settings: 
 
 
 def _upload_limit_label(max_bytes: int) -> str:
+    if max_bytes < 1024 * 1024:
+        return f"{max_bytes} bytes"
     mebibytes = max_bytes / (1024 * 1024)
     if mebibytes.is_integer():
         return f"{int(mebibytes)} MB"
