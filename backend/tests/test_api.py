@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 from starlette.datastructures import Headers
 
 import voice_cloning.sample_processors as sample_processors_module
+import voice_cloning.services.voice_ingestion as voice_ingestion_module
 import voice_cloning.voice_library as voice_library_module
 from voice_cloning.api import SpeechGenerationCanceled, _await_or_cancel_on_disconnect, create_app
 from voice_cloning.cache import VoiceCache
@@ -4152,13 +4153,21 @@ def test_source_window_cleans_active_file_when_source_write_fails(tmp_path: Path
     assert not (tmp_path / "assets" / "voices" / "sources" / "voice-clone-01.mp3").exists()
 
 
-def test_source_window_duplicate_name_is_rejected_before_source_write(tmp_path: Path) -> None:
+def test_source_window_duplicate_name_is_rejected_before_source_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     client, _ = make_client(tmp_path)
     first = client.post(
         "/api/voices",
         data={"name": "Voice_Clone_01"},
         files={"sampleFile": ("voice.mp3", b"uploaded-sample", "audio/mpeg")},
     )
+
+    async def fail_stream_before_preflight(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("Upload streams should not be read before duplicate-name validation.")
+
+    monkeypatch.setattr(voice_ingestion_module, "save_uploaded_sample_stream", fail_stream_before_preflight)
 
     response = client.post(
         "/api/voices",

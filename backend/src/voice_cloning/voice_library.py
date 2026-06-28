@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
 from pathlib import Path
@@ -31,6 +32,18 @@ from .samples import (
 
 
 SAMPLE_PROCESSING_PRESET_IDS = frozenset(get_args(SampleProcessingPresetId))
+
+
+@dataclass(frozen=True)
+class PreparedUploadPlan:
+    display_name: str
+    voice_id: str
+    destination: Path
+    resolved_sample_mode: VoiceSampleMode
+    resolved_window_start: float | None
+    resolved_window_duration: float | None
+    resolved_voice_preset_id: VoicePresetId
+    source_destination: Path | None
 
 
 class VoiceLibrary:
@@ -168,6 +181,65 @@ class VoiceLibrary:
         window_duration_seconds: float | None = None,
         voice_preset_id: str | None = None,
     ) -> VoiceAsset:
+        plan = self.validate_prepared_upload(
+            name,
+            sample.filename,
+            sample_mode=sample_mode,
+            source_filename=source_file.filename if source_file is not None else None,
+            source_file_available=source_file is not None,
+            window_start_seconds=window_start_seconds,
+            window_duration_seconds=window_duration_seconds,
+            voice_preset_id=voice_preset_id,
+        )
+
+        try:
+            saved = save_sample_file(sample, plan.destination)
+            if plan.source_destination is not None and source_file is not None:
+                plan.source_destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(source_file.path), str(plan.source_destination))
+        except Exception:
+            _unlink_if_exists(plan.destination)
+            if plan.source_destination is not None:
+                _unlink_if_exists(plan.source_destination)
+            raise
+
+        asset = VoiceAsset(
+            id=plan.voice_id,
+            name=plan.display_name,
+            file_path=plan.destination.relative_to(self.assets_dir).as_posix(),
+            content_type=saved.content_type,
+            sha256=saved.sha256,
+            source="upload",
+            created_at=datetime.now(UTC).isoformat(),
+            sample_mode=plan.resolved_sample_mode,
+            window_start_seconds=plan.resolved_window_start,
+            window_duration_seconds=plan.resolved_window_duration,
+            source_file_path=plan.source_destination.relative_to(self.assets_dir).as_posix()
+            if plan.source_destination is not None
+            else None,
+            source_content_type=source_file.content_type if source_file is not None and plan.source_destination is not None else None,
+            source_sha256=source_file.sha256 if source_file is not None and plan.source_destination is not None else None,
+            voice_preset_id=plan.resolved_voice_preset_id,
+        )
+        manifest = self._read_manifest()
+        manifest["voices"].append(self._asset_to_payload(asset))
+        if not manifest.get("defaultVoiceId"):
+            manifest["defaultVoiceId"] = asset.id
+        self._write_manifest(manifest)
+        return asset
+
+    def validate_prepared_upload(
+        self,
+        name: str,
+        sample_filename: str | None,
+        *,
+        sample_mode: str | None = None,
+        source_filename: str | None = None,
+        source_file_available: bool = False,
+        window_start_seconds: float | None = None,
+        window_duration_seconds: float | None = None,
+        voice_preset_id: str | None = None,
+    ) -> PreparedUploadPlan:
         display_name = name.strip()
         if not display_name:
             raise HTTPException(status_code=422, detail="Voice name is required.")
@@ -175,7 +247,7 @@ class VoiceLibrary:
         resolved_sample_mode = _normalize_sample_mode(sample_mode)
         resolved_window_start, resolved_window_duration = _normalize_window_metadata(
             resolved_sample_mode,
-            source_file,
+            object() if source_file_available else None,
             window_start_seconds,
             window_duration_seconds,
         )
@@ -190,54 +262,28 @@ class VoiceLibrary:
         ):
             raise HTTPException(status_code=409, detail="A voice with that name already exists.")
 
-        extension = Path(sample.filename or "").suffix.lower() or ".wav"
+        extension = Path(sample_filename or "").suffix.lower() or ".wav"
         destination = self.assets_dir / f"{voice_id}{extension}"
         if destination.exists():
             raise HTTPException(status_code=409, detail="A voice asset file with that name already exists.")
 
         source_destination: Path | None = None
         if resolved_sample_mode == "sourceWindow":
-            if source_file is None:
-                raise HTTPException(status_code=422, detail="Source file is required for sourceWindow samples.")
-            source_extension = Path(source_file.filename or source_file.path.name).suffix.lower() or ".wav"
+            source_extension = Path(source_filename or "").suffix.lower() or ".wav"
             source_destination = self.assets_dir / "sources" / f"{voice_id}{source_extension}"
             if source_destination.exists():
                 raise HTTPException(status_code=409, detail="A source audio file with that name already exists.")
 
-        try:
-            saved = save_sample_file(sample, destination)
-            if source_destination is not None and source_file is not None:
-                source_destination.parent.mkdir(parents=True, exist_ok=True)
-                shutil.move(str(source_file.path), str(source_destination))
-        except Exception:
-            _unlink_if_exists(destination)
-            if source_destination is not None:
-                _unlink_if_exists(source_destination)
-            raise
-
-        asset = VoiceAsset(
-            id=voice_id,
-            name=display_name,
-            file_path=destination.relative_to(self.assets_dir).as_posix(),
-            content_type=saved.content_type,
-            sha256=saved.sha256,
-            source="upload",
-            created_at=datetime.now(UTC).isoformat(),
-            sample_mode=resolved_sample_mode,
-            window_start_seconds=resolved_window_start,
-            window_duration_seconds=resolved_window_duration,
-            source_file_path=source_destination.relative_to(self.assets_dir).as_posix()
-            if source_destination is not None
-            else None,
-            source_content_type=source_file.content_type if source_file is not None and source_destination is not None else None,
-            source_sha256=source_file.sha256 if source_file is not None and source_destination is not None else None,
-            voice_preset_id=resolved_voice_preset_id,
+        return PreparedUploadPlan(
+            display_name=display_name,
+            voice_id=voice_id,
+            destination=destination,
+            resolved_sample_mode=resolved_sample_mode,
+            resolved_window_start=resolved_window_start,
+            resolved_window_duration=resolved_window_duration,
+            resolved_voice_preset_id=resolved_voice_preset_id,
+            source_destination=source_destination,
         )
-        manifest["voices"].append(self._asset_to_payload(asset))
-        if not manifest.get("defaultVoiceId"):
-            manifest["defaultVoiceId"] = asset.id
-        self._write_manifest(manifest)
-        return asset
 
     def add_processed_sample(
         self,

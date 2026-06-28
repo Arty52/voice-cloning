@@ -50,6 +50,16 @@ class VoiceIngestionService:
         window_duration_seconds: float | None = None,
         voice_preset_id: str | None = None,
     ) -> VoiceAsset:
+        self.voice_library.validate_prepared_upload(
+            name,
+            sample_upload.filename,
+            sample_mode=sample_mode,
+            source_filename=source_upload.filename if source_upload is not None else None,
+            source_file_available=source_upload is not None,
+            window_start_seconds=window_start_seconds,
+            window_duration_seconds=window_duration_seconds,
+            voice_preset_id=voice_preset_id,
+        )
         job_dir = self.ingestion_dir / uuid4().hex
         job_dir.mkdir(parents=True, exist_ok=False)
         try:
