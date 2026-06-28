@@ -672,7 +672,8 @@ function expectHiddenAudioInputDoesNotWidenPage(inputId: string) {
   const input = document.querySelector(`#${inputId}`)
   expect(input).not.toBeNull()
   expect(input).toHaveClass("sr-only", "size-px", "border-0", "p-0")
-  expect(input).not.toHaveClass("h-10", "w-full")
+  expect(input).not.toHaveClass("h-10")
+  expect(input).not.toHaveClass("w-full")
 }
 
 function selectAddVoiceWorkflow() {
