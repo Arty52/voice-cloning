@@ -620,7 +620,7 @@ def _processing_steps_from_payload(value: Any) -> tuple[VoiceProcessingStep, ...
         if not isinstance(item, dict):
             continue
         operation_id = item.get("operationId")
-        if operation_id not in {"isolateVoice", "trimSilence", "separateSpeakers"}:
+        if operation_id not in {"prepareVoice", "isolateVoice", "trimSilence", "separateSpeakers"}:
             continue
         step_id = _optional_str(item.get("id"))
         label = _optional_str(item.get("label"))

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+import json
 from pathlib import Path
 import shutil
 from typing import Protocol, cast
@@ -12,6 +13,8 @@ from fastapi import UploadFile
 
 from ..config import Settings
 from ..models import (
+    PreparedSampleCandidate,
+    PreparedSamplesResult,
     SampleProcessingJob,
     SampleProcessingJobStep,
     SampleProcessingJobResult,
@@ -37,6 +40,15 @@ from ..voice_library import VoiceLibrary
 
 RESULT_FILENAME = "result.wav"
 RESULT_CONTENT_TYPE = "audio/wav"
+PREPARED_SAMPLE_RATE_HZ = 16000
+PREPARE_MAX_WINDOW_SECONDS = 120.0
+PREPARE_MAX_CANDIDATES_PER_SPEAKER = 3
+PREPARE_FINAL_TRIM_FILTER = (
+    "silenceremove="
+    "start_periods=1:start_duration=0.12:start_threshold=-45dB:start_silence=0.08:"
+    "stop_periods=-1:stop_duration=0.5:stop_threshold=-45dB:stop_silence=0.15:"
+    "detection=peak"
+)
 DEFAULT_ISOLATION_PROCESSING_PRESET_ID: SampleProcessingPresetId = "balanced"
 DEFAULT_TRIM_SILENCE_PROCESSING_PRESET_ID: SampleProcessingPresetId = "trimBalanced"
 RECOMMENDED_WORKFLOW_ORDER: tuple[SampleProcessingOperationId, ...] = (
@@ -106,6 +118,12 @@ BASE_OPERATIONS: tuple[SampleProcessingOperation, ...] = (
         description="Split a source track into individual speaker samples.",
         enabled=False,
     ),
+    SampleProcessingOperation(
+        id="prepareVoice",
+        label="Prepare Voice",
+        description="Clean, rank, trim, and normalize provider-sized voice samples.",
+        enabled=False,
+    ),
 )
 
 
@@ -170,6 +188,51 @@ class SpeakerVoiceSelection:
     voice_preset_id: str | None = None
 
 
+@dataclass(frozen=True)
+class PreparedCandidateVoiceSelection:
+    candidate_id: str
+    name: str
+    voice_preset_id: str | None = None
+
+
+@dataclass(frozen=True)
+class PrepareVoiceOptions:
+    clean_voice: bool
+    detect_speakers: bool
+    trim_candidates: bool
+    isolation_requested: bool
+    speaker_detection_requested: bool
+
+
+@dataclass(frozen=True)
+class AudioProbe:
+    duration_seconds: float | None = None
+    sample_rate_hz: int | None = None
+
+
+@dataclass(frozen=True)
+class SpeechRegion:
+    start_seconds: float
+    end_seconds: float
+
+
+@dataclass(frozen=True)
+class CandidateWindow:
+    start_seconds: float
+    end_seconds: float
+    speech_seconds: float
+    score: float
+    warnings: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class PrepareSource:
+    path: Path
+    sample: VoiceSample
+    speaker_id: str
+    speaker_label: str
+
+
 class SampleProcessor(Protocol):
     @property
     def engine_name(self) -> str: ...
@@ -216,11 +279,15 @@ class SampleProcessingService:
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._source_paths: dict[str, Path] = {}
         self._speaker_processing_steps: dict[str, dict[str, tuple[VoiceProcessingStep, ...]]] = {}
+        self._prepared_candidate_processing_steps: dict[str, dict[str, tuple[VoiceProcessingStep, ...]]] = {}
 
     def operations(self) -> tuple[SampleProcessingOperation, ...]:
         processor_operations = {operation.id: operation for operation in self.processor.operations()}
         operations: list[SampleProcessingOperation] = []
         for operation in BASE_OPERATIONS:
+            if operation.id == "prepareVoice":
+                operations.append(replace(operation, enabled=_command_available(self.settings.sample_processing_ffmpeg_command)))
+                continue
             processor_operation = processor_operations.get(operation.id)
             operations.append(
                 replace(
@@ -237,8 +304,11 @@ class SampleProcessingService:
         return tuple(operations)
 
     def engine(self) -> str | None:
-        if not any(operation.enabled for operation in self.operations()):
+        enabled_operations = {operation.id for operation in self.operations() if operation.enabled}
+        if not enabled_operations:
             return None
+        if enabled_operations == {"prepareVoice"}:
+            return "ffmpeg"
         return self.processor.engine_name
 
     def recommended_workflow_order(self) -> tuple[SampleProcessingOperationId, ...]:
@@ -254,8 +324,22 @@ class SampleProcessingService:
         source_voice_id: str | None = None,
         source_upload: UploadFile | None = None,
         workflow_steps: tuple[SampleProcessingWorkflowStepInput, ...] | None = None,
+        clean_voice: bool | None = None,
+        detect_speakers: bool | None = None,
+        trim_candidates: bool | None = None,
     ) -> SampleProcessingJob:
         resolved_source_preference = _normalize_source_preference(source_preference)
+        if operation_id == "prepareVoice":
+            if workflow_steps is not None:
+                raise SampleProcessingServiceError("Prepare Voice cannot be used inside a manual processing stack.", 422)
+            return await self._create_prepare_voice_job(
+                source_preference=resolved_source_preference,
+                source_voice_id=source_voice_id,
+                source_upload=source_upload,
+                clean_voice=clean_voice,
+                detect_speakers=detect_speakers,
+                trim_candidates=trim_candidates,
+            )
         resolved_steps = self._resolve_workflow_steps(
             operation_id=operation_id,
             processing_preset_id=processing_preset_id,
@@ -327,6 +411,86 @@ class SampleProcessingService:
             self._tasks.pop(job_id, None)
             self._source_paths.pop(job_id, None)
             self._speaker_processing_steps.pop(job_id, None)
+            self._prepared_candidate_processing_steps.pop(job_id, None)
+            if job_dir_created:
+                shutil.rmtree(job_dir, ignore_errors=True)
+            raise
+
+    async def _create_prepare_voice_job(
+        self,
+        *,
+        source_preference: SampleProcessingSourcePreference,
+        source_voice_id: str | None,
+        source_upload: UploadFile | None,
+        clean_voice: bool | None,
+        detect_speakers: bool | None,
+        trim_candidates: bool | None,
+    ) -> SampleProcessingJob:
+        prepare_operation = self._enabled_operation("prepareVoice")
+        if bool(source_voice_id and source_voice_id.strip()) == bool(source_upload):
+            raise SampleProcessingServiceError("Choose one source voice or upload one source file.", 422)
+
+        job_id = uuid4().hex
+        job_dir = self._job_dir(job_id)
+        job_dir_created = False
+        try:
+            if source_upload is not None:
+                job_dir.mkdir(parents=True, exist_ok=False)
+                job_dir_created = True
+                source_path, source_sample, source_name = await self._source_from_upload(job_dir, source_upload)
+            else:
+                source_path, source_sample, source_name = self._source_from_voice(
+                    (source_voice_id or "").strip(),
+                    source_preference,
+                )
+                job_dir.mkdir(parents=True, exist_ok=False)
+                job_dir_created = True
+
+            options = self._prepare_voice_options(
+                clean_voice=clean_voice,
+                detect_speakers=detect_speakers,
+                trim_candidates=trim_candidates,
+            )
+            now = _utc_now()
+            step = SampleProcessingJobStep(
+                id=f"{job_id}-prepare",
+                operation_id="prepareVoice",
+                operation_label=prepare_operation.label,
+                status="pending",
+                engine=self._prepare_voice_engine(options),
+            )
+            job = SampleProcessingJob(
+                id=job_id,
+                operation_id="prepareVoice",
+                status="pending",
+                source_name=source_name,
+                source_filename=source_sample.filename,
+                source_content_type=source_sample.content_type,
+                source_sha256=source_sample.sha256,
+                source_preference=source_preference,
+                created_at=now,
+                updated_at=now,
+                engine=step.engine,
+                workflow_mode="single",
+                steps=(step,),
+            )
+            self._jobs[job_id] = job
+            self._source_paths[job_id] = source_path
+            self._tasks[job_id] = asyncio.create_task(
+                self._run_prepare_voice_job(
+                    job_id=job_id,
+                    job_dir=job_dir,
+                    source_path=source_path,
+                    source_sample=source_sample,
+                    options=options,
+                )
+            )
+            return job
+        except Exception:
+            self._jobs.pop(job_id, None)
+            self._tasks.pop(job_id, None)
+            self._source_paths.pop(job_id, None)
+            self._prepared_candidate_processing_steps.pop(job_id, None)
             if job_dir_created:
                 shutil.rmtree(job_dir, ignore_errors=True)
             raise
@@ -356,6 +520,11 @@ class SampleProcessingService:
         if job.status != "success" or job.result is None:
             raise SampleProcessingServiceError("Sample processing result is not ready.", 409)
         if not isinstance(job.result, SampleProcessingResult):
+            if isinstance(job.result, PreparedSamplesResult):
+                raise SampleProcessingServiceError(
+                    "Prepared sample jobs expose per-candidate audio results.",
+                    409,
+                )
             raise SampleProcessingServiceError(
                 "Speaker separation jobs expose per-speaker audio results.",
                 409,
@@ -382,6 +551,12 @@ class SampleProcessingService:
         if speaker.result is None:
             raise SampleProcessingServiceError("Speaker result is not ready.", 409)
         return self._result_path(speaker.result)
+
+    def candidate_result_path(self, job_id: str, candidate_id: str) -> Path:
+        job = self.get_job(job_id)
+        result = self._prepared_samples_result(job)
+        candidate = _prepared_candidate_by_id(result, candidate_id)
+        return self._result_path(candidate.result)
 
     def save_result_as_voice(
         self,
@@ -499,6 +674,260 @@ class SampleProcessingService:
                     pass
             raise
         return tuple(saved)
+
+    def save_candidate_results_as_voices(
+        self,
+        job_id: str,
+        *,
+        voices: tuple[PreparedCandidateVoiceSelection, ...],
+    ) -> tuple[VoiceAsset, ...]:
+        job = self.get_job(job_id)
+        result = self._prepared_samples_result(job)
+        normalized = self._validate_prepared_candidate_voice_selections(result, voices)
+        candidate_steps = self._prepared_candidate_processing_steps.get(job_id, {})
+        prepared: list[tuple[PreparedCandidateVoiceSelection, VoiceSample, tuple[VoiceProcessingStep, ...]]] = []
+        for selection, candidate in normalized:
+            result_path = self._result_path(candidate.result)
+            sample = load_sample_file(result_path, candidate.result.content_type)
+            steps = candidate_steps.get(candidate.candidate_id) or (
+                VoiceProcessingStep(
+                    id=job.id,
+                    label="Prepare Voice",
+                    operation_id="prepareVoice",
+                    created_at=_utc_now(),
+                    source_sha256=job.source_sha256,
+                    result_sha256=sample.sha256,
+                    engine=job.engine,
+                    speaker_id=candidate.speaker_id,
+                    speaker_label=candidate.speaker_label,
+                ),
+            )
+            prepared.append((selection, sample, steps))
+
+        saved: list[VoiceAsset] = []
+        try:
+            for selection, sample, steps in prepared:
+                saved.append(
+                    self.voice_library.add_processed_sample(
+                        selection.name,
+                        sample,
+                        processing_steps=steps,
+                        voice_preset_id=selection.voice_preset_id,
+                    )
+                )
+        except Exception:
+            for voice in saved:
+                try:
+                    self.voice_library.delete_asset(voice.id)
+                except Exception:
+                    pass
+            raise
+        return tuple(saved)
+
+    async def _run_prepare_voice_job(
+        self,
+        *,
+        job_id: str,
+        job_dir: Path,
+        source_path: Path,
+        source_sample: VoiceSample,
+        options: PrepareVoiceOptions,
+    ) -> None:
+        step = self.get_job(job_id).steps[0]
+        warnings: list[str] = []
+        current_path = source_path
+        current_sample = source_sample
+        try:
+            self._update_job(job_id, status="running")
+            self._start_step(job_id, step.id, source_sha256=source_sample.sha256)
+
+            if options.clean_voice:
+                isolate_operation = self._enabled_operation("isolateVoice")
+                isolated_path = job_dir / "prepare-isolated.wav"
+                isolate_request = SampleProcessingRequest(
+                    job_id=job_id,
+                    operation_id="isolateVoice",
+                    source_path=current_path,
+                    output_path=isolated_path,
+                    job_dir=job_dir,
+                    source=current_sample,
+                    processing_preset_id=isolate_operation.default_processing_preset_id,
+                    processing_preset_label=_processing_preset_label(
+                        isolate_operation.default_processing_preset_id,
+                        isolate_operation,
+                    ),
+                )
+                isolated_result = await self.processor.process(isolate_request)
+                if isolated_result is not None:
+                    raise SampleProcessingServiceError("Isolate Voice returned an unsupported result.", 500)
+                current_sample = load_sample_file(isolated_path, RESULT_CONTENT_TYPE)
+                current_path = isolated_path
+            elif options.isolation_requested:
+                warnings.append("Voice isolation is unavailable; ranking used the original source audio.")
+
+            prepare_sources = await self._prepare_sources_for_ranking(
+                job_id=job_id,
+                job_dir=job_dir,
+                source_path=current_path,
+                source_sample=current_sample,
+                options=options,
+                warnings=warnings,
+            )
+            candidates: list[PreparedSampleCandidate] = []
+            candidate_steps: dict[str, tuple[VoiceProcessingStep, ...]] = {}
+            for prepare_source in prepare_sources:
+                source_candidates = await self._rank_and_write_prepare_candidates(
+                    job_id=job_id,
+                    job_dir=job_dir,
+                    source=prepare_source,
+                    options=options,
+                    warnings=warnings,
+                )
+                for candidate in source_candidates:
+                    candidates.append(candidate)
+                    candidate_steps[candidate.candidate_id] = (
+                        VoiceProcessingStep(
+                            id=job_id,
+                            label="Prepare Voice",
+                            operation_id="prepareVoice",
+                            created_at=_utc_now(),
+                            source_sha256=source_sample.sha256,
+                            result_sha256=candidate.sha256,
+                            engine=self._prepare_voice_engine(options),
+                            speaker_id=candidate.speaker_id,
+                            speaker_label=candidate.speaker_label,
+                        ),
+                    )
+
+            if not candidates:
+                raise SampleProcessingServiceError("Prepare Voice did not produce any candidates.", 422)
+            result = PreparedSamplesResult(
+                kind="preparedSamples",
+                candidates=tuple(candidates),
+                warnings=tuple(dict.fromkeys(warnings)),
+            )
+            self._prepared_candidate_processing_steps[job_id] = candidate_steps
+            self._finish_step(job_id, step.id, result_sha256=_aggregate_prepared_candidate_sha256(result))
+            self._update_job(job_id, status="success", result=result, active_step_id=None)
+        except asyncio.CancelledError:
+            self._cancel_job_state(job_id)
+            raise
+        except SampleProcessingServiceError as exc:
+            self._fail_active_step(job_id, exc.detail)
+            self._update_job(job_id, status="error", error=exc.detail, active_step_id=None)
+        except Exception:
+            self._fail_active_step(job_id, "Prepare Voice failed.")
+            self._update_job(job_id, status="error", error="Prepare Voice failed.", active_step_id=None)
+        finally:
+            self._tasks.pop(job_id, None)
+
+    async def _prepare_sources_for_ranking(
+        self,
+        *,
+        job_id: str,
+        job_dir: Path,
+        source_path: Path,
+        source_sample: VoiceSample,
+        options: PrepareVoiceOptions,
+        warnings: list[str],
+    ) -> tuple[PrepareSource, ...]:
+        if options.detect_speakers:
+            speaker_operation = self._enabled_operation("separateSpeakers")
+            speaker_request = SampleProcessingRequest(
+                job_id=job_id,
+                operation_id="separateSpeakers",
+                source_path=source_path,
+                output_path=job_dir / "prepare-speakers.wav",
+                job_dir=job_dir,
+                source=source_sample,
+                processing_preset_id=speaker_operation.default_processing_preset_id,
+                processing_preset_label=_processing_preset_label(
+                    speaker_operation.default_processing_preset_id,
+                    speaker_operation,
+                ),
+            )
+            speaker_result = await self.processor.process(speaker_request)
+            if not isinstance(speaker_result, SpeakerSeparationResult):
+                raise SampleProcessingServiceError("Speaker Separation returned an unsupported result.", 500)
+            self._validate_speaker_separation_result(speaker_result)
+            sources: list[PrepareSource] = []
+            for speaker in speaker_result.speakers:
+                if speaker.result is None:
+                    continue
+                speaker_path = self._result_path(speaker.result)
+                speaker_sample = load_sample_file(speaker_path, speaker.result.content_type)
+                sources.append(
+                    PrepareSource(
+                        path=speaker_path,
+                        sample=speaker_sample,
+                        speaker_id=speaker.id,
+                        speaker_label=speaker.assigned_name or speaker.label,
+                    )
+                )
+            if sources:
+                return tuple(sources)
+            warnings.append("Speaker detection did not produce speaker audio; returned single-speaker candidates.")
+        elif options.speaker_detection_requested:
+            warnings.append("Speaker detection is unavailable; returned single-speaker candidates.")
+
+        return (
+            PrepareSource(
+                path=source_path,
+                sample=source_sample,
+                speaker_id="speaker-1",
+                speaker_label="Speaker 1",
+            ),
+        )
+
+    async def _rank_and_write_prepare_candidates(
+        self,
+        *,
+        job_id: str,
+        job_dir: Path,
+        source: PrepareSource,
+        options: PrepareVoiceOptions,
+        warnings: list[str],
+    ) -> tuple[PreparedSampleCandidate, ...]:
+        probe, probe_warnings = await _probe_audio(source.path, self.settings)
+        warnings.extend(probe_warnings)
+        regions, silence_warnings = await _detect_nonsilent_regions(source.path, probe.duration_seconds, self.settings)
+        warnings.extend(silence_warnings)
+        windows = _rank_candidate_windows(regions, probe.duration_seconds)
+        candidates: list[PreparedSampleCandidate] = []
+        for rank, window in enumerate(windows[:PREPARE_MAX_CANDIDATES_PER_SPEAKER], start=1):
+            candidate_id = f"{source.speaker_id}-candidate-{rank}"
+            output_path = job_dir / f"{candidate_id}.wav"
+            await _write_prepared_candidate_audio(
+                source.path,
+                output_path,
+                window,
+                self.settings,
+                trim_candidates=options.trim_candidates,
+            )
+            sample = load_sample_file(output_path, RESULT_CONTENT_TYPE)
+            candidates.append(
+                PreparedSampleCandidate(
+                    candidate_id=candidate_id,
+                    rank=rank,
+                    score=window.score,
+                    speaker_id=source.speaker_id,
+                    speaker_label=source.speaker_label,
+                    source_start_seconds=window.start_seconds,
+                    source_end_seconds=window.end_seconds,
+                    duration_seconds=max(0.0, window.end_seconds - window.start_seconds),
+                    sample_rate_hz=PREPARED_SAMPLE_RATE_HZ,
+                    content_type=sample.content_type,
+                    sha256=sample.sha256,
+                    warnings=window.warnings,
+                    result=SampleProcessingResult(
+                        path=output_path.relative_to(self.processing_dir).as_posix(),
+                        filename=output_path.name,
+                        content_type=sample.content_type,
+                        sha256=sample.sha256,
+                    ),
+                )
+            )
+        return tuple(candidates)
 
     async def _run_job(
         self,
@@ -889,11 +1318,48 @@ class SampleProcessingService:
                 )
         raise SampleProcessingServiceError(f"Unsupported sample processing operation: {operation_id}.", 422)
 
+    def _operation_enabled(self, operation_id: SampleProcessingOperationId) -> bool:
+        return any(operation.id == operation_id and operation.enabled for operation in self.operations())
+
+    def _prepare_voice_options(
+        self,
+        *,
+        clean_voice: bool | None,
+        detect_speakers: bool | None,
+        trim_candidates: bool | None,
+    ) -> PrepareVoiceOptions:
+        isolation_available = self._operation_enabled("isolateVoice")
+        speaker_detection_available = self._operation_enabled("separateSpeakers")
+        isolation_requested = isolation_available if clean_voice is None else clean_voice
+        speaker_detection_requested = speaker_detection_available if detect_speakers is None else detect_speakers
+        return PrepareVoiceOptions(
+            clean_voice=isolation_requested and isolation_available,
+            detect_speakers=speaker_detection_requested and speaker_detection_available,
+            trim_candidates=True if trim_candidates is None else trim_candidates,
+            isolation_requested=isolation_requested,
+            speaker_detection_requested=speaker_detection_requested,
+        )
+
+    def _prepare_voice_engine(self, options: PrepareVoiceOptions) -> str:
+        engines = ["ffmpeg"]
+        if options.clean_voice:
+            engines.insert(0, self.processor.engine_name_for_operation("isolateVoice"))
+        if options.detect_speakers:
+            engines.insert(-1, self.processor.engine_name_for_operation("separateSpeakers"))
+        return "+".join(dict.fromkeys(engines))
+
     def _operation_label(self, operation_id: SampleProcessingOperationId) -> str:
         for operation in self.operations():
             if operation.id == operation_id:
                 return operation.label
         return operation_id
+
+    def _prepared_samples_result(self, job: SampleProcessingJob) -> PreparedSamplesResult:
+        if job.status != "success" or job.result is None:
+            raise SampleProcessingServiceError("Prepared sample candidates are not ready.", 409)
+        if not isinstance(job.result, PreparedSamplesResult):
+            raise SampleProcessingServiceError("Sample processing job is not a prepared samples result.", 409)
+        return job.result
 
     def _speaker_separation_result(self, job: SampleProcessingJob) -> SpeakerSeparationResult:
         if job.status != "success" or job.result is None:
@@ -986,6 +1452,47 @@ class SampleProcessingService:
                         voice_preset_id=selection.voice_preset_id,
                     ),
                     speaker,
+                )
+            )
+        return tuple(normalized)
+
+    def _validate_prepared_candidate_voice_selections(
+        self,
+        result: PreparedSamplesResult,
+        voices: tuple[PreparedCandidateVoiceSelection, ...],
+    ) -> tuple[tuple[PreparedCandidateVoiceSelection, PreparedSampleCandidate], ...]:
+        if not voices:
+            raise SampleProcessingServiceError("Choose at least one candidate to save.", 422)
+        existing_assets = self.voice_library.list_assets()
+        existing_ids = {asset.id for asset in existing_assets}
+        existing_names = {slugify_voice_name(asset.name) for asset in existing_assets}
+        seen_candidate_ids: set[str] = set()
+        seen_names: set[str] = set()
+        normalized: list[tuple[PreparedCandidateVoiceSelection, PreparedSampleCandidate]] = []
+        for selection in voices:
+            if selection.candidate_id in seen_candidate_ids:
+                raise SampleProcessingServiceError("Candidate can only be selected once.", 422)
+            seen_candidate_ids.add(selection.candidate_id)
+            candidate = _prepared_candidate_by_id(result, selection.candidate_id)
+            display_name = selection.name.strip()
+            if not display_name:
+                raise SampleProcessingServiceError("Voice name is required.", 422)
+            normalized_name = slugify_voice_name(display_name)
+            if normalized_name in seen_names:
+                raise SampleProcessingServiceError("Prepared voice names must be unique.", 409)
+            if normalized_name in existing_ids or normalized_name in existing_names:
+                raise SampleProcessingServiceError("A voice with that name already exists.", 409)
+            if selection.voice_preset_id not in (None, "", *VOICE_PRESET_IDS):
+                raise SampleProcessingServiceError("Voice preset must be standardNarration or animatedDialogue.", 422)
+            seen_names.add(normalized_name)
+            normalized.append(
+                (
+                    PreparedCandidateVoiceSelection(
+                        candidate_id=selection.candidate_id,
+                        name=display_name,
+                        voice_preset_id=selection.voice_preset_id,
+                    ),
+                    candidate,
                 )
             )
         return tuple(normalized)
@@ -1217,6 +1724,18 @@ def _normalize_processing_preset(
     raise SampleProcessingServiceError(f"Unsupported processing preset: {raw_value}.", 422)
 
 
+def _processing_preset_label(
+    value: SampleProcessingPresetId | None,
+    operation: SampleProcessingOperation,
+) -> str | None:
+    if value is None:
+        return None
+    for preset in operation.processing_presets:
+        if preset.id == value:
+            return preset.label
+    return None
+
+
 def _require_relative_path(path: Path, parent: Path) -> None:
     try:
         path.relative_to(parent.resolve())
@@ -1232,6 +1751,318 @@ def _require_allowed_source_path(path: Path, processing_dir: Path, assets_dir: P
         except ValueError:
             continue
     raise SampleProcessingServiceError("Sample processing source path is invalid.", 500)
+
+
+def _command_available(command: str) -> bool:
+    command_path = Path(command)
+    if command_path.is_absolute() or command_path.parent != Path("."):
+        return command_path.exists()
+    return shutil.which(command) is not None
+
+
+async def _probe_audio(path: Path, settings: Settings) -> tuple[AudioProbe, tuple[str, ...]]:
+    try:
+        stdout, _ = await _run_capture_command(
+            [
+                settings.sample_processing_ffprobe_command,
+                "-v",
+                "error",
+                "-select_streams",
+                "a:0",
+                "-show_entries",
+                "format=duration:stream=sample_rate",
+                "-of",
+                "json",
+                str(path),
+            ],
+            "ffprobe",
+            settings.sample_processing_timeout_seconds,
+        )
+        payload = json.loads(stdout.decode("utf-8"))
+    except (SampleProcessingServiceError, json.JSONDecodeError):
+        return AudioProbe(), ("FFprobe metadata was unavailable; ranking used fallback duration metadata.",)
+
+    duration_seconds = _positive_float_from_payload(payload.get("format", {}), "duration")
+    sample_rate_hz: int | None = None
+    streams = payload.get("streams")
+    if isinstance(streams, list) and streams:
+        sample_rate = _positive_float_from_payload(streams[0], "sample_rate")
+        sample_rate_hz = int(sample_rate) if sample_rate is not None else None
+    return AudioProbe(duration_seconds=duration_seconds, sample_rate_hz=sample_rate_hz), ()
+
+
+async def _detect_nonsilent_regions(
+    path: Path,
+    duration_seconds: float | None,
+    settings: Settings,
+) -> tuple[tuple[SpeechRegion, ...], tuple[str, ...]]:
+    try:
+        _, stderr = await _run_capture_command(
+            [
+                settings.sample_processing_ffmpeg_command,
+                "-hide_banner",
+                "-nostats",
+                "-i",
+                str(path),
+                "-af",
+                "silencedetect=noise=-45dB:d=0.35",
+                "-f",
+                "null",
+                "-",
+            ],
+            "ffmpeg",
+            settings.sample_processing_timeout_seconds,
+        )
+    except SampleProcessingServiceError:
+        return _fallback_speech_regions(duration_seconds), (
+            "Nonsilent speech detection was unavailable; ranking used the full source window.",
+        )
+
+    parsed = _speech_regions_from_silencedetect(stderr.decode("utf-8", errors="replace"), duration_seconds)
+    if parsed:
+        return parsed, ()
+    return _fallback_speech_regions(duration_seconds), (
+        "Nonsilent speech detection did not find speech regions; ranking used the full source window.",
+    )
+
+
+def _speech_regions_from_silencedetect(
+    log_output: str,
+    duration_seconds: float | None,
+) -> tuple[SpeechRegion, ...]:
+    regions: list[SpeechRegion] = []
+    cursor = 0.0
+    last_observed = duration_seconds or 0.0
+    for line in log_output.splitlines():
+        if "silence_start:" in line:
+            silence_start = _float_after_marker(line, "silence_start:")
+            if silence_start is None:
+                continue
+            last_observed = max(last_observed, silence_start)
+            if silence_start > cursor:
+                regions.append(SpeechRegion(cursor, silence_start))
+            cursor = max(cursor, silence_start)
+        elif "silence_end:" in line:
+            silence_end = _float_after_marker(line, "silence_end:")
+            if silence_end is None:
+                continue
+            last_observed = max(last_observed, silence_end)
+            cursor = max(cursor, silence_end)
+    final_end = duration_seconds or last_observed
+    if final_end > cursor:
+        regions.append(SpeechRegion(cursor, final_end))
+    return tuple(region for region in regions if region.end_seconds - region.start_seconds >= 0.25)
+
+
+def _fallback_speech_regions(duration_seconds: float | None) -> tuple[SpeechRegion, ...]:
+    fallback_duration = max(1.0, min(duration_seconds or PREPARE_MAX_WINDOW_SECONDS, PREPARE_MAX_WINDOW_SECONDS))
+    return (SpeechRegion(0.0, fallback_duration),)
+
+
+def _rank_candidate_windows(
+    regions: tuple[SpeechRegion, ...],
+    duration_seconds: float | None,
+) -> tuple[CandidateWindow, ...]:
+    if not regions:
+        regions = _fallback_speech_regions(duration_seconds)
+    candidates: dict[tuple[float, float], CandidateWindow] = {}
+    sorted_regions = tuple(sorted(regions, key=lambda region: (region.start_seconds, region.end_seconds)))
+    source_end = duration_seconds or max(region.end_seconds for region in sorted_regions)
+    for index, region in enumerate(sorted_regions):
+        window_start = max(0.0, region.start_seconds)
+        window_end = min(max(window_start + 1.0, source_end), window_start + PREPARE_MAX_WINDOW_SECONDS)
+        if duration_seconds is not None:
+            window_end = min(window_end, duration_seconds)
+        speech_seconds = _speech_overlap_seconds(sorted_regions, window_start, window_end)
+        candidate = _candidate_window(window_start, window_end, speech_seconds)
+        candidates[(round(candidate.start_seconds, 3), round(candidate.end_seconds, 3))] = candidate
+
+        merged_start = max(0.0, sorted_regions[0].start_seconds if index == 0 else region.start_seconds)
+        merged_end = min(source_end, merged_start + PREPARE_MAX_WINDOW_SECONDS)
+        if duration_seconds is not None:
+            merged_end = min(merged_end, duration_seconds)
+        merged_speech = _speech_overlap_seconds(sorted_regions, merged_start, merged_end)
+        merged = _candidate_window(merged_start, merged_end, merged_speech)
+        candidates[(round(merged.start_seconds, 3), round(merged.end_seconds, 3))] = merged
+
+    return tuple(
+        sorted(
+            candidates.values(),
+            key=lambda window: (
+                -window.score,
+                -(window.end_seconds - window.start_seconds),
+                window.start_seconds,
+            ),
+        )
+    )
+
+
+def _candidate_window(start_seconds: float, end_seconds: float, speech_seconds: float) -> CandidateWindow:
+    duration_seconds = max(0.01, end_seconds - start_seconds)
+    speech_density = max(0.0, min(1.0, speech_seconds / duration_seconds))
+    duration_fit = max(0.0, min(1.0, duration_seconds / PREPARE_MAX_WINDOW_SECONDS))
+    continuity = 1.0 if speech_density >= 0.8 else max(0.2, speech_density)
+    level_quality = 1.0
+    clipping_quality = 1.0
+    score = round(
+        100.0
+        * (
+            0.42 * speech_density
+            + 0.22 * duration_fit
+            + 0.16 * continuity
+            + 0.10 * level_quality
+            + 0.10 * clipping_quality
+        ),
+        2,
+    )
+    warnings: list[str] = []
+    if duration_seconds < 15.0:
+        warnings.append("Candidate is shorter than the recommended provider sample duration.")
+    if speech_density < 0.4:
+        warnings.append("Candidate contains a high amount of nonspeech audio.")
+    return CandidateWindow(start_seconds, end_seconds, speech_seconds, score, tuple(warnings))
+
+
+def _speech_overlap_seconds(regions: tuple[SpeechRegion, ...], start_seconds: float, end_seconds: float) -> float:
+    total = 0.0
+    for region in regions:
+        total += max(0.0, min(end_seconds, region.end_seconds) - max(start_seconds, region.start_seconds))
+    return total
+
+
+async def _write_prepared_candidate_audio(
+    source_path: Path,
+    output_path: Path,
+    window: CandidateWindow,
+    settings: Settings,
+    *,
+    trim_candidates: bool,
+) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    args = [
+        settings.sample_processing_ffmpeg_command,
+        "-y",
+        "-ss",
+        _seconds_arg(window.start_seconds),
+        "-t",
+        _seconds_arg(max(0.01, window.end_seconds - window.start_seconds)),
+        "-i",
+        str(source_path),
+    ]
+    if trim_candidates:
+        args.extend(["-af", PREPARE_FINAL_TRIM_FILTER])
+    args.extend(
+        [
+            "-ac",
+            "1",
+            "-ar",
+            str(PREPARED_SAMPLE_RATE_HZ),
+            "-vn",
+            "-c:a",
+            "pcm_s16le",
+            "-f",
+            "wav",
+            str(output_path),
+        ]
+    )
+    await _run_capture_command(args, "ffmpeg", settings.sample_processing_timeout_seconds)
+    if not output_path.exists() or output_path.stat().st_size == 0:
+        raise SampleProcessingServiceError("FFmpeg did not produce a prepared candidate sample.", 502)
+    if output_path.stat().st_size > settings.max_upload_bytes:
+        output_path.unlink(missing_ok=True)
+        raise SampleProcessingServiceError(
+            f"Prepared candidate sample must be {_bytes_label(settings.max_upload_bytes)} or smaller.",
+            413,
+        )
+
+
+async def _run_capture_command(
+    args: list[str],
+    label: str,
+    timeout_seconds: float,
+) -> tuple[bytes, bytes]:
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except FileNotFoundError as exc:
+        raise SampleProcessingServiceError(f"{label} command was not found.", 503) from exc
+
+    try:
+        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout_seconds)
+    except asyncio.CancelledError:
+        _kill_process(process)
+        await process.communicate()
+        raise
+    except TimeoutError as exc:
+        _kill_process(process)
+        await process.communicate()
+        raise SampleProcessingServiceError(f"{label} timed out.", 504) from exc
+
+    if process.returncode != 0:
+        message = " ".join(stderr.decode("utf-8", errors="replace").split())[-500:]
+        detail = f"{label} failed with exit code {process.returncode}."
+        if message:
+            detail = f"{detail} {message}"
+        raise SampleProcessingServiceError(detail, 502)
+    return stdout, stderr
+
+
+def _kill_process(process: asyncio.subprocess.Process) -> None:
+    try:
+        process.kill()
+    except ProcessLookupError:
+        pass
+
+
+def _prepared_candidate_by_id(result: PreparedSamplesResult, candidate_id: str) -> PreparedSampleCandidate:
+    for candidate in result.candidates:
+        if candidate.candidate_id == candidate_id:
+            return candidate
+    raise SampleProcessingServiceError("Prepared sample candidate was not found.", 404)
+
+
+def _aggregate_prepared_candidate_sha256(result: PreparedSamplesResult) -> str | None:
+    hashes = [candidate.sha256 for candidate in result.candidates]
+    if not hashes:
+        return None
+    return sample_hash("|".join(hashes).encode("utf-8"))
+
+
+def _positive_float_from_payload(payload: object, key: str) -> float | None:
+    if not isinstance(payload, dict):
+        return None
+    value = payload.get(key)
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    if parsed <= 0:
+        return None
+    return parsed
+
+
+def _float_after_marker(line: str, marker: str) -> float | None:
+    try:
+        raw_value = line.split(marker, 1)[1].strip().split(" ", 1)[0]
+        return float(raw_value)
+    except (IndexError, ValueError):
+        return None
+
+
+def _seconds_arg(value: float) -> str:
+    return f"{max(0.0, value):.3f}".rstrip("0").rstrip(".") or "0"
+
+
+def _bytes_label(max_bytes: int) -> str:
+    if max_bytes < 1024 * 1024:
+        return f"{max_bytes} bytes"
+    mebibytes = max_bytes / (1024 * 1024)
+    if mebibytes.is_integer():
+        return f"{int(mebibytes)} MB"
+    return f"{mebibytes:.1f} MB"
 
 
 def _speaker_by_id(result: SpeakerSeparationResult, speaker_id: str) -> SpeakerSeparationSpeaker:
