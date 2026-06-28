@@ -69,8 +69,10 @@ from voice_cloning.services.sample_processing import (
     SampleProcessingRequest,
     SampleProcessingService,
     SampleProcessingServiceError,
+    SpeechRegion,
     TRIM_SILENCE_PROCESSING_PRESETS,
     apply_speaker_assignment_metadata,
+    _rank_candidate_windows,
 )
 from voice_cloning.services.speech import SpeechServiceError, generate_speech
 from voice_cloning.voice_library import VoiceLibrary
@@ -516,6 +518,7 @@ def make_settings(
     max_upload_bytes: int = 10 * 1024 * 1024,
     max_source_upload_bytes: int = 1024 * 1024 * 1024,
     sample_processing_ffmpeg_command: str = "ffmpeg",
+    sample_processing_ffprobe_command: str = "ffprobe",
 ) -> Settings:
     voice_assets_dir = tmp_path / "assets" / "voices"
     sample_path = voice_assets_dir / "default" / "default-voice.mp3"
@@ -537,6 +540,7 @@ def make_settings(
         max_upload_bytes=max_upload_bytes,
         max_source_upload_bytes=max_source_upload_bytes,
         sample_processing_ffmpeg_command=sample_processing_ffmpeg_command,
+        sample_processing_ffprobe_command=sample_processing_ffprobe_command,
     )
 
 
@@ -844,7 +848,35 @@ if args_log_path:
     entries.append(sys.argv[1:])
     log_path.write_text(json.dumps(entries), encoding="utf-8")
 time.sleep({sleep_seconds!r})
-Path(sys.argv[-1]).write_bytes({output!r})
+if sys.argv[-1] != "-":
+    Path(sys.argv[-1]).write_bytes({output!r})
+""",
+    )
+
+
+def ffprobe_fake_command(
+    path: Path,
+    *,
+    duration_seconds: float = 90.0,
+    sample_rate_hz: int = 44100,
+    exit_code: int = 0,
+    stderr: str = "ffprobe failed in test",
+) -> Path:
+    if exit_code != 0:
+        return write_fake_command(
+            path,
+            f"""
+import sys
+sys.stderr.write({stderr!r})
+raise SystemExit({exit_code})
+""",
+        )
+    return write_fake_command(
+        path,
+        f"""
+import json
+import sys
+sys.stdout.write(json.dumps({{"streams": [{{"sample_rate": {str(sample_rate_hz)!r}}}], "format": {{"duration": {str(duration_seconds)!r}}}}}))
 """,
     )
 
@@ -1783,7 +1815,15 @@ def test_voice_manifest_processing_preset_ids_follow_model_literal() -> None:
 
 
 def test_sample_processing_options_report_unavailable_default_processor(tmp_path: Path) -> None:
-    client, _ = make_client(tmp_path)
+    settings = replace(make_settings(tmp_path), sample_processing_ffmpeg_command=str(tmp_path / "missing-ffmpeg"))
+    fake_client = FakeElevenLabsProvider().bind_settings(settings)
+    app = create_app(
+        settings=settings,
+        provider_registry=ProviderRegistry([fake_client]),
+        voice_cache=VoiceCache(settings.storage_dir / "voice-cache.json"),
+        voice_library=VoiceLibrary(settings),
+    )
+    client = TestClient(app)
 
     response = client.get("/api/sample-processing/options")
     create = client.post(
@@ -1794,7 +1834,12 @@ def test_sample_processing_options_report_unavailable_default_processor(tmp_path
 
     assert response.status_code == 200
     operations = response.json()["operations"]
-    assert [operation["id"] for operation in operations] == ["isolateVoice", "trimSilence", "separateSpeakers"]
+    assert [operation["id"] for operation in operations] == [
+        "isolateVoice",
+        "trimSilence",
+        "separateSpeakers",
+        "prepareVoice",
+    ]
     assert all(operation["enabled"] is False for operation in operations)
     assert create.status_code == 503
     assert create.json()["detail"] == "Sample processing is not available. Configure a processor to use this operation."
@@ -1867,6 +1912,8 @@ def test_ffmpeg_sample_processor_options_enable_trim_silence(tmp_path: Path) -> 
     ]
     assert operations[2]["id"] == "separateSpeakers"
     assert operations[2]["enabled"] is False
+    assert operations[3]["id"] == "prepareVoice"
+    assert operations[3]["enabled"] is True
 
 
 def test_sample_processor_combines_diarization_with_existing_engine(tmp_path: Path) -> None:
@@ -1914,6 +1961,156 @@ def test_demucs_sample_processor_options_enable_isolation_and_trim_silence(tmp_p
     assert operations[1]["id"] == "trimSilence"
     assert operations[1]["enabled"] is True
     assert operations[1]["defaultProcessingPresetId"] == "trimBalanced"
+
+
+def test_prepare_voice_ranks_speech_dense_windows_deterministically() -> None:
+    windows = _rank_candidate_windows(
+        (
+            SpeechRegion(0.0, 8.0),
+            SpeechRegion(20.0, 80.0),
+            SpeechRegion(150.0, 230.0),
+        ),
+        260.0,
+    )
+
+    assert windows[0].start_seconds == 150.0
+    assert windows[0].end_seconds == 260.0
+    assert windows[0].score > windows[1].score
+    assert windows[0].warnings == ()
+
+
+def test_prepare_voice_returns_ranked_candidate_and_warning_without_diarization(tmp_path: Path) -> None:
+    settings = make_settings(
+        tmp_path,
+        sample_processing_ffmpeg_command=str(ffmpeg_fake_command(tmp_path / "ffmpeg-fake")),
+        sample_processing_ffprobe_command=str(ffprobe_fake_command(tmp_path / "ffprobe-fake", duration_seconds=90)),
+    )
+    app = create_app(settings=settings)
+    with TestClient(app) as client:
+        create = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "prepareVoice", "detectSpeakers": "true"},
+            files={"sourceFile": ("source.wav", b"source-audio", "audio/wav")},
+        )
+        job = wait_for_processing_job(client, create.json()["job"]["id"])
+        candidate = job["result"]["candidates"][0]
+        candidate_stream = client.get(
+            f"/api/sample-processing/jobs/{job['id']}/candidates/{candidate['candidateId']}/result"
+        )
+        single_result = client.get(f"/api/sample-processing/jobs/{job['id']}/result")
+
+    assert create.status_code == 202
+    assert job["operationId"] == "prepareVoice"
+    assert job["result"]["kind"] == "preparedSamples"
+    assert "Speaker detection is unavailable; returned single-speaker candidates." in job["result"]["warnings"]
+    assert candidate["rank"] == 1
+    assert candidate["speakerId"] == "speaker-1"
+    assert candidate["sampleRateHz"] == 16000
+    assert candidate["contentType"] == "audio/wav"
+    assert candidate["sha256"] == sample_hash(b"normalized-voice")
+    assert candidate_stream.status_code == 200
+    assert candidate_stream.content == b"normalized-voice"
+    assert single_result.status_code == 409
+    assert single_result.json()["detail"] == "Prepared sample jobs expose per-candidate audio results."
+
+
+def test_prepare_voice_runs_cleanup_speaker_split_and_final_trim(tmp_path: Path) -> None:
+    ffmpeg_args_log = tmp_path / "prepare-ffmpeg-args.json"
+    settings = make_settings(
+        tmp_path,
+        sample_processing_ffmpeg_command=str(
+            ffmpeg_fake_command(tmp_path / "ffmpeg-fake", args_log_path=ffmpeg_args_log)
+        ),
+        sample_processing_ffprobe_command=str(ffprobe_fake_command(tmp_path / "ffprobe-fake", duration_seconds=45)),
+    )
+    processor = FakeStackSampleProcessor()
+    app = create_app(settings=settings, sample_processor=processor)
+    with TestClient(app) as client:
+        create = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "prepareVoice"},
+            files={"sourceFile": ("conversation.wav", b"conversation", "audio/wav")},
+        )
+        job = wait_for_processing_job(client, create.json()["job"]["id"])
+    ffmpeg_calls = json.loads(ffmpeg_args_log.read_text(encoding="utf-8"))
+    candidate_calls = [args for args in ffmpeg_calls if args[-1].endswith(".wav")]
+
+    assert create.status_code == 202
+    assert [request.operation_id for request in processor.requests] == ["isolateVoice", "separateSpeakers"]
+    assert processor.requests[1].source.content == b"isolated:conversation"
+    assert job["result"]["kind"] == "preparedSamples"
+    assert [candidate["speakerId"] for candidate in job["result"]["candidates"]] == ["speaker-1", "speaker-2"]
+    assert all(candidate["sampleRateHz"] == 16000 for candidate in job["result"]["candidates"])
+    assert candidate_calls
+    final_args = candidate_calls[-1]
+    assert final_args[final_args.index("-af") + 1].startswith("silenceremove=")
+    assert final_args[final_args.index("-ar") + 1] == "16000"
+    assert final_args[final_args.index("-c:a") + 1] == "pcm_s16le"
+    assert final_args[final_args.index("-f") + 1] == "wav"
+
+
+def test_prepare_voice_candidate_batch_save_persists_processing_metadata(tmp_path: Path) -> None:
+    settings = make_settings(
+        tmp_path,
+        sample_processing_ffmpeg_command=str(ffmpeg_fake_command(tmp_path / "ffmpeg-fake")),
+        sample_processing_ffprobe_command=str(ffprobe_fake_command(tmp_path / "ffprobe-fake", duration_seconds=75)),
+    )
+    app = create_app(settings=settings)
+    with TestClient(app) as client:
+        create = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "prepareVoice"},
+            files={"sourceFile": ("source.wav", b"source-audio", "audio/wav")},
+        )
+        job = wait_for_processing_job(client, create.json()["job"]["id"])
+        candidate_id = job["result"]["candidates"][0]["candidateId"]
+        save = client.post(
+            f"/api/sample-processing/jobs/{job['id']}/candidate-voices",
+            json={
+                "voices": [
+                    {
+                        "candidateId": candidate_id,
+                        "name": "Prepared Morgan",
+                        "voicePresetId": "animatedDialogue",
+                    }
+                ]
+            },
+        )
+
+    assert save.status_code == 201
+    voice = save.json()["voices"][0]
+    assert voice["id"] == "prepared-morgan"
+    assert voice["voicePresetId"] == "animatedDialogue"
+    assert voice["sha256"] == sample_hash(b"normalized-voice")
+    assert voice["processingSteps"][0]["operationId"] == "prepareVoice"
+    assert voice["processingSteps"][0]["speakerId"] == "speaker-1"
+    assert (settings.voice_assets_dir / "prepared-morgan.wav").read_bytes() == b"normalized-voice"
+
+
+def test_prepare_voice_candidate_endpoints_reject_invalid_candidate_ids(tmp_path: Path) -> None:
+    settings = make_settings(
+        tmp_path,
+        sample_processing_ffmpeg_command=str(ffmpeg_fake_command(tmp_path / "ffmpeg-fake")),
+        sample_processing_ffprobe_command=str(ffprobe_fake_command(tmp_path / "ffprobe-fake", duration_seconds=75)),
+    )
+    app = create_app(settings=settings)
+    with TestClient(app) as client:
+        create = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "prepareVoice"},
+            files={"sourceFile": ("source.wav", b"source-audio", "audio/wav")},
+        )
+        job = wait_for_processing_job(client, create.json()["job"]["id"])
+        stream = client.get(f"/api/sample-processing/jobs/{job['id']}/candidates/missing/result")
+        save = client.post(
+            f"/api/sample-processing/jobs/{job['id']}/candidate-voices",
+            json={"voices": [{"candidateId": "missing", "name": "Missing"}]},
+        )
+
+    assert stream.status_code == 404
+    assert stream.json()["detail"] == "Prepared sample candidate was not found."
+    assert save.status_code == 404
+    assert save.json()["detail"] == "Prepared sample candidate was not found."
 
 
 def test_sample_processing_stack_runs_single_audio_steps_in_recommended_order_and_saves_metadata(
