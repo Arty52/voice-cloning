@@ -13,8 +13,11 @@ import type { AsyncStatus, ProviderKeySource, VoicePreset, VoiceProvider } from 
 
 const DEFAULT_PROVIDER_SAMPLE = {
   maxWindowSeconds: 120,
+  maxSourceUploadBytes: 1024 * 1024 * 1024,
+  maxUploadBytes: 10 * 1024 * 1024,
   recommendedMinSeconds: 60,
   recommendedMaxSeconds: 120,
+  targetSampleRateHz: 16000,
 }
 
 export function useProviderKeys() {
@@ -118,6 +121,11 @@ function normalizeVoiceProvider(provider: VoiceProvider): VoiceProvider {
 function normalizeProviderSample(sample: VoiceProvider["sample"]): VoiceProvider["sample"] {
   return {
     maxWindowSeconds: positiveNumberOrDefault(sample?.maxWindowSeconds, DEFAULT_PROVIDER_SAMPLE.maxWindowSeconds),
+    maxSourceUploadBytes: positiveNumberOrDefault(
+      sample?.maxSourceUploadBytes,
+      DEFAULT_PROVIDER_SAMPLE.maxSourceUploadBytes
+    ),
+    maxUploadBytes: positiveNumberOrDefault(sample?.maxUploadBytes, DEFAULT_PROVIDER_SAMPLE.maxUploadBytes),
     recommendedMinSeconds: positiveNumberOrDefault(
       sample?.recommendedMinSeconds,
       DEFAULT_PROVIDER_SAMPLE.recommendedMinSeconds
@@ -126,6 +134,7 @@ function normalizeProviderSample(sample: VoiceProvider["sample"]): VoiceProvider
       sample?.recommendedMaxSeconds,
       DEFAULT_PROVIDER_SAMPLE.recommendedMaxSeconds
     ),
+    targetSampleRateHz: positiveNumberOrDefault(sample?.targetSampleRateHz, DEFAULT_PROVIDER_SAMPLE.targetSampleRateHz),
   }
 }
 

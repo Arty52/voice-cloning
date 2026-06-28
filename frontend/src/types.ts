@@ -7,7 +7,7 @@ export type VoiceSampleInputMode = "upload" | "record"
 export type VoiceSampleMode = "excerpt" | "sourceWindow"
 export type VoicePresetId = "standardNarration" | "animatedDialogue"
 export type ProviderKeySource = "browser" | "server" | "missing"
-export type SampleProcessingOperationId = "isolateVoice" | "trimSilence" | "separateSpeakers"
+export type SampleProcessingOperationId = "prepareVoice" | "isolateVoice" | "trimSilence" | "separateSpeakers"
 export type SampleProcessingPresetId =
   | "fast"
   | "balanced"
@@ -44,8 +44,11 @@ export type ProviderTuningValue = string | number | boolean
 
 export type ProviderSampleMetadata = {
   maxWindowSeconds: number
+  maxSourceUploadBytes: number
+  maxUploadBytes: number
   recommendedMinSeconds: number
   recommendedMaxSeconds: number
+  targetSampleRateHz: number
 }
 
 export type ProviderTuningOption = {
@@ -184,7 +187,32 @@ export type SpeakerSeparationResult = {
   transcript: SpeakerSeparationTranscript
 }
 
-export type SampleProcessingResult = SampleProcessingAudioResult | SpeakerSeparationResult
+export type PreparedSampleCandidate = {
+  candidateId: string
+  rank: number
+  score: number
+  speakerId: string
+  speakerLabel: string
+  sourceWindow: {
+    startSeconds: number
+    endSeconds: number
+    durationSeconds: number
+  }
+  durationSeconds: number
+  sampleRateHz: number
+  contentType: string
+  sha256: string
+  warnings: string[]
+  result: SampleProcessingAudioResult
+}
+
+export type PreparedSamplesResult = {
+  kind: "preparedSamples"
+  warnings: string[]
+  candidates: PreparedSampleCandidate[]
+}
+
+export type SampleProcessingResult = SampleProcessingAudioResult | SpeakerSeparationResult | PreparedSamplesResult
 
 export type SampleProcessingJobStep = {
   id: string

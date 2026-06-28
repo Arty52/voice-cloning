@@ -11,7 +11,9 @@ import {
   regenerateSpeechJobVoice,
   regenerateSpeechJobSegment,
   saveProcessedVoice,
+  savePreparedCandidateVoices,
   saveSpeakerVoices,
+  sampleProcessingCandidateResultUrl,
   sampleProcessingSourceUrl,
   sampleProcessingSpeakerResultUrl,
   speechJobResultUrl,
@@ -164,6 +166,27 @@ describe("voice API helpers", () => {
     expect(body.get("sourceVoiceId")).toBe("voice-clone-01")
   })
 
+  it("creates a prepare voice sample processing job with cleanup options", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => okJson({ job: { id: "job-prepare", status: "running" } })))
+    const source = new File(["source"], "conversation.wav", { type: "audio/wav" })
+
+    await createSampleProcessingJob({
+      cleanVoice: true,
+      detectSpeakers: false,
+      operationId: "prepareVoice",
+      sourceFile: source,
+      trimCandidates: true,
+    })
+
+    const body = vi.mocked(fetch).mock.calls[0][1]?.body as FormData
+    expect(body.get("operationId")).toBe("prepareVoice")
+    expect(body.get("processingPresetId")).toBeNull()
+    expect(body.get("cleanVoice")).toBe("true")
+    expect(body.get("detectSpeakers")).toBe("false")
+    expect(body.get("trimCandidates")).toBe("true")
+    expect(body.get("sourceFile")).toBe(source)
+  })
+
   it("rejects sample processing jobs without an operation or workflow stack", async () => {
     vi.stubGlobal("fetch", vi.fn())
 
@@ -219,6 +242,9 @@ describe("voice API helpers", () => {
     expect(sampleProcessingSpeakerResultUrl("job 1", "speaker/1")).toBe(
       "/api/sample-processing/jobs/job%201/speakers/speaker%2F1/result"
     )
+    expect(sampleProcessingCandidateResultUrl("job 1", "candidate/1")).toBe(
+      "/api/sample-processing/jobs/job%201/candidates/candidate%2F1/result"
+    )
   })
 
   it("patches speaker assignments", async () => {
@@ -259,6 +285,31 @@ describe("voice API helpers", () => {
           voices: [
             { speakerId: "speaker-1", name: "Morgan", voicePresetId: "standardNarration" },
             { speakerId: "speaker-2", name: "Riley", voicePresetId: "animatedDialogue" },
+          ],
+        }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      })
+    )
+  })
+
+  it("saves selected prepared candidate voices", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => okJson({ voices: [{ id: "candidate-one", name: "Candidate One" }] })))
+
+    await savePreparedCandidateVoices("job-1", {
+      voices: [
+        { candidateId: "candidate-1", name: "Candidate One", voicePresetId: "standardNarration" },
+        { candidateId: "candidate-2", name: "Candidate Two", voicePresetId: "animatedDialogue" },
+      ],
+    })
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/sample-processing/jobs/job-1/candidate-voices",
+      expect.objectContaining({
+        body: JSON.stringify({
+          voices: [
+            { candidateId: "candidate-1", name: "Candidate One", voicePresetId: "standardNarration" },
+            { candidateId: "candidate-2", name: "Candidate Two", voicePresetId: "animatedDialogue" },
           ],
         }),
         headers: { "Content-Type": "application/json" },

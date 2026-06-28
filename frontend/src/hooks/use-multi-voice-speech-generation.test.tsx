@@ -40,9 +40,12 @@ const provider: VoiceProvider = {
   links: [],
   manageKeyUrl: "https://example.test/key",
   sample: {
+    maxSourceUploadBytes: 1024 * 1024 * 1024,
+    maxUploadBytes: 10 * 1024 * 1024,
     maxWindowSeconds: 120,
     recommendedMaxSeconds: 120,
     recommendedMinSeconds: 60,
+    targetSampleRateHz: 16000,
   },
   serverKeyConfigured: false,
   tuning: {

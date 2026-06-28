@@ -16,8 +16,11 @@ import type {
 
 const DEFAULT_PROVIDER_SAMPLE: ProviderSampleMetadata = {
   maxWindowSeconds: 120,
+  maxSourceUploadBytes: 1024 * 1024 * 1024,
+  maxUploadBytes: 10 * 1024 * 1024,
   recommendedMinSeconds: 60,
   recommendedMaxSeconds: 120,
+  targetSampleRateHz: 16000,
 }
 
 type UseVoiceSampleInputOptions = {
