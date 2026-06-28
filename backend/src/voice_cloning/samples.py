@@ -149,7 +149,6 @@ async def save_uploaded_sample_stream(
         shutil.move(str(temp_path), str(destination))
     except Exception:
         temp_path.unlink(missing_ok=True)
-        destination.unlink(missing_ok=True)
         raise
 
     return StoredSampleFile(

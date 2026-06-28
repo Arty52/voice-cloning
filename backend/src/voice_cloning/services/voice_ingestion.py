@@ -16,6 +16,7 @@ from ..voice_library import VoiceLibrary
 
 PROVIDER_SAMPLE_RATE_HZ = 16000
 PROVIDER_SAMPLE_CONTENT_TYPE = "audio/wav"
+PROVIDER_SAMPLE_FILENAME = "active-16khz.wav"
 
 
 class VoiceIngestionServiceError(Exception):
@@ -52,7 +53,7 @@ class VoiceIngestionService:
     ) -> VoiceAsset:
         self.voice_library.validate_prepared_upload(
             name,
-            sample_upload.filename,
+            PROVIDER_SAMPLE_FILENAME,
             sample_mode=sample_mode,
             source_filename=source_upload.filename if source_upload is not None else None,
             source_file_available=source_upload is not None,
@@ -72,7 +73,7 @@ class VoiceIngestionService:
             )
             normalized = await normalize_provider_sample(
                 active_source.path,
-                job_dir / "active-16khz.wav",
+                job_dir / PROVIDER_SAMPLE_FILENAME,
                 self.settings,
             )
             active_sample = load_sample_file(normalized.path, normalized.content_type)

@@ -661,6 +661,27 @@ def test_streamed_upload_rejects_oversized_file_and_cleans_partial(tmp_path: Pat
     assert not destination.with_suffix(".wav.tmp").exists()
 
 
+def test_streamed_upload_failure_preserves_existing_destination(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    destination = tmp_path / "streamed" / "voice.wav"
+    destination.parent.mkdir(parents=True)
+    destination.write_bytes(b"existing-sample")
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(
+            save_uploaded_sample_stream(
+                make_upload_file("voice.wav", b"too-large", "audio/wav"),
+                destination,
+                settings,
+                max_bytes=5,
+            )
+        )
+
+    assert exc.value.status_code == 413
+    assert destination.read_bytes() == b"existing-sample"
+    assert not destination.with_suffix(".wav.tmp").exists()
+
+
 def test_streamed_upload_rejects_empty_file_and_cleans_partial(tmp_path: Path) -> None:
     settings = make_settings(tmp_path)
     destination = tmp_path / "streamed" / "voice.wav"
@@ -4187,6 +4208,30 @@ def test_source_window_duplicate_name_is_rejected_before_source_write(
     assert response.status_code == 409
     assert "already exists" in response.json()["detail"]
     assert not (tmp_path / "assets" / "voices" / "sources").exists()
+
+
+def test_normalized_voice_conflict_is_rejected_before_upload_stream(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, _ = make_client(tmp_path)
+    existing_destination = tmp_path / "assets" / "voices" / "voice-clone-01.wav"
+    existing_destination.write_bytes(b"existing-normalized-sample")
+
+    async def fail_stream_before_preflight(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("Upload streams should not be read before normalized file validation.")
+
+    monkeypatch.setattr(voice_ingestion_module, "save_uploaded_sample_stream", fail_stream_before_preflight)
+
+    response = client.post(
+        "/api/voices",
+        data={"name": "Voice Clone 01"},
+        files={"sampleFile": ("voice.mp3", b"uploaded-sample", "audio/mpeg")},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "A voice asset file with that name already exists."
+    assert existing_destination.read_bytes() == b"existing-normalized-sample"
 
 
 def test_add_uploaded_voice_rejects_duplicate_slug(tmp_path: Path) -> None:
