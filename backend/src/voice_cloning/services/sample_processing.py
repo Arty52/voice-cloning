@@ -1858,7 +1858,10 @@ def _speech_regions_from_silencedetect(
 
 
 def _fallback_speech_regions(duration_seconds: float | None) -> tuple[SpeechRegion, ...]:
-    fallback_duration = max(1.0, min(duration_seconds or PREPARE_MAX_WINDOW_SECONDS, PREPARE_MAX_WINDOW_SECONDS))
+    if duration_seconds is None:
+        fallback_duration = PREPARE_MAX_WINDOW_SECONDS
+    else:
+        fallback_duration = max(0.0, min(duration_seconds, PREPARE_MAX_WINDOW_SECONDS))
     return (SpeechRegion(0.0, fallback_duration),)
 
 

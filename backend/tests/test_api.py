@@ -72,6 +72,7 @@ from voice_cloning.services.sample_processing import (
     SpeechRegion,
     TRIM_SILENCE_PROCESSING_PRESETS,
     apply_speaker_assignment_metadata,
+    _fallback_speech_regions,
     _rank_candidate_windows,
     _speech_regions_from_silencedetect,
 )
@@ -1987,6 +1988,12 @@ def test_prepare_voice_silencedetect_ignores_open_trailing_silence() -> None:
     )
 
     assert regions == (SpeechRegion(0.0, 10.0),)
+
+
+def test_prepare_voice_fallback_region_does_not_exceed_short_duration() -> None:
+    regions = _fallback_speech_regions(0.5)
+
+    assert regions == (SpeechRegion(0.0, 0.5),)
 
 
 def test_prepare_voice_generates_alternate_windows_for_long_speech_region() -> None:
