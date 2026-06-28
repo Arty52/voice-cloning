@@ -10,6 +10,7 @@ from ..providers import ProviderRegistry
 from ..sample_processors import create_sample_processor
 from ..services.sample_processing import SampleProcessingService, SampleProcessor
 from ..services.speech_jobs import SpeechJobService
+from ..services.voice_ingestion import VoiceIngestionService
 from ..voice_library import VoiceLibrary
 from .routes.health import create_health_router
 from .routes.metadata import create_metadata_router
@@ -24,6 +25,7 @@ def create_app(
     provider_registry: ProviderRegistry | None = None,
     voice_cache: VoiceCache | None = None,
     voice_library: VoiceLibrary | None = None,
+    voice_ingestion_service: VoiceIngestionService | None = None,
     sample_processor: SampleProcessor | None = None,
     sample_processing_service: SampleProcessingService | None = None,
     speech_job_service: SpeechJobService | None = None,
@@ -32,6 +34,7 @@ def create_app(
     resolved_cache = voice_cache or VoiceCache(resolved_settings.storage_dir / "voice-cache.json")
     resolved_provider_registry = provider_registry or ProviderRegistry([ElevenLabsProvider(resolved_settings)])
     resolved_library = voice_library or VoiceLibrary(resolved_settings)
+    resolved_voice_ingestion = voice_ingestion_service or VoiceIngestionService(resolved_settings, resolved_library)
     resolved_sample_processing = sample_processing_service or SampleProcessingService(
         resolved_settings,
         resolved_library,
@@ -63,7 +66,7 @@ def create_app(
     )
 
     app.include_router(create_health_router(resolved_settings, resolved_library, resolved_provider_registry))
-    app.include_router(create_voices_router(resolved_library, resolved_provider_registry))
+    app.include_router(create_voices_router(resolved_library, resolved_provider_registry, resolved_voice_ingestion))
     app.include_router(create_sample_processing_router(resolved_sample_processing))
     app.include_router(create_metadata_router(resolved_settings, resolved_provider_registry))
     app.include_router(create_speech_jobs_router(resolved_provider_registry, resolved_speech_jobs))
