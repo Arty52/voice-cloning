@@ -2061,6 +2061,49 @@ def test_sample_processing_job_uses_original_voice_source_and_saves_result_as_vo
     assert speech.status_code == 200
 
 
+def test_sample_processing_original_fallback_uses_active_sample_sha(tmp_path: Path) -> None:
+    settings = make_settings(
+        tmp_path,
+        sample_processing_ffmpeg_command=str(ffmpeg_fake_command(tmp_path / "ffmpeg-fake")),
+    )
+    voice_library = VoiceLibrary(settings)
+    processor = FakeSampleProcessor()
+    app = create_app(
+        settings=settings,
+        voice_library=voice_library,
+        sample_processor=processor,
+    )
+    client = TestClient(app)
+    upload = client.post(
+        "/api/voices",
+        data={
+            "name": "Voice_Clone_01",
+            "sampleMode": "sourceWindow",
+            "windowStartSeconds": "0",
+            "windowDurationSeconds": "30",
+        },
+        files={
+            "sampleFile": ("active.wav", b"active-excerpt", "audio/wav"),
+            "sourceFile": ("source.wav", b"original-source", "audio/wav"),
+        },
+    )
+    retained_source_path = settings.voice_assets_dir / "sources" / "voice-clone-01.wav"
+    retained_source_path.unlink()
+
+    response = client.post(
+        "/api/sample-processing/jobs",
+        data={"operationId": "isolateVoice", "sourceVoiceId": "voice-clone-01"},
+    )
+    job = wait_for_processing_job(client, response.json()["job"]["id"])
+
+    assert upload.status_code == 201
+    assert response.status_code == 202
+    assert processor.requests[0].source_path == settings.voice_assets_dir / "voice-clone-01.wav"
+    assert processor.requests[0].source.sha256 == sample_hash(b"normalized-voice")
+    assert job["sourceSha256"] == sample_hash(b"normalized-voice")
+    assert job["steps"][0]["sourceSha256"] == sample_hash(b"normalized-voice")
+
+
 def test_sample_processing_speaker_separation_contract_updates_and_saves_speakers(tmp_path: Path) -> None:
     settings = make_settings(tmp_path)
     processor = FakeSpeakerSeparationProcessor()

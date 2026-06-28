@@ -1019,13 +1019,9 @@ class SampleProcessingService:
         if not voice_id:
             raise SampleProcessingServiceError("Source voice is required.", 422)
         asset = self.voice_library.get_asset(voice_id)
-        source_path = self._voice_source_path(asset, source_preference)
-        content_type = (
-            asset.source_content_type
-            if source_preference == "original" and asset.source_file_path
-            else asset.content_type
-        )
-        if source_preference == "original" and asset.source_file_path and asset.source_sha256:
+        source_path, uses_retained_source = self._voice_source_path(asset, source_preference)
+        content_type = asset.source_content_type if uses_retained_source else asset.content_type
+        if uses_retained_source and asset.source_sha256:
             sample = VoiceSample(
                 content=b"",
                 filename=source_path.name,
@@ -1040,13 +1036,13 @@ class SampleProcessingService:
         self,
         asset: VoiceAsset,
         source_preference: SampleProcessingSourcePreference,
-    ) -> Path:
+    ) -> tuple[Path, bool]:
         if source_preference == "original" and asset.source_file_path:
             source_path = (self.voice_library.assets_dir / asset.source_file_path).resolve()
             _require_relative_path(source_path, self.voice_library.assets_dir)
             if source_path.exists():
-                return source_path
-        return self.voice_library.resolve_asset_path(asset)
+                return source_path, True
+        return self.voice_library.resolve_asset_path(asset), False
 
     def _job_dir(self, job_id: str) -> Path:
         path = (self.processing_dir / job_id).resolve()
