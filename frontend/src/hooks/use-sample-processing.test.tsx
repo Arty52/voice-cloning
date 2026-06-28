@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { DEFAULT_VOICE_PRESET_ID } from "@/lib/voice-presets"
 import type {
+  PreparedSamplesResult,
   SampleProcessingJobResponse,
   SampleProcessingOptionsResponse,
   SpeakerSeparationResult,
@@ -117,6 +118,22 @@ const stackProcessingOptions: SampleProcessingOptionsResponse = {
         },
       ],
     },
+  ],
+}
+
+const prepareProcessingOptions: SampleProcessingOptionsResponse = {
+  engine: "demucs+pyannote-community-1+ffmpeg",
+  recommendedWorkflowOrder: ["prepareVoice", "isolateVoice", "separateSpeakers", "trimSilence"],
+  operations: [
+    {
+      id: "prepareVoice",
+      label: "Prepare Voice",
+      description: "Rank provider-ready samples.",
+      enabled: true,
+      defaultProcessingPresetId: null,
+      processingPresets: [],
+    },
+    ...stackProcessingOptions.operations,
   ],
 }
 
@@ -277,6 +294,98 @@ const successfulStackJob: SampleProcessingJobResponse = {
       contentType: "audio/wav",
       sha256: "result-hash",
     },
+  },
+}
+
+const preparedSamplesResult: PreparedSamplesResult = {
+  kind: "preparedSamples",
+  warnings: ["Speaker detection unavailable; returned single-speaker candidates."],
+  candidates: [
+    {
+      candidateId: "candidate-1",
+      rank: 1,
+      score: 91.2,
+      speakerId: "speaker-1",
+      speakerLabel: "Speaker 1",
+      sourceWindow: {
+        startSeconds: 12,
+        endSeconds: 91,
+        durationSeconds: 79,
+      },
+      durationSeconds: 77.3,
+      sampleRateHz: 16000,
+      contentType: "audio/wav",
+      sha256: "candidate-1-hash",
+      warnings: [],
+      result: {
+        path: "job-prepare/candidate-1.wav",
+        filename: "candidate-1.wav",
+        contentType: "audio/wav",
+        sha256: "candidate-1-hash",
+      },
+    },
+    {
+      candidateId: "candidate-2",
+      rank: 1,
+      score: 84.6,
+      speakerId: "speaker-2",
+      speakerLabel: "Speaker 2",
+      sourceWindow: {
+        startSeconds: 104,
+        endSeconds: 176,
+        durationSeconds: 72,
+      },
+      durationSeconds: 70.5,
+      sampleRateHz: 16000,
+      contentType: "audio/wav",
+      sha256: "candidate-2-hash",
+      warnings: ["Clipping detected in this window."],
+      result: {
+        path: "job-prepare/candidate-2.wav",
+        filename: "candidate-2.wav",
+        contentType: "audio/wav",
+        sha256: "candidate-2-hash",
+      },
+    },
+  ],
+}
+
+const preparedSamplesJob: SampleProcessingJobResponse = {
+  job: {
+    id: "job-prepare",
+    operationId: "prepareVoice",
+    operationLabel: "Prepare Voice",
+    status: "success",
+    processingPresetId: null,
+    processingPresetLabel: null,
+    sourceName: "Default voice",
+    sourceFilename: "source.wav",
+    sourceContentType: "audio/wav",
+    sourceSha256: "source-hash",
+    sourcePreference: "original",
+    engine: "demucs+pyannote-community-1+ffmpeg",
+    workflowMode: "single",
+    steps: [
+      {
+        id: "job-prepare",
+        operationId: "prepareVoice",
+        operationLabel: "Prepare Voice",
+        status: "success",
+        engine: "demucs+pyannote-community-1+ffmpeg",
+        processingPresetId: null,
+        processingPresetLabel: null,
+        startedAt: "2026-06-23T00:00:00+00:00",
+        completedAt: "2026-06-23T00:00:01+00:00",
+        error: null,
+        sourceSha256: "source-hash",
+        resultSha256: "prepared-result-hash",
+      },
+    ],
+    activeStepId: null,
+    createdAt: "2026-06-23T00:00:00+00:00",
+    updatedAt: "2026-06-23T00:00:01+00:00",
+    error: null,
+    result: preparedSamplesResult,
   },
 }
 
@@ -664,6 +773,80 @@ describe("useSampleProcessing stacked workflow state", () => {
     expect(result.current.speakerResultUrls["speaker-1"]).toBe(
       "/api/sample-processing/jobs/job-1/speakers/speaker-1/result"
     )
+  })
+
+  it("starts Easy Prepare jobs and saves selected ranked candidates", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path === "/api/sample-processing/options" && !init) {
+          return okJson(prepareProcessingOptions)
+        }
+        if (path === "/api/sample-processing/jobs" && init?.method === "POST") {
+          return okJson(preparedSamplesJob, 202)
+        }
+        if (path === "/api/sample-processing/jobs/job-prepare/candidate-voices" && init?.method === "POST") {
+          return okJson({ voices: [{ ...sourceVoice, id: "candidate-1", name: "Prepared Lead" }] }, 201)
+        }
+        return okJson({})
+      })
+    )
+    const onVoiceSaved = vi.fn()
+    const { result } = renderHook(() =>
+      useSampleProcessing({ onVoiceSaved, selectedVoice: retainedSourceVoice, voices: [retainedSourceVoice] })
+    )
+
+    await waitFor(() => expect(result.current.optionsStatus).toBe("success"))
+    expect(result.current.isPrepareVoiceSelected).toBe(true)
+    expect(result.current.prepareCleanVoice).toBe(true)
+    expect(result.current.prepareDetectSpeakers).toBe(true)
+
+    await act(async () => {
+      await result.current.handleStartProcessing(formEvent())
+    })
+
+    const createCall = vi
+      .mocked(fetch)
+      .mock.calls.find(([url, init]) => String(url) === "/api/sample-processing/jobs" && init?.method === "POST")
+    const body = createCall?.[1]?.body as FormData
+    expect(body.get("operationId")).toBe("prepareVoice")
+    expect(body.get("workflowSteps")).toBeNull()
+    expect(body.get("processingPresetId")).toBeNull()
+    expect(body.get("cleanVoice")).toBe("true")
+    expect(body.get("detectSpeakers")).toBe("true")
+    expect(body.get("trimCandidates")).toBe("true")
+    expect(body.get("sourcePreference")).toBe("original")
+
+    await waitFor(() => expect(result.current.selectedCandidateIds).toEqual(["candidate-1", "candidate-2"]))
+    expect(result.current.isPreparedSamplesJob).toBe(true)
+    expect(result.current.resultUrl).toBeNull()
+    expect(result.current.candidateResultUrls).toEqual({
+      "candidate-1": "/api/sample-processing/jobs/job-prepare/candidates/candidate-1/result",
+      "candidate-2": "/api/sample-processing/jobs/job-prepare/candidates/candidate-2/result",
+    })
+    expect(result.current.candidateNameAssignments).toEqual({
+      "candidate-1": "Default voice Speaker 1",
+      "candidate-2": "Default voice Speaker 2",
+    })
+
+    act(() => {
+      result.current.handleCandidateSaveSelectionChange("candidate-2", false)
+      result.current.handleCandidateNameChange("candidate-1", "Prepared Lead")
+      result.current.handleCandidateVoicePresetChange("candidate-1", DEFAULT_VOICE_PRESET_ID)
+    })
+    await act(async () => {
+      await result.current.handleSaveCandidateVoices()
+    })
+
+    const saveCall = vi
+      .mocked(fetch)
+      .mock.calls.find(([url, init]) => String(url) === "/api/sample-processing/jobs/job-prepare/candidate-voices" && init?.method === "POST")
+    expect(JSON.parse(saveCall?.[1]?.body as string)).toEqual({
+      voices: [{ candidateId: "candidate-1", name: "Prepared Lead", voicePresetId: "standardNarration" }],
+    })
+    expect(onVoiceSaved).toHaveBeenCalledWith(expect.objectContaining({ id: "candidate-1", name: "Prepared Lead" }))
+    expect(result.current.candidateSaveStatus).toBe("success")
   })
 })
 
