@@ -6,7 +6,7 @@ If the workflow status shows Needs Key, add a key in `Provider & Usage` or creat
 
 ## No Voices Appear
 
-Fresh clones start with no voice assets. Upload and save a voice sample in the UI before generating speech.
+Fresh clones start with no voice assets. Open `Prepare Audio`, choose Add Voice, upload or record a sample, and save it before generating speech.
 
 ## Port Conflict
 

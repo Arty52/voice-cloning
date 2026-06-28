@@ -1,3 +1,5 @@
+import { useRef, useState } from "react"
+
 import { AppHeader } from "@/components/app-header"
 import { ConfirmationDialog } from "@/components/dialogs/confirmation-dialog"
 import { VoiceStudioShell, WorkflowSectionPanel } from "@/components/layout/voice-studio-shell"
@@ -7,6 +9,10 @@ import { CostQuotaPanel } from "@/components/panels/cost-quota-panel"
 import { GeneratedAudioPanel } from "@/components/panels/generated-audio-panel"
 import { LatestGeneratedAudioPanel } from "@/components/panels/latest-generated-audio-panel"
 import { ProviderKeysPanel } from "@/components/panels/provider-keys-panel"
+import {
+  PrepareAudioChoicePanel,
+  type PrepareAudioWorkflow,
+} from "@/components/panels/prepare-audio-choice-panel"
 import { SampleProcessingPanel } from "@/components/panels/sample-processing-panel"
 import { SpeechInputPanel } from "@/components/panels/speech-input-panel"
 import { StudioOverviewPanel } from "@/components/panels/studio-overview-panel"
@@ -15,6 +21,8 @@ import { VoiceTuningPanel } from "@/components/panels/voice-tuning-panel"
 import { useVoiceStudioController } from "@/hooks/use-voice-studio-controller"
 
 function App() {
+  const [prepareAudioWorkflow, setPrepareAudioWorkflow] = useState<PrepareAudioWorkflow | null>(null)
+  const hasEnteredProcessAudioWorkflowRef = useRef(false)
   const {
     activeSectionId,
     archiveStorageError,
@@ -32,7 +40,6 @@ function App() {
     handleStorageLimitChange,
     handleTextSelectionChange,
     hasModelRate,
-    isAddVoiceRevealed,
     isSpeechGenerating,
     isVoiceTuningExpanded,
     latestGeneratedAudioItem,
@@ -51,7 +58,6 @@ function App() {
     regenerateMultiVoiceSegmentsForVoice,
     result,
     removeVoiceAssignment,
-    revealAddVoice,
     sampleProcessing,
     saveNaturalHandoffsDefault,
     saveGeneratedSegmentTuningToVoice,
@@ -78,6 +84,19 @@ function App() {
     voiceTuning,
     workflowSections,
   } = useVoiceStudioController()
+  const isPrepareWorkflowSwitchDisabled =
+    voiceInput.isUploading || voiceInput.isPreparingSample || voiceInput.isRecorderBusy || sampleProcessing.isProcessing
+
+  function handlePrepareAudioWorkflowSelect(workflow: PrepareAudioWorkflow) {
+    if (isPrepareWorkflowSwitchDisabled) {
+      return
+    }
+    setPrepareAudioWorkflow(workflow)
+    if (workflow === "processAudio" && !hasEnteredProcessAudioWorkflowRef.current) {
+      hasEnteredProcessAudioWorkflowRef.current = true
+      sampleProcessing.handleSourceModeChange("upload")
+    }
+  }
 
   return (
     <>
@@ -93,16 +112,57 @@ function App() {
         </WorkflowSectionPanel>
 
         <WorkflowSectionPanel activeSectionId={activeSectionId} id="prepare">
-          <SampleProcessingPanel
-            isCollapsible={false}
-            isExpanded
-            onToggleExpanded={() => undefined}
-            processing={sampleProcessing}
-            voicePresets={providerKeys.voicePresets}
+          <PrepareAudioChoicePanel
+            disabled={isPrepareWorkflowSwitchDisabled}
+            onSelect={handlePrepareAudioWorkflowSelect}
+            selectedWorkflow={prepareAudioWorkflow}
           />
+
+          {prepareAudioWorkflow === "addVoice" ? (
+            <AddVoicePanel
+              canUpload={voiceInput.canUpload}
+              handleDiscardRecording={() => void voiceInput.handleDiscardRecording()}
+              handleStartRecording={() => void voiceInput.handleStartRecording()}
+              handleStopRecording={() => void voiceInput.handleStopRecording()}
+              handleSampleModeChange={voiceInput.handleSampleModeChange}
+              handleSampleWindowChange={voiceInput.handleSampleWindowChange}
+              handleUpload={voiceInput.handleUpload}
+              handleUploadFileSelect={voiceInput.handleUploadFileSelect}
+              isRecorderBusy={voiceInput.isRecorderBusy}
+              isRecording={voiceInput.isRecording}
+              isPreparingSample={voiceInput.isPreparingSample}
+              isUploading={voiceInput.isUploading}
+              recorderError={voiceInput.recorderError}
+              recorderStatus={voiceInput.recorderStatus}
+              recordingDurationSeconds={voiceInput.recordingDurationSeconds}
+              sampleLimits={voiceInput.sampleLimits}
+              sampleMode={voiceInput.sampleMode}
+              setUploadName={voiceInput.setUploadName}
+              setUploadVoicePresetId={voiceInput.setUploadVoicePresetId}
+              uploadDurationSeconds={voiceInput.uploadDurationSeconds}
+              uploadError={voiceInput.uploadError}
+              uploadFile={voiceInput.uploadFile}
+              uploadName={voiceInput.uploadName}
+              uploadPreviewUrl={voiceInput.uploadPreviewUrl}
+              uploadVoicePresetId={voiceInput.uploadVoicePresetId}
+              uploadWindow={voiceInput.uploadWindow}
+              voicePresets={providerKeys.voicePresets}
+              voiceSampleInputMode={voiceInput.voiceSampleInputMode}
+            />
+          ) : null}
+
+          {prepareAudioWorkflow === "processAudio" ? (
+            <SampleProcessingPanel
+              isCollapsible={false}
+              isExpanded
+              onToggleExpanded={() => undefined}
+              processing={sampleProcessing}
+              voicePresets={providerKeys.voicePresets}
+            />
+          ) : null}
         </WorkflowSectionPanel>
 
-        <WorkflowSectionPanel activeSectionId={activeSectionId} className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]" id="voices">
+        <WorkflowSectionPanel activeSectionId={activeSectionId} id="voices">
           <VoiceLibraryPanel
             defaultVoiceId={voiceLibrary.defaultVoiceId}
             isGenerating={speech.isGenerating}
@@ -118,44 +178,6 @@ function App() {
             voicePresets={providerKeys.voicePresets}
             voices={voiceLibrary.voices}
             voiceStatus={voiceLibrary.voiceStatus}
-          />
-
-          <AddVoicePanel
-            canUpload={voiceInput.canUpload}
-            handleDiscardRecording={() => void voiceInput.handleDiscardRecording()}
-            handleStartRecording={() => void voiceInput.handleStartRecording()}
-            handleStopRecording={() => void voiceInput.handleStopRecording()}
-            handleSampleModeChange={voiceInput.handleSampleModeChange}
-            handleSampleWindowChange={voiceInput.handleSampleWindowChange}
-            handleUpload={voiceInput.handleUpload}
-            handleUploadFileSelect={voiceInput.handleUploadFileSelect}
-            isCovered={
-              activeSectionId === "voices" &&
-              voiceLibrary.voiceStatus === "success" &&
-              voiceLibrary.voices.length > 0 &&
-              !isAddVoiceRevealed
-            }
-            isRecorderBusy={voiceInput.isRecorderBusy}
-            isRecording={voiceInput.isRecording}
-            isPreparingSample={voiceInput.isPreparingSample}
-            isUploading={voiceInput.isUploading}
-            onReveal={revealAddVoice}
-            recorderError={voiceInput.recorderError}
-            recorderStatus={voiceInput.recorderStatus}
-            recordingDurationSeconds={voiceInput.recordingDurationSeconds}
-            sampleLimits={voiceInput.sampleLimits}
-            sampleMode={voiceInput.sampleMode}
-            setUploadName={voiceInput.setUploadName}
-            setUploadVoicePresetId={voiceInput.setUploadVoicePresetId}
-            uploadDurationSeconds={voiceInput.uploadDurationSeconds}
-            uploadError={voiceInput.uploadError}
-            uploadFile={voiceInput.uploadFile}
-            uploadName={voiceInput.uploadName}
-            uploadPreviewUrl={voiceInput.uploadPreviewUrl}
-            uploadVoicePresetId={voiceInput.uploadVoicePresetId}
-            uploadWindow={voiceInput.uploadWindow}
-            voicePresets={providerKeys.voicePresets}
-            voiceSampleInputMode={voiceInput.voiceSampleInputMode}
           />
         </WorkflowSectionPanel>
 

@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { type FormEvent, useLayoutEffect, useMemo, useRef, useState } from "react"
 
 import { DEFAULT_TEXT, MAX_SPEECH_TEXT_LENGTH } from "@/constants"
 import { useConfirmation } from "@/hooks/use-confirmation"
@@ -34,7 +34,6 @@ import {
 import {
   buildWorkflowSectionStatuses,
   WORKFLOW_SECTIONS,
-  workflowSectionIdFromHash,
   type WorkflowSectionId,
 } from "@/lib/workflow-sections"
 import type { ProviderTuningMetadata, RequestStatus, VoiceAsset, VoiceTuningValues } from "@/types"
@@ -50,7 +49,6 @@ export function useVoiceStudioController() {
   const [isCostQuotaExpanded, setIsCostQuotaExpanded] = useState(false)
   const [isSampleProcessingExpanded, setIsSampleProcessingExpanded] = useState(false)
   const [isVoiceTuningExpanded, setIsVoiceTuningExpanded] = useState(false)
-  const [isAddVoiceRevealed, setIsAddVoiceRevealed] = useState(false)
   const [latestGeneratedAudioId, setLatestGeneratedAudioId] = useState<string | null>(null)
   const [latestGenerationMode, setLatestGenerationMode] = useState<"single" | "multi">("single")
   const [savedNaturalHandoffsEnabled, setSavedNaturalHandoffsEnabled] = useState(() =>
@@ -82,7 +80,6 @@ export function useVoiceStudioController() {
   const voiceInput = useVoiceSampleInput({
     onVoiceSaved: (voice) => {
       voiceLibrary.addSavedVoice(voice)
-      setIsAddVoiceRevealed(false)
     },
     providerSample: providerKeys.activeProvider?.sample,
   })
@@ -224,21 +221,7 @@ export function useVoiceStudioController() {
     textarea.style.height = `${textarea.scrollHeight}px`
   }, [text])
 
-  useEffect(() => {
-    function handleHashChange() {
-      if (workflowSectionIdFromHash(window.location.hash) !== "voices") {
-        setIsAddVoiceRevealed(false)
-      }
-    }
-
-    window.addEventListener("hashchange", handleHashChange)
-    return () => window.removeEventListener("hashchange", handleHashChange)
-  }, [])
-
   function navigateToSection(sectionId: WorkflowSectionId) {
-    if (sectionId !== "voices") {
-      setIsAddVoiceRevealed(false)
-    }
     workflowNavigation.navigateToSection(sectionId)
   }
 
@@ -259,10 +242,6 @@ export function useVoiceStudioController() {
     setVoiceAssignments((current) => reconcileVoiceAssignmentsForTextChange(text, nextText, current))
     setText(nextText)
     setTextSelection({ end: 0, start: 0, text: "" })
-  }
-
-  function revealAddVoice() {
-    setIsAddVoiceRevealed(true)
   }
 
   function handleNaturalHandoffsEnabledChange(enabled: boolean) {
@@ -503,7 +482,6 @@ export function useVoiceStudioController() {
     handleTextSelectionChange,
     hasModelRate,
     hasVoiceAssignments,
-    isAddVoiceRevealed,
     isCostQuotaExpanded,
     isSampleProcessingExpanded,
     isVoiceTuningExpanded,
@@ -522,7 +500,6 @@ export function useVoiceStudioController() {
     regenerateMultiVoiceSegment,
     regenerateMultiVoiceSegmentsForVoice,
     result,
-    revealAddVoice,
     sampleProcessing,
     saveNaturalHandoffsDefault,
     saveGeneratedSegmentTuningToVoice,

@@ -69,7 +69,7 @@ export const WORKFLOW_SECTIONS: WorkflowSection[] = [
     stepLabel: "Start",
   },
   {
-    description: "Prepare source audio before saving it as a voice.",
+    description: "Choose whether to add a ready voice sample or process source audio first.",
     hash: "#prepare",
     icon: Wand2,
     id: "prepare",
@@ -78,7 +78,7 @@ export const WORKFLOW_SECTIONS: WorkflowSection[] = [
     stepLabel: "0",
   },
   {
-    description: "Upload, record, select, and preview local voice samples.",
+    description: "Select, preview, tune, rename, and manage local voice samples.",
     hash: "#voices",
     icon: FileAudio,
     id: "voices",
@@ -87,7 +87,7 @@ export const WORKFLOW_SECTIONS: WorkflowSection[] = [
     stepLabel: "1",
   },
   {
-    description: "Enter text, tune the request, and generate speech.",
+    description: "Enter text, assign voices, and generate speech with contextual overrides.",
     hash: "#generate",
     icon: Sparkles,
     id: "generate",

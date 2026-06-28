@@ -29,8 +29,8 @@ export function StudioOverviewPanel({ sections }: StudioOverviewPanelProps) {
         </CardHeader>
         <CardFooter>
           <Button asChild>
-            <a href="#voices">
-              Start With Voices
+            <a href="#prepare">
+              Start With Prepare Audio
               <ArrowRight aria-hidden="true" data-icon="inline-end" />
             </a>
           </Button>
@@ -121,8 +121,8 @@ export function StudioOverviewPanel({ sections }: StudioOverviewPanelProps) {
           </div>
           <Separator />
           <p className="text-sm leading-6 text-muted-foreground">
-            A good first pass is simple: open Voices, pick or add a voice, then move to Generate Speech and try a short
-            line of text.
+            A good first pass is simple: open Prepare Audio to add a voice sample, choose it in Voices, then move to
+            Generate Speech and try a short line of text.
           </p>
         </CardContent>
       </Card>
