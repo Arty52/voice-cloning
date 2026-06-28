@@ -1833,6 +1833,7 @@ def _speech_regions_from_silencedetect(
     regions: list[SpeechRegion] = []
     cursor = 0.0
     last_observed = duration_seconds or 0.0
+    in_silence = False
     for line in log_output.splitlines():
         if "silence_start:" in line:
             silence_start = _float_after_marker(line, "silence_start:")
@@ -1842,14 +1843,16 @@ def _speech_regions_from_silencedetect(
             if silence_start > cursor:
                 regions.append(SpeechRegion(cursor, silence_start))
             cursor = max(cursor, silence_start)
+            in_silence = True
         elif "silence_end:" in line:
             silence_end = _float_after_marker(line, "silence_end:")
             if silence_end is None:
                 continue
             last_observed = max(last_observed, silence_end)
             cursor = max(cursor, silence_end)
+            in_silence = False
     final_end = duration_seconds or last_observed
-    if final_end > cursor:
+    if not in_silence and final_end > cursor:
         regions.append(SpeechRegion(cursor, final_end))
     return tuple(region for region in regions if region.end_seconds - region.start_seconds >= 0.25)
 
@@ -1869,13 +1872,13 @@ def _rank_candidate_windows(
     sorted_regions = tuple(sorted(regions, key=lambda region: (region.start_seconds, region.end_seconds)))
     source_end = duration_seconds or max(region.end_seconds for region in sorted_regions)
     for index, region in enumerate(sorted_regions):
-        window_start = max(0.0, region.start_seconds)
-        window_end = min(max(window_start + 1.0, source_end), window_start + PREPARE_MAX_WINDOW_SECONDS)
-        if duration_seconds is not None:
-            window_end = min(window_end, duration_seconds)
-        speech_seconds = _speech_overlap_seconds(sorted_regions, window_start, window_end)
-        candidate = _candidate_window(window_start, window_end, speech_seconds)
-        candidates[(round(candidate.start_seconds, 3), round(candidate.end_seconds, 3))] = candidate
+        for window_start in _candidate_window_starts(region, source_end):
+            window_end = min(max(window_start + 1.0, source_end), window_start + PREPARE_MAX_WINDOW_SECONDS)
+            if duration_seconds is not None:
+                window_end = min(window_end, duration_seconds)
+            speech_seconds = _speech_overlap_seconds(sorted_regions, window_start, window_end)
+            candidate = _candidate_window(window_start, window_end, speech_seconds)
+            candidates[(round(candidate.start_seconds, 3), round(candidate.end_seconds, 3))] = candidate
 
         merged_start = max(0.0, sorted_regions[0].start_seconds if index == 0 else region.start_seconds)
         merged_end = min(source_end, merged_start + PREPARE_MAX_WINDOW_SECONDS)
@@ -1895,6 +1898,20 @@ def _rank_candidate_windows(
             ),
         )
     )
+
+
+def _candidate_window_starts(region: SpeechRegion, source_end: float) -> tuple[float, ...]:
+    start = max(0.0, region.start_seconds)
+    region_end = min(source_end, max(region.end_seconds, start + 1.0))
+    latest_full_start = max(start, region_end - PREPARE_MAX_WINDOW_SECONDS)
+    starts: list[float] = []
+    cursor = start
+    while cursor <= latest_full_start:
+        starts.append(cursor)
+        cursor += PREPARE_MAX_WINDOW_SECONDS
+    if not starts or abs(starts[-1] - latest_full_start) > 0.001:
+        starts.append(latest_full_start)
+    return tuple(starts)
 
 
 def _candidate_window(start_seconds: float, end_seconds: float, speech_seconds: float) -> CandidateWindow:

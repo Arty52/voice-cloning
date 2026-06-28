@@ -73,6 +73,7 @@ from voice_cloning.services.sample_processing import (
     TRIM_SILENCE_PROCESSING_PRESETS,
     apply_speaker_assignment_metadata,
     _rank_candidate_windows,
+    _speech_regions_from_silencedetect,
 )
 from voice_cloning.services.speech import SpeechServiceError, generate_speech
 from voice_cloning.voice_library import VoiceLibrary
@@ -1977,6 +1978,22 @@ def test_prepare_voice_ranks_speech_dense_windows_deterministically() -> None:
     assert windows[0].end_seconds == 260.0
     assert windows[0].score > windows[1].score
     assert windows[0].warnings == ()
+
+
+def test_prepare_voice_silencedetect_ignores_open_trailing_silence() -> None:
+    regions = _speech_regions_from_silencedetect(
+        "[silencedetect @ test] silence_start: 10.0\n",
+        120.0,
+    )
+
+    assert regions == (SpeechRegion(0.0, 10.0),)
+
+
+def test_prepare_voice_generates_alternate_windows_for_long_speech_region() -> None:
+    windows = _rank_candidate_windows((SpeechRegion(0.0, 600.0),), 600.0)
+
+    assert [window.start_seconds for window in windows[:3]] == [0.0, 120.0, 240.0]
+    assert any(window.start_seconds == 480.0 and window.end_seconds == 600.0 for window in windows)
 
 
 def test_prepare_voice_returns_ranked_candidate_and_warning_without_diarization(tmp_path: Path) -> None:
