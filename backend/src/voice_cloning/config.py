@@ -41,6 +41,22 @@ def _non_negative_int_env(name: str, default: int) -> int:
     return value
 
 
+def _positive_int_env(name: str, default: int) -> int:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    normalized_value = raw_value.strip()
+    if not normalized_value:
+        return default
+    try:
+        value = int(normalized_value)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a positive integer.") from exc
+    if value <= 0:
+        raise ValueError(f"{name} must be positive.")
+    return value
+
+
 def _bool_env(name: str, default: bool = False) -> bool:
     raw_value = os.getenv(name)
     if raw_value is None:
@@ -66,7 +82,7 @@ class Settings:
     cors_allowed_origins: list[str]
     speech_job_segment_gap_ms: int = 250
     max_upload_bytes: int = 10 * 1024 * 1024
-    max_source_upload_bytes: int = 50 * 1024 * 1024
+    max_source_upload_bytes: int = 1024 * 1024 * 1024
     max_text_chars: int = 5000
     sample_processing_engine: str = ""
     sample_processing_demucs_command: str = "demucs"
@@ -116,6 +132,8 @@ class Settings:
             speech_jobs_dir=speech_jobs_dir.resolve(),
             cors_allowed_origins=_split_csv(origins),
             speech_job_segment_gap_ms=_non_negative_int_env("SPEECH_JOB_SEGMENT_GAP_MS", 250),
+            max_upload_bytes=_positive_int_env("MAX_UPLOAD_BYTES", 10 * 1024 * 1024),
+            max_source_upload_bytes=_positive_int_env("MAX_SOURCE_UPLOAD_BYTES", 1024 * 1024 * 1024),
             sample_processing_engine=os.getenv("SAMPLE_PROCESSING_ENGINE", "").strip().lower(),
             sample_processing_demucs_command=os.getenv("SAMPLE_PROCESSING_DEMUCS_COMMAND", "demucs").strip()
             or "demucs",
