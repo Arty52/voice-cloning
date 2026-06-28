@@ -97,6 +97,7 @@ INSTALL_SAMPLE_PROCESSING=1
 SAMPLE_PROCESSING_ENGINE=demucs
 SAMPLE_PROCESSING_DEMUCS_MODEL=htdemucs
 SAMPLE_PROCESSING_FFMPEG_COMMAND=ffmpeg
+SAMPLE_PROCESSING_FFPROBE_COMMAND=ffprobe
 ```
 
 To enable Speaker Separation, install the diarization extra and FFmpeg, accept the Hugging Face model conditions for `pyannote/speaker-diarization-community-1`, and provide a Hugging Face token:
@@ -111,7 +112,7 @@ SAMPLE_PROCESSING_WHISPER_COMPUTE_TYPE=int8
 PYANNOTE_METRICS_ENABLED=0
 ```
 
-The Docker build uses CPU-only PyTorch, Torchaudio, and TorchCodec wheels when `INSTALL_SAMPLE_PROCESSING=1` or `INSTALL_DIARIZATION=1`, then installs the requested optional backend extras. Rebuild with `make recycle` after changing either flag. The backend calls FFmpeg as an external command, stores multi-voice speech job output under ignored `storage/speech-jobs/`, normalizes provider-facing voice samples and successful sample-processing results to mono 16 kHz WAV, and stores sample-processing job output under ignored `storage/sample-processing/`. Active provider samples are capped by `MAX_UPLOAD_BYTES` and retained local source files are capped by `MAX_SOURCE_UPLOAD_BYTES`, which defaults to 1 GB. Demucs, pyannote, and faster-whisper model files and caches are runtime data under ignored `storage/model-cache/`. Isolate Voice includes Fast, Balanced, Clean, and Max Isolation strength presets; Balanced preserves the default behavior. Trim Silence includes Light, Balanced, and Aggressive trim presets; Balanced is the default. Speaker Separation is V1 diarized speaker-turn extraction, not neural unmixing of simultaneous speakers.
+The Docker build uses CPU-only PyTorch, Torchaudio, and TorchCodec wheels when `INSTALL_SAMPLE_PROCESSING=1` or `INSTALL_DIARIZATION=1`, then installs the requested optional backend extras. Rebuild with `make recycle` after changing either flag. The backend calls FFmpeg and FFprobe as external commands, stores multi-voice speech job output under ignored `storage/speech-jobs/`, normalizes provider-facing voice samples and successful sample-processing results to mono 16 kHz WAV, and stores sample-processing job output under ignored `storage/sample-processing/`. Active provider samples are capped by `MAX_UPLOAD_BYTES` and retained local source files are capped by `MAX_SOURCE_UPLOAD_BYTES`, which defaults to 1 GB. Demucs, pyannote, and faster-whisper model files and caches are runtime data under ignored `storage/model-cache/`. Isolate Voice includes Fast, Balanced, Clean, and Max Isolation strength presets; Balanced preserves the default behavior. Trim Silence includes Light, Balanced, and Aggressive trim presets; Balanced is the default. Speaker Separation is V1 diarized speaker-turn extraction, not neural unmixing of simultaneous speakers. Prepare Voice ranks provider-sized candidates from long sources, optionally runs isolation and speaker detection first, trims candidate nonspeech, then outputs mono 16 kHz WAV candidates.
 
 ## Documentation
 

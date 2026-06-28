@@ -186,7 +186,7 @@ All fields are optional, but at least one of `name`, `voicePresetId`, or `voiceS
 
 ## Sample Processing
 
-Sample Processing prepares local samples without changing the normal generation flow. Enabled operations depend on local processor configuration: `SAMPLE_PROCESSING_ENGINE=demucs` enables `isolateVoice` and `trimSilence`, `SAMPLE_PROCESSING_ENGINE=ffmpeg` enables only `trimSilence`, and diarization-capable processors enable `separateSpeakers`.
+Sample Processing prepares local samples without changing the normal generation flow. Enabled operations depend on local processor configuration: `SAMPLE_PROCESSING_ENGINE=demucs` enables `isolateVoice` and `trimSilence`, `SAMPLE_PROCESSING_ENGINE=ffmpeg` enables only `trimSilence`, diarization-capable processors enable `separateSpeakers`, and `prepareVoice` is enabled whenever FFmpeg is available.
 
 Operations can run alone or as a backend-owned stack. The recommended stacked order is `isolateVoice`, then `separateSpeakers`, then `trimSilence`. If Speaker Separation is selected, Trim Silence runs after the split on each generated speaker stream; otherwise it runs on the single current audio result.
 
@@ -249,6 +249,14 @@ Operations can run alone or as a backend-owned stack. The recommended stacked or
           "description": "Tighter trimming for shorter or louder empty regions."
         }
       ]
+    },
+    {
+      "id": "prepareVoice",
+      "label": "Prepare Voice",
+      "description": "Clean, rank, trim, and normalize provider-sized voice samples.",
+      "enabled": true,
+      "defaultProcessingPresetId": null,
+      "processingPresets": []
     }
   ]
 }
@@ -256,9 +264,12 @@ Operations can run alone or as a backend-owned stack. The recommended stacked or
 
 `POST /api/sample-processing/jobs` accepts multipart form fields:
 
-- `operationId`: required for legacy one-step jobs; operation id is currently `isolateVoice`, `trimSilence`, or `separateSpeakers` when the matching local processor is enabled
+- `operationId`: required for one-step jobs; operation id is currently `prepareVoice`, `isolateVoice`, `trimSilence`, or `separateSpeakers` when the matching local processor is enabled
 - `processingPresetId`: optional operation preset id; Isolate Voice defaults to `balanced`, and Trim Silence defaults to `trimBalanced`
 - `workflowSteps`: optional JSON array for stacked workflows. When provided, it replaces `operationId`/`processingPresetId` and is canonicalized into the recommended backend order.
+- `cleanVoice`: optional boolean for `prepareVoice`; when true and Isolate Voice is available, Demucs runs before candidate scoring
+- `detectSpeakers`: optional boolean for `prepareVoice`; when true and Speaker Separation is available, candidates are ranked per detected speaker, otherwise the result includes an unavailable-speaker-detection warning
+- `trimCandidates`: optional boolean for `prepareVoice`; defaults to true and applies final Trim Silence-style cleanup before 16 kHz WAV output
 - `sourceVoiceId`: optional saved local voice id
 - `sourcePreference`: optional, either `original` or `active`; `original` uses the retained full upload/source file when one exists and falls back to the active provider-facing sample when none exists; `active` always uses the provider-facing sample currently stored for the selected voice
 - `sourceFile`: optional uploaded audio source
@@ -331,6 +342,63 @@ For a stacked workflow, send `workflowSteps` as JSON:
 ```
 
 `GET /api/sample-processing/jobs/{jobId}/result` streams the processed WAV result. The result is available only after the job reaches `success`.
+
+`prepareVoice` streams large uploads to disk, optionally runs Isolate Voice, optionally runs Speaker Separation, detects nonsilent speech on the cleaned/intermediate source, ranks provider-sized windows up to 120 seconds, runs final Trim Silence-style cleanup, and normalizes each candidate to mono 16 kHz PCM WAV. A successful job returns ranked candidates instead of one result file:
+
+```json
+{
+  "job": {
+    "id": "sample-job-id",
+    "operationId": "prepareVoice",
+    "status": "success",
+    "result": {
+      "kind": "preparedSamples",
+      "warnings": [],
+      "candidates": [
+        {
+          "candidateId": "speaker-1-candidate-1",
+          "rank": 1,
+          "score": 92.4,
+          "speakerId": "speaker-1",
+          "speakerLabel": "Speaker 1",
+          "sourceWindow": {
+            "startSeconds": 12.4,
+            "endSeconds": 118.2,
+            "durationSeconds": 105.8
+          },
+          "durationSeconds": 105.8,
+          "sampleRateHz": 16000,
+          "contentType": "audio/wav",
+          "sha256": "candidatehash",
+          "warnings": [],
+          "result": {
+            "path": "sample-job-id/speaker-1-candidate-1.wav",
+            "filename": "speaker-1-candidate-1.wav",
+            "contentType": "audio/wav",
+            "sha256": "candidatehash"
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+`GET /api/sample-processing/jobs/{jobId}/candidates/{candidateId}/result` streams one prepared candidate WAV. `POST /api/sample-processing/jobs/{jobId}/candidate-voices` saves selected candidates through `VoiceLibrary`:
+
+```json
+{
+  "voices": [
+    {
+      "candidateId": "speaker-1-candidate-1",
+      "name": "Morgan Prepared",
+      "voicePresetId": "standardNarration"
+    }
+  ]
+}
+```
+
+The response is `201` with `{ "voices": [{ ... }] }`. Saved candidate voices include `processingSteps` metadata with `operationId: "prepareVoice"`, source/result hashes, engine, and speaker id/label.
 
 `POST /api/sample-processing/jobs/{jobId}/cancel` cancels a pending or running job and returns `{ "job": { ... } }`. Cancel is idempotent for `success`, `error`, and `canceled` jobs. FFmpeg and Demucs subprocesses are killed on cancellation. Pyannote and faster-whisper model calls are marked canceled immediately and later pipeline steps are skipped; already-running thread-backed model inference may finish in the background.
 
