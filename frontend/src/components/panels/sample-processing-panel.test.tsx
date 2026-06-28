@@ -35,7 +35,7 @@ const preparedSamplesResult: PreparedSamplesResult = {
         endSeconds: 88,
         durationSeconds: 78,
       },
-      durationSeconds: 77.4,
+      durationSeconds: 119.6,
       sampleRateHz: 16000,
       contentType: "audio/wav",
       sha256: "candidate-1-hash",
@@ -181,6 +181,7 @@ describe("SampleProcessingPanel ranked candidates", () => {
     expect(screen.getByText("Speaker detection unavailable; returned single-speaker candidates.")).toBeInTheDocument()
     expect(screen.getByText("Clipping detected in this window.")).toBeInTheDocument()
     expect(screen.getByDisplayValue("Conversation Speaker 1")).toBeInTheDocument()
+    expect(screen.getByText("2:00")).toBeInTheDocument()
     expect(screen.getAllByText("Standard Narration").length).toBeGreaterThan(0)
     expect(screen.getAllByText("Animated Dialogue").length).toBeGreaterThan(0)
     expect(screen.getByRole("button", { name: "Add Selected Voices" })).toBeDisabled()

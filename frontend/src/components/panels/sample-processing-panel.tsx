@@ -1564,12 +1564,13 @@ function groupCandidatesBySpeaker(candidates: PreparedSampleCandidate[]) {
 }
 
 function formatCandidateDuration(durationSeconds: number) {
-  if (durationSeconds >= 60) {
-    const minutes = Math.floor(durationSeconds / 60)
-    const seconds = Math.round(durationSeconds % 60)
+  const roundedSeconds = Math.round(durationSeconds)
+  if (roundedSeconds >= 60) {
+    const minutes = Math.floor(roundedSeconds / 60)
+    const seconds = roundedSeconds % 60
     return `${minutes}:${String(seconds).padStart(2, "0")}`
   }
-  return `${Math.round(durationSeconds)}s`
+  return `${roundedSeconds}s`
 }
 
 function isSampleProcessingPresetId(value: string): value is SampleProcessingPresetId {
