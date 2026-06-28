@@ -6,6 +6,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from ...services.sample_processing import (
+    PreparedCandidateVoiceSelection,
     SampleProcessingWorkflowStepInput,
     SampleProcessingService,
     SampleProcessingServiceError,
@@ -14,6 +15,7 @@ from ...services.sample_processing import (
     SpeakerVoiceSelection,
 )
 from ..schemas import (
+    SavePreparedCandidateVoicesRequest,
     SaveProcessedVoiceRequest,
     SaveSpeakerVoicesRequest,
     UpdateSpeakerAssignmentsRequest,
@@ -43,6 +45,9 @@ def create_sample_processing_router(sample_processing: SampleProcessingService) 
         sourceVoiceId: str | None = Form(None),
         sourcePreference: str = Form("original"),
         workflowSteps: str | None = Form(None),
+        cleanVoice: bool | None = Form(None),
+        detectSpeakers: bool | None = Form(None),
+        trimCandidates: bool | None = Form(None),
         sourceFile: UploadFile | None = File(None),
     ) -> dict[str, object]:
         try:
@@ -53,6 +58,9 @@ def create_sample_processing_router(sample_processing: SampleProcessingService) 
                 source_preference=sourcePreference,
                 source_upload=sourceFile,
                 workflow_steps=_parse_workflow_steps(workflowSteps),
+                clean_voice=cleanVoice,
+                detect_speakers=detectSpeakers,
+                trim_candidates=trimCandidates,
             )
         except SampleProcessingServiceError as exc:
             raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
@@ -101,6 +109,14 @@ def create_sample_processing_router(sample_processing: SampleProcessingService) 
             raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
         return FileResponse(path, filename=path.name, media_type="audio/wav")
 
+    @router.get("/api/sample-processing/jobs/{job_id}/candidates/{candidate_id}/result")
+    def sample_processing_candidate_result(job_id: str, candidate_id: str) -> FileResponse:
+        try:
+            path = sample_processing.candidate_result_path(job_id, candidate_id)
+        except SampleProcessingServiceError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+        return FileResponse(path, filename=path.name, media_type="audio/wav")
+
     @router.patch("/api/sample-processing/jobs/{job_id}/speaker-assignments")
     async def update_sample_processing_speaker_assignments(
         job_id: str,
@@ -142,6 +158,27 @@ def create_sample_processing_router(sample_processing: SampleProcessingService) 
                 voices=tuple(
                     SpeakerVoiceSelection(
                         speaker_id=item.speakerId,
+                        name=item.name,
+                        voice_preset_id=item.voicePresetId,
+                    )
+                    for item in request.voices
+                ),
+            )
+        except SampleProcessingServiceError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+        return {"voices": [voice_asset_payload(voice) for voice in voices]}
+
+    @router.post("/api/sample-processing/jobs/{job_id}/candidate-voices", status_code=201)
+    def save_sample_processing_candidate_results(
+        job_id: str,
+        request: SavePreparedCandidateVoicesRequest,
+    ) -> dict[str, object]:
+        try:
+            voices = sample_processing.save_candidate_results_as_voices(
+                job_id,
+                voices=tuple(
+                    PreparedCandidateVoiceSelection(
+                        candidate_id=item.candidateId,
                         name=item.name,
                         voice_preset_id=item.voicePresetId,
                     )

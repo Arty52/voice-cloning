@@ -5,6 +5,8 @@ from fastapi.responses import Response
 from ..models import (
     CachedVoice,
     ModelSummary,
+    PreparedSampleCandidate,
+    PreparedSamplesResult,
     SampleProcessingJob,
     SampleProcessingJobStep,
     SampleProcessingJobResult,
@@ -312,6 +314,8 @@ def speech_job_segment_payload(segment: SpeechJobSegment) -> dict[str, object]:
 
 
 def sample_processing_result_payload(result: SampleProcessingJobResult) -> dict[str, object]:
+    if isinstance(result, PreparedSamplesResult):
+        return prepared_samples_result_payload(result)
     if isinstance(result, SpeakerSeparationResult):
         return speaker_separation_result_payload(result)
     return sample_processing_audio_result_payload(result)
@@ -361,6 +365,35 @@ def speaker_transcript_item_payload(item: SpeakerTranscriptItem) -> dict[str, ob
         "startSeconds": item.start_seconds,
         "endSeconds": item.end_seconds,
         "speakerId": item.speaker_id,
+    }
+
+
+def prepared_samples_result_payload(result: PreparedSamplesResult) -> dict[str, object]:
+    return {
+        "kind": result.kind,
+        "warnings": list(result.warnings),
+        "candidates": [prepared_sample_candidate_payload(candidate) for candidate in result.candidates],
+    }
+
+
+def prepared_sample_candidate_payload(candidate: PreparedSampleCandidate) -> dict[str, object]:
+    return {
+        "candidateId": candidate.candidate_id,
+        "rank": candidate.rank,
+        "score": candidate.score,
+        "speakerId": candidate.speaker_id,
+        "speakerLabel": candidate.speaker_label,
+        "sourceWindow": {
+            "startSeconds": candidate.source_start_seconds,
+            "endSeconds": candidate.source_end_seconds,
+            "durationSeconds": candidate.duration_seconds,
+        },
+        "durationSeconds": candidate.duration_seconds,
+        "sampleRateHz": candidate.sample_rate_hz,
+        "contentType": candidate.content_type,
+        "sha256": candidate.sha256,
+        "warnings": list(candidate.warnings),
+        "result": sample_processing_audio_result_payload(candidate.result),
     }
 
 
