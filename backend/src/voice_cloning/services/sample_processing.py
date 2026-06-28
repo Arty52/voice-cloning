@@ -1876,7 +1876,7 @@ def _rank_candidate_windows(
     source_end = duration_seconds or max(region.end_seconds for region in sorted_regions)
     for index, region in enumerate(sorted_regions):
         for window_start in _candidate_window_starts(region, source_end):
-            window_end = min(max(window_start + 1.0, source_end), window_start + PREPARE_MAX_WINDOW_SECONDS)
+            window_end = min(source_end, window_start + PREPARE_MAX_WINDOW_SECONDS)
             if duration_seconds is not None:
                 window_end = min(window_end, duration_seconds)
             speech_seconds = _speech_overlap_seconds(sorted_regions, window_start, window_end)

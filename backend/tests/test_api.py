@@ -1996,6 +1996,13 @@ def test_prepare_voice_fallback_region_does_not_exceed_short_duration() -> None:
     assert regions == (SpeechRegion(0.0, 0.5),)
 
 
+def test_prepare_voice_unknown_duration_window_does_not_exceed_detected_source_end() -> None:
+    windows = _rank_candidate_windows((SpeechRegion(0.4, 0.6),), None)
+
+    assert windows
+    assert max(window.end_seconds for window in windows) == 0.6
+
+
 def test_prepare_voice_generates_alternate_windows_for_long_speech_region() -> None:
     windows = _rank_candidate_windows((SpeechRegion(0.0, 600.0),), 600.0)
 
