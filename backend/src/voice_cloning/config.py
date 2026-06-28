@@ -87,6 +87,7 @@ class Settings:
     sample_processing_engine: str = ""
     sample_processing_demucs_command: str = "demucs"
     sample_processing_ffmpeg_command: str = "ffmpeg"
+    sample_processing_ffprobe_command: str = "ffprobe"
     sample_processing_demucs_model: str = "htdemucs"
     sample_processing_demucs_device: str = ""
     sample_processing_timeout_seconds: float = 900
@@ -139,6 +140,8 @@ class Settings:
             or "demucs",
             sample_processing_ffmpeg_command=os.getenv("SAMPLE_PROCESSING_FFMPEG_COMMAND", "ffmpeg").strip()
             or "ffmpeg",
+            sample_processing_ffprobe_command=os.getenv("SAMPLE_PROCESSING_FFPROBE_COMMAND", "ffprobe").strip()
+            or "ffprobe",
             sample_processing_demucs_model=os.getenv("SAMPLE_PROCESSING_DEMUCS_MODEL", "htdemucs").strip()
             or "htdemucs",
             sample_processing_demucs_device=os.getenv("SAMPLE_PROCESSING_DEMUCS_DEVICE", "").strip(),

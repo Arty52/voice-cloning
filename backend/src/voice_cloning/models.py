@@ -7,7 +7,7 @@ from typing import Literal
 VoiceSampleMode = Literal["excerpt", "sourceWindow"]
 VoicePresetId = Literal["standardNarration", "animatedDialogue"]
 DEFAULT_VOICE_PRESET_ID: VoicePresetId = "standardNarration"
-SampleProcessingOperationId = Literal["isolateVoice", "trimSilence", "separateSpeakers"]
+SampleProcessingOperationId = Literal["prepareVoice", "isolateVoice", "trimSilence", "separateSpeakers"]
 SampleProcessingPresetId = Literal["fast", "balanced", "clean", "maxIsolation", "trimLight", "trimBalanced", "trimAggressive"]
 SampleProcessingSourcePreference = Literal["original", "active"]
 SampleProcessingJobStatus = Literal["pending", "running", "success", "error", "canceled"]
@@ -193,7 +193,31 @@ class SpeakerSeparationResult:
     transcript: SpeakerSeparationTranscript
 
 
-SampleProcessingJobResult = SampleProcessingResult | SpeakerSeparationResult
+@dataclass(frozen=True)
+class PreparedSampleCandidate:
+    candidate_id: str
+    rank: int
+    score: float
+    speaker_id: str
+    speaker_label: str
+    source_start_seconds: float
+    source_end_seconds: float
+    duration_seconds: float
+    sample_rate_hz: int
+    content_type: str
+    sha256: str
+    warnings: tuple[str, ...]
+    result: SampleProcessingResult
+
+
+@dataclass(frozen=True)
+class PreparedSamplesResult:
+    kind: Literal["preparedSamples"]
+    candidates: tuple[PreparedSampleCandidate, ...]
+    warnings: tuple[str, ...] = ()
+
+
+SampleProcessingJobResult = SampleProcessingResult | SpeakerSeparationResult | PreparedSamplesResult
 
 
 @dataclass(frozen=True)
