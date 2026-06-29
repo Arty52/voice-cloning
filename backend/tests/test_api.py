@@ -2776,6 +2776,59 @@ def test_sample_processing_stack_runs_speaker_split_then_trims_each_speaker(tmp_
     assert processing_steps[2]["resultSha256"] == sample_hash(b"trimmed:speaker-one:isolated:conversation")
 
 
+def test_sample_processing_stack_falls_back_to_single_speaker_when_diarization_detects_no_speakers(
+    tmp_path: Path,
+) -> None:
+    settings = make_settings(tmp_path)
+    processor = NoSpeakerDiarizationStackProcessor()
+    app = create_app(settings=settings, sample_processor=processor)
+    client = TestClient(app)
+    workflow_steps = [
+        {"operationId": "isolateVoice", "processingPresetId": "balanced"},
+        {"operationId": "separateSpeakers"},
+        {"operationId": "trimSilence", "processingPresetId": "trimBalanced"},
+    ]
+
+    create = client.post(
+        "/api/sample-processing/jobs",
+        data={"workflowSteps": json.dumps(workflow_steps)},
+        files={"sourceFile": ("conversation.wav", b"conversation", "audio/wav")},
+    )
+    job_id = create.json()["job"]["id"]
+    job = wait_for_processing_job(client, job_id)
+    speaker_one = client.get(f"/api/sample-processing/jobs/{job_id}/speakers/speaker-1/result")
+    save = client.post(
+        f"/api/sample-processing/jobs/{job_id}/speaker-voices",
+        json={"voices": [{"speakerId": "speaker-1", "name": "Morgan", "voicePresetId": "standardNarration"}]},
+    )
+
+    assert create.status_code == 202
+    assert [request.operation_id for request in processor.requests] == [
+        "isolateVoice",
+        "separateSpeakers",
+        "trimSilence",
+    ]
+    assert [step["operationId"] for step in job["steps"]] == ["isolateVoice", "separateSpeakers", "trimSilence"]
+    assert [step["status"] for step in job["steps"]] == ["success", "success", "success"]
+    assert job["status"] == "success"
+    assert job["error"] is None
+    assert job["result"]["kind"] == "speakerSeparation"
+    assert [speaker["id"] for speaker in job["result"]["speakers"]] == ["speaker-1"]
+    assert job["result"]["speakers"][0]["transcriptItemIds"] == []
+    assert job["result"]["transcript"]["items"] == []
+    assert job["result"]["speakers"][0]["result"]["sha256"] == sample_hash(b"trimmed:isolated:conversation")
+    assert speaker_one.status_code == 200
+    assert speaker_one.content == b"trimmed:isolated:conversation"
+    assert save.status_code == 201
+    processing_steps = save.json()["voices"][0]["processingSteps"]
+    assert [step["operationId"] for step in processing_steps] == ["isolateVoice", "separateSpeakers", "trimSilence"]
+    assert processing_steps[1]["speakerId"] == "speaker-1"
+    assert processing_steps[1]["resultSha256"] == sample_hash(b"isolated:conversation")
+    assert processing_steps[2]["speakerId"] == "speaker-1"
+    assert processing_steps[2]["sourceSha256"] == sample_hash(b"isolated:conversation")
+    assert processing_steps[2]["resultSha256"] == sample_hash(b"trimmed:isolated:conversation")
+
+
 def test_sample_processing_stack_retrims_speaker_assignment_updates(tmp_path: Path) -> None:
     settings = make_settings(tmp_path)
     processor = FakeStackSampleProcessor()

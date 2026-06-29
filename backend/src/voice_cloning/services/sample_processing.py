@@ -42,6 +42,7 @@ from ..voice_library import VoiceLibrary
 
 RESULT_FILENAME = "result.wav"
 RESULT_CONTENT_TYPE = "audio/wav"
+NO_SPEAKERS_DETECTED_DETAIL = "Speaker diarization did not detect any speakers."
 PREPARED_SAMPLE_RATE_HZ = 16000
 PREPARE_MAX_WINDOW_SECONDS = 120.0
 PREPARE_MAX_CANDIDATES_PER_SPEAKER = 3
@@ -921,7 +922,7 @@ class SampleProcessingService:
             try:
                 speaker_result = await self.processor.process(speaker_request)
             except SampleProcessingServiceError as exc:
-                if exc.detail != "Speaker diarization did not detect any speakers.":
+                if exc.detail != NO_SPEAKERS_DETECTED_DETAIL:
                     raise
                 warnings.append("Speaker diarization did not detect any speakers; returned single-speaker candidates.")
                 self._finish_progress_phase(job_id, phase_id, detail="Single Speaker")
@@ -1060,7 +1061,31 @@ class SampleProcessingService:
                     processing_preset_label=workflow_step.processing_preset_label,
                     max_output_bytes=self.settings.max_source_upload_bytes,
                 )
-                processed_result = await self.processor.process(request)
+                try:
+                    processed_result = await self.processor.process(request)
+                except SampleProcessingServiceError as exc:
+                    if workflow_step.operation.id != "separateSpeakers" or exc.detail != NO_SPEAKERS_DETECTED_DETAIL:
+                        raise
+                    result = self._single_speaker_fallback_result(
+                        job_id,
+                        source_path=current_path,
+                        source_sample=current_sample,
+                    )
+                    self._validate_speaker_separation_result(result)
+                    speaker_result = result
+                    self._source_paths[job_id] = current_path
+                    self._speaker_processing_steps[job_id] = _speaker_steps_from_result(
+                        step,
+                        speaker_result,
+                        source_sha256=current_sample.sha256,
+                        prior_steps=tuple(prior_voice_steps),
+                    )
+                    self._finish_step(
+                        job_id,
+                        step.id,
+                        result_sha256=_aggregate_speaker_result_sha256(speaker_result),
+                    )
+                    continue
                 if processed_result is None:
                     current_sample = load_sample_file(request.output_path, RESULT_CONTENT_TYPE)
                     result = SampleProcessingResult(
@@ -1169,6 +1194,41 @@ class SampleProcessingService:
         )
         self._validate_speaker_separation_result(updated_result)
         return updated_result, added_steps
+
+    def _single_speaker_fallback_result(
+        self,
+        job_id: str,
+        *,
+        source_path: Path,
+        source_sample: VoiceSample,
+    ) -> SpeakerSeparationResult:
+        resolved_source = source_path.resolve()
+        resolved_processing_dir = self.processing_dir.resolve()
+        try:
+            result_path = resolved_source.relative_to(resolved_processing_dir)
+            speaker_path = resolved_source
+        except ValueError:
+            speaker_path = self._job_dir(job_id) / f"speaker-1{source_path.suffix.lower() or '.wav'}"
+            shutil.copyfile(resolved_source, speaker_path)
+            result_path = speaker_path.resolve().relative_to(resolved_processing_dir)
+        speaker_result = SampleProcessingResult(
+            path=result_path.as_posix(),
+            filename=speaker_path.name,
+            content_type=source_sample.content_type,
+            sha256=source_sample.sha256,
+        )
+        return SpeakerSeparationResult(
+            kind="speakerSeparation",
+            speakers=(
+                SpeakerSeparationSpeaker(
+                    id="speaker-1",
+                    label="Speaker 1",
+                    transcript_item_ids=(),
+                    result=speaker_result,
+                ),
+            ),
+            transcript=SpeakerSeparationTranscript(items=()),
+        )
 
     def _update_job(self, job_id: str, **changes: object) -> None:
         job = self.get_job(job_id)
