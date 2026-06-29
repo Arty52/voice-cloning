@@ -15,7 +15,9 @@ from ..config import Settings
 from ..models import (
     PreparedSampleCandidate,
     PreparedSamplesResult,
+    SampleProcessingDurationRange,
     SampleProcessingJob,
+    SampleProcessingProgressPhase,
     SampleProcessingJobStep,
     SampleProcessingJobResult,
     SampleProcessingOperation,
@@ -43,6 +45,7 @@ RESULT_CONTENT_TYPE = "audio/wav"
 PREPARED_SAMPLE_RATE_HZ = 16000
 PREPARE_MAX_WINDOW_SECONDS = 120.0
 PREPARE_MAX_CANDIDATES_PER_SPEAKER = 3
+BYTES_PER_MEBIBYTE = 1024 * 1024
 PREPARE_FINAL_TRIM_FILTER = (
     "silenceremove="
     "start_periods=1:start_duration=0.12:start_threshold=-45dB:start_silence=0.08:"
@@ -234,6 +237,14 @@ class PrepareSource:
     speaker_label: str
 
 
+@dataclass(frozen=True)
+class RankedPrepareSource:
+    source: PrepareSource
+    probe: AudioProbe
+    regions: tuple[SpeechRegion, ...]
+    windows: tuple[CandidateWindow, ...] = ()
+
+
 class SampleProcessor(Protocol):
     @property
     def engine_name(self) -> str: ...
@@ -369,6 +380,7 @@ class SampleProcessingService:
                 job_dir.mkdir(parents=True, exist_ok=False)
                 job_dir_created = True
 
+            source_size_bytes = _path_size_bytes(source_path)
             now = _utc_now()
             job_steps = _initial_job_steps(
                 job_id=job_id,
@@ -384,6 +396,7 @@ class SampleProcessingService:
                 source_filename=source_sample.filename,
                 source_content_type=source_sample.content_type,
                 source_sha256=source_sample.sha256,
+                source_size_bytes=source_size_bytes,
                 source_preference=resolved_source_preference,
                 created_at=now,
                 updated_at=now,
@@ -447,6 +460,7 @@ class SampleProcessingService:
                 job_dir.mkdir(parents=True, exist_ok=False)
                 job_dir_created = True
 
+            source_size_bytes = _path_size_bytes(source_path)
             options = self._prepare_voice_options(
                 clean_voice=clean_voice,
                 detect_speakers=detect_speakers,
@@ -468,12 +482,15 @@ class SampleProcessingService:
                 source_filename=source_sample.filename,
                 source_content_type=source_sample.content_type,
                 source_sha256=source_sample.sha256,
+                source_size_bytes=source_size_bytes,
                 source_preference=source_preference,
                 created_at=now,
                 updated_at=now,
                 engine=step.engine,
                 workflow_mode="single",
                 steps=(step,),
+                estimated_duration_range_seconds=_estimate_prepare_voice_duration(source_size_bytes, options),
+                progress_phases=_initial_prepare_voice_progress_phases(job_id, options),
             )
             self._jobs[job_id] = job
             self._source_paths[job_id] = source_path
@@ -743,6 +760,8 @@ class SampleProcessingService:
             self._start_step(job_id, step.id, source_sha256=source_sample.sha256)
 
             if options.clean_voice:
+                clean_phase_id = _prepare_voice_phase_id(job_id, "clean-voice")
+                self._start_progress_phase(job_id, clean_phase_id)
                 isolate_operation = self._enabled_operation("isolateVoice")
                 isolated_path = job_dir / "prepare-isolated.wav"
                 isolate_request = SampleProcessingRequest(
@@ -764,6 +783,7 @@ class SampleProcessingService:
                     raise SampleProcessingServiceError("Isolate Voice returned an unsupported result.", 500)
                 current_sample = load_sample_file(isolated_path, RESULT_CONTENT_TYPE)
                 current_path = isolated_path
+                self._finish_progress_phase(job_id, clean_phase_id)
             elif options.isolation_requested:
                 warnings.append("Voice isolation is unavailable; ranking used the original source audio.")
 
@@ -775,15 +795,50 @@ class SampleProcessingService:
                 options=options,
                 warnings=warnings,
             )
+
+            detect_speech_phase_id = _prepare_voice_phase_id(job_id, "detect-speech")
+            ranked_sources: list[RankedPrepareSource] = []
+            self._start_progress_phase(job_id, detect_speech_phase_id, detail=_prepare_sources_detail(prepare_sources))
+            for prepare_source in prepare_sources:
+                self._update_progress_phase_detail(job_id, detect_speech_phase_id, prepare_source.speaker_label)
+                probe, probe_warnings = await _probe_audio(prepare_source.path, self.settings)
+                warnings.extend(probe_warnings)
+                regions, silence_warnings = await _detect_nonsilent_regions(
+                    prepare_source.path,
+                    probe.duration_seconds,
+                    self.settings,
+                )
+                warnings.extend(silence_warnings)
+                ranked_sources.append(
+                    RankedPrepareSource(
+                        source=prepare_source,
+                        probe=probe,
+                        regions=regions,
+                    )
+                )
+            self._finish_progress_phase(job_id, detect_speech_phase_id, detail=_prepare_sources_detail(prepare_sources))
+
+            rank_phase_id = _prepare_voice_phase_id(job_id, "rank-candidates")
+            ranked_with_windows: list[RankedPrepareSource] = []
+            self._start_progress_phase(job_id, rank_phase_id, detail=_prepare_sources_detail(prepare_sources))
+            for ranked_source in ranked_sources:
+                self._update_progress_phase_detail(job_id, rank_phase_id, ranked_source.source.speaker_label)
+                windows = _rank_candidate_windows(ranked_source.regions, ranked_source.probe.duration_seconds)
+                ranked_with_windows.append(replace(ranked_source, windows=windows))
+            self._finish_progress_phase(job_id, rank_phase_id, detail=_prepare_sources_detail(prepare_sources))
+
+            trim_phase_id = _prepare_voice_phase_id(job_id, "trim-normalize-candidates")
             candidates: list[PreparedSampleCandidate] = []
             candidate_steps: dict[str, tuple[VoiceProcessingStep, ...]] = {}
-            for prepare_source in prepare_sources:
-                source_candidates = await self._rank_and_write_prepare_candidates(
+            self._start_progress_phase(job_id, trim_phase_id, detail=_prepare_sources_detail(prepare_sources))
+            for ranked_source in ranked_with_windows:
+                self._update_progress_phase_detail(job_id, trim_phase_id, ranked_source.source.speaker_label)
+                source_candidates = await self._write_prepare_candidates(
                     job_id=job_id,
                     job_dir=job_dir,
-                    source=prepare_source,
+                    source=ranked_source.source,
+                    windows=ranked_source.windows,
                     options=options,
-                    warnings=warnings,
                 )
                 for candidate in source_candidates:
                     candidates.append(candidate)
@@ -800,9 +855,13 @@ class SampleProcessingService:
                             speaker_label=candidate.speaker_label,
                         ),
                     )
+            self._finish_progress_phase(job_id, trim_phase_id, detail=_prepared_candidate_count_label(len(candidates)))
 
             if not candidates:
                 raise SampleProcessingServiceError("Prepare Voice did not produce any candidates.", 422)
+            complete_phase_id = _prepare_voice_phase_id(job_id, "complete")
+            self._start_progress_phase(job_id, complete_phase_id, detail=_prepared_candidate_count_label(len(candidates)))
+            self._finish_progress_phase(job_id, complete_phase_id, detail=_prepared_candidate_count_label(len(candidates)))
             result = PreparedSamplesResult(
                 kind="preparedSamples",
                 candidates=tuple(candidates),
@@ -810,16 +869,24 @@ class SampleProcessingService:
             )
             self._prepared_candidate_processing_steps[job_id] = candidate_steps
             self._finish_step(job_id, step.id, result_sha256=_aggregate_prepared_candidate_sha256(result))
-            self._update_job(job_id, status="success", result=result, active_step_id=None)
+            self._update_job(job_id, status="success", result=result, active_step_id=None, active_progress_phase_id=None)
         except asyncio.CancelledError:
             self._cancel_job_state(job_id)
             raise
         except SampleProcessingServiceError as exc:
             self._fail_active_step(job_id, exc.detail)
-            self._update_job(job_id, status="error", error=exc.detail, active_step_id=None)
+            self._fail_active_progress_phase(job_id, exc.detail)
+            self._update_job(job_id, status="error", error=exc.detail, active_step_id=None, active_progress_phase_id=None)
         except Exception:
             self._fail_active_step(job_id, "Prepare Voice failed.")
-            self._update_job(job_id, status="error", error="Prepare Voice failed.", active_step_id=None)
+            self._fail_active_progress_phase(job_id, "Prepare Voice failed.")
+            self._update_job(
+                job_id,
+                status="error",
+                error="Prepare Voice failed.",
+                active_step_id=None,
+                active_progress_phase_id=None,
+            )
         finally:
             self._tasks.pop(job_id, None)
 
@@ -834,6 +901,8 @@ class SampleProcessingService:
         warnings: list[str],
     ) -> tuple[PrepareSource, ...]:
         if options.detect_speakers:
+            phase_id = _prepare_voice_phase_id(job_id, "detect-speakers")
+            self._start_progress_phase(job_id, phase_id)
             speaker_operation = self._enabled_operation("separateSpeakers")
             speaker_request = SampleProcessingRequest(
                 job_id=job_id,
@@ -868,8 +937,10 @@ class SampleProcessingService:
                     )
                 )
             if sources:
+                self._finish_progress_phase(job_id, phase_id, detail=_prepare_sources_detail(tuple(sources)))
                 return tuple(sources)
             warnings.append("Speaker detection did not produce speaker audio; returned single-speaker candidates.")
+            self._finish_progress_phase(job_id, phase_id, detail="Single Speaker")
         elif options.speaker_detection_requested:
             warnings.append("Speaker detection is unavailable; returned single-speaker candidates.")
 
@@ -882,20 +953,15 @@ class SampleProcessingService:
             ),
         )
 
-    async def _rank_and_write_prepare_candidates(
+    async def _write_prepare_candidates(
         self,
         *,
         job_id: str,
         job_dir: Path,
         source: PrepareSource,
+        windows: tuple[CandidateWindow, ...],
         options: PrepareVoiceOptions,
-        warnings: list[str],
     ) -> tuple[PreparedSampleCandidate, ...]:
-        probe, probe_warnings = await _probe_audio(source.path, self.settings)
-        warnings.extend(probe_warnings)
-        regions, silence_warnings = await _detect_nonsilent_regions(source.path, probe.duration_seconds, self.settings)
-        warnings.extend(silence_warnings)
-        windows = _rank_candidate_windows(regions, probe.duration_seconds)
         candidates: list[PreparedSampleCandidate] = []
         for rank, window in enumerate(windows[:PREPARE_MAX_CANDIDATES_PER_SPEAKER], start=1):
             candidate_id = f"{source.speaker_id}-candidate-{rank}"
@@ -1114,6 +1180,34 @@ class SampleProcessingService:
             result_sha256=result_sha256,
         )
 
+    def _start_progress_phase(self, job_id: str, phase_id: str, *, detail: str | None = None) -> None:
+        now = _utc_now()
+        self._update_progress_phase(
+            job_id,
+            phase_id,
+            status="running",
+            started_at=now,
+            completed_at=None,
+            error=None,
+            detail=detail,
+        )
+        self._update_job(job_id, active_progress_phase_id=phase_id)
+
+    def _update_progress_phase_detail(self, job_id: str, phase_id: str, detail: str | None) -> None:
+        self._update_progress_phase(job_id, phase_id, detail=detail)
+
+    def _finish_progress_phase(self, job_id: str, phase_id: str, *, detail: str | None = None) -> None:
+        phase = _progress_phase_by_id(self.get_job(job_id), phase_id)
+        self._update_progress_phase(
+            job_id,
+            phase_id,
+            status="success",
+            started_at=phase.started_at or _utc_now(),
+            completed_at=_utc_now(),
+            error=None,
+            detail=detail,
+        )
+
     def _fail_active_step(self, job_id: str, error: str) -> None:
         job = self.get_job(job_id)
         if job.active_step_id is None:
@@ -1121,6 +1215,18 @@ class SampleProcessingService:
         self._update_step(
             job_id,
             job.active_step_id,
+            status="error",
+            completed_at=_utc_now(),
+            error=error,
+        )
+
+    def _fail_active_progress_phase(self, job_id: str, error: str) -> None:
+        job = self.get_job(job_id)
+        if job.active_progress_phase_id is None:
+            return
+        self._update_progress_phase(
+            job_id,
+            job.active_progress_phase_id,
             status="error",
             completed_at=_utc_now(),
             error=error,
@@ -1143,6 +1249,7 @@ class SampleProcessingService:
             else step
             for step in self.get_job(job_id).steps
         )
+        self._cancel_progress_phases(job_id)
         self._update_job(
             job_id,
             status="canceled",
@@ -1155,6 +1262,29 @@ class SampleProcessingService:
         job = self.get_job(job_id)
         steps = tuple(replace(step, **changes) if step.id == step_id else step for step in job.steps)
         self._update_job(job_id, steps=steps)
+
+    def _update_progress_phase(self, job_id: str, phase_id: str, **changes: object) -> None:
+        job = self.get_job(job_id)
+        phases = tuple(replace(phase, **changes) if phase.id == phase_id else phase for phase in job.progress_phases)
+        self._update_job(job_id, progress_phases=phases)
+
+    def _cancel_progress_phases(self, job_id: str) -> None:
+        job = self.get_job(job_id)
+        if not job.progress_phases:
+            return
+        now = _utc_now()
+        phases = tuple(
+            replace(
+                phase,
+                status="canceled",
+                completed_at=phase.completed_at or now,
+                error=phase.error or "Sample processing was canceled.",
+            )
+            if phase.status in {"pending", "running"}
+            else phase
+            for phase in job.progress_phases
+        )
+        self._update_job(job_id, progress_phases=phases, active_progress_phase_id=None)
 
     def _extend_speaker_processing_steps(
         self,
@@ -1594,6 +1724,87 @@ def _initial_job_steps(
         )
         for index, step in enumerate(steps)
     )
+
+
+def _initial_prepare_voice_progress_phases(
+    job_id: str,
+    options: PrepareVoiceOptions,
+) -> tuple[SampleProcessingProgressPhase, ...]:
+    phases: list[tuple[str, str]] = []
+    if options.clean_voice:
+        phases.append(("clean-voice", "Clean Voice"))
+    if options.detect_speakers:
+        phases.append(("detect-speakers", "Detect Speakers"))
+    phases.extend(
+        (
+            ("detect-speech", "Detect Speech Regions"),
+            ("rank-candidates", "Rank Candidate Windows"),
+            ("trim-normalize-candidates", "Trim And Normalize Candidates"),
+            ("complete", "Complete"),
+        )
+    )
+    return tuple(
+        SampleProcessingProgressPhase(
+            id=_prepare_voice_phase_id(job_id, phase_id),
+            label=label,
+            status="pending",
+        )
+        for phase_id, label in phases
+    )
+
+
+def _prepare_voice_phase_id(job_id: str, phase_id: str) -> str:
+    return f"{job_id}-phase-{phase_id}"
+
+
+def _progress_phase_by_id(job: SampleProcessingJob, phase_id: str) -> SampleProcessingProgressPhase:
+    for phase in job.progress_phases:
+        if phase.id == phase_id:
+            return phase
+    raise SampleProcessingServiceError("Sample processing progress phase was not found.", 500)
+
+
+def _prepare_sources_detail(sources: tuple[PrepareSource, ...]) -> str:
+    if len(sources) == 1:
+        return sources[0].speaker_label
+    return f"{len(sources)} Speakers"
+
+
+def _prepared_candidate_count_label(candidate_count: int) -> str:
+    return f"{candidate_count} Candidate{'s' if candidate_count != 1 else ''}"
+
+
+def _estimate_prepare_voice_duration(
+    source_size_bytes: int | None,
+    options: PrepareVoiceOptions,
+) -> SampleProcessingDurationRange:
+    source_mib = max(0.1, (source_size_bytes or BYTES_PER_MEBIBYTE) / BYTES_PER_MEBIBYTE)
+    min_seconds = 10 + source_mib * 0.08
+    max_seconds = 25 + source_mib * 0.18
+
+    if options.clean_voice:
+        min_seconds += 20 + source_mib * 0.18
+        max_seconds += 60 + source_mib * 0.35
+    if options.detect_speakers:
+        min_seconds += 30 + source_mib * 0.18
+        max_seconds += 90 + source_mib * 0.45
+    if options.trim_candidates:
+        min_seconds += 15 + source_mib * 0.08
+        max_seconds += 45 + source_mib * 0.18
+
+    rounded_min = max(10, round(min_seconds))
+    rounded_max = max(rounded_min + 30, round(max_seconds))
+    return SampleProcessingDurationRange(
+        min_seconds=rounded_min,
+        max_seconds=rounded_max,
+    )
+
+
+def _path_size_bytes(path: Path) -> int | None:
+    try:
+        return path.stat().st_size
+    except OSError:
+        return None
 
 
 def _step_output_path(

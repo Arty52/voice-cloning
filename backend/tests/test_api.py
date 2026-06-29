@@ -2090,6 +2090,18 @@ def test_prepare_voice_runs_cleanup_speaker_split_and_final_trim(tmp_path: Path)
         settings.max_source_upload_bytes,
     ]
     assert processor.requests[1].source.content == b"isolated:conversation"
+    assert job["sourceSizeBytes"] == len(b"conversation")
+    assert job["estimatedDurationRangeSeconds"]["minSeconds"] >= 10
+    assert job["estimatedDurationRangeSeconds"]["maxSeconds"] > job["estimatedDurationRangeSeconds"]["minSeconds"]
+    assert job["activeProgressPhaseId"] is None
+    assert [(phase["label"], phase["status"]) for phase in job["progressPhases"]] == [
+        ("Clean Voice", "success"),
+        ("Detect Speakers", "success"),
+        ("Detect Speech Regions", "success"),
+        ("Rank Candidate Windows", "success"),
+        ("Trim And Normalize Candidates", "success"),
+        ("Complete", "success"),
+    ]
     assert job["result"]["kind"] == "preparedSamples"
     assert [candidate["speakerId"] for candidate in job["result"]["candidates"]] == ["speaker-1", "speaker-2"]
     assert all(candidate["sampleRateHz"] == 16000 for candidate in job["result"]["candidates"])
@@ -2099,6 +2111,39 @@ def test_prepare_voice_runs_cleanup_speaker_split_and_final_trim(tmp_path: Path)
     assert final_args[final_args.index("-ar") + 1] == "16000"
     assert final_args[final_args.index("-c:a") + 1] == "pcm_s16le"
     assert final_args[final_args.index("-f") + 1] == "wav"
+
+
+def test_prepare_voice_reports_active_progress_phase_while_running(tmp_path: Path) -> None:
+    settings = make_settings(
+        tmp_path,
+        sample_processing_ffmpeg_command=str(ffmpeg_fake_command(tmp_path / "ffmpeg-fake")),
+        sample_processing_ffprobe_command=str(ffprobe_fake_command(tmp_path / "ffprobe-fake", duration_seconds=45)),
+    )
+    processor = FakeStackSampleProcessor(delay_seconds=0.2)
+    app = create_app(settings=settings, sample_processor=processor)
+    with TestClient(app) as client:
+        create = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "prepareVoice"},
+            files={"sourceFile": ("conversation.wav", b"conversation", "audio/wav")},
+        )
+        job_id = create.json()["job"]["id"]
+        running = wait_for_processing_job(client, job_id, status="running")
+        cancel = client.post(f"/api/sample-processing/jobs/{job_id}/cancel")
+
+    assert create.status_code == 202
+    assert running["activeProgressPhaseId"].endswith("-phase-clean-voice")
+    active_phase = next(phase for phase in running["progressPhases"] if phase["id"] == running["activeProgressPhaseId"])
+    assert active_phase["label"] == "Clean Voice"
+    assert active_phase["status"] == "running"
+    assert cancel.status_code == 200
+    assert cancel.json()["job"]["status"] == "canceled"
+    canceled_phase = next(
+        phase
+        for phase in cancel.json()["job"]["progressPhases"]
+        if phase["id"] == running["activeProgressPhaseId"]
+    )
+    assert canceled_phase["status"] == "canceled"
 
 
 def test_prepare_voice_allows_cleanup_intermediate_above_active_sample_cap(tmp_path: Path) -> None:
