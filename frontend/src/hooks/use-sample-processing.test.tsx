@@ -991,6 +991,32 @@ describe("useSampleProcessing stacked workflow state", () => {
     expect(window.localStorage.getItem("voice-cloning.activeSampleProcessingJobId.v1")).toBe("job-prepare")
   })
 
+  it("shows resume context when active job polling fails", async () => {
+    window.localStorage.setItem("voice-cloning.activeSampleProcessingJobId.v1", "job-prepare")
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path === "/api/sample-processing/options" && !init) {
+          return okJson(prepareProcessingOptions)
+        }
+        if (path === "/api/sample-processing/jobs/job-prepare" && !init) {
+          return okJson({ detail: "Sample processing job was not found." }, 404)
+        }
+        return okJson({})
+      })
+    )
+
+    const { result } = renderHook(() =>
+      useSampleProcessing({ onVoiceSaved: vi.fn(), selectedVoice: retainedSourceVoice, voices: [retainedSourceVoice] })
+    )
+
+    await waitFor(() => expect(result.current.status).toBe("error"))
+
+    expect(result.current.error).toBe("Unable to resume sample processing job. Sample processing job was not found.")
+    expect(window.localStorage.getItem("voice-cloning.activeSampleProcessingJobId.v1")).toBeNull()
+  })
+
   it("uses resumed prepare job metadata for upload candidate defaults", async () => {
     window.localStorage.setItem("voice-cloning.activeSampleProcessingJobId.v1", "job-prepare")
     vi.stubGlobal(

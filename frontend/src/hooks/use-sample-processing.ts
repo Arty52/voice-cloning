@@ -569,7 +569,7 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
         }
         finishProcessingTimer()
         setStatus("error")
-        setError(caught instanceof Error ? caught.message : pollErrorMessage)
+        setError(caught instanceof Error ? `${pollErrorMessage} ${caught.message}` : pollErrorMessage)
         clearStoredActiveJobId()
         return
       }
