@@ -918,29 +918,40 @@ class SampleProcessingService:
                 ),
                 max_output_bytes=self.settings.max_source_upload_bytes,
             )
-            speaker_result = await self.processor.process(speaker_request)
-            if not isinstance(speaker_result, SpeakerSeparationResult):
-                raise SampleProcessingServiceError("Speaker Separation returned an unsupported result.", 500)
-            self._validate_speaker_separation_result(speaker_result)
-            sources: list[PrepareSource] = []
-            for speaker in speaker_result.speakers:
-                if speaker.result is None:
-                    continue
-                speaker_path = self._result_path(speaker.result)
-                speaker_sample = load_sample_file(speaker_path, speaker.result.content_type)
-                sources.append(
-                    PrepareSource(
-                        path=speaker_path,
-                        sample=speaker_sample,
-                        speaker_id=speaker.id,
-                        speaker_label=speaker.assigned_name or speaker.label,
-                    )
-                )
-            if sources:
-                self._finish_progress_phase(job_id, phase_id, detail=_prepare_sources_detail(tuple(sources)))
-                return tuple(sources)
-            warnings.append("Speaker detection did not produce speaker audio; returned single-speaker candidates.")
-            self._finish_progress_phase(job_id, phase_id, detail="Single Speaker")
+            try:
+                speaker_result = await self.processor.process(speaker_request)
+            except SampleProcessingServiceError as exc:
+                if exc.detail != "Speaker diarization did not detect any speakers.":
+                    raise
+                warnings.append("Speaker diarization did not detect any speakers; returned single-speaker candidates.")
+                self._finish_progress_phase(job_id, phase_id, detail="Single Speaker")
+            else:
+                if not isinstance(speaker_result, SpeakerSeparationResult):
+                    raise SampleProcessingServiceError("Speaker Separation returned an unsupported result.", 500)
+                if not speaker_result.speakers:
+                    warnings.append("Speaker diarization did not detect any speakers; returned single-speaker candidates.")
+                    self._finish_progress_phase(job_id, phase_id, detail="Single Speaker")
+                else:
+                    self._validate_speaker_separation_result(speaker_result)
+                    sources: list[PrepareSource] = []
+                    for speaker in speaker_result.speakers:
+                        if speaker.result is None:
+                            continue
+                        speaker_path = self._result_path(speaker.result)
+                        speaker_sample = load_sample_file(speaker_path, speaker.result.content_type)
+                        sources.append(
+                            PrepareSource(
+                                path=speaker_path,
+                                sample=speaker_sample,
+                                speaker_id=speaker.id,
+                                speaker_label=speaker.assigned_name or speaker.label,
+                            )
+                        )
+                    if sources:
+                        self._finish_progress_phase(job_id, phase_id, detail=_prepare_sources_detail(tuple(sources)))
+                        return tuple(sources)
+                    warnings.append("Speaker detection did not produce speaker audio; returned single-speaker candidates.")
+                    self._finish_progress_phase(job_id, phase_id, detail="Single Speaker")
         elif options.speaker_detection_requested:
             warnings.append("Speaker detection is unavailable; returned single-speaker candidates.")
 

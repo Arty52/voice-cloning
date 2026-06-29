@@ -477,6 +477,14 @@ class FakeStackSampleProcessor:
         )
 
 
+class NoSpeakerDiarizationStackProcessor(FakeStackSampleProcessor):
+    async def process(self, request: SampleProcessingRequest) -> SampleProcessingResult | SpeakerSeparationResult | None:
+        if request.operation_id == "separateSpeakers":
+            self.requests.append(request)
+            raise SampleProcessingServiceError("Speaker diarization did not detect any speakers.", 422)
+        return await super().process(request)
+
+
 class InvalidSpeakerTranscriptOwnershipProcessor(FakeSpeakerSeparationProcessor):
     async def process(self, request: SampleProcessingRequest) -> SpeakerSeparationResult:
         result = await super().process(request)
@@ -2111,6 +2119,33 @@ def test_prepare_voice_runs_cleanup_speaker_split_and_final_trim(tmp_path: Path)
     assert final_args[final_args.index("-ar") + 1] == "16000"
     assert final_args[final_args.index("-c:a") + 1] == "pcm_s16le"
     assert final_args[final_args.index("-f") + 1] == "wav"
+
+
+def test_prepare_voice_falls_back_when_diarization_detects_no_speakers(tmp_path: Path) -> None:
+    settings = make_settings(
+        tmp_path,
+        sample_processing_ffmpeg_command=str(ffmpeg_fake_command(tmp_path / "ffmpeg-fake")),
+        sample_processing_ffprobe_command=str(ffprobe_fake_command(tmp_path / "ffprobe-fake", duration_seconds=45)),
+    )
+    processor = NoSpeakerDiarizationStackProcessor()
+    app = create_app(settings=settings, sample_processor=processor)
+    with TestClient(app) as client:
+        create = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "prepareVoice"},
+            files={"sourceFile": ("conversation.wav", b"conversation", "audio/wav")},
+        )
+        job = wait_for_processing_job(client, create.json()["job"]["id"])
+
+    assert create.status_code == 202
+    assert [request.operation_id for request in processor.requests] == ["isolateVoice", "separateSpeakers"]
+    assert job["status"] == "success"
+    assert job["result"]["kind"] == "preparedSamples"
+    assert "Speaker diarization did not detect any speakers; returned single-speaker candidates." in job["result"]["warnings"]
+    assert [candidate["speakerId"] for candidate in job["result"]["candidates"]] == ["speaker-1"]
+    detect_speakers_phase = next(phase for phase in job["progressPhases"] if phase["label"] == "Detect Speakers")
+    assert detect_speakers_phase["status"] == "success"
+    assert detect_speakers_phase["detail"] == "Single Speaker"
 
 
 def test_prepare_voice_reports_active_progress_phase_while_running(tmp_path: Path) -> None:
