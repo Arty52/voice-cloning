@@ -1058,6 +1058,7 @@ class SampleProcessingService:
                     source=current_sample,
                     processing_preset_id=workflow_step.processing_preset_id,
                     processing_preset_label=workflow_step.processing_preset_label,
+                    max_output_bytes=self.settings.max_source_upload_bytes,
                 )
                 processed_result = await self.processor.process(request)
                 if processed_result is None:
@@ -1139,6 +1140,7 @@ class SampleProcessingService:
                 source=source_sample,
                 processing_preset_id=workflow_step.processing_preset_id,
                 processing_preset_label=workflow_step.processing_preset_label,
+                max_output_bytes=self.settings.max_source_upload_bytes,
             )
             processed_result = await self.processor.process(request)
             if processed_result is not None:

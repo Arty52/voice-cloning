@@ -480,6 +480,29 @@ class FakeStackSampleProcessor:
         )
 
 
+class CapEnforcingStackSampleProcessor(FakeStackSampleProcessor):
+    def __init__(self, default_output_cap: int) -> None:
+        super().__init__()
+        self.default_output_cap = default_output_cap
+
+    async def process(self, request: SampleProcessingRequest) -> SampleProcessingResult | SpeakerSeparationResult | None:
+        result = await super().process(request)
+        cap = self.default_output_cap if request.max_output_bytes is None else request.max_output_bytes
+        output_paths: list[Path] = []
+        if result is None:
+            output_paths.append(request.output_path)
+        elif isinstance(result, SpeakerSeparationResult):
+            output_paths.extend(
+                request.job_dir.parent / speaker.result.path
+                for speaker in result.speakers
+                if speaker.result is not None
+            )
+        for output_path in output_paths:
+            if output_path.stat().st_size > cap:
+                raise SampleProcessingServiceError(f"Processed voice sample must be {cap} bytes or smaller.", 413)
+        return result
+
+
 class NoSpeakerDiarizationStackProcessor(FakeStackSampleProcessor):
     async def process(self, request: SampleProcessingRequest) -> SampleProcessingResult | SpeakerSeparationResult | None:
         if request.operation_id == "separateSpeakers":
@@ -2346,6 +2369,10 @@ def test_sample_processing_stack_runs_single_audio_steps_in_recommended_order_an
 
     assert create.status_code == 202
     assert [request.operation_id for request in processor.requests] == ["isolateVoice", "trimSilence"]
+    assert [request.max_output_bytes for request in processor.requests] == [
+        settings.max_source_upload_bytes,
+        settings.max_source_upload_bytes,
+    ]
     assert processor.requests[1].source.content == b"isolated:raw-source"
     assert job["workflowMode"] == "stack"
     assert job["operationId"] == "trimSilence"
@@ -2365,6 +2392,32 @@ def test_sample_processing_stack_runs_single_audio_steps_in_recommended_order_an
     assert [step["operationId"] for step in voice["processingSteps"]] == ["isolateVoice", "trimSilence"]
     assert voice["processingSteps"][0]["sourceSha256"] == sample_hash(b"raw-source")
     assert voice["processingSteps"][1]["resultSha256"] == sample_hash(b"trimmed:isolated:raw-source")
+
+
+def test_sample_processing_stack_allows_intermediate_output_above_active_sample_cap(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path, max_upload_bytes=5, max_source_upload_bytes=128)
+    processor = CapEnforcingStackSampleProcessor(default_output_cap=settings.max_upload_bytes)
+    app = create_app(settings=settings, sample_processor=processor)
+    client = TestClient(app)
+    workflow_steps = [
+        {"operationId": "trimSilence", "processingPresetId": "trimBalanced"},
+        {"operationId": "isolateVoice", "processingPresetId": "balanced"},
+    ]
+
+    create = client.post(
+        "/api/sample-processing/jobs",
+        data={"workflowSteps": json.dumps(workflow_steps)},
+        files={"sourceFile": ("source.wav", b"raw-source", "audio/wav")},
+    )
+    job = wait_for_processing_job(client, create.json()["job"]["id"])
+
+    assert create.status_code == 202
+    assert job["status"] == "success"
+    assert [request.max_output_bytes for request in processor.requests] == [
+        settings.max_source_upload_bytes,
+        settings.max_source_upload_bytes,
+    ]
+    assert job["result"]["sha256"] == sample_hash(b"trimmed:isolated:raw-source")
 
 
 def test_sample_processing_cancel_marks_running_stack_canceled(tmp_path: Path) -> None:
@@ -2692,6 +2745,12 @@ def test_sample_processing_stack_runs_speaker_split_then_trims_each_speaker(tmp_
         "separateSpeakers",
         "trimSilence",
         "trimSilence",
+    ]
+    assert [request.max_output_bytes for request in processor.requests] == [
+        settings.max_source_upload_bytes,
+        settings.max_source_upload_bytes,
+        settings.max_source_upload_bytes,
+        settings.max_source_upload_bytes,
     ]
     assert processor.requests[1].source.content == b"isolated:conversation"
     assert processor.requests[2].source.content == b"speaker-one:isolated:conversation"
@@ -3257,6 +3316,7 @@ def test_diarization_processor_rejects_oversized_speaker_stream(
     settings = replace(
         make_settings(tmp_path),
         max_upload_bytes=5,
+        max_source_upload_bytes=5,
         sample_processing_enable_diarization=True,
         sample_processing_hf_token="hf_test",
         sample_processing_ffmpeg_command=str(ffmpeg_fake_command(tmp_path / "ffmpeg-fake", output=b"too-big")),
@@ -3266,7 +3326,7 @@ def test_diarization_processor_rejects_oversized_speaker_stream(
         create = client.post(
             "/api/sample-processing/jobs",
             data={"operationId": "separateSpeakers"},
-            files={"sourceFile": ("conversation.wav", b"speaker-source", "audio/wav")},
+            files={"sourceFile": ("conversation.wav", b"src", "audio/wav")},
         )
         job = wait_for_processing_job(client, create.json()["job"]["id"], status="error")
 
@@ -3599,12 +3659,13 @@ def test_ffmpeg_sample_processor_rejects_oversized_result(tmp_path: Path) -> Non
         tmp_path,
         ffmpeg_fake_command(tmp_path / "ffmpeg-fake", output=b"too-big"),
         max_upload_bytes=5,
+        max_source_upload_bytes=5,
     )
     with TestClient(create_app(settings=settings)) as client:
         response = client.post(
             "/api/sample-processing/jobs",
             data={"operationId": "trimSilence"},
-            files={"sourceFile": ("source.wav", b"source-audio", "audio/wav")},
+            files={"sourceFile": ("source.wav", b"src", "audio/wav")},
         )
         job = wait_for_processing_job(client, response.json()["job"]["id"], status="error")
 
@@ -3781,12 +3842,13 @@ def test_demucs_sample_processor_rejects_oversized_result(tmp_path: Path) -> Non
         demucs_fake_command(tmp_path / "demucs-fake"),
         ffmpeg_fake_command(tmp_path / "ffmpeg-fake", output=b"too-big"),
         max_upload_bytes=5,
+        max_source_upload_bytes=5,
     )
     with TestClient(create_app(settings=settings)) as client:
         response = client.post(
             "/api/sample-processing/jobs",
             data={"operationId": "isolateVoice"},
-            files={"sourceFile": ("source.wav", b"source-audio", "audio/wav")},
+            files={"sourceFile": ("source.wav", b"src", "audio/wav")},
         )
         job = wait_for_processing_job(client, response.json()["job"]["id"], status="error")
 
