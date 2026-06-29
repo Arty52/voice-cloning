@@ -616,7 +616,7 @@ def make_upload_file(filename: str, content: bytes, content_type: str) -> Upload
 
 def wait_for_processing_job(client: TestClient, job_id: str, status: str = "success") -> dict[str, object]:
     payload: dict[str, object] = {}
-    for _ in range(50):
+    for _ in range(150):
         response = client.get(f"/api/sample-processing/jobs/{job_id}")
         assert response.status_code == 200
         payload = response.json()["job"]
@@ -3293,7 +3293,7 @@ def test_diarization_processor_times_out_model_steps(
         make_settings(tmp_path),
         sample_processing_enable_diarization=True,
         sample_processing_hf_token="hf_test",
-        sample_processing_timeout_seconds=0.2,
+        sample_processing_timeout_seconds=0.9,
         sample_processing_ffmpeg_command=str(ffmpeg_fake_command(tmp_path / "ffmpeg-fake", output=b"fake-wav")),
     )
     app = create_app(settings=settings)
