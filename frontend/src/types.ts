@@ -229,6 +229,21 @@ export type SampleProcessingJobStep = {
   resultSha256: string | null
 }
 
+export type SampleProcessingDurationRange = {
+  minSeconds: number
+  maxSeconds: number
+}
+
+export type SampleProcessingProgressPhase = {
+  id: string
+  label: string
+  status: SampleProcessingStepStatus
+  startedAt: string | null
+  completedAt: string | null
+  error: string | null
+  detail: string | null
+}
+
 export type SampleProcessingJob = {
   id: string
   operationId: SampleProcessingOperationId
@@ -240,11 +255,15 @@ export type SampleProcessingJob = {
   sourceFilename?: string | null
   sourceContentType?: string | null
   sourceSha256: string
+  sourceSizeBytes?: number | null
   sourcePreference: SampleProcessingSourcePreference
   engine: string | null
   workflowMode: SampleProcessingWorkflowMode
   steps: SampleProcessingJobStep[]
   activeStepId: string | null
+  estimatedDurationRangeSeconds?: SampleProcessingDurationRange | null
+  progressPhases?: SampleProcessingProgressPhase[]
+  activeProgressPhaseId?: string | null
   createdAt: string
   updatedAt: string
   error: string | null
