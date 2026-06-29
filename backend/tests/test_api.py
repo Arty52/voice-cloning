@@ -856,6 +856,23 @@ if sys.argv[-1] != "-":
     )
 
 
+def prepare_intermediate_ffmpeg_fake_command(path: Path) -> Path:
+    return write_fake_command(
+        path,
+        """
+from pathlib import Path
+import sys
+if sys.argv[-1] == "-":
+    raise SystemExit(0)
+output_path = Path(sys.argv[-1])
+if output_path.name == "prepare-isolated.wav":
+    output_path.write_bytes(b"larger-than-active-cap")
+else:
+    output_path.write_bytes(b"ok")
+""",
+    )
+
+
 def ffprobe_fake_command(
     path: Path,
     *,
@@ -2068,6 +2085,10 @@ def test_prepare_voice_runs_cleanup_speaker_split_and_final_trim(tmp_path: Path)
 
     assert create.status_code == 202
     assert [request.operation_id for request in processor.requests] == ["isolateVoice", "separateSpeakers"]
+    assert [request.max_output_bytes for request in processor.requests] == [
+        settings.max_source_upload_bytes,
+        settings.max_source_upload_bytes,
+    ]
     assert processor.requests[1].source.content == b"isolated:conversation"
     assert job["result"]["kind"] == "preparedSamples"
     assert [candidate["speakerId"] for candidate in job["result"]["candidates"]] == ["speaker-1", "speaker-2"]
@@ -2078,6 +2099,34 @@ def test_prepare_voice_runs_cleanup_speaker_split_and_final_trim(tmp_path: Path)
     assert final_args[final_args.index("-ar") + 1] == "16000"
     assert final_args[final_args.index("-c:a") + 1] == "pcm_s16le"
     assert final_args[final_args.index("-f") + 1] == "wav"
+
+
+def test_prepare_voice_allows_cleanup_intermediate_above_active_sample_cap(tmp_path: Path) -> None:
+    settings = demucs_processing_settings(
+        tmp_path,
+        demucs_fake_command(tmp_path / "demucs-fake"),
+        prepare_intermediate_ffmpeg_fake_command(tmp_path / "ffmpeg-fake"),
+        max_upload_bytes=5,
+        max_source_upload_bytes=128,
+        sample_processing_ffprobe_command=str(ffprobe_fake_command(tmp_path / "ffprobe-fake", duration_seconds=30)),
+    )
+    with TestClient(create_app(settings=settings)) as client:
+        create = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "prepareVoice"},
+            files={"sourceFile": ("source.mp3", b"source-audio", "audio/mpeg")},
+        )
+        job = wait_for_processing_job(client, create.json()["job"]["id"])
+        candidate = job["result"]["candidates"][0]
+        candidate_stream = client.get(
+            f"/api/sample-processing/jobs/{job['id']}/candidates/{candidate['candidateId']}/result"
+        )
+
+    assert create.status_code == 202
+    assert job["status"] == "success"
+    assert candidate["sha256"] == sample_hash(b"ok")
+    assert candidate_stream.status_code == 200
+    assert candidate_stream.content == b"ok"
 
 
 def test_prepare_voice_candidate_batch_save_persists_processing_metadata(tmp_path: Path) -> None:

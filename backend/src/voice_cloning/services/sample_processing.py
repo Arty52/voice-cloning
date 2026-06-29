@@ -144,6 +144,7 @@ class SampleProcessingRequest:
     source: VoiceSample
     processing_preset_id: SampleProcessingPresetId | None = None
     processing_preset_label: str | None = None
+    max_output_bytes: int | None = None
 
 
 @dataclass(frozen=True)
@@ -756,6 +757,7 @@ class SampleProcessingService:
                         isolate_operation.default_processing_preset_id,
                         isolate_operation,
                     ),
+                    max_output_bytes=self.settings.max_source_upload_bytes,
                 )
                 isolated_result = await self.processor.process(isolate_request)
                 if isolated_result is not None:
@@ -845,6 +847,7 @@ class SampleProcessingService:
                     speaker_operation.default_processing_preset_id,
                     speaker_operation,
                 ),
+                max_output_bytes=self.settings.max_source_upload_bytes,
             )
             speaker_result = await self.processor.process(speaker_request)
             if not isinstance(speaker_result, SpeakerSeparationResult):
