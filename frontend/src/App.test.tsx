@@ -2212,7 +2212,7 @@ describe("App", () => {
     expect(preparePanel.getByRole("button", { name: /process audio file/i })).toHaveAttribute("aria-pressed", "true")
     expect(preparePanel.getByRole("heading", { name: "Sample Processing" })).toBeInTheDocument()
     expect(await preparePanel.findByText("Workflow Progress")).toBeInTheDocument()
-    expect(preparePanel.getByText("Active Step: Detect Speech Regions")).toBeInTheDocument()
+    expect(preparePanel.getByText("Active Phase: Detect Speech Regions")).toBeInTheDocument()
     expect(preparePanel.getByText("Estimated Time 1m 15s to 3m 30s")).toBeInTheDocument()
     expect(localStorage.getItem(ACTIVE_SAMPLE_PROCESSING_JOB_STORAGE_KEY)).toBe("job-prepare")
   })

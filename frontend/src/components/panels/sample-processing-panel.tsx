@@ -882,7 +882,7 @@ function ProcessingProgress({ processing }: { processing: SampleProcessingContro
         <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-sm font-medium">Workflow Progress</div>
           {processing.activeProgressPhase ? (
-            <Badge variant="secondary">Active Step: {processing.activeProgressPhase.label}</Badge>
+            <Badge variant="secondary">Active Phase: {processing.activeProgressPhase.label}</Badge>
           ) : null}
         </div>
         <ol className="mt-3 grid gap-2">
