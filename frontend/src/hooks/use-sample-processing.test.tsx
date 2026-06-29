@@ -990,6 +990,46 @@ describe("useSampleProcessing stacked workflow state", () => {
     expect(result.current.prepareEstimateRangeSeconds).toEqual({ minSeconds: 75, maxSeconds: 210 })
     expect(window.localStorage.getItem("voice-cloning.activeSampleProcessingJobId.v1")).toBe("job-prepare")
   })
+
+  it("uses resumed prepare job metadata for upload candidate defaults", async () => {
+    window.localStorage.setItem("voice-cloning.activeSampleProcessingJobId.v1", "job-prepare")
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path === "/api/sample-processing/options" && !init) {
+          return okJson(prepareProcessingOptions)
+        }
+        if (path === "/api/sample-processing/jobs/job-prepare" && !init) {
+          return okJson({
+            job: {
+              ...preparedSamplesJob.job,
+              sourceName: "Conversation",
+              sourceFilename: "conversation.mp3",
+              sourceContentType: "audio/mpeg",
+            },
+          })
+        }
+        return okJson({})
+      })
+    )
+
+    const { result } = renderHook(() =>
+      useSampleProcessing({ onVoiceSaved: vi.fn(), selectedVoice: retainedSourceVoice, voices: [retainedSourceVoice] })
+    )
+
+    await waitFor(() => expect(result.current.selectedCandidateIds).toEqual(["candidate-1", "candidate-2"]))
+
+    expect(result.current.candidateNameAssignments).toEqual({
+      "candidate-1": "Conversation Speaker 1",
+      "candidate-2": "Conversation Speaker 2",
+    })
+    expect(result.current.candidateVoicePresetIds).toEqual({
+      "candidate-1": DEFAULT_VOICE_PRESET_ID,
+      "candidate-2": DEFAULT_VOICE_PRESET_ID,
+    })
+    expect(window.localStorage.getItem("voice-cloning.activeSampleProcessingJobId.v1")).toBeNull()
+  })
 })
 
 describe("useSampleProcessing speaker separation state", () => {

@@ -298,11 +298,12 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
         ])
       )
     )
+    const candidateVoicePresetId = voicePresetIdForPreparedJob(job, selectedSourceVoice)
     setCandidateVoicePresetIds(
       Object.fromEntries(
         result.candidates.map((candidate) => [
           candidate.candidateId,
-          selectedSourceVoice?.voicePresetId ?? DEFAULT_VOICE_PRESET_ID,
+          candidateVoicePresetId,
         ])
       ) as Record<string, VoicePresetId>
     )
@@ -1097,15 +1098,22 @@ function suggestedCandidateName(
   sourceVoice: VoiceAsset | null,
   sourceFile: File | null,
   candidate: PreparedSamplesResult["candidates"][number],
-  sourceNameFallback = ""
+  jobSourceName = ""
 ) {
-  const sourceName = (sourceMode === "voice" ? sourceVoice?.name : fileStem(sourceFile?.name)) || sourceNameFallback
+  const sourceName = jobSourceName || (sourceMode === "voice" ? sourceVoice?.name : fileStem(sourceFile?.name))
   const baseName = sourceName || "Prepared Voice"
   const speakerName = candidate.speakerLabel || `Speaker ${candidate.speakerId}`
   if (candidate.rank === 1) {
     return `${baseName} ${speakerName}`
   }
   return `${baseName} ${speakerName} ${candidate.rank}`
+}
+
+function voicePresetIdForPreparedJob(job: SampleProcessingJob, selectedSourceVoice: VoiceAsset | null) {
+  if (job.sourceName.trim() !== "" && job.sourceName === selectedSourceVoice?.name) {
+    return selectedSourceVoice.voicePresetId
+  }
+  return DEFAULT_VOICE_PRESET_ID
 }
 
 function operationNameSuffix(workflowSteps: { operation: SampleProcessingOperation }[]) {
