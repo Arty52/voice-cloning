@@ -31,7 +31,10 @@ from voice_cloning.api.serializers import audio_response
 from voice_cloning.models import (
     CachedVoice,
     ModelSummary,
+    SampleProcessingJob,
+    SampleProcessingJobStep,
     SampleProcessingOperation,
+    SampleProcessingProgressPhase,
     SampleProcessingPresetId,
     SampleProcessingResult,
     SpeakerSeparationResult,
@@ -2179,6 +2182,49 @@ def test_prepare_voice_reports_active_progress_phase_while_running(tmp_path: Pat
         if phase["id"] == running["activeProgressPhaseId"]
     )
     assert canceled_phase["status"] == "canceled"
+
+
+def test_finished_progress_phase_clears_active_phase(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    voice_library = VoiceLibrary(settings)
+    service = SampleProcessingService(settings, voice_library, FakeStackSampleProcessor())
+    service._jobs["job-1"] = SampleProcessingJob(
+        id="job-1",
+        operation_id="prepareVoice",
+        status="running",
+        source_name="conversation",
+        source_filename="conversation.wav",
+        source_content_type="audio/wav",
+        source_sha256=sample_hash(b"conversation"),
+        source_size_bytes=len(b"conversation"),
+        source_preference="upload",
+        created_at="2026-06-29T00:00:00Z",
+        updated_at="2026-06-29T00:00:00Z",
+        steps=(
+            SampleProcessingJobStep(
+                id="job-1-step-prepareVoice",
+                operation_id="prepareVoice",
+                operation_label="Prepare Voice",
+                status="running",
+            ),
+        ),
+        progress_phases=(
+            SampleProcessingProgressPhase(
+                id="job-1-phase-clean-voice",
+                label="Clean Voice",
+                status="running",
+                started_at="2026-06-29T00:00:01Z",
+            ),
+        ),
+        active_progress_phase_id="job-1-phase-clean-voice",
+    )
+
+    service._finish_progress_phase("job-1", "job-1-phase-clean-voice")
+
+    job = service.get_job("job-1")
+    assert job.active_progress_phase_id is None
+    assert job.progress_phases[0].status == "success"
+    assert job.progress_phases[0].completed_at is not None
 
 
 def test_prepare_voice_allows_cleanup_intermediate_above_active_sample_cap(tmp_path: Path) -> None:

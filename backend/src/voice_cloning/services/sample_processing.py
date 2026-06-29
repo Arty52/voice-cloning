@@ -1208,7 +1208,9 @@ class SampleProcessingService:
         self._update_progress_phase(job_id, phase_id, detail=detail)
 
     def _finish_progress_phase(self, job_id: str, phase_id: str, *, detail: str | None = None) -> None:
-        phase = _progress_phase_by_id(self.get_job(job_id), phase_id)
+        job = self.get_job(job_id)
+        phase = _progress_phase_by_id(job, phase_id)
+        is_active_phase = job.active_progress_phase_id == phase_id
         self._update_progress_phase(
             job_id,
             phase_id,
@@ -1218,6 +1220,8 @@ class SampleProcessingService:
             error=None,
             detail=detail,
         )
+        if is_active_phase:
+            self._update_job(job_id, active_progress_phase_id=None)
 
     def _fail_active_step(self, job_id: str, error: str) -> None:
         job = self.get_job(job_id)
