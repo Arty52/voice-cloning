@@ -104,6 +104,9 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
   const canDetectSpeakers = Boolean(operations.find((operation) => operation.id === "separateSpeakers")?.enabled)
   const prepareIsolationPresetId = resolveProcessingPresetId(processingPresetIds.isolateVoice, isolationOperation)
   const prepareTrimPresetId = resolveProcessingPresetId(processingPresetIds.trimSilence, trimOperation)
+  const prepareTrimPresetIdForRequest = operationHasProcessingPreset(trimOperation, prepareTrimPresetId)
+    ? prepareTrimPresetId
+    : undefined
   const selectedWorkflowSteps = useMemo(
     () =>
       workflowOperationIds
@@ -510,7 +513,7 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
         sourcePreference: sourceMode === "voice" ? effectiveSourcePreference : undefined,
         sourceVoiceId: sourceMode === "voice" ? resolvedSourceVoiceId : null,
         trimCandidates: isPrepareJob ? prepareTrimCandidates : undefined,
-        trimPresetId: isPrepareJob && prepareTrimCandidates ? prepareTrimPresetId : undefined,
+        trimPresetId: isPrepareJob && prepareTrimCandidates ? prepareTrimPresetIdForRequest : undefined,
         workflowSteps: workflowSteps.length > 1 ? workflowSteps : undefined,
       })
       if (!isActiveRun(runId)) {
@@ -1058,6 +1061,13 @@ function resolveProcessingPresetId(
     return current ?? DEFAULT_PROCESSING_PRESET_ID
   }
   return operation?.defaultProcessingPresetId ?? presets[0]?.id ?? DEFAULT_PROCESSING_PRESET_ID
+}
+
+function operationHasProcessingPreset(
+  operation: SampleProcessingOptionsResponse["operations"][number] | null | undefined,
+  presetId: SampleProcessingPresetId
+) {
+  return Boolean(operation?.processingPresets.some((preset) => preset.id === presetId))
 }
 
 function hasRetainedOriginalSource(sourceVoice: VoiceAsset | null) {

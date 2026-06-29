@@ -137,6 +137,45 @@ const prepareProcessingOptions: SampleProcessingOptionsResponse = {
   ],
 }
 
+const prepareOnlyProcessingOptions: SampleProcessingOptionsResponse = {
+  engine: "ffmpeg",
+  recommendedWorkflowOrder: ["prepareVoice"],
+  operations: [
+    {
+      id: "prepareVoice",
+      label: "Prepare Voice",
+      description: "Rank provider-ready samples.",
+      enabled: true,
+      defaultProcessingPresetId: null,
+      processingPresets: [],
+    },
+    {
+      id: "trimSilence",
+      label: "Trim Silence",
+      description: "Trim silence.",
+      enabled: false,
+      defaultProcessingPresetId: null,
+      processingPresets: [],
+    },
+    {
+      id: "isolateVoice",
+      label: "Isolate Voice",
+      description: "Isolate voice.",
+      enabled: false,
+      defaultProcessingPresetId: null,
+      processingPresets: [],
+    },
+    {
+      id: "separateSpeakers",
+      label: "Separate Speakers",
+      description: "Split speakers.",
+      enabled: false,
+      defaultProcessingPresetId: null,
+      processingPresets: [],
+    },
+  ],
+}
+
 const speakerSeparationResult: SpeakerSeparationResult = {
   kind: "speakerSeparation",
   speakers: [
@@ -913,6 +952,40 @@ describe("useSampleProcessing stacked workflow state", () => {
     })
     expect(onVoiceSaved).toHaveBeenCalledWith(expect.objectContaining({ id: "candidate-1", name: "Prepared Lead" }))
     expect(result.current.candidateSaveStatus).toBe("success")
+  })
+
+  it("omits the Easy Prepare trim preset when trim preset controls are unavailable", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path === "/api/sample-processing/options" && !init) {
+          return okJson(prepareOnlyProcessingOptions)
+        }
+        if (path === "/api/sample-processing/jobs" && init?.method === "POST") {
+          return okJson(preparedSamplesJob, 202)
+        }
+        return okJson({})
+      })
+    )
+    const { result } = renderHook(() =>
+      useSampleProcessing({ onVoiceSaved: vi.fn(), selectedVoice: retainedSourceVoice, voices: [retainedSourceVoice] })
+    )
+
+    await waitFor(() => expect(result.current.optionsStatus).toBe("success"))
+    await act(async () => {
+      await result.current.handleStartProcessing(formEvent())
+    })
+
+    const createCall = vi
+      .mocked(fetch)
+      .mock.calls.find(([url, init]) => String(url) === "/api/sample-processing/jobs" && init?.method === "POST")
+    const body = createCall?.[1]?.body as FormData
+    expect(body.get("operationId")).toBe("prepareVoice")
+    expect(body.get("trimCandidates")).toBe("true")
+    expect(body.get("trimPresetId")).toBeNull()
+    expect(body.get("cleanVoice")).toBe("false")
+    expect(body.get("detectSpeakers")).toBe("false")
   })
 
   it("estimates Easy Prepare upload time and persists running jobs", async () => {
