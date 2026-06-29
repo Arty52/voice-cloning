@@ -615,6 +615,7 @@ class SampleProcessingService:
         if job.status != "success" or job.result is None:
             raise SampleProcessingServiceError("Sample processing result is not ready.", 409)
         result_path = self.result_path(job_id)
+        self._validate_provider_facing_sample_size(result_path)
         sample = load_sample_file(result_path, job.result.content_type)
         steps = self._voice_processing_steps_for_job(job, final_result_sha256=sample.sha256)
         return self.voice_library.add_processed_sample(
@@ -691,6 +692,7 @@ class SampleProcessingService:
             if speaker.result is None:
                 raise SampleProcessingServiceError("Speaker result is not ready.", 409)
             result_path = self._result_path(speaker.result)
+            self._validate_provider_facing_sample_size(result_path)
             sample = load_sample_file(result_path, speaker.result.content_type)
             steps = self._voice_processing_steps_for_speaker(job, speaker, final_result_sha256=sample.sha256)
             prepared.append(
@@ -734,6 +736,7 @@ class SampleProcessingService:
         prepared: list[tuple[PreparedCandidateVoiceSelection, VoiceSample, tuple[VoiceProcessingStep, ...]]] = []
         for selection, candidate in normalized:
             result_path = self._result_path(candidate.result)
+            self._validate_provider_facing_sample_size(result_path)
             sample = load_sample_file(result_path, candidate.result.content_type)
             steps = candidate_steps.get(candidate.candidate_id) or (
                 VoiceProcessingStep(
@@ -1090,10 +1093,9 @@ class SampleProcessingService:
                 except SampleProcessingServiceError as exc:
                     if workflow_step.operation.id != "separateSpeakers" or exc.detail != NO_SPEAKERS_DETECTED_DETAIL:
                         raise
-                    result = self._single_speaker_fallback_result(
+                    result = await self._single_speaker_fallback_result(
                         job_id,
                         source_path=current_path,
-                        source_sample=current_sample,
                     )
                     self._validate_speaker_separation_result(result)
                     speaker_result = result
@@ -1219,27 +1221,27 @@ class SampleProcessingService:
         self._validate_speaker_separation_result(updated_result)
         return updated_result, added_steps
 
-    def _single_speaker_fallback_result(
+    async def _single_speaker_fallback_result(
         self,
         job_id: str,
         *,
         source_path: Path,
-        source_sample: VoiceSample,
     ) -> SpeakerSeparationResult:
-        resolved_source = source_path.resolve()
-        resolved_processing_dir = self.processing_dir.resolve()
-        try:
-            result_path = resolved_source.relative_to(resolved_processing_dir)
-            speaker_path = resolved_source
-        except ValueError:
-            speaker_path = self._job_dir(job_id) / f"speaker-1{source_path.suffix.lower() or '.wav'}"
-            shutil.copyfile(resolved_source, speaker_path)
-            result_path = speaker_path.resolve().relative_to(resolved_processing_dir)
+        speaker_path = self._job_dir(job_id) / "speaker-1.wav"
+        await _write_normalized_wav(
+            source_path,
+            speaker_path,
+            self.settings,
+            max_output_bytes=self.settings.max_source_upload_bytes,
+            oversize_label="Processed voice sample",
+        )
+        speaker_sample = load_sample_file(speaker_path, RESULT_CONTENT_TYPE)
+        result_path = speaker_path.resolve().relative_to(self.processing_dir.resolve())
         speaker_result = SampleProcessingResult(
             path=result_path.as_posix(),
             filename=speaker_path.name,
-            content_type=source_sample.content_type,
-            sha256=source_sample.sha256,
+            content_type=speaker_sample.content_type,
+            sha256=speaker_sample.sha256,
         )
         return SpeakerSeparationResult(
             kind="speakerSeparation",
@@ -1253,6 +1255,13 @@ class SampleProcessingService:
             ),
             transcript=SpeakerSeparationTranscript(items=()),
         )
+
+    def _validate_provider_facing_sample_size(self, path: Path) -> None:
+        if path.stat().st_size > self.settings.max_upload_bytes:
+            raise SampleProcessingServiceError(
+                f"Processed voice sample must be {_bytes_label(self.settings.max_upload_bytes)} or smaller.",
+                413,
+            )
 
     def _update_job(self, job_id: str, **changes: object) -> None:
         job = self.get_job(job_id)
@@ -2351,6 +2360,42 @@ async def _write_prepared_candidate_audio(
         output_path.unlink(missing_ok=True)
         raise SampleProcessingServiceError(
             f"Prepared candidate sample must be {_bytes_label(settings.max_upload_bytes)} or smaller.",
+            413,
+        )
+
+
+async def _write_normalized_wav(
+    source_path: Path,
+    output_path: Path,
+    settings: Settings,
+    *,
+    max_output_bytes: int,
+    oversize_label: str,
+) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    args = [
+        settings.sample_processing_ffmpeg_command,
+        "-y",
+        "-i",
+        str(source_path),
+        "-ac",
+        "1",
+        "-ar",
+        str(PREPARED_SAMPLE_RATE_HZ),
+        "-vn",
+        "-c:a",
+        "pcm_s16le",
+        "-f",
+        "wav",
+        str(output_path),
+    ]
+    await _run_capture_command(args, "ffmpeg", settings.sample_processing_timeout_seconds)
+    if not output_path.exists() or output_path.stat().st_size == 0:
+        raise SampleProcessingServiceError("FFmpeg did not produce a normalized sample.", 502)
+    if output_path.stat().st_size > max_output_bytes:
+        output_path.unlink(missing_ok=True)
+        raise SampleProcessingServiceError(
+            f"{oversize_label} must be {_bytes_label(max_output_bytes)} or smaller.",
             413,
         )
 

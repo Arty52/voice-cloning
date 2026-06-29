@@ -2441,6 +2441,10 @@ def test_sample_processing_stack_allows_intermediate_output_above_active_sample_
         files={"sourceFile": ("source.wav", b"raw-source", "audio/wav")},
     )
     job = wait_for_processing_job(client, create.json()["job"]["id"])
+    save = client.post(
+        f"/api/sample-processing/jobs/{job['id']}/voice",
+        json={"name": "Oversized Processed Voice"},
+    )
 
     assert create.status_code == 202
     assert job["status"] == "success"
@@ -2449,6 +2453,8 @@ def test_sample_processing_stack_allows_intermediate_output_above_active_sample_
         settings.max_source_upload_bytes,
     ]
     assert job["result"]["sha256"] == sample_hash(b"trimmed:isolated:raw-source")
+    assert save.status_code == 413
+    assert save.json()["detail"] == "Processed voice sample must be 5 bytes or smaller."
 
 
 def test_sample_processing_cancel_marks_running_stack_canceled(tmp_path: Path) -> None:
@@ -2810,28 +2816,31 @@ def test_sample_processing_stack_runs_speaker_split_then_trims_each_speaker(tmp_
 def test_sample_processing_stack_falls_back_to_single_speaker_when_diarization_detects_no_speakers(
     tmp_path: Path,
 ) -> None:
-    settings = make_settings(tmp_path)
+    settings = make_settings(
+        tmp_path,
+        sample_processing_ffmpeg_command=str(ffmpeg_fake_command(tmp_path / "ffmpeg-fake", output=b"fallback-speaker")),
+    )
     processor = NoSpeakerDiarizationStackProcessor()
     app = create_app(settings=settings, sample_processor=processor)
-    client = TestClient(app)
     workflow_steps = [
         {"operationId": "isolateVoice", "processingPresetId": "balanced"},
         {"operationId": "separateSpeakers"},
         {"operationId": "trimSilence", "processingPresetId": "trimBalanced"},
     ]
 
-    create = client.post(
-        "/api/sample-processing/jobs",
-        data={"workflowSteps": json.dumps(workflow_steps)},
-        files={"sourceFile": ("conversation.wav", b"conversation", "audio/wav")},
-    )
-    job_id = create.json()["job"]["id"]
-    job = wait_for_processing_job(client, job_id)
-    speaker_one = client.get(f"/api/sample-processing/jobs/{job_id}/speakers/speaker-1/result")
-    save = client.post(
-        f"/api/sample-processing/jobs/{job_id}/speaker-voices",
-        json={"voices": [{"speakerId": "speaker-1", "name": "Morgan", "voicePresetId": "standardNarration"}]},
-    )
+    with TestClient(app) as client:
+        create = client.post(
+            "/api/sample-processing/jobs",
+            data={"workflowSteps": json.dumps(workflow_steps)},
+            files={"sourceFile": ("conversation.wav", b"conversation", "audio/wav")},
+        )
+        job_id = create.json()["job"]["id"]
+        job = wait_for_processing_job(client, job_id)
+        speaker_one = client.get(f"/api/sample-processing/jobs/{job_id}/speakers/speaker-1/result")
+        save = client.post(
+            f"/api/sample-processing/jobs/{job_id}/speaker-voices",
+            json={"voices": [{"speakerId": "speaker-1", "name": "Morgan", "voicePresetId": "standardNarration"}]},
+        )
 
     assert create.status_code == 202
     assert [request.operation_id for request in processor.requests] == [
@@ -2847,17 +2856,53 @@ def test_sample_processing_stack_falls_back_to_single_speaker_when_diarization_d
     assert [speaker["id"] for speaker in job["result"]["speakers"]] == ["speaker-1"]
     assert job["result"]["speakers"][0]["transcriptItemIds"] == []
     assert job["result"]["transcript"]["items"] == []
-    assert job["result"]["speakers"][0]["result"]["sha256"] == sample_hash(b"trimmed:isolated:conversation")
+    assert job["result"]["speakers"][0]["result"]["sha256"] == sample_hash(b"trimmed:fallback-speaker")
     assert speaker_one.status_code == 200
-    assert speaker_one.content == b"trimmed:isolated:conversation"
+    assert speaker_one.content == b"trimmed:fallback-speaker"
     assert save.status_code == 201
     processing_steps = save.json()["voices"][0]["processingSteps"]
     assert [step["operationId"] for step in processing_steps] == ["isolateVoice", "separateSpeakers", "trimSilence"]
     assert processing_steps[1]["speakerId"] == "speaker-1"
-    assert processing_steps[1]["resultSha256"] == sample_hash(b"isolated:conversation")
+    assert processing_steps[1]["resultSha256"] == sample_hash(b"fallback-speaker")
     assert processing_steps[2]["speakerId"] == "speaker-1"
-    assert processing_steps[2]["sourceSha256"] == sample_hash(b"isolated:conversation")
-    assert processing_steps[2]["resultSha256"] == sample_hash(b"trimmed:isolated:conversation")
+    assert processing_steps[2]["sourceSha256"] == sample_hash(b"fallback-speaker")
+    assert processing_steps[2]["resultSha256"] == sample_hash(b"trimmed:fallback-speaker")
+
+
+def test_sample_processing_speaker_fallback_normalizes_uploaded_source_to_wav(tmp_path: Path) -> None:
+    settings = make_settings(
+        tmp_path,
+        sample_processing_ffmpeg_command=str(ffmpeg_fake_command(tmp_path / "ffmpeg-fake", output=b"fallback-wav")),
+    )
+    processor = NoSpeakerDiarizationStackProcessor()
+    app = create_app(settings=settings, sample_processor=processor)
+    with TestClient(app) as client:
+        create = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "separateSpeakers"},
+            files={"sourceFile": ("conversation.mp3", b"mp3-source", "audio/mpeg")},
+        )
+        job_id = create.json()["job"]["id"]
+        job = wait_for_processing_job(client, job_id)
+        speaker_one = client.get(f"/api/sample-processing/jobs/{job_id}/speakers/speaker-1/result")
+        save = client.post(
+            f"/api/sample-processing/jobs/{job_id}/speaker-voices",
+            json={"voices": [{"speakerId": "speaker-1", "name": "Fallback Speaker"}]},
+        )
+
+    assert create.status_code == 202
+    assert job["status"] == "success"
+    speaker_result = job["result"]["speakers"][0]["result"]
+    assert speaker_result["filename"] == "speaker-1.wav"
+    assert speaker_result["contentType"] == "audio/wav"
+    assert speaker_result["sha256"] == sample_hash(b"fallback-wav")
+    assert speaker_one.status_code == 200
+    assert speaker_one.headers["content-type"].startswith("audio/wav")
+    assert speaker_one.content == b"fallback-wav"
+    assert save.status_code == 201
+    voice = save.json()["voices"][0]
+    assert voice["contentType"] == "audio/wav"
+    assert voice["sha256"] == sample_hash(b"fallback-wav")
 
 
 def test_sample_processing_stack_retrims_speaker_assignment_updates(tmp_path: Path) -> None:
