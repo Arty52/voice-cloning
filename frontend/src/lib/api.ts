@@ -42,12 +42,14 @@ export type VoiceUpdate = {
 export type CreateSampleProcessingJobRequest = {
   cleanVoice?: boolean | null
   detectSpeakers?: boolean | null
+  isolationPresetId?: SampleProcessingPresetId | null
   operationId?: SampleProcessingOperationId
   processingPresetId?: SampleProcessingPresetId | null
   sourceFile?: File | null
   sourcePreference?: SampleProcessingSourcePreference
   sourceVoiceId?: string | null
   trimCandidates?: boolean | null
+  trimPresetId?: SampleProcessingPresetId | null
   workflowSteps?: SampleProcessingWorkflowStepRequest[]
 }
 
@@ -225,12 +227,14 @@ export async function fetchSampleProcessingOptions() {
 export async function createSampleProcessingJob({
   cleanVoice,
   detectSpeakers,
+  isolationPresetId,
   operationId,
   processingPresetId,
   sourceFile,
   sourcePreference,
   sourceVoiceId,
   trimCandidates,
+  trimPresetId,
   workflowSteps,
 }: CreateSampleProcessingJobRequest) {
   const hasWorkflowSteps = Boolean(workflowSteps?.length)
@@ -253,6 +257,12 @@ export async function createSampleProcessingJob({
   }
   if (processingPresetId) {
     formData.append("processingPresetId", processingPresetId)
+  }
+  if (isolationPresetId) {
+    formData.append("isolationPresetId", isolationPresetId)
+  }
+  if (trimPresetId) {
+    formData.append("trimPresetId", trimPresetId)
   }
   if (cleanVoice !== undefined && cleanVoice !== null) {
     formData.append("cleanVoice", String(cleanVoice))

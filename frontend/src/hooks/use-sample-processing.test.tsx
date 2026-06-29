@@ -877,6 +877,8 @@ describe("useSampleProcessing stacked workflow state", () => {
     expect(body.get("operationId")).toBe("prepareVoice")
     expect(body.get("workflowSteps")).toBeNull()
     expect(body.get("processingPresetId")).toBeNull()
+    expect(body.get("isolationPresetId")).toBe("balanced")
+    expect(body.get("trimPresetId")).toBe("trimBalanced")
     expect(body.get("cleanVoice")).toBe("true")
     expect(body.get("detectSpeakers")).toBe("true")
     expect(body.get("trimCandidates")).toBe("true")

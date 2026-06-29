@@ -98,8 +98,12 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
     processingPresets.find((preset) => preset.id === resolvedProcessingPresetId) ?? null
   const prepareVoiceOperation = operations.find((operation) => operation.id === "prepareVoice") ?? null
   const isPrepareVoiceSelected = workflowOperationIds.length === 1 && workflowOperationIds[0] === "prepareVoice"
-  const canCleanVoice = Boolean(operations.find((operation) => operation.id === "isolateVoice")?.enabled)
+  const isolationOperation = operations.find((operation) => operation.id === "isolateVoice") ?? null
+  const trimOperation = operations.find((operation) => operation.id === "trimSilence") ?? null
+  const canCleanVoice = Boolean(isolationOperation?.enabled)
   const canDetectSpeakers = Boolean(operations.find((operation) => operation.id === "separateSpeakers")?.enabled)
+  const prepareIsolationPresetId = resolveProcessingPresetId(processingPresetIds.isolateVoice, isolationOperation)
+  const prepareTrimPresetId = resolveProcessingPresetId(processingPresetIds.trimSilence, trimOperation)
   const selectedWorkflowSteps = useMemo(
     () =>
       workflowOperationIds
@@ -499,12 +503,14 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
       const payload = await api.createSampleProcessingJob({
         cleanVoice: isPrepareJob ? prepareCleanVoice && canCleanVoice : undefined,
         detectSpeakers: isPrepareJob ? prepareDetectSpeakers && canDetectSpeakers : undefined,
+        isolationPresetId: isPrepareJob && prepareCleanVoice && canCleanVoice ? prepareIsolationPresetId : undefined,
         operationId: workflowSteps.length === 1 ? primaryStep?.operationId : undefined,
         processingPresetId: workflowSteps.length === 1 && !isPrepareJob ? primaryStep?.processingPresetId : null,
         sourceFile: sourceMode === "upload" ? sourceFile : null,
         sourcePreference: sourceMode === "voice" ? effectiveSourcePreference : undefined,
         sourceVoiceId: sourceMode === "voice" ? resolvedSourceVoiceId : null,
         trimCandidates: isPrepareJob ? prepareTrimCandidates : undefined,
+        trimPresetId: isPrepareJob && prepareTrimCandidates ? prepareTrimPresetId : undefined,
         workflowSteps: workflowSteps.length > 1 ? workflowSteps : undefined,
       })
       if (!isActiveRun(runId)) {
@@ -991,6 +997,10 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
     progressPhases,
     prepareCleanVoice,
     prepareDetectSpeakers,
+    prepareIsolationOperation: isolationOperation,
+    prepareIsolationPresetId,
+    prepareTrimOperation: trimOperation,
+    prepareTrimPresetId,
     prepareTrimCandidates,
     preparedSamplesResult,
     prepareVoiceOperation,

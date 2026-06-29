@@ -173,14 +173,18 @@ describe("voice API helpers", () => {
     await createSampleProcessingJob({
       cleanVoice: true,
       detectSpeakers: false,
+      isolationPresetId: "maxIsolation",
       operationId: "prepareVoice",
       sourceFile: source,
       trimCandidates: true,
+      trimPresetId: "trimAggressive",
     })
 
     const body = vi.mocked(fetch).mock.calls[0][1]?.body as FormData
     expect(body.get("operationId")).toBe("prepareVoice")
     expect(body.get("processingPresetId")).toBeNull()
+    expect(body.get("isolationPresetId")).toBe("maxIsolation")
+    expect(body.get("trimPresetId")).toBe("trimAggressive")
     expect(body.get("cleanVoice")).toBe("true")
     expect(body.get("detectSpeakers")).toBe("false")
     expect(body.get("trimCandidates")).toBe("true")

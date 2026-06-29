@@ -312,8 +312,8 @@ function PrepareAdvancedOptions({ processing }: { processing: SampleProcessingCo
     <Field>
       <FieldLabel>Easy Prepare</FieldLabel>
       <FieldDescription>
-        Ranks long local audio into mono 16 kHz WAV candidates. Local source uploads default to a 1 GB cap; speaker
-        detection requires diarization.
+        Runs selected cleanup first, then detects speech regions, ranks provider-sized windows, and creates mono 16 kHz
+        WAV candidates for review. Local source uploads default to a 1 GB cap; speaker detection requires diarization.
       </FieldDescription>
       <div className="grid gap-2 md:grid-cols-3">
         <PrepareToggle
@@ -338,6 +338,7 @@ function PrepareAdvancedOptions({ processing }: { processing: SampleProcessingCo
           onCheckedChange={processing.setPrepareDetectSpeakers}
         />
       </div>
+      <PreparePresetControls processing={processing} />
       {processing.prepareEstimateRangeSeconds ? (
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <Badge variant="secondary">Estimated Time {formatDurationRange(processing.prepareEstimateRangeSeconds)}</Badge>
@@ -346,6 +347,84 @@ function PrepareAdvancedOptions({ processing }: { processing: SampleProcessingCo
           ) : null}
         </div>
       ) : null}
+    </Field>
+  )
+}
+
+function PreparePresetControls({ processing }: { processing: SampleProcessingController }) {
+  const isolationOperation = processing.prepareIsolationOperation
+  const trimOperation = processing.prepareTrimOperation
+  const canShowIsolationPreset = Boolean(isolationOperation?.processingPresets.length)
+  const canShowTrimPreset = Boolean(trimOperation?.processingPresets.length)
+
+  if (!canShowIsolationPreset && !canShowTrimPreset) {
+    return null
+  }
+
+  return (
+    <div className="grid gap-3 md:grid-cols-2">
+      {canShowIsolationPreset && isolationOperation ? (
+        <PreparePresetSelect
+          description={
+            isolationOperation.processingPresets.find((preset) => preset.id === processing.prepareIsolationPresetId)
+              ?.description ?? "Default vocal isolation quality and runtime."
+          }
+          disabled={processing.isProcessing || !processing.prepareCleanVoice || !processing.canCleanVoice}
+          label="Isolation Strength"
+          onChange={(value) => processing.setProcessingPresetIdForOperation("isolateVoice", value)}
+          options={isolationOperation.processingPresets.map((preset) => ({ label: preset.label, value: preset.id }))}
+          value={processing.prepareIsolationPresetId}
+        />
+      ) : null}
+      {canShowTrimPreset && trimOperation ? (
+        <PreparePresetSelect
+          description={
+            trimOperation.processingPresets.find((preset) => preset.id === processing.prepareTrimPresetId)?.description ??
+            "Default silence trimming with a small amount of preserved room tone."
+          }
+          disabled={processing.isProcessing || !processing.prepareTrimCandidates}
+          label="Trim Aggressiveness"
+          onChange={(value) => processing.setProcessingPresetIdForOperation("trimSilence", value)}
+          options={trimOperation.processingPresets.map((preset) => ({ label: preset.label, value: preset.id }))}
+          value={processing.prepareTrimPresetId}
+        />
+      ) : null}
+    </div>
+  )
+}
+
+function PreparePresetSelect({
+  description,
+  disabled,
+  label,
+  onChange,
+  options,
+  value,
+}: {
+  description: string
+  disabled: boolean
+  label: string
+  onChange: (value: SampleProcessingPresetId) => void
+  options: { label: string; value: SampleProcessingPresetId }[]
+  value: SampleProcessingPresetId
+}) {
+  return (
+    <Field data-disabled={disabled ? true : undefined}>
+      <FieldLabel className="text-xs">{label}</FieldLabel>
+      <MenuSelect
+        ariaLabel={label}
+        buttonClassName="w-full"
+        className="w-full"
+        disabled={disabled}
+        onChange={(nextValue) => {
+          if (isSampleProcessingPresetId(nextValue)) {
+            onChange(nextValue)
+          }
+        }}
+        options={options}
+        value={value}
+      />
+      <FieldDescription>{description}</FieldDescription>
     </Field>
   )
 }
@@ -905,6 +984,7 @@ function ProcessingProgress({ processing }: { processing: SampleProcessingContro
                     <span className="min-w-0 truncate text-sm font-medium">{phase.label}</span>
                     <Badge
                       className={cn(
+                        "gap-1.5",
                         phase.status === "error" && "border-destructive/40 bg-destructive/10 text-destructive",
                         phase.status === "canceled" && "border-destructive/40 bg-destructive/10 text-destructive"
                       )}
@@ -960,6 +1040,7 @@ function ProcessingProgress({ processing }: { processing: SampleProcessingContro
                   <span className="min-w-0 truncate text-sm font-medium">{step.operationLabel}</span>
                   <Badge
                     className={cn(
+                      "gap-1.5",
                       step.status === "error" && "border-destructive/40 bg-destructive/10 text-destructive",
                       step.status === "canceled" && "border-destructive/40 bg-destructive/10 text-destructive"
                     )}

@@ -2140,6 +2140,54 @@ describe("App", () => {
     expect(preparePanel.getByRole("group", { name: "Audio Drop Zone" })).toBeInTheDocument()
   })
 
+  it("explains Easy Prepare ranking and exposes cleanup preset controls", async () => {
+    window.history.replaceState(null, "", "/#prepare")
+    const baseFetch = mockFetch()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/sample-processing/options" && !init) {
+          return okJson({
+            ...sampleProcessingOptions,
+            engine: "demucs+ffmpeg",
+            recommendedWorkflowOrder: ["prepareVoice", ...sampleProcessingOptions.recommendedWorkflowOrder],
+            operations: [
+              {
+                id: "prepareVoice",
+                label: "Prepare Voice",
+                description: "Rank provider-ready samples.",
+                enabled: true,
+                defaultProcessingPresetId: null,
+                processingPresets: [],
+              },
+              ...sampleProcessingOptions.operations,
+            ],
+          })
+        }
+        return baseFetch(input, init)
+      })
+    )
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    const prepareSection = document.querySelector('[data-section-id="prepare"]') as HTMLElement
+    await user.click(within(prepareSection).getByRole("button", { name: /process audio file/i }))
+
+    expect(
+      sampleProcessingPanel().getByText(/Runs selected cleanup first, then detects speech regions, ranks provider-sized windows/i)
+    ).toBeInTheDocument()
+    expect(sampleProcessingPresetSelect("Isolation Strength")).toHaveAccessibleName("Isolation Strength: Balanced")
+    expect(sampleProcessingPresetSelect("Trim Aggressiveness")).toHaveAccessibleName("Trim Aggressiveness: Balanced")
+
+    await chooseSampleProcessingPreset(user, "Isolation Strength", "Max Isolation")
+    await chooseSampleProcessingPreset(user, "Trim Aggressiveness", "Aggressive")
+
+    expect(sampleProcessingPresetSelect("Isolation Strength")).toHaveAccessibleName("Isolation Strength: Max Isolation")
+    expect(sampleProcessingPresetSelect("Trim Aggressiveness")).toHaveAccessibleName("Trim Aggressiveness: Aggressive")
+  })
+
   it("restores a running Prepare Audio job on #prepare", async () => {
     window.history.replaceState(null, "", "/#prepare")
     localStorage.setItem(ACTIVE_SAMPLE_PROCESSING_JOB_STORAGE_KEY, "job-prepare")
