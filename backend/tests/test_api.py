@@ -2110,7 +2110,11 @@ def test_prepare_voice_runs_cleanup_speaker_split_and_final_trim(tmp_path: Path)
     with TestClient(app) as client:
         create = client.post(
             "/api/sample-processing/jobs",
-            data={"operationId": "prepareVoice"},
+            data={
+                "operationId": "prepareVoice",
+                "isolationPresetId": "maxIsolation",
+                "trimPresetId": "trimAggressive",
+            },
             files={"sourceFile": ("conversation.wav", b"conversation", "audio/wav")},
         )
         job = wait_for_processing_job(client, create.json()["job"]["id"])
@@ -2119,6 +2123,8 @@ def test_prepare_voice_runs_cleanup_speaker_split_and_final_trim(tmp_path: Path)
 
     assert create.status_code == 202
     assert [request.operation_id for request in processor.requests] == ["isolateVoice", "separateSpeakers"]
+    assert processor.requests[0].processing_preset_id == "maxIsolation"
+    assert processor.requests[0].processing_preset_label == "Max Isolation"
     assert [request.max_output_bytes for request in processor.requests] == [
         settings.max_source_upload_bytes,
         settings.max_source_upload_bytes,
@@ -2141,10 +2147,35 @@ def test_prepare_voice_runs_cleanup_speaker_split_and_final_trim(tmp_path: Path)
     assert all(candidate["sampleRateHz"] == 16000 for candidate in job["result"]["candidates"])
     assert candidate_calls
     final_args = candidate_calls[-1]
-    assert final_args[final_args.index("-af") + 1].startswith("silenceremove=")
+    assert "start_threshold=-38dB" in final_args[final_args.index("-af") + 1]
     assert final_args[final_args.index("-ar") + 1] == "16000"
     assert final_args[final_args.index("-c:a") + 1] == "pcm_s16le"
     assert final_args[final_args.index("-f") + 1] == "wav"
+
+
+@pytest.mark.parametrize(
+    ("preset_field", "preset_value"),
+    [
+        ("isolationPresetId", "tooStrong"),
+        ("trimPresetId", "tooTight"),
+    ],
+)
+def test_prepare_voice_rejects_invalid_cleanup_presets(
+    tmp_path: Path,
+    preset_field: str,
+    preset_value: str,
+) -> None:
+    settings = make_settings(tmp_path)
+    app = create_app(settings=settings, sample_processor=FakeStackSampleProcessor())
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "prepareVoice", preset_field: preset_value},
+            files={"sourceFile": ("conversation.wav", b"conversation", "audio/wav")},
+        )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == f"Unsupported processing preset: {preset_value}."
 
 
 def test_prepare_voice_falls_back_when_diarization_detects_no_speakers(tmp_path: Path) -> None:

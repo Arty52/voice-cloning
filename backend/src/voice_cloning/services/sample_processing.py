@@ -53,6 +53,21 @@ PREPARE_FINAL_TRIM_FILTER = (
     "stop_periods=-1:stop_duration=0.5:stop_threshold=-45dB:stop_silence=0.15:"
     "detection=peak"
 )
+PREPARE_FINAL_TRIM_FILTERS: dict[SampleProcessingPresetId, str] = {
+    "trimLight": (
+        "silenceremove="
+        "start_periods=1:start_duration=0.2:start_threshold=-50dB:start_silence=0.15:"
+        "stop_periods=-1:stop_duration=1.0:stop_threshold=-50dB:stop_silence=0.25:"
+        "detection=peak"
+    ),
+    "trimBalanced": PREPARE_FINAL_TRIM_FILTER,
+    "trimAggressive": (
+        "silenceremove="
+        "start_periods=1:start_duration=0.1:start_threshold=-38dB:start_silence=0.05:"
+        "stop_periods=-1:stop_duration=0.35:stop_threshold=-38dB:stop_silence=0.1:"
+        "detection=peak"
+    ),
+}
 DEFAULT_ISOLATION_PROCESSING_PRESET_ID: SampleProcessingPresetId = "balanced"
 DEFAULT_TRIM_SILENCE_PROCESSING_PRESET_ID: SampleProcessingPresetId = "trimBalanced"
 RECOMMENDED_WORKFLOW_ORDER: tuple[SampleProcessingOperationId, ...] = (
@@ -207,6 +222,10 @@ class PrepareVoiceOptions:
     trim_candidates: bool
     isolation_requested: bool
     speaker_detection_requested: bool
+    isolation_processing_preset_id: SampleProcessingPresetId | None = None
+    isolation_processing_preset_label: str | None = None
+    trim_processing_preset_id: SampleProcessingPresetId | None = None
+    trim_processing_preset_label: str | None = None
 
 
 @dataclass(frozen=True)
@@ -340,6 +359,8 @@ class SampleProcessingService:
         clean_voice: bool | None = None,
         detect_speakers: bool | None = None,
         trim_candidates: bool | None = None,
+        isolation_preset_id: str | None = None,
+        trim_preset_id: str | None = None,
     ) -> SampleProcessingJob:
         resolved_source_preference = _normalize_source_preference(source_preference)
         if operation_id == "prepareVoice":
@@ -352,6 +373,8 @@ class SampleProcessingService:
                 clean_voice=clean_voice,
                 detect_speakers=detect_speakers,
                 trim_candidates=trim_candidates,
+                isolation_preset_id=isolation_preset_id,
+                trim_preset_id=trim_preset_id,
             )
         resolved_steps = self._resolve_workflow_steps(
             operation_id=operation_id,
@@ -440,6 +463,8 @@ class SampleProcessingService:
         clean_voice: bool | None,
         detect_speakers: bool | None,
         trim_candidates: bool | None,
+        isolation_preset_id: str | None,
+        trim_preset_id: str | None,
     ) -> SampleProcessingJob:
         prepare_operation = self._enabled_operation("prepareVoice")
         if bool(source_voice_id and source_voice_id.strip()) == bool(source_upload):
@@ -466,6 +491,8 @@ class SampleProcessingService:
                 clean_voice=clean_voice,
                 detect_speakers=detect_speakers,
                 trim_candidates=trim_candidates,
+                isolation_preset_id=isolation_preset_id,
+                trim_preset_id=trim_preset_id,
             )
             now = _utc_now()
             step = SampleProcessingJobStep(
@@ -763,7 +790,6 @@ class SampleProcessingService:
             if options.clean_voice:
                 clean_phase_id = _prepare_voice_phase_id(job_id, "clean-voice")
                 self._start_progress_phase(job_id, clean_phase_id)
-                isolate_operation = self._enabled_operation("isolateVoice")
                 isolated_path = job_dir / "prepare-isolated.wav"
                 isolate_request = SampleProcessingRequest(
                     job_id=job_id,
@@ -772,11 +798,8 @@ class SampleProcessingService:
                     output_path=isolated_path,
                     job_dir=job_dir,
                     source=current_sample,
-                    processing_preset_id=isolate_operation.default_processing_preset_id,
-                    processing_preset_label=_processing_preset_label(
-                        isolate_operation.default_processing_preset_id,
-                        isolate_operation,
-                    ),
+                    processing_preset_id=options.isolation_processing_preset_id,
+                    processing_preset_label=options.isolation_processing_preset_label,
                     max_output_bytes=self.settings.max_source_upload_bytes,
                 )
                 isolated_result = await self.processor.process(isolate_request)
@@ -984,6 +1007,7 @@ class SampleProcessingService:
                 window,
                 self.settings,
                 trim_candidates=options.trim_candidates,
+                trim_preset_id=options.trim_processing_preset_id,
             )
             sample = load_sample_file(output_path, RESULT_CONTENT_TYPE)
             candidates.append(
@@ -1537,17 +1561,49 @@ class SampleProcessingService:
         clean_voice: bool | None,
         detect_speakers: bool | None,
         trim_candidates: bool | None,
+        isolation_preset_id: str | None,
+        trim_preset_id: str | None,
     ) -> PrepareVoiceOptions:
         isolation_available = self._operation_enabled("isolateVoice")
         speaker_detection_available = self._operation_enabled("separateSpeakers")
         isolation_requested = isolation_available if clean_voice is None else clean_voice
         speaker_detection_requested = speaker_detection_available if detect_speakers is None else detect_speakers
+        isolation_processing_preset_id: SampleProcessingPresetId | None = None
+        isolation_processing_preset_label: str | None = None
+        if isolation_requested:
+            if isolation_available:
+                isolate_operation = self._enabled_operation("isolateVoice")
+                isolation_processing_preset_id, isolation_processing_preset_label = _normalize_processing_preset(
+                    isolation_preset_id,
+                    isolate_operation,
+                )
+            elif isolation_preset_id:
+                raise SampleProcessingServiceError("Isolation preset requires Clean Voice to be available.", 503)
+        elif isolation_preset_id:
+            raise SampleProcessingServiceError("Isolation preset requires Clean Voice.", 422)
+
+        resolved_trim_candidates = True if trim_candidates is None else trim_candidates
+        trim_processing_preset_id: SampleProcessingPresetId | None = None
+        trim_processing_preset_label: str | None = None
+        if resolved_trim_candidates:
+            trim_operation = _trim_silence_operation_metadata()
+            trim_processing_preset_id, trim_processing_preset_label = _normalize_processing_preset(
+                trim_preset_id,
+                trim_operation,
+            )
+        elif trim_preset_id:
+            raise SampleProcessingServiceError("Trim preset requires Trim Non-Spoken Audio.", 422)
+
         return PrepareVoiceOptions(
             clean_voice=isolation_requested and isolation_available,
             detect_speakers=speaker_detection_requested and speaker_detection_available,
-            trim_candidates=True if trim_candidates is None else trim_candidates,
+            trim_candidates=resolved_trim_candidates,
             isolation_requested=isolation_requested,
             speaker_detection_requested=speaker_detection_requested,
+            isolation_processing_preset_id=isolation_processing_preset_id,
+            isolation_processing_preset_label=isolation_processing_preset_label,
+            trim_processing_preset_id=trim_processing_preset_id,
+            trim_processing_preset_label=trim_processing_preset_label,
         )
 
     def _prepare_voice_engine(self, options: PrepareVoiceOptions) -> str:
@@ -2015,6 +2071,17 @@ def _normalize_processing_preset(
     raise SampleProcessingServiceError(f"Unsupported processing preset: {raw_value}.", 422)
 
 
+def _trim_silence_operation_metadata() -> SampleProcessingOperation:
+    return SampleProcessingOperation(
+        id="trimSilence",
+        label="Trim Silence",
+        description="Remove leading, trailing, and long interior empty sections with FFmpeg.",
+        enabled=True,
+        processing_presets=TRIM_SILENCE_PROCESSING_PRESETS,
+        default_processing_preset_id=DEFAULT_TRIM_SILENCE_PROCESSING_PRESET_ID,
+    )
+
+
 def _processing_preset_label(
     value: SampleProcessingPresetId | None,
     operation: SampleProcessingOperation,
@@ -2248,6 +2315,7 @@ async def _write_prepared_candidate_audio(
     settings: Settings,
     *,
     trim_candidates: bool,
+    trim_preset_id: SampleProcessingPresetId | None,
 ) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     args = [
@@ -2261,7 +2329,7 @@ async def _write_prepared_candidate_audio(
         str(source_path),
     ]
     if trim_candidates:
-        args.extend(["-af", PREPARE_FINAL_TRIM_FILTER])
+        args.extend(["-af", _prepare_final_trim_filter_for_preset(trim_preset_id)])
     args.extend(
         [
             "-ac",
@@ -2285,6 +2353,14 @@ async def _write_prepared_candidate_audio(
             f"Prepared candidate sample must be {_bytes_label(settings.max_upload_bytes)} or smaller.",
             413,
         )
+
+
+def _prepare_final_trim_filter_for_preset(preset_id: SampleProcessingPresetId | None) -> str:
+    resolved_preset_id = preset_id or DEFAULT_TRIM_SILENCE_PROCESSING_PRESET_ID
+    return PREPARE_FINAL_TRIM_FILTERS.get(
+        resolved_preset_id,
+        PREPARE_FINAL_TRIM_FILTERS[DEFAULT_TRIM_SILENCE_PROCESSING_PRESET_ID],
+    )
 
 
 async def _run_capture_command(
