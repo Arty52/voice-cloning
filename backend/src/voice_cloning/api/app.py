@@ -38,13 +38,14 @@ def create_app(
     resolved_provider_registry = provider_registry or ProviderRegistry([ElevenLabsProvider(resolved_settings)])
     resolved_library = voice_library or VoiceLibrary(resolved_settings)
     resolved_voice_ingestion = voice_ingestion_service or VoiceIngestionService(resolved_settings, resolved_library)
+    resolved_sample_processing_media_sources = (
+        sample_processing_media_source_service or SampleProcessingMediaSourceService(resolved_settings)
+    )
     resolved_sample_processing = sample_processing_service or SampleProcessingService(
         resolved_settings,
         resolved_library,
         sample_processor or create_sample_processor(resolved_settings),
-    )
-    resolved_sample_processing_media_sources = (
-        sample_processing_media_source_service or SampleProcessingMediaSourceService(resolved_settings)
+        media_source_service=resolved_sample_processing_media_sources,
     )
     resolved_speech_jobs = speech_job_service or SpeechJobService(
         resolved_settings,

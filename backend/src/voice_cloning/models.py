@@ -187,6 +187,20 @@ class SampleProcessingMediaSource:
 
 
 @dataclass(frozen=True)
+class SampleProcessingSourceRange:
+    start_seconds: float
+    end_seconds: float
+    duration_seconds: float
+    label: str | None = None
+
+
+@dataclass(frozen=True)
+class SampleProcessingSourceSelection:
+    source_media_id: str
+    ranges: tuple[SampleProcessingSourceRange, ...]
+
+
+@dataclass(frozen=True)
 class SpeakerTranscriptItem:
     id: str
     text: str
@@ -300,6 +314,7 @@ class SampleProcessingJob:
     estimated_duration_range_seconds: SampleProcessingDurationRange | None = None
     progress_phases: tuple[SampleProcessingProgressPhase, ...] = ()
     active_progress_phase_id: str | None = None
+    source_selection: SampleProcessingSourceSelection | None = None
 
 
 @dataclass(frozen=True)
