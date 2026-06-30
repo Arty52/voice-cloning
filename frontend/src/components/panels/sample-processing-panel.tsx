@@ -50,6 +50,7 @@ import { formatElapsedTime } from "@/lib/formatters"
 import { cn } from "@/lib/utils"
 import { voicePresetLabel } from "@/lib/voice-presets"
 import type {
+  PreparedSampleCandidate,
   SampleProcessingOperationId,
   SampleProcessingPresetId,
   SampleProcessingSourcePreference,
@@ -129,7 +130,7 @@ export function SampleProcessingPanel({
       </div>
 
       {isDetailsVisible ? (
-        <div className="mt-4 space-y-4">
+        <div className="mt-4 flex flex-col gap-4">
           {processing.optionsStatus === "loading" ? (
             <div className="rounded-md border border-border bg-background/60 p-3">
               <Loading text="Loading Processing Options" variant="secondary" />
@@ -150,10 +151,11 @@ export function SampleProcessingPanel({
             </Alert>
           ) : null}
 
-          <form className="space-y-3" onSubmit={processing.handleStartProcessing}>
+          <form className="flex flex-col gap-3" onSubmit={processing.handleStartProcessing}>
             <FieldGroup>
               <SourceSelection processing={processing} voicePresets={voicePresets} />
               <WorkflowStackSelection processing={processing} />
+              <PrepareAdvancedOptions processing={processing} />
             </FieldGroup>
 
             {processing.job ? <ProcessingProgress processing={processing} /> : null}
@@ -172,7 +174,9 @@ export function SampleProcessingPanel({
                   ? "Starting Processing"
                   : processing.status === "processing"
                     ? "Processing Sample"
-                    : "Start Processing"}
+                    : processing.isPrepareVoiceSelected
+                      ? "Process Audio File"
+                      : "Start Processing"}
               </Button>
               {processing.canCancel ? (
                 <Button
@@ -189,6 +193,7 @@ export function SampleProcessingPanel({
           </form>
 
           <SingleResultSave processing={processing} voicePresets={voicePresets} />
+          <PreparedCandidateResultSave processing={processing} voicePresets={voicePresets} />
           <SpeakerResultSave processing={processing} voicePresets={voicePresets} />
         </div>
       ) : null}
@@ -205,7 +210,7 @@ function WorkflowStackSelection({ processing }: { processing: SampleProcessingCo
       <FieldLabel id="sample-processing-workflow-label">Workflow Stack</FieldLabel>
       <div
         aria-labelledby="sample-processing-workflow-label"
-        className="grid w-full grid-cols-1 gap-2 md:grid-cols-3"
+        className="grid w-full grid-cols-1 gap-2 md:grid-cols-4"
         role="group"
       >
         {orderedOperations.map((operation) => {
@@ -294,6 +299,78 @@ function WorkflowSelectionIndicator({ isSelected }: { isSelected: boolean }) {
       aria-hidden="true"
       className={cn("size-5 shrink-0", isSelected ? "text-primary" : "text-muted-foreground/70")}
     />
+  )
+}
+
+function PrepareAdvancedOptions({ processing }: { processing: SampleProcessingController }) {
+  if (!processing.isPrepareVoiceSelected) {
+    return null
+  }
+
+  return (
+    <Field>
+      <FieldLabel>Easy Prepare</FieldLabel>
+      <FieldDescription>
+        Ranks long local audio into mono 16 kHz WAV candidates. Local source uploads default to a 1 GB cap; speaker
+        detection requires diarization.
+      </FieldDescription>
+      <div className="grid gap-2 md:grid-cols-3">
+        <PrepareToggle
+          checked={processing.prepareCleanVoice && processing.canCleanVoice}
+          disabled={processing.isProcessing || !processing.canCleanVoice}
+          id="prepare-clean-voice"
+          label="Clean Voice"
+          onCheckedChange={processing.setPrepareCleanVoice}
+        />
+        <PrepareToggle
+          checked={processing.prepareTrimCandidates}
+          disabled={processing.isProcessing}
+          id="prepare-trim-candidates"
+          label="Trim Non-Spoken Audio"
+          onCheckedChange={processing.setPrepareTrimCandidates}
+        />
+        <PrepareToggle
+          checked={processing.prepareDetectSpeakers && processing.canDetectSpeakers}
+          disabled={processing.isProcessing || !processing.canDetectSpeakers}
+          id="prepare-detect-speakers"
+          label="Detect Speakers"
+          onCheckedChange={processing.setPrepareDetectSpeakers}
+        />
+      </div>
+    </Field>
+  )
+}
+
+function PrepareToggle({
+  checked,
+  disabled,
+  id,
+  label,
+  onCheckedChange,
+}: {
+  checked: boolean
+  disabled: boolean
+  id: string
+  label: string
+  onCheckedChange: (checked: boolean) => void
+}) {
+  return (
+    <label
+      className={cn(
+        "flex min-h-14 items-center gap-3 rounded-md border border-border bg-background/60 p-3 text-sm font-medium",
+        checked && "border-primary/60 bg-primary/10",
+        disabled && "cursor-not-allowed opacity-60"
+      )}
+      htmlFor={id}
+    >
+      <Checkbox
+        checked={checked}
+        disabled={disabled}
+        id={id}
+        onCheckedChange={(value) => onCheckedChange(value === true)}
+      />
+      <span>{label}</span>
+    </label>
   )
 }
 
@@ -856,13 +933,13 @@ function SingleResultSave({
   }
 
   return (
-    <form className="space-y-3 rounded-md border border-border bg-background/60 p-3" onSubmit={processing.handleSaveProcessedVoice}>
+    <form className="flex flex-col gap-3 rounded-md border border-border bg-background/60 p-3" onSubmit={processing.handleSaveProcessedVoice}>
       <div className="flex items-center justify-between gap-3">
         <div className="text-sm font-medium">Processed Preview</div>
         <AudioLines aria-hidden="true" className="size-4 text-primary" />
       </div>
       <AudioPlayer ariaLabel="Processed sample preview" src={processing.resultUrl} />
-      <label className="block space-y-2 text-sm font-medium" htmlFor="processed-voice-name">
+      <label className="flex flex-col gap-2 text-sm font-medium" htmlFor="processed-voice-name">
         <span>Voice Name</span>
         <Input
           disabled={processing.saveStatus === "loading"}
@@ -897,6 +974,129 @@ function SingleResultSave({
         {processing.saveStatus === "loading" ? "Adding Voice" : "Add To Voice Library"}
       </Button>
     </form>
+  )
+}
+
+function PreparedCandidateResultSave({
+  processing,
+  voicePresets,
+}: {
+  processing: SampleProcessingController
+  voicePresets: { id: VoicePresetId; label: string; description: string }[]
+}) {
+  const result = processing.preparedSamplesResult
+  if (!result || !processing.job) {
+    return null
+  }
+  const groupedCandidates = groupCandidatesBySpeaker(result.candidates)
+
+  return (
+    <form className="flex flex-col gap-3 rounded-md border border-border bg-background/60 p-3" onSubmit={processing.handleSaveCandidateVoices}>
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="text-sm font-medium">Ranked Candidates</div>
+          <div className="text-xs text-muted-foreground">{result.candidates.length} Candidates Ready</div>
+        </div>
+        <Button disabled={!processing.canSaveSelectedCandidates} type="submit">
+          {processing.candidateSaveStatus === "loading" ? <Loading aria-hidden="true" size="sm" /> : <Save aria-hidden="true" className="size-4" />}
+          {processing.candidateSaveStatus === "loading" ? "Adding Candidates" : "Add Selected Voices"}
+        </Button>
+      </div>
+
+      {result.warnings.length > 0 ? (
+        <Alert>
+          <AlertTitle>Prepare Warnings</AlertTitle>
+          <AlertDescription>{result.warnings.join(" ")}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      <div className="grid gap-3">
+        {groupedCandidates.map((group, groupIndex) => (
+          <section className="rounded-md border border-border bg-card/70 p-3" key={group.speakerId} style={speakerStyle(groupIndex)}>
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div className="min-w-0 text-sm font-medium text-[var(--speaker-color)]">{group.speakerLabel}</div>
+              <Badge variant="secondary">{group.candidates.length} Ranked</Badge>
+            </div>
+            <div className="grid gap-3">
+              {group.candidates.map((candidate) => {
+                const checkboxId = `candidate-save-${candidate.candidateId}`
+                const nameInputId = `candidate-name-${candidate.candidateId}`
+                const isSelected = processing.selectedCandidateIds.includes(candidate.candidateId)
+                return (
+                  <article className="grid gap-3 rounded-md border border-border bg-background/70 p-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(16rem,1fr)]" key={candidate.candidateId}>
+                    <div className="flex min-w-0 flex-col gap-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <label className="flex min-w-0 items-center gap-2 text-sm font-medium" htmlFor={checkboxId}>
+                          <Checkbox
+                            checked={isSelected}
+                            id={checkboxId}
+                            onCheckedChange={(checked) => processing.handleCandidateSaveSelectionChange(candidate.candidateId, checked === true)}
+                          />
+                          <span className="truncate">Rank {candidate.rank}</span>
+                        </label>
+                        <CandidateQualityBadges candidate={candidate} />
+                      </div>
+                      {processing.candidateResultUrls[candidate.candidateId] ? (
+                        <AudioPlayer
+                          ariaLabel={`${candidate.speakerLabel} candidate ${candidate.rank} preview`}
+                          src={processing.candidateResultUrls[candidate.candidateId]}
+                        />
+                      ) : null}
+                      {candidate.warnings.length > 0 ? (
+                        <Alert>
+                          <AlertTitle>Candidate Warning</AlertTitle>
+                          <AlertDescription>{candidate.warnings.join(" ")}</AlertDescription>
+                        </Alert>
+                      ) : null}
+                    </div>
+                    <FieldGroup>
+                      <Field>
+                        <FieldLabel htmlFor={nameInputId}>Voice Name</FieldLabel>
+                        <Input
+                          id={nameInputId}
+                          onChange={(event) => processing.handleCandidateNameChange(candidate.candidateId, event.target.value)}
+                          value={processing.candidateNameAssignments[candidate.candidateId] ?? ""}
+                        />
+                      </Field>
+                      <VoicePresetToggleGroup
+                        id={`candidate-preset-${candidate.candidateId}`}
+                        label="Voice Preset"
+                        onChange={(voicePresetId) => processing.handleCandidateVoicePresetChange(candidate.candidateId, voicePresetId)}
+                        value={processing.candidateVoicePresetIds[candidate.candidateId] ?? voicePresets[0]?.id ?? "standardNarration"}
+                        voicePresets={voicePresets}
+                      />
+                    </FieldGroup>
+                  </article>
+                )
+              })}
+            </div>
+          </section>
+        ))}
+      </div>
+
+      {processing.candidateSaveError ? (
+        <Alert className="border-destructive/40 bg-destructive/10 text-destructive" role="alert">
+          <AlertTitle>Save Failed</AlertTitle>
+          <AlertDescription>{processing.candidateSaveError}</AlertDescription>
+        </Alert>
+      ) : null}
+      {processing.candidateSaveStatus === "success" ? (
+        <Alert>
+          <AlertTitle>Added To Voice Library</AlertTitle>
+          <AlertDescription>Selected candidates are now available.</AlertDescription>
+        </Alert>
+      ) : null}
+    </form>
+  )
+}
+
+function CandidateQualityBadges({ candidate }: { candidate: PreparedSampleCandidate }) {
+  return (
+    <span className="flex shrink-0 flex-wrap justify-end gap-1">
+      <Badge variant="accent">Score {Math.round(candidate.score)}</Badge>
+      <Badge variant="secondary">{formatCandidateDuration(candidate.durationSeconds)}</Badge>
+      <Badge variant="secondary">{candidate.sampleRateHz / 1000} kHz</Badge>
+    </span>
   )
 }
 
@@ -1252,14 +1452,21 @@ function panelElapsedTimeLabel(processing: SampleProcessingController) {
 
 function orderedWorkflowOperations(processing: SampleProcessingController) {
   const operationById = new Map(processing.operations.map((operation) => [operation.id, operation]))
-  const ordered = processing.recommendedWorkflowOrder
+  const preferredOrder = Array.from(
+    new Set<SampleProcessingOperationId>(["prepareVoice", ...processing.recommendedWorkflowOrder])
+  )
+  const ordered = preferredOrder
     .map((operationId) => operationById.get(operationId))
     .filter((operation): operation is SampleProcessingController["operations"][number] => Boolean(operation))
-  const remaining = processing.operations.filter((operation) => !processing.recommendedWorkflowOrder.includes(operation.id))
+  const orderedIds = new Set(ordered.map((operation) => operation.id))
+  const remaining = processing.operations.filter((operation) => !orderedIds.has(operation.id))
   return [...ordered, ...remaining]
 }
 
 function operationIcon(operationId: SampleProcessingOperationId) {
+  if (operationId === "prepareVoice") {
+    return Wand2
+  }
   if (operationId === "isolateVoice") {
     return Mic
   }
@@ -1313,6 +1520,11 @@ function presetControlLabel(operationId: SampleProcessingOperationId) {
 
 function operationCardCopy(operationId: SampleProcessingOperationId) {
   switch (operationId) {
+    case "prepareVoice":
+      return {
+        description: "Find the best provider-sized voice samples from long audio.",
+        title: "Easy Prepare",
+      }
     case "isolateVoice":
       return {
         description: "Pull the spoken voice forward and reduce background audio.",
@@ -1333,6 +1545,32 @@ function operationCardCopy(operationId: SampleProcessingOperationId) {
       throw new Error(`Unhandled sample processing operation: ${unhandledOperationId}`)
     }
   }
+}
+
+function groupCandidatesBySpeaker(candidates: PreparedSampleCandidate[]) {
+  const groups: { speakerId: string; speakerLabel: string; candidates: PreparedSampleCandidate[] }[] = []
+  for (const candidate of candidates) {
+    let group = groups.find((item) => item.speakerId === candidate.speakerId)
+    if (!group) {
+      group = { speakerId: candidate.speakerId, speakerLabel: candidate.speakerLabel, candidates: [] }
+      groups.push(group)
+    }
+    group.candidates.push(candidate)
+  }
+  return groups.map((group) => ({
+    ...group,
+    candidates: [...group.candidates].sort((left, right) => left.rank - right.rank),
+  }))
+}
+
+function formatCandidateDuration(durationSeconds: number) {
+  const roundedSeconds = Math.round(durationSeconds)
+  if (roundedSeconds >= 60) {
+    const minutes = Math.floor(roundedSeconds / 60)
+    const seconds = roundedSeconds % 60
+    return `${minutes}:${String(seconds).padStart(2, "0")}`
+  }
+  return `${roundedSeconds}s`
 }
 
 function isSampleProcessingPresetId(value: string): value is SampleProcessingPresetId {

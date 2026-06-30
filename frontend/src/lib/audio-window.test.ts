@@ -38,7 +38,7 @@ describe("audio window utilities", () => {
     expect(Array.from(samples)).toEqual([0.5, 0.5, 0.5, 0.5])
   })
 
-  it("creates a 32 kHz wav excerpt from a decoded source file", async () => {
+  it("creates a 16 kHz wav excerpt from a decoded source file", async () => {
     const channelData = new Float32Array([0, 0.25, 0.5, 0.75])
     class FakeAudioContext {
       state = "running"

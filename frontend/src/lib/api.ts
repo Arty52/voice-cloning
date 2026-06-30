@@ -40,11 +40,14 @@ export type VoiceUpdate = {
 }
 
 export type CreateSampleProcessingJobRequest = {
+  cleanVoice?: boolean | null
+  detectSpeakers?: boolean | null
   operationId?: SampleProcessingOperationId
   processingPresetId?: SampleProcessingPresetId | null
   sourceFile?: File | null
   sourcePreference?: SampleProcessingSourcePreference
   sourceVoiceId?: string | null
+  trimCandidates?: boolean | null
   workflowSteps?: SampleProcessingWorkflowStepRequest[]
 }
 
@@ -81,6 +84,16 @@ export type SaveSpeakerVoiceRequest = {
 
 export type SaveSpeakerVoicesRequest = {
   voices: SaveSpeakerVoiceRequest[]
+}
+
+export type SavePreparedCandidateVoiceRequest = {
+  candidateId: string
+  name: string
+  voicePresetId?: VoicePresetId
+}
+
+export type SavePreparedCandidateVoicesRequest = {
+  voices: SavePreparedCandidateVoiceRequest[]
 }
 
 export type SpeechApiRequest = {
@@ -210,11 +223,14 @@ export async function fetchSampleProcessingOptions() {
 }
 
 export async function createSampleProcessingJob({
+  cleanVoice,
+  detectSpeakers,
   operationId,
   processingPresetId,
   sourceFile,
   sourcePreference,
   sourceVoiceId,
+  trimCandidates,
   workflowSteps,
 }: CreateSampleProcessingJobRequest) {
   const hasWorkflowSteps = Boolean(workflowSteps?.length)
@@ -237,6 +253,15 @@ export async function createSampleProcessingJob({
   }
   if (processingPresetId) {
     formData.append("processingPresetId", processingPresetId)
+  }
+  if (cleanVoice !== undefined && cleanVoice !== null) {
+    formData.append("cleanVoice", String(cleanVoice))
+  }
+  if (detectSpeakers !== undefined && detectSpeakers !== null) {
+    formData.append("detectSpeakers", String(detectSpeakers))
+  }
+  if (trimCandidates !== undefined && trimCandidates !== null) {
+    formData.append("trimCandidates", String(trimCandidates))
   }
   if (sourceVoiceId) {
     formData.append("sourceVoiceId", sourceVoiceId)
@@ -275,6 +300,10 @@ export function sampleProcessingSpeakerResultUrl(jobId: string, speakerId: strin
   return `/api/sample-processing/jobs/${encodeURIComponent(jobId)}/speakers/${encodeURIComponent(speakerId)}/result`
 }
 
+export function sampleProcessingCandidateResultUrl(jobId: string, candidateId: string) {
+  return `/api/sample-processing/jobs/${encodeURIComponent(jobId)}/candidates/${encodeURIComponent(candidateId)}/result`
+}
+
 export async function updateSampleProcessingSpeakerAssignments(jobId: string, request: UpdateSpeakerAssignmentsRequest) {
   return fetchJson<SampleProcessingJobResponse>(
     `/api/sample-processing/jobs/${encodeURIComponent(jobId)}/speaker-assignments`,
@@ -297,6 +326,17 @@ export async function saveProcessedVoice(jobId: string, request: SaveProcessedVo
 export async function saveSpeakerVoices(jobId: string, request: SaveSpeakerVoicesRequest) {
   return fetchJson<{ voices: VoiceAsset[] }>(
     `/api/sample-processing/jobs/${encodeURIComponent(jobId)}/speaker-voices`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    }
+  )
+}
+
+export async function savePreparedCandidateVoices(jobId: string, request: SavePreparedCandidateVoicesRequest) {
+  return fetchJson<{ voices: VoiceAsset[] }>(
+    `/api/sample-processing/jobs/${encodeURIComponent(jobId)}/candidate-voices`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },

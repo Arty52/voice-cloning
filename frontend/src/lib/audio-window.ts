@@ -1,6 +1,6 @@
 import { createWavFile } from "@/lib/voice-recorder"
 
-export const DEFAULT_VOICE_SAMPLE_RATE = 32000
+export const DEFAULT_VOICE_SAMPLE_RATE = 16000
 
 export type AudioWindow = {
   durationSeconds: number

@@ -206,9 +206,12 @@ const providersResponse: ProvidersResponse = {
         },
       ],
       sample: {
+        maxSourceUploadBytes: 1024 * 1024 * 1024,
+        maxUploadBytes: 10 * 1024 * 1024,
         maxWindowSeconds: 120,
         recommendedMinSeconds: 60,
         recommendedMaxSeconds: 120,
+        targetSampleRateHz: 16000,
       },
       tuning: elevenLabsTuning,
     },
@@ -3398,9 +3401,12 @@ describe("App", () => {
           {
             ...providersResponse.providers[0],
             sample: {
+              maxSourceUploadBytes: 1024 * 1024 * 1024,
+              maxUploadBytes: 10 * 1024 * 1024,
               maxWindowSeconds: 2,
               recommendedMinSeconds: 1,
               recommendedMaxSeconds: 2,
+              targetSampleRateHz: 16000,
             },
           },
         ],
@@ -3473,9 +3479,12 @@ describe("App", () => {
             {
               ...providersResponse.providers[0],
               sample: {
+                maxSourceUploadBytes: 1024 * 1024 * 1024,
+                maxUploadBytes: 10 * 1024 * 1024,
                 maxWindowSeconds: 2,
                 recommendedMinSeconds: 1,
                 recommendedMaxSeconds: 2,
+                targetSampleRateHz: 16000,
               },
             },
           ],
@@ -3508,9 +3517,12 @@ describe("App", () => {
           {
             ...providersResponse.providers[0],
             sample: {
+              maxSourceUploadBytes: 1024 * 1024 * 1024,
+              maxUploadBytes: 10 * 1024 * 1024,
               maxWindowSeconds: 2,
               recommendedMinSeconds: 1,
               recommendedMaxSeconds: 2,
+              targetSampleRateHz: 16000,
             },
           },
         ],

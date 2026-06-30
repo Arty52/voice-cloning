@@ -4,9 +4,12 @@ import { describe, expect, it, vi } from "vitest"
 import { ProviderKeysPanel } from "./provider-keys-panel"
 
 const sample = {
+  maxSourceUploadBytes: 1024 * 1024 * 1024,
+  maxUploadBytes: 10 * 1024 * 1024,
   maxWindowSeconds: 120,
   recommendedMinSeconds: 60,
   recommendedMaxSeconds: 120,
+  targetSampleRateHz: 16000,
 }
 
 const elevenLabsProvider = {
