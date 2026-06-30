@@ -46,11 +46,12 @@ import { Separator } from "@/components/ui/separator"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { VoicePresetToggleGroup } from "@/components/voice-preset-toggle-group"
 import type { SampleProcessingController } from "@/hooks/use-sample-processing"
-import { formatElapsedTime } from "@/lib/formatters"
+import { formatCompactBytes, formatElapsedTime } from "@/lib/formatters"
 import { cn } from "@/lib/utils"
 import { voicePresetLabel } from "@/lib/voice-presets"
 import type {
   PreparedSampleCandidate,
+  SampleProcessingDurationRange,
   SampleProcessingOperationId,
   SampleProcessingPresetId,
   SampleProcessingSourcePreference,
@@ -311,8 +312,8 @@ function PrepareAdvancedOptions({ processing }: { processing: SampleProcessingCo
     <Field>
       <FieldLabel>Easy Prepare</FieldLabel>
       <FieldDescription>
-        Ranks long local audio into mono 16 kHz WAV candidates. Local source uploads default to a 1 GB cap; speaker
-        detection requires diarization.
+        Runs selected cleanup first, then detects speech regions, ranks provider-sized windows, and creates mono 16 kHz
+        WAV candidates for review. Local source uploads default to a 1 GB cap; speaker detection requires diarization.
       </FieldDescription>
       <div className="grid gap-2 md:grid-cols-3">
         <PrepareToggle
@@ -337,6 +338,93 @@ function PrepareAdvancedOptions({ processing }: { processing: SampleProcessingCo
           onCheckedChange={processing.setPrepareDetectSpeakers}
         />
       </div>
+      <PreparePresetControls processing={processing} />
+      {processing.prepareEstimateRangeSeconds ? (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <Badge variant="secondary">Estimated Time {formatDurationRange(processing.prepareEstimateRangeSeconds)}</Badge>
+          {processing.sourceMode === "upload" && processing.sourceFile ? (
+            <span>{formatCompactBytes(processing.sourceFile.size)} source file</span>
+          ) : null}
+        </div>
+      ) : null}
+    </Field>
+  )
+}
+
+function PreparePresetControls({ processing }: { processing: SampleProcessingController }) {
+  const isolationOperation = processing.prepareIsolationOperation
+  const trimOperation = processing.prepareTrimOperation
+  const canShowIsolationPreset = Boolean(isolationOperation?.processingPresets.length)
+  const canShowTrimPreset = Boolean(trimOperation?.processingPresets.length)
+
+  if (!canShowIsolationPreset && !canShowTrimPreset) {
+    return null
+  }
+
+  return (
+    <div className="grid gap-3 md:grid-cols-2">
+      {canShowIsolationPreset && isolationOperation ? (
+        <PreparePresetSelect
+          description={
+            isolationOperation.processingPresets.find((preset) => preset.id === processing.prepareIsolationPresetId)
+              ?.description ?? "Default vocal isolation quality and runtime."
+          }
+          disabled={processing.isProcessing || !processing.prepareCleanVoice || !processing.canCleanVoice}
+          label="Isolation Strength"
+          onChange={(value) => processing.setProcessingPresetIdForOperation("isolateVoice", value)}
+          options={isolationOperation.processingPresets.map((preset) => ({ label: preset.label, value: preset.id }))}
+          value={processing.prepareIsolationPresetId}
+        />
+      ) : null}
+      {canShowTrimPreset && trimOperation ? (
+        <PreparePresetSelect
+          description={
+            trimOperation.processingPresets.find((preset) => preset.id === processing.prepareTrimPresetId)?.description ??
+            "Default silence trimming with a small amount of preserved room tone."
+          }
+          disabled={processing.isProcessing || !processing.prepareTrimCandidates}
+          label="Trim Aggressiveness"
+          onChange={(value) => processing.setProcessingPresetIdForOperation("trimSilence", value)}
+          options={trimOperation.processingPresets.map((preset) => ({ label: preset.label, value: preset.id }))}
+          value={processing.prepareTrimPresetId}
+        />
+      ) : null}
+    </div>
+  )
+}
+
+function PreparePresetSelect({
+  description,
+  disabled,
+  label,
+  onChange,
+  options,
+  value,
+}: {
+  description: string
+  disabled: boolean
+  label: string
+  onChange: (value: SampleProcessingPresetId) => void
+  options: { label: string; value: SampleProcessingPresetId }[]
+  value: SampleProcessingPresetId
+}) {
+  return (
+    <Field data-disabled={disabled ? true : undefined}>
+      <FieldLabel className="text-xs">{label}</FieldLabel>
+      <MenuSelect
+        ariaLabel={label}
+        buttonClassName="w-full"
+        className="w-full"
+        disabled={disabled}
+        onChange={(nextValue) => {
+          if (isSampleProcessingPresetId(nextValue)) {
+            onChange(nextValue)
+          }
+        }}
+        options={options}
+        value={value}
+      />
+      <FieldDescription>{description}</FieldDescription>
     </Field>
   )
 }
@@ -866,6 +954,60 @@ function CompactVoicePreviewButton({
 }
 
 function ProcessingProgress({ processing }: { processing: SampleProcessingController }) {
+  const phases = processing.progressPhases ?? []
+  if (phases.length > 0) {
+    return (
+      <section aria-label="Sample Processing Progress" className="rounded-md border border-border bg-background/60 p-3">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+          <div className="text-sm font-medium">Workflow Progress</div>
+          {processing.activeProgressPhase ? (
+            <Badge variant="secondary">Active Phase: {processing.activeProgressPhase.label}</Badge>
+          ) : null}
+        </div>
+        <ol className="mt-3 grid gap-2">
+          {phases.map((phase, index) => {
+            const PhaseIcon = stepStatusIcon(phase.status)
+            const phaseTimeLabel = progressPhaseTimeLabel(phase)
+            return (
+              <li
+                className={cn(
+                  "flex items-start gap-3 rounded-md border border-border bg-card/70 p-3",
+                  phase.id === processing.job?.activeProgressPhaseId && "border-primary/60 bg-primary/10"
+                )}
+                key={phase.id}
+              >
+                <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full border border-border bg-background text-xs font-medium">
+                  {index + 1}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="min-w-0 truncate text-sm font-medium">{phase.label}</span>
+                    <Badge
+                      className={cn(
+                        "gap-1.5",
+                        phase.status === "error" && "border-destructive/40 bg-destructive/10 text-destructive",
+                        phase.status === "canceled" && "border-destructive/40 bg-destructive/10 text-destructive"
+                      )}
+                      variant={phase.status === "success" ? "accent" : "secondary"}
+                    >
+                      <PhaseIcon aria-hidden="true" className={cn("size-3", phase.status === "running" && "animate-spin")} />
+                      {stepStatusLabel(phase.status)}
+                    </Badge>
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                    {phase.detail ? <span>{phase.detail}</span> : null}
+                    {phaseTimeLabel ? <span>{phaseTimeLabel}</span> : null}
+                    {phase.error ? <span className="text-destructive">{phase.error}</span> : null}
+                  </div>
+                </div>
+              </li>
+            )
+          })}
+        </ol>
+      </section>
+    )
+  }
+
   const steps = processing.job?.steps ?? []
   if (steps.length === 0) {
     return null
@@ -898,6 +1040,7 @@ function ProcessingProgress({ processing }: { processing: SampleProcessingContro
                   <span className="min-w-0 truncate text-sm font-medium">{step.operationLabel}</span>
                   <Badge
                     className={cn(
+                      "gap-1.5",
                       step.status === "error" && "border-destructive/40 bg-destructive/10 text-destructive",
                       step.status === "canceled" && "border-destructive/40 bg-destructive/10 text-destructive"
                     )}
@@ -1448,6 +1591,31 @@ function panelElapsedTimeLabel(processing: SampleProcessingController) {
     return `Canceled After ${elapsedTime}`
   }
   return null
+}
+
+function formatDurationRange(range: SampleProcessingDurationRange) {
+  return `${formatElapsedTime(range.minSeconds * 1000)} to ${formatElapsedTime(range.maxSeconds * 1000)}`
+}
+
+function progressPhaseTimeLabel(phase: { startedAt: string | null; completedAt: string | null; status: string }) {
+  if (!phase.startedAt) {
+    return null
+  }
+  const startedAt = Date.parse(phase.startedAt)
+  if (!Number.isFinite(startedAt)) {
+    return null
+  }
+  if (phase.status === "running") {
+    return `Elapsed ${formatElapsedTime(Date.now() - startedAt)}`
+  }
+  if (!phase.completedAt) {
+    return null
+  }
+  const completedAt = Date.parse(phase.completedAt)
+  if (!Number.isFinite(completedAt)) {
+    return null
+  }
+  return `Finished In ${formatElapsedTime(completedAt - startedAt)}`
 }
 
 function orderedWorkflowOperations(processing: SampleProcessingController) {

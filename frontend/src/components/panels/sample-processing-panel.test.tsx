@@ -82,11 +82,28 @@ const preparedJob: SampleProcessingJob = {
   sourceFilename: "conversation.wav",
   sourceContentType: "audio/wav",
   sourceSha256: "source-hash",
+  sourceSizeBytes: 3_355_443,
   sourcePreference: "original",
   engine: "ffmpeg",
   workflowMode: "single",
   steps: [],
   activeStepId: null,
+  estimatedDurationRangeSeconds: {
+    minSeconds: 60,
+    maxSeconds: 180,
+  },
+  progressPhases: [
+    {
+      id: "job-prepare-phase-complete",
+      label: "Complete",
+      status: "success",
+      startedAt: "2026-06-23T00:00:58+00:00",
+      completedAt: "2026-06-23T00:01:00+00:00",
+      error: null,
+      detail: "2 Candidates",
+    },
+  ],
+  activeProgressPhaseId: null,
   createdAt: "2026-06-23T00:00:00+00:00",
   updatedAt: "2026-06-23T00:00:01+00:00",
   error: null,
@@ -97,6 +114,7 @@ describe("SampleProcessingPanel ranked candidates", () => {
   it("groups candidates by speaker and exposes preview and save controls", () => {
     const processing = {
       activeStep: null,
+      activeProgressPhase: null,
       canCancel: false,
       canCleanVoice: true,
       canDetectSpeakers: false,
@@ -140,9 +158,14 @@ describe("SampleProcessingPanel ranked candidates", () => {
       optionsStatus: "success",
       prepareCleanVoice: true,
       prepareDetectSpeakers: false,
+      prepareEstimateRangeSeconds: {
+        minSeconds: 60,
+        maxSeconds: 180,
+      },
       prepareTrimCandidates: true,
       preparedSamplesResult,
       processingElapsedMs: null,
+      progressPhases: preparedJob.progressPhases,
       recommendedWorkflowOrder: [],
       resultUrl: null,
       selectedCandidateIds: ["candidate-1"],
@@ -176,6 +199,10 @@ describe("SampleProcessingPanel ranked candidates", () => {
     )
 
     expect(screen.getByText("Ranked Candidates")).toBeInTheDocument()
+    expect(screen.getByText("Estimated Time 1m 0s to 3m 0s")).toBeInTheDocument()
+    expect(screen.getByText("Workflow Progress")).toBeInTheDocument()
+    expect(screen.getAllByText("Complete").length).toBeGreaterThan(0)
+    expect(screen.getByText("2 Candidates")).toBeInTheDocument()
     expect(screen.getByText("Speaker 1")).toBeInTheDocument()
     expect(screen.getByText("Speaker 2")).toBeInTheDocument()
     expect(screen.getByText("Speaker detection unavailable; returned single-speaker candidates.")).toBeInTheDocument()

@@ -18,6 +18,7 @@ import type { ProvidersResponse } from "./types"
 
 const audioBlob = new Blob(["fake audio"], { type: "audio/mpeg" })
 const formatTestNumber = (value: number) => new Intl.NumberFormat().format(value)
+const ACTIVE_SAMPLE_PROCESSING_JOB_STORAGE_KEY = "voice-cloning.activeSampleProcessingJobId.v1"
 
 const defaultVoice = {
   id: "default",
@@ -2137,6 +2138,131 @@ describe("App", () => {
     expect(preparePanel.getByRole("button", { name: "Audio File" })).toHaveAttribute("aria-pressed", "true")
     expectHiddenAudioInputDoesNotWidenPage("sample-processing-file")
     expect(preparePanel.getByRole("group", { name: "Audio Drop Zone" })).toBeInTheDocument()
+  })
+
+  it("explains Easy Prepare ranking and exposes cleanup preset controls", async () => {
+    window.history.replaceState(null, "", "/#prepare")
+    const baseFetch = mockFetch()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/sample-processing/options" && !init) {
+          return okJson({
+            ...sampleProcessingOptions,
+            engine: "demucs+ffmpeg",
+            recommendedWorkflowOrder: ["prepareVoice", ...sampleProcessingOptions.recommendedWorkflowOrder],
+            operations: [
+              {
+                id: "prepareVoice",
+                label: "Prepare Voice",
+                description: "Rank provider-ready samples.",
+                enabled: true,
+                defaultProcessingPresetId: null,
+                processingPresets: [],
+              },
+              ...sampleProcessingOptions.operations,
+            ],
+          })
+        }
+        return baseFetch(input, init)
+      })
+    )
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    const prepareSection = document.querySelector('[data-section-id="prepare"]') as HTMLElement
+    await user.click(within(prepareSection).getByRole("button", { name: /process audio file/i }))
+
+    expect(
+      sampleProcessingPanel().getByText(/Runs selected cleanup first, then detects speech regions, ranks provider-sized windows/i)
+    ).toBeInTheDocument()
+    expect(sampleProcessingPresetSelect("Isolation Strength")).toHaveAccessibleName("Isolation Strength: Balanced")
+    expect(sampleProcessingPresetSelect("Trim Aggressiveness")).toHaveAccessibleName("Trim Aggressiveness: Balanced")
+
+    await chooseSampleProcessingPreset(user, "Isolation Strength", "Max Isolation")
+    await chooseSampleProcessingPreset(user, "Trim Aggressiveness", "Aggressive")
+
+    expect(sampleProcessingPresetSelect("Isolation Strength")).toHaveAccessibleName("Isolation Strength: Max Isolation")
+    expect(sampleProcessingPresetSelect("Trim Aggressiveness")).toHaveAccessibleName("Trim Aggressiveness: Aggressive")
+  })
+
+  it("restores a running Prepare Audio job on #prepare", async () => {
+    window.history.replaceState(null, "", "/#prepare")
+    localStorage.setItem(ACTIVE_SAMPLE_PROCESSING_JOB_STORAGE_KEY, "job-prepare")
+    const baseFetch = mockFetch()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/sample-processing/options" && !init) {
+          return okJson({
+            ...sampleProcessingOptions,
+            recommendedWorkflowOrder: ["prepareVoice", ...sampleProcessingOptions.recommendedWorkflowOrder],
+            operations: [
+              {
+                id: "prepareVoice",
+                label: "Prepare Voice",
+                description: "Rank provider-ready samples.",
+                enabled: true,
+                defaultProcessingPresetId: null,
+                processingPresets: [],
+              },
+              ...sampleProcessingOptions.operations,
+            ],
+          })
+        }
+        if (path === "/api/sample-processing/jobs/job-prepare" && !init) {
+          return okJson({
+            job: {
+              ...successfulSampleProcessingJob.job,
+              id: "job-prepare",
+              operationId: "prepareVoice",
+              operationLabel: "Prepare Voice",
+              status: "running",
+              sourceName: "Long Source",
+              sourceFilename: "long-source.mp3",
+              sourceContentType: "audio/mpeg",
+              sourceSizeBytes: 3_355_443,
+              engine: "ffmpeg",
+              steps: [],
+              activeStepId: null,
+              estimatedDurationRangeSeconds: {
+                minSeconds: 75,
+                maxSeconds: 210,
+              },
+              progressPhases: [
+                {
+                  id: "job-prepare-phase-detect-speech",
+                  label: "Detect Speech Regions",
+                  status: "running",
+                  startedAt: "2026-06-23T00:00:10+00:00",
+                  completedAt: null,
+                  error: null,
+                  detail: "Speaker 1",
+                },
+              ],
+              activeProgressPhaseId: "job-prepare-phase-detect-speech",
+              result: null,
+            },
+          })
+        }
+        return baseFetch(input, init)
+      })
+    )
+
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    const preparePanel = prepareAudioPanel()
+
+    expect(preparePanel.getByRole("button", { name: /process audio file/i })).toHaveAttribute("aria-pressed", "true")
+    expect(preparePanel.getByRole("heading", { name: "Sample Processing" })).toBeInTheDocument()
+    expect(await preparePanel.findByText("Workflow Progress")).toBeInTheDocument()
+    expect(preparePanel.getByText("Active Phase: Detect Speech Regions")).toBeInTheDocument()
+    expect(preparePanel.getByText("Estimated Time 1m 15s to 3m 30s")).toBeInTheDocument()
+    expect(localStorage.getItem(ACTIVE_SAMPLE_PROCESSING_JOB_STORAGE_KEY)).toBe("job-prepare")
   })
 
   it("orders sample processing controls from source to workflow to action", async () => {

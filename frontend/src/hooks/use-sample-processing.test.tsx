@@ -137,6 +137,45 @@ const prepareProcessingOptions: SampleProcessingOptionsResponse = {
   ],
 }
 
+const prepareOnlyProcessingOptions: SampleProcessingOptionsResponse = {
+  engine: "ffmpeg",
+  recommendedWorkflowOrder: ["prepareVoice"],
+  operations: [
+    {
+      id: "prepareVoice",
+      label: "Prepare Voice",
+      description: "Rank provider-ready samples.",
+      enabled: true,
+      defaultProcessingPresetId: null,
+      processingPresets: [],
+    },
+    {
+      id: "trimSilence",
+      label: "Trim Silence",
+      description: "Trim silence.",
+      enabled: false,
+      defaultProcessingPresetId: null,
+      processingPresets: [],
+    },
+    {
+      id: "isolateVoice",
+      label: "Isolate Voice",
+      description: "Isolate voice.",
+      enabled: false,
+      defaultProcessingPresetId: null,
+      processingPresets: [],
+    },
+    {
+      id: "separateSpeakers",
+      label: "Separate Speakers",
+      description: "Split speakers.",
+      enabled: false,
+      defaultProcessingPresetId: null,
+      processingPresets: [],
+    },
+  ],
+}
+
 const speakerSeparationResult: SpeakerSeparationResult = {
   kind: "speakerSeparation",
   speakers: [
@@ -389,6 +428,69 @@ const preparedSamplesJob: SampleProcessingJobResponse = {
   },
 }
 
+const runningPrepareJob: SampleProcessingJobResponse = {
+  job: {
+    ...preparedSamplesJob.job,
+    status: "running",
+    sourceSizeBytes: 3_355_443,
+    estimatedDurationRangeSeconds: {
+      minSeconds: 75,
+      maxSeconds: 210,
+    },
+    steps: [
+      {
+        ...preparedSamplesJob.job.steps[0],
+        status: "running",
+        completedAt: null,
+        resultSha256: null,
+      },
+    ],
+    activeStepId: "job-prepare",
+    progressPhases: [
+      {
+        id: "job-prepare-phase-clean-voice",
+        label: "Clean Voice",
+        status: "success",
+        startedAt: "2026-06-23T00:00:00+00:00",
+        completedAt: "2026-06-23T00:00:10+00:00",
+        error: null,
+        detail: null,
+      },
+      {
+        id: "job-prepare-phase-detect-speech",
+        label: "Detect Speech Regions",
+        status: "running",
+        startedAt: "2026-06-23T00:00:10+00:00",
+        completedAt: null,
+        error: null,
+        detail: "Speaker 1",
+      },
+    ],
+    activeProgressPhaseId: "job-prepare-phase-detect-speech",
+    result: null,
+  },
+}
+
+const canceledPrepareJob: SampleProcessingJobResponse = {
+  job: {
+    ...runningPrepareJob.job,
+    status: "canceled",
+    error: "Sample processing was canceled.",
+    activeStepId: null,
+    activeProgressPhaseId: null,
+    progressPhases: (runningPrepareJob.job.progressPhases ?? []).map((phase) =>
+      phase.status === "running"
+        ? {
+            ...phase,
+            status: "canceled",
+            completedAt: "2026-06-23T00:00:11+00:00",
+            error: "Sample processing was canceled.",
+          }
+        : phase
+    ),
+  },
+}
+
 const canceledStackJob: SampleProcessingJobResponse = {
   job: {
     ...runningStackJob.job,
@@ -451,6 +553,7 @@ describe("useSampleProcessing stacked workflow state", () => {
   afterEach(() => {
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
+    window.localStorage.clear()
   })
 
   it("exposes saved voice metadata for source selection presentation", async () => {
@@ -813,6 +916,8 @@ describe("useSampleProcessing stacked workflow state", () => {
     expect(body.get("operationId")).toBe("prepareVoice")
     expect(body.get("workflowSteps")).toBeNull()
     expect(body.get("processingPresetId")).toBeNull()
+    expect(body.get("isolationPresetId")).toBe("balanced")
+    expect(body.get("trimPresetId")).toBe("trimBalanced")
     expect(body.get("cleanVoice")).toBe("true")
     expect(body.get("detectSpeakers")).toBe("true")
     expect(body.get("trimCandidates")).toBe("true")
@@ -848,12 +953,191 @@ describe("useSampleProcessing stacked workflow state", () => {
     expect(onVoiceSaved).toHaveBeenCalledWith(expect.objectContaining({ id: "candidate-1", name: "Prepared Lead" }))
     expect(result.current.candidateSaveStatus).toBe("success")
   })
+
+  it("omits the Easy Prepare trim preset when trim preset controls are unavailable", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path === "/api/sample-processing/options" && !init) {
+          return okJson(prepareOnlyProcessingOptions)
+        }
+        if (path === "/api/sample-processing/jobs" && init?.method === "POST") {
+          return okJson(preparedSamplesJob, 202)
+        }
+        return okJson({})
+      })
+    )
+    const { result } = renderHook(() =>
+      useSampleProcessing({ onVoiceSaved: vi.fn(), selectedVoice: retainedSourceVoice, voices: [retainedSourceVoice] })
+    )
+
+    await waitFor(() => expect(result.current.optionsStatus).toBe("success"))
+    await act(async () => {
+      await result.current.handleStartProcessing(formEvent())
+    })
+
+    const createCall = vi
+      .mocked(fetch)
+      .mock.calls.find(([url, init]) => String(url) === "/api/sample-processing/jobs" && init?.method === "POST")
+    const body = createCall?.[1]?.body as FormData
+    expect(body.get("operationId")).toBe("prepareVoice")
+    expect(body.get("trimCandidates")).toBe("true")
+    expect(body.get("trimPresetId")).toBeNull()
+    expect(body.get("cleanVoice")).toBe("false")
+    expect(body.get("detectSpeakers")).toBe("false")
+  })
+
+  it("estimates Easy Prepare upload time and persists running jobs", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path === "/api/sample-processing/options" && !init) {
+          return okJson(prepareProcessingOptions)
+        }
+        if (path === "/api/sample-processing/jobs" && init?.method === "POST") {
+          return okJson(runningPrepareJob, 202)
+        }
+        if (path === "/api/sample-processing/jobs/job-prepare" && !init) {
+          return okJson(runningPrepareJob)
+        }
+        if (path === "/api/sample-processing/jobs/job-prepare/cancel" && init?.method === "POST") {
+          return okJson(canceledPrepareJob)
+        }
+        return okJson({})
+      })
+    )
+    const sourceFile = new File(["source"], "conversation.mp3", { type: "audio/mpeg" })
+    const { result } = renderHook(() =>
+      useSampleProcessing({ onVoiceSaved: vi.fn(), selectedVoice: retainedSourceVoice, voices: [retainedSourceVoice] })
+    )
+
+    await waitFor(() => expect(result.current.optionsStatus).toBe("success"))
+    act(() => {
+      result.current.handleSourceModeChange("upload")
+      result.current.handleSourceFileSelect(sourceFile)
+    })
+
+    expect(result.current.prepareEstimateRangeSeconds).not.toBeNull()
+
+    await act(async () => {
+      await result.current.handleStartProcessing(formEvent())
+    })
+
+    expect(result.current.status).toBe("processing")
+    expect(result.current.prepareEstimateRangeSeconds).toEqual({ minSeconds: 75, maxSeconds: 210 })
+    expect(result.current.activeProgressPhase?.label).toBe("Detect Speech Regions")
+    expect(window.localStorage.getItem("voice-cloning.activeSampleProcessingJobId.v1")).toBe("job-prepare")
+
+    await act(async () => {
+      await result.current.handleCancelProcessing()
+    })
+
+    expect(result.current.status).toBe("canceled")
+    expect(window.localStorage.getItem("voice-cloning.activeSampleProcessingJobId.v1")).toBeNull()
+  })
+
+  it("rehydrates an active Easy Prepare job from local storage", async () => {
+    window.localStorage.setItem("voice-cloning.activeSampleProcessingJobId.v1", "job-prepare")
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path === "/api/sample-processing/options" && !init) {
+          return okJson(prepareProcessingOptions)
+        }
+        if (path === "/api/sample-processing/jobs/job-prepare" && !init) {
+          return okJson(runningPrepareJob)
+        }
+        return okJson({})
+      })
+    )
+
+    const { result } = renderHook(() =>
+      useSampleProcessing({ onVoiceSaved: vi.fn(), selectedVoice: retainedSourceVoice, voices: [retainedSourceVoice] })
+    )
+
+    await waitFor(() => expect(result.current.activeProgressPhase?.label).toBe("Detect Speech Regions"))
+
+    expect(result.current.status).toBe("processing")
+    expect(result.current.job?.id).toBe("job-prepare")
+    expect(result.current.prepareEstimateRangeSeconds).toEqual({ minSeconds: 75, maxSeconds: 210 })
+    expect(window.localStorage.getItem("voice-cloning.activeSampleProcessingJobId.v1")).toBe("job-prepare")
+  })
+
+  it("shows resume context when active job polling fails", async () => {
+    window.localStorage.setItem("voice-cloning.activeSampleProcessingJobId.v1", "job-prepare")
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path === "/api/sample-processing/options" && !init) {
+          return okJson(prepareProcessingOptions)
+        }
+        if (path === "/api/sample-processing/jobs/job-prepare" && !init) {
+          return okJson({ detail: "Sample processing job was not found." }, 404)
+        }
+        return okJson({})
+      })
+    )
+
+    const { result } = renderHook(() =>
+      useSampleProcessing({ onVoiceSaved: vi.fn(), selectedVoice: retainedSourceVoice, voices: [retainedSourceVoice] })
+    )
+
+    await waitFor(() => expect(result.current.status).toBe("error"))
+
+    expect(result.current.error).toBe("Unable to resume sample processing job. Sample processing job was not found.")
+    expect(window.localStorage.getItem("voice-cloning.activeSampleProcessingJobId.v1")).toBeNull()
+  })
+
+  it("uses resumed prepare job metadata for upload candidate defaults", async () => {
+    window.localStorage.setItem("voice-cloning.activeSampleProcessingJobId.v1", "job-prepare")
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path === "/api/sample-processing/options" && !init) {
+          return okJson(prepareProcessingOptions)
+        }
+        if (path === "/api/sample-processing/jobs/job-prepare" && !init) {
+          return okJson({
+            job: {
+              ...preparedSamplesJob.job,
+              sourceName: "Conversation",
+              sourceFilename: "conversation.mp3",
+              sourceContentType: "audio/mpeg",
+            },
+          })
+        }
+        return okJson({})
+      })
+    )
+
+    const { result } = renderHook(() =>
+      useSampleProcessing({ onVoiceSaved: vi.fn(), selectedVoice: retainedSourceVoice, voices: [retainedSourceVoice] })
+    )
+
+    await waitFor(() => expect(result.current.selectedCandidateIds).toEqual(["candidate-1", "candidate-2"]))
+
+    expect(result.current.candidateNameAssignments).toEqual({
+      "candidate-1": "Conversation Speaker 1",
+      "candidate-2": "Conversation Speaker 2",
+    })
+    expect(result.current.candidateVoicePresetIds).toEqual({
+      "candidate-1": DEFAULT_VOICE_PRESET_ID,
+      "candidate-2": DEFAULT_VOICE_PRESET_ID,
+    })
+    expect(window.localStorage.getItem("voice-cloning.activeSampleProcessingJobId.v1")).toBeNull()
+  })
 })
 
 describe("useSampleProcessing speaker separation state", () => {
   afterEach(() => {
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
+    window.localStorage.clear()
   })
 
   it("initializes speaker state and patches transcript assignments", async () => {

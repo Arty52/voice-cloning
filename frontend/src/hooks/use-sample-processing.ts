@@ -5,6 +5,7 @@ import { DEFAULT_VOICE_PRESET_ID } from "@/lib/voice-presets"
 import type {
   AsyncStatus,
   SampleProcessingJob,
+  SampleProcessingDurationRange,
   SampleProcessingOperation,
   SampleProcessingOperationId,
   SampleProcessingOptionsResponse,
@@ -27,10 +28,13 @@ type UseSampleProcessingOptions = {
 
 const POLL_INTERVAL_MS = 1500
 const TIMER_INTERVAL_MS = 100
+const BYTES_PER_MEBIBYTE = 1024 * 1024
+const ACTIVE_SAMPLE_PROCESSING_JOB_STORAGE_KEY = "voice-cloning.activeSampleProcessingJobId.v1"
 const DEFAULT_WORKFLOW_ORDER: SampleProcessingOperationId[] = ["prepareVoice", "isolateVoice", "separateSpeakers", "trimSilence"]
 const DEFAULT_PROCESSING_PRESET_ID: SampleProcessingPresetId = "balanced"
 
 export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: UseSampleProcessingOptions) {
+  const [initialStoredJobId] = useState(readStoredActiveJobId)
   const [options, setOptions] = useState<SampleProcessingOptionsResponse | null>(null)
   const [optionsStatus, setOptionsStatus] = useState<AsyncStatus>("idle")
   const [optionsError, setOptionsError] = useState<string | null>(null)
@@ -45,7 +49,7 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
   const [sourcePreference, setSourcePreference] = useState<SampleProcessingSourcePreference>("original")
   const [sourceFile, setSourceFile] = useState<File | null>(null)
   const [job, setJob] = useState<SampleProcessingJob | null>(null)
-  const [status, setStatus] = useState<SampleProcessingStatus>("idle")
+  const [status, setStatus] = useState<SampleProcessingStatus>(() => (initialStoredJobId ? "processing" : "idle"))
   const [error, setError] = useState<string | null>(null)
   const [saveName, setSaveName] = useState("")
   const [saveVoicePresetId, setSaveVoicePresetId] = useState<VoicePresetId>(DEFAULT_VOICE_PRESET_ID)
@@ -72,6 +76,7 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
   const mountedRef = useRef(true)
   const processingStartedAtRef = useRef<number | null>(null)
   const activeJobIdRef = useRef<string | null>(null)
+  const pollJobRef = useRef<(jobId: string, runId: number, pollErrorMessage?: string) => Promise<void>>(async () => undefined)
   const speakerStateJobIdRef = useRef<string | null>(null)
   const candidateStateJobIdRef = useRef<string | null>(null)
   const assignmentRequestIdRef = useRef(0)
@@ -93,8 +98,15 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
     processingPresets.find((preset) => preset.id === resolvedProcessingPresetId) ?? null
   const prepareVoiceOperation = operations.find((operation) => operation.id === "prepareVoice") ?? null
   const isPrepareVoiceSelected = workflowOperationIds.length === 1 && workflowOperationIds[0] === "prepareVoice"
-  const canCleanVoice = Boolean(operations.find((operation) => operation.id === "isolateVoice")?.enabled)
+  const isolationOperation = operations.find((operation) => operation.id === "isolateVoice") ?? null
+  const trimOperation = operations.find((operation) => operation.id === "trimSilence") ?? null
+  const canCleanVoice = Boolean(isolationOperation?.enabled)
   const canDetectSpeakers = Boolean(operations.find((operation) => operation.id === "separateSpeakers")?.enabled)
+  const prepareIsolationPresetId = resolveProcessingPresetId(processingPresetIds.isolateVoice, isolationOperation)
+  const prepareTrimPresetId = resolveProcessingPresetId(processingPresetIds.trimSilence, trimOperation)
+  const prepareTrimPresetIdForRequest = operationHasProcessingPreset(trimOperation, prepareTrimPresetId)
+    ? prepareTrimPresetId
+    : undefined
   const selectedWorkflowSteps = useMemo(
     () =>
       workflowOperationIds
@@ -132,6 +144,29 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
   const canStart = !isProcessing && selectedWorkflowSteps.length > 0 && hasSource
   const canCancel = isProcessing && activeJobIdRef.current !== null
   const activeStep = (job?.steps ?? []).find((step) => step.id === job?.activeStepId) ?? null
+  const progressPhases = job?.progressPhases ?? []
+  const activeProgressPhase = progressPhases.find((phase) => phase.id === job?.activeProgressPhaseId) ?? null
+  const prepareEstimateRangeSeconds = useMemo(
+    () =>
+      job?.estimatedDurationRangeSeconds ??
+      estimatePrepareDurationRangeSeconds({
+        cleanVoice: prepareCleanVoice && canCleanVoice,
+        detectSpeakers: prepareDetectSpeakers && canDetectSpeakers,
+        sourceSizeBytes: isPrepareVoiceSelected && sourceMode === "upload" ? sourceFile?.size ?? null : null,
+        trimCandidates: prepareTrimCandidates,
+      }),
+    [
+      canCleanVoice,
+      canDetectSpeakers,
+      isPrepareVoiceSelected,
+      job?.estimatedDurationRangeSeconds,
+      prepareCleanVoice,
+      prepareDetectSpeakers,
+      prepareTrimCandidates,
+      sourceFile?.size,
+      sourceMode,
+    ]
+  )
   const speakerSeparationResult =
     job?.status === "success" && isSpeakerSeparationResult(job.result) ? job.result : null
   const isSpeakerSeparationJob = speakerSeparationResult !== null
@@ -200,6 +235,19 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
   }, [])
 
   useEffect(() => {
+    pollJobRef.current = pollJob
+  })
+
+  useEffect(() => {
+    if (!initialStoredJobId) {
+      return
+    }
+    const runId = runIdRef.current + 1
+    runIdRef.current = runId
+    void pollJobRef.current(initialStoredJobId, runId, "Unable to resume sample processing job.")
+  }, [initialStoredJobId])
+
+  useEffect(() => {
     const result = job?.status === "success" && isSpeakerSeparationResult(job.result) ? job.result : null
     if (!job || result === null) {
       if (speakerStateJobIdRef.current !== null) {
@@ -253,15 +301,16 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
       Object.fromEntries(
         result.candidates.map((candidate) => [
           candidate.candidateId,
-          suggestedCandidateName(sourceMode, selectedSourceVoice, sourceFile, candidate),
+          suggestedCandidateName(sourceMode, selectedSourceVoice, sourceFile, candidate, job.sourceName),
         ])
       )
     )
+    const candidateVoicePresetId = voicePresetIdForPreparedJob(job, selectedSourceVoice)
     setCandidateVoicePresetIds(
       Object.fromEntries(
         result.candidates.map((candidate) => [
           candidate.candidateId,
-          selectedSourceVoice?.voicePresetId ?? DEFAULT_VOICE_PRESET_ID,
+          candidateVoicePresetId,
         ])
       ) as Record<string, VoicePresetId>
     )
@@ -441,12 +490,12 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
       processingPresetId: step.processingPresetId,
     }))
     const primaryStep = selectedWorkflowSteps[0] ?? null
+    updateJob(null)
     startProcessingTimer()
     setStatus("starting")
     setError(null)
     setSaveError(null)
     setSaveStatus("idle")
-    updateJob(null)
     clearSpeakerSeparationState()
     clearPreparedCandidateState()
     setSaveName(suggestedSaveName(sourceMode, selectedSourceVoice, sourceFile, selectedWorkflowSteps))
@@ -457,12 +506,14 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
       const payload = await api.createSampleProcessingJob({
         cleanVoice: isPrepareJob ? prepareCleanVoice && canCleanVoice : undefined,
         detectSpeakers: isPrepareJob ? prepareDetectSpeakers && canDetectSpeakers : undefined,
+        isolationPresetId: isPrepareJob && prepareCleanVoice && canCleanVoice ? prepareIsolationPresetId : undefined,
         operationId: workflowSteps.length === 1 ? primaryStep?.operationId : undefined,
         processingPresetId: workflowSteps.length === 1 && !isPrepareJob ? primaryStep?.processingPresetId : null,
         sourceFile: sourceMode === "upload" ? sourceFile : null,
         sourcePreference: sourceMode === "voice" ? effectiveSourcePreference : undefined,
         sourceVoiceId: sourceMode === "voice" ? resolvedSourceVoiceId : null,
         trimCandidates: isPrepareJob ? prepareTrimCandidates : undefined,
+        trimPresetId: isPrepareJob && prepareTrimCandidates ? prepareTrimPresetIdForRequest : undefined,
         workflowSteps: workflowSteps.length > 1 ? workflowSteps : undefined,
       })
       if (!isActiveRun(runId)) {
@@ -497,7 +548,7 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
     }
   }
 
-  async function pollJob(jobId: string, runId: number) {
+  async function pollJob(jobId: string, runId: number, pollErrorMessage = "Unable to poll sample processing job.") {
     while (isActiveRun(runId)) {
       try {
         const payload = await api.fetchSampleProcessingJob(jobId)
@@ -527,7 +578,8 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
         }
         finishProcessingTimer()
         setStatus("error")
-        setError(caught instanceof Error ? caught.message : "Unable to poll sample processing job.")
+        setError(caught instanceof Error ? `${pollErrorMessage} ${caught.message}` : pollErrorMessage)
+        clearStoredActiveJobId()
         return
       }
       await delay(POLL_INTERVAL_MS)
@@ -839,12 +891,39 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
 
   function updateJob(nextJob: SampleProcessingJob | null) {
     activeJobIdRef.current = nextJob?.id ?? null
+    syncStoredActiveJobId(nextJob)
+    syncProcessingTimerFromJob(nextJob)
     setJob(nextJob)
   }
 
   function startProcessingTimer() {
     processingStartedAtRef.current = performance.now()
     setProcessingElapsedMs(0)
+  }
+
+  function syncProcessingTimerFromJob(nextJob: SampleProcessingJob | null) {
+    if (!nextJob) {
+      clearProcessingTimer()
+      return
+    }
+    if (nextJob.status === "pending" || nextJob.status === "running") {
+      if (processingStartedAtRef.current !== null) {
+        updateProcessingElapsedTime()
+        return
+      }
+      const elapsedMs = elapsedMsFromJob(nextJob)
+      setProcessingElapsedMs(elapsedMs)
+      processingStartedAtRef.current = performance.now() - elapsedMs
+      return
+    }
+    if (processingStartedAtRef.current !== null) {
+      updateProcessingElapsedTime()
+      processingStartedAtRef.current = null
+      return
+    }
+    const elapsedMs = elapsedMsFromJob(nextJob)
+    setProcessingElapsedMs(elapsedMs)
+    processingStartedAtRef.current = null
   }
 
   function updateProcessingElapsedTime() {
@@ -867,6 +946,7 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
 
   return {
     activeStep,
+    activeProgressPhase,
     canSave,
     canSaveSelectedSpeakers,
     canStart,
@@ -916,8 +996,14 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
     processingPresetId: resolvedProcessingPresetId,
     processingPresets,
     processingElapsedMs,
+    prepareEstimateRangeSeconds,
+    progressPhases,
     prepareCleanVoice,
     prepareDetectSpeakers,
+    prepareIsolationOperation: isolationOperation,
+    prepareIsolationPresetId,
+    prepareTrimOperation: trimOperation,
+    prepareTrimPresetId,
     prepareTrimCandidates,
     preparedSamplesResult,
     prepareVoiceOperation,
@@ -977,6 +1063,13 @@ function resolveProcessingPresetId(
   return operation?.defaultProcessingPresetId ?? presets[0]?.id ?? DEFAULT_PROCESSING_PRESET_ID
 }
 
+function operationHasProcessingPreset(
+  operation: SampleProcessingOptionsResponse["operations"][number] | null | undefined,
+  presetId: SampleProcessingPresetId
+) {
+  return Boolean(operation?.processingPresets.some((preset) => preset.id === presetId))
+}
+
 function hasRetainedOriginalSource(sourceVoice: VoiceAsset | null) {
   return (sourceVoice?.sourceFilePath ?? "").trim().length > 0
 }
@@ -1024,15 +1117,23 @@ function suggestedCandidateName(
   sourceMode: SampleProcessingSourceMode,
   sourceVoice: VoiceAsset | null,
   sourceFile: File | null,
-  candidate: PreparedSamplesResult["candidates"][number]
+  candidate: PreparedSamplesResult["candidates"][number],
+  jobSourceName = ""
 ) {
-  const sourceName = sourceMode === "voice" ? sourceVoice?.name : fileStem(sourceFile?.name)
+  const sourceName = jobSourceName || (sourceMode === "voice" ? sourceVoice?.name : fileStem(sourceFile?.name))
   const baseName = sourceName || "Prepared Voice"
   const speakerName = candidate.speakerLabel || `Speaker ${candidate.speakerId}`
   if (candidate.rank === 1) {
     return `${baseName} ${speakerName}`
   }
   return `${baseName} ${speakerName} ${candidate.rank}`
+}
+
+function voicePresetIdForPreparedJob(job: SampleProcessingJob, selectedSourceVoice: VoiceAsset | null) {
+  if (job.sourceName.trim() !== "" && job.sourceName === selectedSourceVoice?.name) {
+    return selectedSourceVoice.voicePresetId
+  }
+  return DEFAULT_VOICE_PRESET_ID
 }
 
 function operationNameSuffix(workflowSteps: { operation: SampleProcessingOperation }[]) {
@@ -1065,6 +1166,115 @@ function isPreparedSamplesResult(result: SampleProcessingJob["result"]): result 
 
 function uniqueIds(ids: string[]) {
   return Array.from(new Set(ids.map((id) => id.trim()).filter((id) => id.length > 0)))
+}
+
+function estimatePrepareDurationRangeSeconds({
+  cleanVoice,
+  detectSpeakers,
+  sourceSizeBytes,
+  trimCandidates,
+}: {
+  cleanVoice: boolean
+  detectSpeakers: boolean
+  sourceSizeBytes: number | null
+  trimCandidates: boolean
+}): SampleProcessingDurationRange | null {
+  if (sourceSizeBytes === null) {
+    return null
+  }
+  const sourceMib = Math.max(0.1, sourceSizeBytes / BYTES_PER_MEBIBYTE)
+  let minSeconds = 10 + sourceMib * 0.08
+  let maxSeconds = 25 + sourceMib * 0.18
+  if (cleanVoice) {
+    minSeconds += 20 + sourceMib * 0.18
+    maxSeconds += 60 + sourceMib * 0.35
+  }
+  if (detectSpeakers) {
+    minSeconds += 30 + sourceMib * 0.18
+    maxSeconds += 90 + sourceMib * 0.45
+  }
+  if (trimCandidates) {
+    minSeconds += 15 + sourceMib * 0.08
+    maxSeconds += 45 + sourceMib * 0.18
+  }
+  const roundedMin = Math.max(10, Math.round(minSeconds))
+  return {
+    minSeconds: roundedMin,
+    maxSeconds: Math.max(roundedMin + 30, Math.round(maxSeconds)),
+  }
+}
+
+function syncStoredActiveJobId(job: SampleProcessingJob | null) {
+  if (!job) {
+    clearStoredActiveJobId()
+    return
+  }
+  if (job.status === "pending" || job.status === "running") {
+    writeStoredActiveJobId(job.id)
+    return
+  }
+  clearStoredActiveJobId()
+}
+
+function readStoredActiveJobId() {
+  try {
+    return window.localStorage.getItem(ACTIVE_SAMPLE_PROCESSING_JOB_STORAGE_KEY)
+  } catch {
+    return null
+  }
+}
+
+function writeStoredActiveJobId(jobId: string) {
+  try {
+    window.localStorage.setItem(ACTIVE_SAMPLE_PROCESSING_JOB_STORAGE_KEY, jobId)
+  } catch {
+    // Storage can be unavailable in private browsing; polling still works while mounted.
+  }
+}
+
+function clearStoredActiveJobId() {
+  try {
+    window.localStorage.removeItem(ACTIVE_SAMPLE_PROCESSING_JOB_STORAGE_KEY)
+  } catch {
+    // Ignore storage cleanup failures.
+  }
+}
+
+function elapsedMsFromJob(job: SampleProcessingJob) {
+  const startTime = jobStartedAtMs(job) ?? Date.parse(job.createdAt)
+  if (!Number.isFinite(startTime)) {
+    return 0
+  }
+  const endTime =
+    job.status === "pending" || job.status === "running"
+      ? Date.now()
+      : jobCompletedAtMs(job) ?? Date.parse(job.updatedAt)
+  if (!Number.isFinite(endTime)) {
+    return 0
+  }
+  return Math.max(0, Math.round(endTime - startTime))
+}
+
+function jobStartedAtMs(job: SampleProcessingJob) {
+  const stepStart = job.steps.map((step) => step.startedAt).find((value): value is string => Boolean(value))
+  const phaseStart = (job.progressPhases ?? []).map((phase) => phase.startedAt).find((value): value is string => Boolean(value))
+  const value = stepStart ?? phaseStart ?? job.createdAt
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function jobCompletedAtMs(job: SampleProcessingJob) {
+  const phaseCompletion = [...(job.progressPhases ?? [])]
+    .reverse()
+    .map((phase) => phase.completedAt)
+    .find((value): value is string => Boolean(value))
+  const stepCompletion = [...job.steps]
+    .reverse()
+    .map((step) => step.completedAt)
+    .find((value): value is string => Boolean(value))
+  const value = phaseCompletion ?? stepCompletion ?? job.updatedAt
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? parsed : null
 }
 
 function delay(ms: number) {

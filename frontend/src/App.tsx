@@ -82,6 +82,7 @@ function App() {
   } = useVoiceStudioController()
   const isPrepareWorkflowSwitchDisabled =
     voiceInput.isUploading || voiceInput.isPreparingSample || voiceInput.isRecorderBusy || sampleProcessing.isProcessing
+  const visiblePrepareAudioWorkflow = prepareAudioWorkflow ?? (sampleProcessing.job ? "processAudio" : null)
 
   function handlePrepareAudioWorkflowSelect(workflow: PrepareAudioWorkflow) {
     if (isPrepareWorkflowSwitchDisabled) {
@@ -90,7 +91,9 @@ function App() {
     setPrepareAudioWorkflow(workflow)
     if (workflow === "processAudio" && !hasEnteredProcessAudioWorkflowRef.current) {
       hasEnteredProcessAudioWorkflowRef.current = true
-      sampleProcessing.handleSourceModeChange("upload")
+      if (!sampleProcessing.job) {
+        sampleProcessing.handleSourceModeChange("upload")
+      }
     }
   }
 
@@ -111,10 +114,10 @@ function App() {
           <PrepareAudioChoicePanel
             disabled={isPrepareWorkflowSwitchDisabled}
             onSelect={handlePrepareAudioWorkflowSelect}
-            selectedWorkflow={prepareAudioWorkflow}
+            selectedWorkflow={visiblePrepareAudioWorkflow}
           />
 
-          {prepareAudioWorkflow === "addVoice" ? (
+          {visiblePrepareAudioWorkflow === "addVoice" ? (
             <AddVoicePanel
               canUpload={voiceInput.canUpload}
               handleDiscardRecording={() => void voiceInput.handleDiscardRecording()}
@@ -147,7 +150,7 @@ function App() {
             />
           ) : null}
 
-          {prepareAudioWorkflow === "processAudio" ? (
+          {visiblePrepareAudioWorkflow === "processAudio" ? (
             <SampleProcessingPanel
               isCollapsible={false}
               isExpanded
