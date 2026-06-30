@@ -158,7 +158,7 @@ class DemucsSampleProcessor:
 
         if not request.output_path.exists():
             raise SampleProcessingServiceError("FFmpeg did not produce a normalized sample.", 502)
-        _reject_oversized_output(request.output_path, self.settings.max_upload_bytes)
+        _reject_oversized_output(request.output_path, _output_cap_for_request(request, self.settings))
 
 
 class FFmpegSampleProcessor:
@@ -262,6 +262,7 @@ class DiarizationSampleProcessor:
                 request.job_dir,
                 result,
                 speaker_ranges_by_id=_speaker_turn_ranges_by_id(turns),
+                max_output_bytes=request.max_output_bytes,
             )
 
     async def update_speaker_assignments(self, request: SpeakerAssignmentRequest) -> SpeakerSeparationResult:
@@ -333,6 +334,7 @@ class DiarizationSampleProcessor:
         result: SpeakerSeparationResult,
         *,
         speaker_ranges_by_id: dict[str, list[tuple[float, float]]] | None = None,
+        max_output_bytes: int | None = None,
     ) -> SpeakerSeparationResult:
         speakers: list[SpeakerSeparationSpeaker] = []
         for speaker in result.speakers:
@@ -346,7 +348,14 @@ class DiarizationSampleProcessor:
                 ]
             )
             speaker_path = job_dir / f"{speaker.id}.wav"
-            await _write_speaker_stream(normalized_path, ranges, speaker_path, job_dir, self.settings)
+            await _write_speaker_stream(
+                normalized_path,
+                ranges,
+                speaker_path,
+                job_dir,
+                self.settings,
+                max_output_bytes=max_output_bytes,
+            )
             sample = load_sample_file(speaker_path, RESULT_CONTENT_TYPE)
             speakers.append(
                 replace(
@@ -419,7 +428,7 @@ async def _trim_silence(request: SampleProcessingRequest, settings: Settings) ->
     )
     if not request.output_path.exists():
         raise SampleProcessingServiceError("FFmpeg did not produce a normalized sample.", 502)
-    _reject_oversized_output(request.output_path, settings.max_upload_bytes)
+    _reject_oversized_output(request.output_path, _output_cap_for_request(request, settings))
 
 
 async def _normalize_audio(source_path: Path, output_path: Path, settings: Settings) -> None:
@@ -459,12 +468,14 @@ async def _write_speaker_stream(
     output_path: Path,
     job_dir: Path,
     settings: Settings,
+    *,
+    max_output_bytes: int | None = None,
 ) -> None:
     chunks_dir = job_dir / "speaker-chunks" / output_path.stem
     chunks_dir.mkdir(parents=True, exist_ok=True)
     if not ranges:
         await _write_silence(output_path, settings)
-        _reject_oversized_output(output_path, settings.max_upload_bytes)
+        _reject_oversized_output(output_path, _resolved_output_cap(max_output_bytes, settings))
         return
 
     chunk_paths: list[Path] = []
@@ -526,7 +537,7 @@ async def _write_speaker_stream(
     )
     if not output_path.exists():
         raise SampleProcessingServiceError("FFmpeg did not produce a speaker stream.", 502)
-    _reject_oversized_output(output_path, settings.max_upload_bytes)
+    _reject_oversized_output(output_path, _resolved_output_cap(max_output_bytes, settings))
 
 
 async def _write_silence(output_path: Path, settings: Settings) -> None:
@@ -851,6 +862,14 @@ def _reject_oversized_output(output_path: Path, max_upload_bytes: int) -> None:
             f"Processed voice sample must be {_bytes_label(max_upload_bytes)} or smaller.",
             413,
         )
+
+
+def _output_cap_for_request(request: SampleProcessingRequest, settings: Settings) -> int:
+    return _resolved_output_cap(request.max_output_bytes, settings)
+
+
+def _resolved_output_cap(max_output_bytes: int | None, settings: Settings) -> int:
+    return settings.max_upload_bytes if max_output_bytes is None else max_output_bytes
 
 
 async def _run_external_command(args: list[str], label: str, timeout_seconds: float) -> None:

@@ -46,6 +46,16 @@ class SaveSpeakerVoicesRequest(BaseModel):
     voices: list[SaveSpeakerVoiceRequest]
 
 
+class SavePreparedCandidateVoiceRequest(BaseModel):
+    candidateId: str
+    name: str
+    voicePresetId: str | None = None
+
+
+class SavePreparedCandidateVoicesRequest(BaseModel):
+    voices: list[SavePreparedCandidateVoiceRequest]
+
+
 class SpeechJobSegmentRequest(BaseModel):
     clientSegmentId: str | None = None
     text: str
