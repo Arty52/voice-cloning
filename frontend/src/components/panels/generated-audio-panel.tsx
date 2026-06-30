@@ -3,8 +3,8 @@ import { HardDrive, Trash2 } from "lucide-react"
 import { GeneratedAudioItem } from "@/components/generated-audio-item"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Loading } from "@/components/ui/loading"
 import { MenuSelect } from "@/components/ui/menu-select"
+import { PendingWorkStatus } from "@/components/ui/pending-work-status"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   DEFAULT_GENERATED_AUDIO_STORAGE_LIMIT_BYTES,
@@ -74,10 +74,14 @@ export function GeneratedAudioPanel({
         </div>
       ) : null}
 
-      {mutationLabel ? (
-        <div className="mb-4 flex flex-col gap-2 rounded-md border border-border bg-background/60 p-3">
-          <Loading text={mutationLabel} variant="secondary" />
-        </div>
+      {mutationStatus && mutationLabel ? (
+        <PendingWorkStatus
+          aria-label={mutationLabel}
+          className="mb-4"
+          description={generatedAudioMutationDescription(mutationStatus)}
+          statusLabel="Updating"
+          title={mutationLabel}
+        />
       ) : null}
 
       <div className="mb-4 rounded-md border border-border bg-background/60 p-3">
@@ -174,4 +178,14 @@ function generatedAudioMutationLabel(mutationStatus: GeneratedAudioMutation) {
     return "Removing Audio"
   }
   return "Updating Storage"
+}
+
+function generatedAudioMutationDescription(mutationStatus: GeneratedAudioMutation) {
+  if (mutationStatus === "clear") {
+    return "Removing saved generated audio from the browser archive."
+  }
+  if (mutationStatus === "delete") {
+    return "Removing the selected generated audio item."
+  }
+  return "Updating the browser storage cap."
 }

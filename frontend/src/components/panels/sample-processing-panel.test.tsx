@@ -473,11 +473,11 @@ describe("SampleProcessingPanel ranked candidates", () => {
     )
 
     const inspectionText = screen.getByText("Inspecting Source")
-    const inspectionSurface = inspectionText.closest(".source-inspection-loading")
+    const inspectionSurface = inspectionText.closest(".pending-work-status")
 
     expect(inspectionText).toBeInTheDocument()
-    expect(inspectionSurface).toHaveClass("source-inspection-loading")
-    expect(inspectionSurface?.querySelector(".source-inspection-loading__shine")).toBeInTheDocument()
+    expect(inspectionSurface).toHaveClass("pending-work-status")
+    expect(inspectionSurface?.querySelector(".pending-work-status__shine")).toBeInTheDocument()
   })
 
   it("renders staged video preview and falls back when browser playback fails", () => {

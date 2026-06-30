@@ -41,6 +41,7 @@ import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui
 import { Input } from "@/components/ui/input"
 import { Loading } from "@/components/ui/loading"
 import { MenuSelect } from "@/components/ui/menu-select"
+import { PendingWorkStatus } from "@/components/ui/pending-work-status"
 import { Popover, PopoverContent, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
@@ -142,9 +143,12 @@ export function SampleProcessingPanel({
       {isDetailsVisible ? (
         <div className="mt-4 flex flex-col gap-4">
           {processing.optionsStatus === "loading" ? (
-            <div className="rounded-md border border-border bg-background/60 p-3">
-              <Loading text="Loading Processing Options" variant="secondary" />
-            </div>
+            <PendingWorkStatus
+              aria-label="Loading Processing Options"
+              description="Checking available local processing operations."
+              statusLabel="Loading"
+              title="Loading Processing Options"
+            />
           ) : null}
 
           {processing.optionsError ? (
@@ -622,10 +626,12 @@ function MediaSourceSelection({ processing }: { processing: SampleProcessingCont
       </div>
 
       {media.status === "loading" ? (
-        <div className="source-inspection-loading relative overflow-hidden rounded-md border border-border bg-background/60 p-3">
-          <span aria-hidden="true" className="source-inspection-loading__shine" />
-          <Loading className="relative" text="Inspecting Source" variant="secondary" />
-        </div>
+        <PendingWorkStatus
+          aria-label="Inspecting Source"
+          description="Reading duration, chapters, audio streams, and preview details."
+          statusLabel="Inspecting"
+          title="Inspecting Source"
+        />
       ) : null}
 
       {media.error ? (
@@ -1269,14 +1275,10 @@ function CompactVoicePreviewButton({
 function ProcessingProgress({ processing }: { processing: SampleProcessingController }) {
   const phases = processing.progressPhases ?? []
   if (phases.length > 0) {
+    const activeLabel = processing.activeProgressPhase ? `Active Phase: ${processing.activeProgressPhase.label}` : null
+
     return (
-      <section aria-label="Sample Processing Progress" className="rounded-md border border-border bg-background/60 p-3">
-        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-sm font-medium">Workflow Progress</div>
-          {processing.activeProgressPhase ? (
-            <Badge variant="secondary">Active Phase: {processing.activeProgressPhase.label}</Badge>
-          ) : null}
-        </div>
+      <ProcessingProgressSurface activeLabel={activeLabel} processing={processing}>
         <ol className="mt-3 grid gap-2">
           {phases.map((phase, index) => {
             const PhaseIcon = stepStatusIcon(phase.status)
@@ -1317,7 +1319,7 @@ function ProcessingProgress({ processing }: { processing: SampleProcessingContro
             )
           })}
         </ol>
-      </section>
+      </ProcessingProgressSurface>
     )
   }
 
@@ -1326,14 +1328,10 @@ function ProcessingProgress({ processing }: { processing: SampleProcessingContro
     return null
   }
 
+  const activeLabel = processing.activeStep ? `Active Step: ${processing.activeStep.operationLabel}` : null
+
   return (
-    <section aria-label="Sample Processing Progress" className="rounded-md border border-border bg-background/60 p-3">
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-        <div className="text-sm font-medium">Workflow Progress</div>
-        {processing.activeStep ? (
-          <Badge variant="secondary">Active Step: {processing.activeStep.operationLabel}</Badge>
-        ) : null}
-      </div>
+    <ProcessingProgressSurface activeLabel={activeLabel} processing={processing}>
       <ol className="mt-3 grid gap-2">
         {steps.map((step, index) => {
           const StepIcon = stepStatusIcon(step.status)
@@ -1373,6 +1371,40 @@ function ProcessingProgress({ processing }: { processing: SampleProcessingContro
           )
         })}
       </ol>
+    </ProcessingProgressSurface>
+  )
+}
+
+function ProcessingProgressSurface({
+  activeLabel,
+  children,
+  processing,
+}: {
+  activeLabel: string | null
+  children: ReactNode
+  processing: SampleProcessingController
+}) {
+  if (processing.isProcessing) {
+    return (
+      <PendingWorkStatus
+        aria-label="Sample Processing Progress"
+        description="Running the selected sample processing workflow."
+        meta={activeLabel ? <Badge variant="secondary">{activeLabel}</Badge> : null}
+        statusLabel={panelStatusLabel(processing)}
+        title="Workflow Progress"
+      >
+        {children}
+      </PendingWorkStatus>
+    )
+  }
+
+  return (
+    <section aria-label="Sample Processing Progress" className="rounded-md border border-border bg-background/60 p-3">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <div className="text-sm font-medium">Workflow Progress</div>
+        {activeLabel ? <Badge variant="secondary">{activeLabel}</Badge> : null}
+      </div>
+      {children}
     </section>
   )
 }
