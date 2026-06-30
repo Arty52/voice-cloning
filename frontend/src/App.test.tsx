@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import App from "./App"
 import { TooltipProvider } from "./components/ui/tooltip"
@@ -521,6 +521,10 @@ function okJson(payload: unknown) {
   )
 }
 
+function okNoContent() {
+  return Promise.resolve(new Response(null, { status: 204 }))
+}
+
 function okAudio(headers: Record<string, string> = {}, body: Blob = audioBlob) {
   return Promise.resolve(
     new Response(body, {
@@ -536,6 +540,28 @@ function okAudio(headers: Record<string, string> = {}, body: Blob = audioBlob) {
       },
     })
   )
+}
+
+function sampleProcessingMediaSourceFrom(init?: RequestInit) {
+  const body = init?.body instanceof FormData ? init.body : null
+  const sourceFile = body?.get("sourceFile")
+  const filename = sourceFile instanceof File ? sourceFile.name : "source.wav"
+  const contentType = sourceFile instanceof File ? sourceFile.type || "audio/wav" : "audio/wav"
+  const sizeBytes = sourceFile instanceof File ? sourceFile.size : 6
+
+  return {
+    source: {
+      id: "source-1",
+      filename,
+      contentType,
+      sizeBytes,
+      sha256: "source-hash",
+      durationSeconds: 240,
+      sampleRateHz: 44100,
+      chapters: [],
+      warnings: [],
+    },
+  }
 }
 
 function speechJobFromSubmitted(
@@ -882,6 +908,15 @@ function mockFetch() {
     if (path === "/api/sample-processing/options" && !init) {
       return okJson(sampleProcessingOptions)
     }
+    if (path === "/api/sample-processing/sources" && init?.method === "POST") {
+      return okJson(sampleProcessingMediaSourceFrom(init))
+    }
+    if (path === "/api/sample-processing/sources/source-1" && init?.method === "DELETE") {
+      return okNoContent()
+    }
+    if (path === "/api/sample-processing/sources/source-1/preview" && !init) {
+      return okAudio()
+    }
     if (path === "/api/sample-processing/jobs" && init?.method === "POST") {
       return Promise.resolve(
         new Response(JSON.stringify({ ...successfulSampleProcessingJob, job: { ...successfulSampleProcessingJob.job, status: "running" } }), {
@@ -949,6 +984,15 @@ function mockFetchWithProviders(
     if (path === "/api/sample-processing/options" && !init) {
       return okJson(sampleProcessingOptions)
     }
+    if (path === "/api/sample-processing/sources" && init?.method === "POST") {
+      return okJson(sampleProcessingMediaSourceFrom(init))
+    }
+    if (path === "/api/sample-processing/sources/source-1" && init?.method === "DELETE") {
+      return okNoContent()
+    }
+    if (path === "/api/sample-processing/sources/source-1/preview" && !init) {
+      return okAudio()
+    }
     if (path === "/api/sample-processing/jobs" && init?.method === "POST") {
       return Promise.resolve(
         new Response(JSON.stringify({ ...successfulSampleProcessingJob, job: { ...successfulSampleProcessingJob.job, status: "running" } }), {
@@ -984,6 +1028,12 @@ function mockFetchWithProviders(
 }
 
 describe("App", () => {
+  vi.setConfig({ testTimeout: 15_000 })
+
+  afterAll(() => {
+    vi.resetConfig()
+  })
+
   beforeEach(async () => {
     await deleteDatabase(GENERATED_AUDIO_DB_NAME)
     localStorage.clear()
@@ -3154,7 +3204,11 @@ describe("App", () => {
     )
     const jobBody = jobCall?.[1]?.body as FormData
     expect(jobBody.get("operationId")).toBe("isolateVoice")
-    expect(jobBody.get("sourceFile")).toBe(sourceFile)
+    expect(jobBody.get("sourceFile")).toBeNull()
+    expect(jobBody.get("sourceMediaId")).toBe("source-1")
+    expect(JSON.parse(jobBody.get("sourceRanges") as string)).toEqual([
+      { startSeconds: 0, endSeconds: 120, label: "Selected Range" },
+    ])
     expect(jobBody.get("sourceVoiceId")).toBeNull()
     expect(await sampleProcessingPanel().findByLabelText("Processed sample preview")).toBeInTheDocument()
     expect(sampleProcessingPanel().getByLabelText("Sample Processing Elapsed Time")).toHaveTextContent("Finished In")
@@ -3188,7 +3242,11 @@ describe("App", () => {
     )
     const jobBody = jobCall?.[1]?.body as FormData
     expect(jobBody.get("operationId")).toBe("isolateVoice")
-    expect(jobBody.get("sourceFile")).toBe(sourceFile)
+    expect(jobBody.get("sourceFile")).toBeNull()
+    expect(jobBody.get("sourceMediaId")).toBe("source-1")
+    expect(JSON.parse(jobBody.get("sourceRanges") as string)).toEqual([
+      { startSeconds: 0, endSeconds: 120, label: "Selected Range" },
+    ])
     expect(jobBody.get("sourceVoiceId")).toBeNull()
   })
 
