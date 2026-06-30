@@ -43,6 +43,7 @@ export type ProviderLink = {
 export type ProviderTuningValue = string | number | boolean
 
 export type ProviderSampleMetadata = {
+  maxSelectedSourceAudioBytes: number
   maxWindowSeconds: number
   maxSourceUploadBytes: number
   maxUploadBytes: number
@@ -162,14 +163,30 @@ export type SampleProcessingMediaSourceChapter = {
   durationSeconds: number
 }
 
+export type SampleProcessingMediaKind = "audio" | "video"
+
+export type SampleProcessingMediaSourceAudioStream = {
+  index: number
+  codecName: string | null
+  sampleRateHz: number | null
+  channels: number | null
+  channelLayout: string | null
+  language: string | null
+  title: string | null
+}
+
 export type SampleProcessingMediaSource = {
   id: string
   filename: string
   contentType: string
+  mediaKind: SampleProcessingMediaKind
   sizeBytes: number
   sha256: string
   durationSeconds: number | null
   sampleRateHz: number | null
+  audioStreams: SampleProcessingMediaSourceAudioStream[]
+  selectedAudioStream: SampleProcessingMediaSourceAudioStream | null
+  selectedAudioStreamIndex: number | null
   chapters: SampleProcessingMediaSourceChapter[]
   warnings: string[]
 }

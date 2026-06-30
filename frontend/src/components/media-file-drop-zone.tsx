@@ -7,32 +7,40 @@ import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 
-const AUDIO_ACCEPT =
+const DEFAULT_AUDIO_ACCEPT =
   ".mp3,.wav,.m4a,.aac,.ogg,.flac,audio/mpeg,audio/wav,audio/x-wav,audio/aac,audio/ogg,audio/flac"
 const DEFAULT_HELPER_COPY =
   "Drag an audio file here, or choose one from your computer. Supports MP3, WAV, M4A, AAC, OGG, and FLAC."
 
-type AudioFileDropZoneProps = {
+type MediaFileDropZoneProps = {
   accept?: string
+  ariaLabel?: string
+  chooseLabel?: string
   children?: ReactNode
   disabled?: boolean
+  emptyLabel?: string
   helperCopy?: string
   id: string
   label: string
   onFileSelect: (file: File | null) => void
   selectedFileName?: string | null
+  selectedLabel?: string
 }
 
-export function AudioFileDropZone({
-  accept = AUDIO_ACCEPT,
+export function MediaFileDropZone({
+  accept = DEFAULT_AUDIO_ACCEPT,
+  ariaLabel = "Audio Drop Zone",
+  chooseLabel = "Choose Audio",
   children,
   disabled = false,
+  emptyLabel = "Drop Audio Here",
   helperCopy = DEFAULT_HELPER_COPY,
   id,
   label,
   onFileSelect,
   selectedFileName = null,
-}: AudioFileDropZoneProps) {
+  selectedLabel = "Audio Selected",
+}: MediaFileDropZoneProps) {
   const inputRef = useRef<HTMLInputElement | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const labelId = `${id}-label`
@@ -66,7 +74,7 @@ export function AudioFileDropZone({
         {label}
       </FieldLabel>
       <div
-        aria-label="Audio Drop Zone"
+        aria-label={ariaLabel}
         aria-describedby={descriptionId}
         className={cn(
           "flex flex-col items-center gap-3 rounded-md border border-dashed border-border bg-background/60 p-4 text-center transition",
@@ -93,7 +101,7 @@ export function AudioFileDropZone({
         />
         <Upload aria-hidden="true" className="size-5 text-primary" />
         <div className="flex flex-col gap-1">
-          <span className="text-sm font-medium">{selectedFileName ? "Audio Selected" : "Drop Audio Here"}</span>
+          <span className="text-sm font-medium">{selectedFileName ? selectedLabel : emptyLabel}</span>
           <FieldDescription id={descriptionId}>{helperCopy}</FieldDescription>
         </div>
         {selectedFileName ? <Badge variant="secondary">{selectedFileName}</Badge> : null}
@@ -101,7 +109,7 @@ export function AudioFileDropZone({
           <div className="flex flex-wrap items-center justify-center gap-2">
             <Button disabled={disabled} onClick={() => inputRef.current?.click()} size="sm" type="button" variant="secondary">
               <Upload aria-hidden="true" data-icon="inline-start" />
-              Choose Audio
+              {chooseLabel}
             </Button>
             {children}
           </div>

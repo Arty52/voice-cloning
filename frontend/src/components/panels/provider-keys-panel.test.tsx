@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest"
 import { ProviderKeysPanel } from "./provider-keys-panel"
 
 const sample = {
+  maxSelectedSourceAudioBytes: 1024 * 1024 * 1024,
   maxSourceUploadBytes: 1024 * 1024 * 1024,
   maxUploadBytes: 10 * 1024 * 1024,
   maxWindowSeconds: 120,

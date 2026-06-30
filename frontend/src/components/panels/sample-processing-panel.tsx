@@ -17,10 +17,11 @@ import {
   Sparkles,
   Upload,
   Users,
+  Video,
   Wand2,
 } from "lucide-react"
 
-import { AudioFileDropZone } from "@/components/audio-file-drop-zone"
+import { MediaFileDropZone } from "@/components/media-file-drop-zone"
 import { AudioPlayer } from "@/components/audio-player"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -45,6 +46,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Slider } from "@/components/ui/slider"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { VoicePresetToggleGroup } from "@/components/voice-preset-toggle-group"
 import type { SampleProcessingController } from "@/hooks/use-sample-processing"
 import { formatCompactBytes, formatElapsedTime, formatMediaDuration } from "@/lib/formatters"
@@ -79,6 +81,9 @@ const PROCESS_FROM_SAVED_SAMPLE_DESCRIPTION = "Best for quick touch-ups. Uses th
 const PROCESS_AUDIO_ACCEPT = "audio/*,.mp3,.wav,.m4a,.m4b,.aac,.ogg,.flac"
 const PROCESS_AUDIO_UPLOAD_HELPER_COPY =
   "Drag an audio file here, or choose one from your computer. Supports MP3, WAV, M4A, M4B, AAC, OGG, and FLAC."
+const PROCESS_VIDEO_ACCEPT = ".mp4,.m4v,.mov,video/mp4,video/x-m4v,video/quicktime"
+const PROCESS_VIDEO_UPLOAD_HELPER_COPY =
+  "Drag a video file here, or choose one from your computer. Supports MP4, M4V, and MOV."
 const SPEAKER_COLORS = [
   "oklch(0.74 0.17 36)",
   "oklch(0.72 0.14 184)",
@@ -118,7 +123,7 @@ export function SampleProcessingPanel({
               </span>
             ) : null}
           </div>
-          <p className="mt-1 text-sm text-muted-foreground">Prepare source audio before saving it as a voice.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Prepare source media before saving it as a voice.</p>
         </div>
         {isCollapsible ? (
           <Button
@@ -178,9 +183,9 @@ export function SampleProcessingPanel({
                 {processing.status === "starting"
                   ? "Starting Processing"
                   : processing.status === "processing"
-                    ? "Processing Sample"
+                      ? "Processing Sample"
                     : processing.isPrepareVoiceSelected
-                      ? "Process Audio File"
+                      ? "Process Source Media"
                       : "Start Processing"}
               </Button>
               {processing.canCancel ? (
@@ -473,40 +478,52 @@ function SourceSelection({
   processing: SampleProcessingController
   voicePresets: { id: VoicePresetId; label: string; description: string }[]
 }) {
+  const sourceSelectionValue = processing.sourceMode === "voice" ? "voice" : processing.sourceUploadKind
+  const uploadCopy = sourceUploadCopy(processing.sourceUploadKind)
+
   return (
     <>
       <Field>
         <FieldLabel>Source</FieldLabel>
-        <div className="grid grid-cols-2 gap-1 rounded-md border border-border bg-background/60 p-1" role="group" aria-label="Sample source">
-          <Button
-            aria-pressed={processing.sourceMode === "voice"}
-            className={cn(
-              "transition-[background-color,box-shadow]",
-              processing.sourceMode !== "voice" && "border border-transparent bg-transparent"
-            )}
+        <ToggleGroup
+          aria-label="Sample Source"
+          className="grid w-full grid-cols-1 gap-1 rounded-md border border-border bg-background/60 p-1 sm:grid-cols-3"
+          onValueChange={(value) => {
+            if (value === "voice") {
+              processing.handleSourceModeChange("voice")
+            }
+            if (value === "audio" || value === "video") {
+              processing.setSourceUploadKind(value)
+            }
+          }}
+          type="single"
+          value={sourceSelectionValue}
+        >
+          <ToggleGroupItem
+            className="h-9 justify-center gap-2"
             disabled={processing.isProcessing}
-            onClick={() => processing.handleSourceModeChange("voice")}
-            type="button"
-            variant={processing.sourceMode === "voice" ? "secondary" : "ghost"}
+            value="voice"
           >
-            <FileAudio aria-hidden="true" className="size-4" />
+            <FileAudio aria-hidden="true" data-icon="inline-start" />
             Saved Voice
-          </Button>
-          <Button
-            aria-pressed={processing.sourceMode === "upload"}
-            className={cn(
-              "transition-[background-color,box-shadow]",
-              processing.sourceMode !== "upload" && "border border-transparent bg-transparent"
-            )}
+          </ToggleGroupItem>
+          <ToggleGroupItem
+            className="h-9 justify-center gap-2"
             disabled={processing.isProcessing}
-            onClick={() => processing.handleSourceModeChange("upload")}
-            type="button"
-            variant={processing.sourceMode === "upload" ? "secondary" : "ghost"}
+            value="audio"
           >
-            <Upload aria-hidden="true" className="size-4" />
+            <Upload aria-hidden="true" data-icon="inline-start" />
             Audio File
-          </Button>
-        </div>
+          </ToggleGroupItem>
+          <ToggleGroupItem
+            className="h-9 justify-center gap-2"
+            disabled={processing.isProcessing}
+            value="video"
+          >
+            <Video aria-hidden="true" data-icon="inline-start" />
+            Video File
+          </ToggleGroupItem>
+        </ToggleGroup>
       </Field>
 
       {processing.sourceMode === "voice" ? (
@@ -526,14 +543,18 @@ function SourceSelection({
         </>
       ) : (
         <>
-          <AudioFileDropZone
-            accept={PROCESS_AUDIO_ACCEPT}
+          <MediaFileDropZone
+            accept={uploadCopy.accept}
+            ariaLabel={uploadCopy.dropZoneLabel}
+            chooseLabel={uploadCopy.chooseLabel}
             disabled={processing.isProcessing}
-            helperCopy={PROCESS_AUDIO_UPLOAD_HELPER_COPY}
+            emptyLabel={uploadCopy.emptyLabel}
+            helperCopy={uploadCopy.helperCopy}
             id="sample-processing-file"
-            label="Audio File"
+            label={uploadCopy.label}
             onFileSelect={processing.handleSourceFileSelect}
             selectedFileName={processing.sourceFile?.name ?? processing.mediaSource.source?.filename ?? null}
+            selectedLabel={uploadCopy.selectedLabel}
           />
           <MediaSourceSelection processing={processing} />
         </>
@@ -542,9 +563,33 @@ function SourceSelection({
   )
 }
 
+function sourceUploadCopy(kind: "audio" | "video") {
+  if (kind === "video") {
+    return {
+      accept: PROCESS_VIDEO_ACCEPT,
+      chooseLabel: "Choose Video",
+      dropZoneLabel: "Video Drop Zone",
+      emptyLabel: "Drop Video Here",
+      helperCopy: PROCESS_VIDEO_UPLOAD_HELPER_COPY,
+      label: "Video File",
+      selectedLabel: "Video Selected",
+    }
+  }
+  return {
+    accept: PROCESS_AUDIO_ACCEPT,
+    chooseLabel: "Choose Audio",
+    dropZoneLabel: "Audio Drop Zone",
+    emptyLabel: "Drop Audio Here",
+    helperCopy: PROCESS_AUDIO_UPLOAD_HELPER_COPY,
+    label: "Audio File",
+    selectedLabel: "Audio Selected",
+  }
+}
+
 function MediaSourceSelection({ processing }: { processing: SampleProcessingController }) {
   const media = processing.mediaSource
   const source = media.source
+  const [failedVideoSourceId, setFailedVideoSourceId] = useState<string | null>(null)
 
   if (media.status === "idle" && source === null && !processing.sourceFile) {
     return null
@@ -561,9 +606,13 @@ function MediaSourceSelection({ processing }: { processing: SampleProcessingCont
         </div>
         {source ? (
           <div className="flex shrink-0 flex-wrap gap-1.5">
+            <Badge variant="secondary">{source.mediaKind === "video" ? "Video" : "Audio"}</Badge>
             <Badge variant="secondary">{formatCompactBytes(source.sizeBytes)}</Badge>
             {source.durationSeconds !== null ? (
               <Badge variant="secondary">{formatMediaDuration(source.durationSeconds)}</Badge>
+            ) : null}
+            {source.mediaKind === "video" && source.selectedAudioStreamIndex !== null ? (
+              <Badge variant="secondary">Audio Stream {source.selectedAudioStreamIndex}</Badge>
             ) : null}
             {source.chapters.length > 0 ? (
               <Badge variant="secondary">{source.chapters.length} Chapters</Badge>
@@ -595,6 +644,15 @@ function MediaSourceSelection({ processing }: { processing: SampleProcessingCont
             </Alert>
           ) : null}
 
+          {source.mediaKind === "video" ? (
+            <VideoSourcePreview
+              failed={failedVideoSourceId === source.id}
+              onError={() => setFailedVideoSourceId(source.id)}
+              sourceLabel={source.filename}
+              src={media.sourceMediaUrl}
+            />
+          ) : null}
+
           {media.hasChapters ? (
             <ChapterSourceSelection processing={processing} />
           ) : (
@@ -615,6 +673,44 @@ function MediaSourceSelection({ processing }: { processing: SampleProcessingCont
         </>
       ) : null}
     </Field>
+  )
+}
+
+function VideoSourcePreview({
+  failed,
+  onError,
+  sourceLabel,
+  src,
+}: {
+  failed: boolean
+  onError: () => void
+  sourceLabel: string
+  src: string | null
+}) {
+  if (!src || failed) {
+    return (
+      <Alert>
+        <AlertTitle>Video Preview Unavailable</AlertTitle>
+        <AlertDescription>The staged video is still available for range selection and background extraction.</AlertDescription>
+      </Alert>
+    )
+  }
+
+  return (
+    <div className="rounded-md border border-border bg-background/60 p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="text-sm font-medium">Video Preview</div>
+        <Badge variant="secondary">Browser Playback</Badge>
+      </div>
+      <video
+        aria-label={`${sourceLabel} Video Preview`}
+        className="aspect-video w-full rounded-md border border-border bg-background object-contain"
+        controls
+        onError={onError}
+        preload="metadata"
+        src={src}
+      />
+    </div>
   )
 }
 

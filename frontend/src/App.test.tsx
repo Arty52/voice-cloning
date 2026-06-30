@@ -207,6 +207,7 @@ const providersResponse: ProvidersResponse = {
         },
       ],
       sample: {
+        maxSelectedSourceAudioBytes: 1024 * 1024 * 1024,
         maxSourceUploadBytes: 1024 * 1024 * 1024,
         maxUploadBytes: 10 * 1024 * 1024,
         maxWindowSeconds: 120,
@@ -548,16 +549,43 @@ function sampleProcessingMediaSourceFrom(init?: RequestInit) {
   const filename = sourceFile instanceof File ? sourceFile.name : "source.wav"
   const contentType = sourceFile instanceof File ? sourceFile.type || "audio/wav" : "audio/wav"
   const sizeBytes = sourceFile instanceof File ? sourceFile.size : 6
+  const isVideo = contentType.startsWith("video/")
 
   return {
     source: {
       id: "source-1",
       filename,
       contentType,
+      mediaKind: isVideo ? "video" as const : "audio" as const,
       sizeBytes,
       sha256: "source-hash",
       durationSeconds: 240,
-      sampleRateHz: 44100,
+      sampleRateHz: isVideo ? 48000 : 44100,
+      audioStreams: isVideo
+        ? [
+            {
+              index: 1,
+              codecName: "aac",
+              sampleRateHz: 48000,
+              channels: 2,
+              channelLayout: "stereo",
+              language: "eng",
+              title: "Main Audio",
+            },
+          ]
+        : [],
+      selectedAudioStream: isVideo
+        ? {
+            index: 1,
+            codecName: "aac",
+            sampleRateHz: 48000,
+            channels: 2,
+            channelLayout: "stereo",
+            language: "eng",
+            title: "Main Audio",
+          }
+        : null,
+      selectedAudioStreamIndex: isVideo ? 1 : null,
       chapters: [],
       warnings: [],
     },
@@ -570,10 +598,14 @@ function chapteredSampleProcessingMediaSource() {
       id: "source-book",
       filename: "book.m4b",
       contentType: "audio/mp4",
+      mediaKind: "audio" as const,
       sizeBytes: 16777216,
       sha256: "book-hash",
       durationSeconds: 900,
       sampleRateHz: 44100,
+      audioStreams: [],
+      selectedAudioStream: null,
+      selectedAudioStreamIndex: null,
       chapters: [
         {
           id: "chapter-1",
@@ -749,13 +781,13 @@ function selectSampleProcessingWorkflow(sourceMode: "upload" | "voice" = "voice"
   const isRevealed = Boolean(screen.queryByRole("heading", { name: "Sample Processing" }))
   if (!isRevealed) {
     act(() => {
-      fireEvent.click(prepareAudioPanel().getByRole("button", { name: /process audio file/i }))
+      fireEvent.click(prepareAudioPanel().getByRole("button", { name: /process source media/i }))
     })
   }
   const panel = scopedPanelByHeading("Sample Processing")
   if (sourceMode === "voice" && !isRevealed) {
-    const savedVoiceButton = panel.queryByRole("button", { name: "Saved Voice" })
-    if (savedVoiceButton && savedVoiceButton.getAttribute("aria-pressed") !== "true") {
+    const savedVoiceButton = panel.queryByRole("radio", { name: "Saved Voice" })
+    if (savedVoiceButton && savedVoiceButton.getAttribute("aria-checked") !== "true") {
       act(() => {
         fireEvent.click(savedVoiceButton)
       })
@@ -1855,7 +1887,7 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "Prepare Audio" })).toHaveAttribute("aria-current", "page")
     const preparePanel = prepareAudioPanel()
     expect(preparePanel.getByRole("button", { name: /upload ready voice sample/i })).toBeInTheDocument()
-    expect(preparePanel.getByRole("button", { name: /process audio file/i })).toBeInTheDocument()
+    expect(preparePanel.getByRole("button", { name: /process source media/i })).toBeInTheDocument()
     expect(preparePanel.queryByRole("form", { name: "Add Voice" })).not.toBeInTheDocument()
   })
 
@@ -2198,7 +2230,7 @@ describe("App", () => {
     const voicesSection = document.querySelector('[data-section-id="voices"]') as HTMLElement
     const preparePanel = within(prepareSection)
     const addVoiceChoice = preparePanel.getByRole("button", { name: /upload ready voice sample/i })
-    const processAudioChoice = preparePanel.getByRole("button", { name: /process audio file/i })
+    const processAudioChoice = preparePanel.getByRole("button", { name: /process source media/i })
 
     expect(prepareSection).not.toHaveClass("hidden")
     expect(voicesSection).toHaveClass("hidden")
@@ -2216,7 +2248,7 @@ describe("App", () => {
 
     expect(preparePanel.queryByRole("form", { name: "Add Voice" })).not.toBeInTheDocument()
     expect(preparePanel.getByRole("heading", { name: "Sample Processing" })).toBeInTheDocument()
-    expect(preparePanel.getByRole("button", { name: "Audio File" })).toHaveAttribute("aria-pressed", "true")
+    expect(preparePanel.getByRole("radio", { name: "Audio File" })).toHaveAttribute("aria-checked", "true")
     expectHiddenAudioInputDoesNotWidenPage("sample-processing-file")
     expect(preparePanel.getByRole("group", { name: "Audio Drop Zone" })).toBeInTheDocument()
   })
@@ -2254,7 +2286,7 @@ describe("App", () => {
 
     await screen.findByText("default/default-voice.mp3")
     const prepareSection = document.querySelector('[data-section-id="prepare"]') as HTMLElement
-    await user.click(within(prepareSection).getByRole("button", { name: /process audio file/i }))
+    await user.click(within(prepareSection).getByRole("button", { name: /process source media/i }))
 
     expect(
       sampleProcessingPanel().getByText(/Runs selected cleanup first, then detects speech regions, ranks provider-sized windows/i)
@@ -2338,7 +2370,7 @@ describe("App", () => {
     await screen.findByText("default/default-voice.mp3")
     const preparePanel = prepareAudioPanel()
 
-    expect(preparePanel.getByRole("button", { name: /process audio file/i })).toHaveAttribute("aria-pressed", "true")
+    expect(preparePanel.getByRole("button", { name: /process source media/i })).toHaveAttribute("aria-pressed", "true")
     expect(preparePanel.getByRole("heading", { name: "Sample Processing" })).toBeInTheDocument()
     expect(await preparePanel.findByText("Workflow Progress")).toBeInTheDocument()
     expect(preparePanel.getByText("Active Phase: Detect Speech Regions")).toBeInTheDocument()
@@ -2739,7 +2771,7 @@ describe("App", () => {
     expect(await voiceLibraryPanel().findByText("Default voice Isolated")).toBeInTheDocument()
   })
 
-  it("preserves a saved-voice processing result when returning to process audio", async () => {
+  it("preserves a saved-voice processing result when returning to Process Source Media", async () => {
     const user = userEvent.setup()
     renderApp()
 
@@ -2749,16 +2781,16 @@ describe("App", () => {
     await user.click(startButton)
 
     expect(await sampleProcessingPanel().findByLabelText("Processed sample preview")).toBeInTheDocument()
-    expect(sampleProcessingPanel().getByRole("button", { name: "Saved Voice" })).toHaveAttribute("aria-pressed", "true")
+    expect(sampleProcessingPanel().getByRole("radio", { name: "Saved Voice" })).toHaveAttribute("aria-checked", "true")
 
     const preparePanel = prepareAudioPanel()
     await user.click(preparePanel.getByRole("button", { name: /upload ready voice sample/i }))
     expect(preparePanel.getByRole("form", { name: "Add Voice" })).toBeInTheDocument()
 
-    await user.click(preparePanel.getByRole("button", { name: /process audio file/i }))
+    await user.click(preparePanel.getByRole("button", { name: /process source media/i }))
 
     expect(await sampleProcessingPanel().findByLabelText("Processed sample preview")).toBeInTheDocument()
-    expect(sampleProcessingPanel().getByRole("button", { name: "Saved Voice" })).toHaveAttribute("aria-pressed", "true")
+    expect(sampleProcessingPanel().getByRole("radio", { name: "Saved Voice" })).toHaveAttribute("aria-checked", "true")
     expect(sampleProcessingPanel().queryByRole("group", { name: "Audio Drop Zone" })).not.toBeInTheDocument()
   })
 
@@ -3220,7 +3252,7 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(sampleProcessingPanel().getByRole("button", { name: "Audio File" }))
+    await user.click(sampleProcessingPanel().getByRole("radio", { name: "Audio File" }))
     expect(sampleProcessingPanel().queryByText("Process From")).not.toBeInTheDocument()
     expect(sampleProcessingPanel().queryByRole("button", { name: "Explain Source Preference" })).not.toBeInTheDocument()
     expect(sampleProcessingPanel().getByLabelText("Audio File")).toHaveAttribute("tabindex", "-1")
@@ -3253,6 +3285,48 @@ describe("App", () => {
     expect(sampleProcessingPanel().queryByLabelText("Sample Processing Elapsed Time")).not.toBeInTheDocument()
   })
 
+  it("creates a sample processing job from an uploaded video file", async () => {
+    const user = userEvent.setup()
+    const sourceFile = new File(["source"], "clip.mp4", { type: "video/mp4" })
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.click(sampleProcessingPanel().getByRole("radio", { name: "Video File" }))
+    expect(sampleProcessingPanel().getByLabelText("Video File")).toHaveAttribute("tabindex", "-1")
+    await user.upload(sampleProcessingPanel().getByLabelText("Video File"), sourceFile)
+
+    expect(await sampleProcessingPanel().findByText("Source Selection")).toBeInTheDocument()
+    expect(sampleProcessingPanel().getByText("Video")).toBeInTheDocument()
+    expect(sampleProcessingPanel().getByText("Audio Stream 1")).toBeInTheDocument()
+    expect(sampleProcessingPanel().getByText("Selected 2m")).toBeInTheDocument()
+    expect(sampleProcessingPanel().getByLabelText("clip.mp4 Video Preview")).toHaveAttribute(
+      "src",
+      "/api/sample-processing/sources/source-1/media"
+    )
+    const startButton = sampleProcessingPanel().getByRole("button", { name: "Start Processing" })
+    await waitFor(() => expect(startButton).toBeEnabled())
+
+    await user.click(startButton)
+
+    const jobCall = vi.mocked(fetch).mock.calls.find(
+      ([url, init]) => String(url) === "/api/sample-processing/jobs" && init?.method === "POST"
+    )
+    const jobBody = jobCall?.[1]?.body as FormData
+    expect(jobBody.get("operationId")).toBe("isolateVoice")
+    expect(jobBody.get("sourceFile")).toBeNull()
+    expect(jobBody.get("sourceMediaId")).toBe("source-1")
+    expect(JSON.parse(jobBody.get("sourceRanges") as string)).toEqual([
+      { startSeconds: 0, endSeconds: 120, label: "Selected Range" },
+    ])
+    expect(jobBody.get("sourceVoiceId")).toBeNull()
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/sample-processing/sources/source-1",
+        expect.objectContaining({ method: "DELETE" })
+      )
+    )
+  })
+
   it("starts sample processing from selected M4B chapters", async () => {
     const user = userEvent.setup()
     const sourceFile = new File(["source"], "book.m4b", { type: "audio/mp4" })
@@ -3273,7 +3347,7 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(sampleProcessingPanel().getByRole("button", { name: "Audio File" }))
+    await user.click(sampleProcessingPanel().getByRole("radio", { name: "Audio File" }))
     await user.upload(sampleProcessingPanel().getByLabelText("Audio File"), sourceFile)
 
     expect(await sampleProcessingPanel().findByText("Source Selection")).toBeInTheDocument()
@@ -3302,7 +3376,7 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
-    await user.click(sampleProcessingPanel().getByRole("button", { name: "Audio File" }))
+    await user.click(sampleProcessingPanel().getByRole("radio", { name: "Audio File" }))
     fireEvent.drop(sampleProcessingPanel().getByRole("group", { name: "Audio Drop Zone" }), {
       dataTransfer: { files: [sourceFile] },
     })
@@ -3638,7 +3712,7 @@ describe("App", () => {
 
     expect((await screen.findAllByText("Preparing Sample")).length).toBeGreaterThan(0)
     expect(prepareAudioPanel().getByRole("button", { name: /upload ready voice sample/i })).toBeDisabled()
-    expect(prepareAudioPanel().getByRole("button", { name: /process audio file/i })).toBeDisabled()
+    expect(prepareAudioPanel().getByRole("button", { name: /process source media/i })).toBeDisabled()
     const recordButton = addVoicePanel().getByRole("button", { name: /^Record$/ })
     expect(recordButton).toBeDisabled()
 
@@ -3659,6 +3733,7 @@ describe("App", () => {
           {
             ...providersResponse.providers[0],
             sample: {
+              maxSelectedSourceAudioBytes: 1024 * 1024 * 1024,
               maxSourceUploadBytes: 1024 * 1024 * 1024,
               maxUploadBytes: 10 * 1024 * 1024,
               maxWindowSeconds: 2,
@@ -3737,6 +3812,7 @@ describe("App", () => {
             {
               ...providersResponse.providers[0],
               sample: {
+                maxSelectedSourceAudioBytes: 1024 * 1024 * 1024,
                 maxSourceUploadBytes: 1024 * 1024 * 1024,
                 maxUploadBytes: 10 * 1024 * 1024,
                 maxWindowSeconds: 2,
@@ -3775,6 +3851,7 @@ describe("App", () => {
           {
             ...providersResponse.providers[0],
             sample: {
+              maxSelectedSourceAudioBytes: 1024 * 1024 * 1024,
               maxSourceUploadBytes: 1024 * 1024 * 1024,
               maxUploadBytes: 10 * 1024 * 1024,
               maxWindowSeconds: 2,

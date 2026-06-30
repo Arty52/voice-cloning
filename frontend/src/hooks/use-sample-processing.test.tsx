@@ -476,10 +476,14 @@ const mediaSourceResponse = {
     id: "source-1",
     filename: "conversation.wav",
     contentType: "audio/wav",
+    mediaKind: "audio",
     sizeBytes: 3355443,
     sha256: "source-hash",
     durationSeconds: 240,
     sampleRateHz: 44100,
+    audioStreams: [],
+    selectedAudioStream: null,
+    selectedAudioStreamIndex: null,
     chapters: [],
     warnings: [],
   },
@@ -490,10 +494,14 @@ const chapteredMediaSourceResponse = {
     id: "source-book",
     filename: "book.m4b",
     contentType: "audio/mp4",
+    mediaKind: "audio",
     sizeBytes: 16777216,
     sha256: "book-hash",
     durationSeconds: 900,
     sampleRateHz: 44100,
+    audioStreams: [],
+    selectedAudioStream: null,
+    selectedAudioStreamIndex: null,
     chapters: [
       {
         id: "chapter-1",
@@ -746,6 +754,8 @@ describe("useSampleProcessing stacked workflow state", () => {
       result.current.handleSourceFileSelect(sourceFile)
     })
     await waitFor(() => expect(result.current.mediaSource.status).toBe("success"))
+    expect(result.current.sourceUploadKind).toBe("audio")
+    expect(result.current.mediaSource.sourceMediaUrl).toBe("/api/sample-processing/sources/source-1/media")
     await act(async () => {
       await result.current.handleStartProcessing(formEvent())
     })
@@ -816,6 +826,50 @@ describe("useSampleProcessing stacked workflow state", () => {
       )
     )
     expect(fetch).not.toHaveBeenCalledWith("/api/sample-processing/jobs", expect.anything())
+  })
+
+  it("clears staged media when switching local upload kind", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path === "/api/sample-processing/options" && !init) {
+          return okJson(stackProcessingOptions)
+        }
+        if (path === "/api/sample-processing/sources" && init?.method === "POST") {
+          return okJson(mediaSourceResponse, 201)
+        }
+        if (path === "/api/sample-processing/sources/source-1" && init?.method === "DELETE") {
+          return Promise.resolve(new Response(null, { status: 204 }))
+        }
+        return okJson({})
+      })
+    )
+    const sourceFile = new File(["source"], "conversation.wav", { type: "audio/wav" })
+    const { result } = renderHook(() =>
+      useSampleProcessing({ onVoiceSaved: vi.fn(), selectedVoice: sourceVoice, voices: [sourceVoice] })
+    )
+
+    await waitFor(() => expect(result.current.optionsStatus).toBe("success"))
+    act(() => {
+      result.current.handleSourceModeChange("upload")
+      result.current.handleSourceFileSelect(sourceFile)
+    })
+    await waitFor(() => expect(result.current.mediaSource.status).toBe("success"))
+
+    act(() => {
+      result.current.setSourceUploadKind("video")
+    })
+
+    expect(result.current.sourceMode).toBe("upload")
+    expect(result.current.sourceUploadKind).toBe("video")
+    expect(result.current.sourceFile).toBeNull()
+    expect(result.current.mediaSource.source).toBeNull()
+    expect(result.current.mediaSource.sourceMediaUrl).toBeNull()
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/sample-processing/sources/source-1",
+      expect.objectContaining({ method: "DELETE" })
+    )
   })
 
   it("requires an M4B chapter selection before submitting staged upload ranges", async () => {

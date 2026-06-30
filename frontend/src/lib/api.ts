@@ -264,6 +264,10 @@ export function sampleProcessingSourcePreviewUrl(sourceId: string, startSeconds:
   return `/api/sample-processing/sources/${encodeURIComponent(sourceId)}/preview?${params.toString()}`
 }
 
+export function sampleProcessingSourceMediaUrl(sourceId: string) {
+  return `/api/sample-processing/sources/${encodeURIComponent(sourceId)}/media`
+}
+
 export async function createSampleProcessingJob({
   cleanVoice,
   detectSpeakers,

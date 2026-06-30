@@ -1,7 +1,7 @@
 import { Mic, RotateCcw, Save, Square, Upload } from "lucide-react"
 import { type FormEvent } from "react"
 
-import { AudioFileDropZone } from "@/components/audio-file-drop-zone"
+import { MediaFileDropZone } from "@/components/media-file-drop-zone"
 import { AudioWindowCropper } from "@/components/audio-window-cropper"
 import { Button } from "@/components/ui/button"
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
@@ -116,7 +116,7 @@ export function AddVoicePanel({
         ) : null}
 
         <FieldGroup>
-          <AudioFileDropZone
+          <MediaFileDropZone
             disabled={isUploading || isPreparingSample || isRecorderBusy}
             id="sample-upload"
             label="Sample File"
@@ -133,7 +133,7 @@ export function AddVoicePanel({
               <Mic aria-hidden="true" data-icon="inline-start" />
               {recordButtonLabel}
             </Button>
-          </AudioFileDropZone>
+          </MediaFileDropZone>
 
           {isPreparingSample ? (
             <div className="rounded-md border border-border bg-background/60 p-3">

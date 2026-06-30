@@ -77,6 +77,7 @@ export function useSampleProcessingMediaSource() {
     (totalSeconds, range) => totalSeconds + Math.max(0, range.endSeconds - range.startSeconds),
     0
   )
+  const sourceMediaUrl = source ? api.sampleProcessingSourceMediaUrl(source.id) : null
 
   async function uploadSource(file: File | null) {
     const previousSourceId = sourceIdRef.current
@@ -178,6 +179,7 @@ export function useSampleProcessingMediaSource() {
     setManualRangeSeconds,
     showPreview,
     source,
+    sourceMediaUrl,
     status,
     uploadSource,
   }

@@ -12,6 +12,7 @@ import { FALLBACK_VOICE_PRESETS, normalizeVoicePresets } from "@/lib/voice-prese
 import type { AsyncStatus, ProviderKeySource, VoicePreset, VoiceProvider } from "@/types"
 
 const DEFAULT_PROVIDER_SAMPLE = {
+  maxSelectedSourceAudioBytes: 1024 * 1024 * 1024,
   maxWindowSeconds: 120,
   maxSourceUploadBytes: 1024 * 1024 * 1024,
   maxUploadBytes: 10 * 1024 * 1024,
@@ -119,11 +120,16 @@ function normalizeVoiceProvider(provider: VoiceProvider): VoiceProvider {
 }
 
 function normalizeProviderSample(sample: VoiceProvider["sample"]): VoiceProvider["sample"] {
+  const maxSourceUploadBytes = positiveNumberOrDefault(
+    sample?.maxSourceUploadBytes,
+    DEFAULT_PROVIDER_SAMPLE.maxSourceUploadBytes
+  )
   return {
     maxWindowSeconds: positiveNumberOrDefault(sample?.maxWindowSeconds, DEFAULT_PROVIDER_SAMPLE.maxWindowSeconds),
-    maxSourceUploadBytes: positiveNumberOrDefault(
-      sample?.maxSourceUploadBytes,
-      DEFAULT_PROVIDER_SAMPLE.maxSourceUploadBytes
+    maxSourceUploadBytes,
+    maxSelectedSourceAudioBytes: positiveNumberOrDefault(
+      sample?.maxSelectedSourceAudioBytes,
+      maxSourceUploadBytes
     ),
     maxUploadBytes: positiveNumberOrDefault(sample?.maxUploadBytes, DEFAULT_PROVIDER_SAMPLE.maxUploadBytes),
     recommendedMinSeconds: positiveNumberOrDefault(
