@@ -1,4 +1,4 @@
-import { ChevronDown, RefreshCw, SlidersHorizontal } from "lucide-react"
+import { Ban, CheckCircle2, ChevronDown, Circle, CircleAlert, Loader2, RefreshCw, SlidersHorizontal } from "lucide-react"
 import { useState } from "react"
 
 import { AudioPlayer } from "@/components/audio-player"
@@ -17,11 +17,15 @@ import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Loading } from "@/components/ui/loading"
 import { MenuSelect } from "@/components/ui/menu-select"
+import { PendingWorkStatus } from "@/components/ui/pending-work-status"
 import { Separator } from "@/components/ui/separator"
 import { VoiceTuningControls } from "@/components/voice-tuning-controls"
+import { formatElapsedTime } from "@/lib/formatters"
 import { cn } from "@/lib/utils"
 import { resolveSavedVoiceTuning, voiceTuningValuesEqual } from "@/lib/voice-tuning"
 import type {
+  GenerationPendingSegmentStatus,
+  GenerationPendingStatus,
   GeneratedAudioMultiVoiceSegmentMetadata,
   GeneratedResult,
   ProviderTuningControl,
@@ -34,6 +38,7 @@ import type {
 type LatestGeneratedAudioPanelProps = {
   activeProviderId?: string | null
   error: string | null
+  generationPendingStatus?: GenerationPendingStatus | null
   isDeleteDisabled: boolean
   isSavingVoiceTuning?: boolean
   item: GeneratedResult | null
@@ -52,6 +57,7 @@ type LatestGeneratedAudioPanelProps = {
 export function LatestGeneratedAudioPanel({
   activeProviderId = null,
   error,
+  generationPendingStatus = null,
   isDeleteDisabled,
   isSavingVoiceTuning = false,
   item,
@@ -68,6 +74,7 @@ export function LatestGeneratedAudioPanel({
 }: LatestGeneratedAudioPanelProps) {
   const isCanceled = status === "canceled"
   const isGenerating = status === "generating"
+  const visiblePendingStatus = isGenerating ? generationPendingStatus ?? fallbackGenerationPendingStatus : null
 
   if (!isGenerating && !error && !storageError && !item) {
     return null
@@ -103,11 +110,7 @@ export function LatestGeneratedAudioPanel({
         </div>
       ) : null}
 
-      {isGenerating ? (
-        <div className="rounded-md border border-border bg-background/60 p-3">
-          <Loading text="Generating Speech" variant="secondary" />
-        </div>
-      ) : null}
+      {visiblePendingStatus ? <GenerationPendingStatusView status={visiblePendingStatus} /> : null}
 
       {item ? (
         <>
@@ -139,6 +142,86 @@ export function LatestGeneratedAudioPanel({
   )
 }
 
+const fallbackGenerationPendingStatus: GenerationPendingStatus = {
+  activeDetail: null,
+  description: "Ready for playback as soon as generation finishes.",
+  elapsedMs: null,
+  meta: [],
+  segments: [],
+  statusLabel: "Running",
+  title: "Generating Speech",
+}
+
+function GenerationPendingStatusView({ status }: { status: GenerationPendingStatus }) {
+  const meta = (
+    <>
+      {status.elapsedMs !== null ? <Badge variant="secondary">Elapsed {formatElapsedTime(status.elapsedMs)}</Badge> : null}
+      {status.meta.map((item) => (
+        <Badge key={item} variant="secondary">
+          {item}
+        </Badge>
+      ))}
+    </>
+  )
+
+  return (
+    <PendingWorkStatus
+      aria-label={status.title}
+      description={status.description}
+      meta={meta}
+      statusLabel={status.statusLabel}
+      title={status.title}
+    >
+      {status.activeDetail ? (
+        <div className="rounded-md border border-border bg-card/70 p-3 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">Active: </span>
+          {status.activeDetail}
+        </div>
+      ) : null}
+      {status.segments.length > 0 ? (
+        <ol aria-label="Generation Progress" className="grid gap-2">
+          {status.segments.map((segment) => {
+            const SegmentIcon = generationSegmentStatusIcon(segment.status)
+            return (
+              <li
+                className={cn(
+                  "flex items-start gap-3 rounded-md border border-border bg-card/70 p-3",
+                  segment.isActive && "border-primary/60 bg-primary/10"
+                )}
+                key={segment.id}
+              >
+                <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full border border-border bg-background text-xs font-medium">
+                  {segment.index + 1}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="min-w-0 truncate text-sm font-medium">{segment.label}</span>
+                    <Badge
+                      className={cn(
+                        "gap-1.5",
+                        (segment.status === "error" || segment.status === "canceled") &&
+                          "border-destructive/40 bg-destructive/10 text-destructive"
+                      )}
+                      variant={segment.status === "success" ? "accent" : "secondary"}
+                    >
+                      <SegmentIcon aria-hidden="true" className={cn("size-3", segment.status === "running" && "animate-spin")} />
+                      {generationSegmentStatusLabel(segment.status)}
+                    </Badge>
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                    <span>{segment.voiceName}</span>
+                    {segment.detail ? <span>{segment.detail}</span> : null}
+                  </div>
+                </div>
+              </li>
+            )
+          })}
+        </ol>
+      ) : null}
+    </PendingWorkStatus>
+  )
+}
+
 type MultiVoiceSegmentResultsProps = {
   activeProviderId: string | null
   disabled: boolean
@@ -151,6 +234,38 @@ type MultiVoiceSegmentResultsProps = {
   segments: GeneratedAudioMultiVoiceSegmentMetadata[]
   tuning: VoiceTuningValues
   voices: VoiceAsset[]
+}
+
+function generationSegmentStatusIcon(status: GenerationPendingSegmentStatus) {
+  if (status === "running") {
+    return Loader2
+  }
+  if (status === "success") {
+    return CheckCircle2
+  }
+  if (status === "error") {
+    return CircleAlert
+  }
+  if (status === "canceled") {
+    return Ban
+  }
+  return Circle
+}
+
+function generationSegmentStatusLabel(status: GenerationPendingSegmentStatus) {
+  if (status === "pending") {
+    return "Queued"
+  }
+  if (status === "running") {
+    return "Running"
+  }
+  if (status === "success") {
+    return "Complete"
+  }
+  if (status === "error") {
+    return "Error"
+  }
+  return "Canceled"
 }
 
 function MultiVoiceSegmentResults({
