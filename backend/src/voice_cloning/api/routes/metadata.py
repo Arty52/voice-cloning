@@ -24,6 +24,7 @@ def create_metadata_router(settings: Settings, provider_registry: ProviderRegist
             provider_registry.server_key_configured_by_provider(),
             max_upload_bytes=settings.max_upload_bytes,
             max_source_upload_bytes=settings.max_source_upload_bytes,
+            max_selected_source_audio_bytes=settings.max_selected_source_audio_bytes,
         )
 
     @router.get("/api/subscription")

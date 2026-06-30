@@ -553,6 +553,7 @@ def make_settings(
     with_default_sample: bool = True,
     max_upload_bytes: int = 10 * 1024 * 1024,
     max_source_upload_bytes: int = 1024 * 1024 * 1024,
+    max_selected_source_audio_bytes: int = 1024 * 1024 * 1024,
     sample_processing_ffmpeg_command: str = "ffmpeg",
     sample_processing_ffprobe_command: str = "ffprobe",
 ) -> Settings:
@@ -575,6 +576,7 @@ def make_settings(
         cors_allowed_origins=["http://localhost:4340"],
         max_upload_bytes=max_upload_bytes,
         max_source_upload_bytes=max_source_upload_bytes,
+        max_selected_source_audio_bytes=max_selected_source_audio_bytes,
         sample_processing_ffmpeg_command=sample_processing_ffmpeg_command,
         sample_processing_ffprobe_command=sample_processing_ffprobe_command,
     )
@@ -586,6 +588,7 @@ def make_client(
     with_default_sample: bool = True,
     max_upload_bytes: int = 10 * 1024 * 1024,
     max_source_upload_bytes: int = 1024 * 1024 * 1024,
+    max_selected_source_audio_bytes: int = 1024 * 1024 * 1024,
     ffmpeg_command: Path | None = None,
 ) -> tuple[TestClient, FakeElevenLabsProvider]:
     settings = make_settings(
@@ -594,6 +597,7 @@ def make_client(
         with_default_sample=with_default_sample,
         max_upload_bytes=max_upload_bytes,
         max_source_upload_bytes=max_source_upload_bytes,
+        max_selected_source_audio_bytes=max_selected_source_audio_bytes,
         sample_processing_ffmpeg_command=str(ffmpeg_command or ffmpeg_fake_command(tmp_path / "ffmpeg-fake")),
     )
     fake_client = FakeElevenLabsProvider().bind_settings(settings)
@@ -653,12 +657,28 @@ def test_settings_blank_sample_processing_timeout_uses_default(
 def test_settings_loads_upload_caps_from_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("APP_ROOT", str(tmp_path))
     monkeypatch.setenv("MAX_UPLOAD_BYTES", "12345")
-    monkeypatch.setenv("MAX_SOURCE_UPLOAD_BYTES", "1073741824")
+    monkeypatch.setenv("MAX_SOURCE_UPLOAD_BYTES", "123456")
+    monkeypatch.setenv("MAX_SELECTED_SOURCE_AUDIO_BYTES", "654321")
 
     settings = Settings.from_env()
 
     assert settings.max_upload_bytes == 12345
-    assert settings.max_source_upload_bytes == 1024 * 1024 * 1024
+    assert settings.max_source_upload_bytes == 123456
+    assert settings.max_selected_source_audio_bytes == 654321
+
+
+def test_settings_defaults_selected_source_audio_cap_to_source_upload_cap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_ROOT", str(tmp_path))
+    monkeypatch.setenv("MAX_SOURCE_UPLOAD_BYTES", "123456")
+    monkeypatch.delenv("MAX_SELECTED_SOURCE_AUDIO_BYTES", raising=False)
+
+    settings = Settings.from_env()
+
+    assert settings.max_source_upload_bytes == 123456
+    assert settings.max_selected_source_audio_bytes == 123456
 
 
 def test_streamed_upload_writes_file_and_sha_metadata(tmp_path: Path) -> None:
@@ -992,6 +1012,7 @@ def test_sample_processing_media_source_preview_is_cached_and_bounded(tmp_path: 
     preview_args = args_log[0]
     assert preview_args[preview_args.index("-ss") + 1] == "10"
     assert preview_args[preview_args.index("-t") + 1] == "90"
+    assert preview_args[preview_args.index("-map") + 1] == "0:a:0"
     assert preview_args[preview_args.index("-c:a") + 1] == "libmp3lame"
 
 
@@ -1545,6 +1566,7 @@ def test_providers_endpoint_returns_public_provider_descriptor(tmp_path: Path) -
         "targetSampleRateHz": 16000,
         "maxUploadBytes": 10 * 1024 * 1024,
         "maxSourceUploadBytes": 1024 * 1024 * 1024,
+        "maxSelectedSourceAudioBytes": 1024 * 1024 * 1024,
     }
     assert provider["links"][0]["label"] == "API Requests"
     assert "server-secret" not in response.text
@@ -3974,6 +3996,9 @@ def test_sample_processing_job_accepts_selected_media_source_range(tmp_path: Pat
     extract_args = args_log[0]
     assert extract_args[extract_args.index("-ss") + 1] == "0"
     assert extract_args[extract_args.index("-t") + 1] == "420.5"
+    assert extract_args[extract_args.index("-map") + 1] == "0:a:0"
+    assert extract_args[extract_args.index("-ac") + 1] == "1"
+    assert extract_args[extract_args.index("-ar") + 1] == "16000"
     assert extract_args[extract_args.index("-c:a") + 1] == "pcm_s16le"
 
 
@@ -4105,7 +4130,7 @@ def test_sample_processing_job_rejects_missing_media_source(tmp_path: Path) -> N
 def test_sample_processing_job_enforces_selected_media_source_cap(tmp_path: Path) -> None:
     settings = make_settings(
         tmp_path,
-        max_source_upload_bytes=10,
+        max_selected_source_audio_bytes=10,
         sample_processing_ffmpeg_command=str(
             ffmpeg_fake_command(tmp_path / "ffmpeg-fake", output=b"larger-than-cap")
         ),

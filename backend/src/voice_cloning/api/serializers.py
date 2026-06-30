@@ -116,6 +116,7 @@ def providers_payload(
     *,
     max_upload_bytes: int,
     max_source_upload_bytes: int,
+    max_selected_source_audio_bytes: int,
 ) -> dict[str, object]:
     return {
         "defaultProviderId": default_provider_id,
@@ -136,6 +137,7 @@ def providers_payload(
                     "targetSampleRateHz": provider.sample.target_sample_rate_hz,
                     "maxUploadBytes": max_upload_bytes,
                     "maxSourceUploadBytes": max_source_upload_bytes,
+                    "maxSelectedSourceAudioBytes": max_selected_source_audio_bytes,
                 },
             }
             for provider in providers

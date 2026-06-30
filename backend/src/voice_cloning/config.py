@@ -83,6 +83,7 @@ class Settings:
     speech_job_segment_gap_ms: int = 250
     max_upload_bytes: int = 10 * 1024 * 1024
     max_source_upload_bytes: int = 1024 * 1024 * 1024
+    max_selected_source_audio_bytes: int = 1024 * 1024 * 1024
     max_text_chars: int = 5000
     sample_processing_engine: str = ""
     sample_processing_demucs_command: str = "demucs"
@@ -117,6 +118,7 @@ class Settings:
             "CORS_ALLOWED_ORIGINS",
             "http://localhost:4340,http://127.0.0.1:4340",
         )
+        max_source_upload_bytes = _positive_int_env("MAX_SOURCE_UPLOAD_BYTES", 1024 * 1024 * 1024)
 
         return cls(
             app_root=app_root,
@@ -134,7 +136,11 @@ class Settings:
             cors_allowed_origins=_split_csv(origins),
             speech_job_segment_gap_ms=_non_negative_int_env("SPEECH_JOB_SEGMENT_GAP_MS", 250),
             max_upload_bytes=_positive_int_env("MAX_UPLOAD_BYTES", 10 * 1024 * 1024),
-            max_source_upload_bytes=_positive_int_env("MAX_SOURCE_UPLOAD_BYTES", 1024 * 1024 * 1024),
+            max_source_upload_bytes=max_source_upload_bytes,
+            max_selected_source_audio_bytes=_positive_int_env(
+                "MAX_SELECTED_SOURCE_AUDIO_BYTES",
+                max_source_upload_bytes,
+            ),
             sample_processing_engine=os.getenv("SAMPLE_PROCESSING_ENGINE", "").strip().lower(),
             sample_processing_demucs_command=os.getenv("SAMPLE_PROCESSING_DEMUCS_COMMAND", "demucs").strip()
             or "demucs",

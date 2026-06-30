@@ -130,6 +130,8 @@ class SampleProcessingMediaSourceService:
                     seconds_arg(duration),
                     "-i",
                     str(source_path),
+                    "-map",
+                    "0:a:0",
                     "-vn",
                     "-ac",
                     "1",
