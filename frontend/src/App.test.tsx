@@ -549,20 +549,43 @@ function sampleProcessingMediaSourceFrom(init?: RequestInit) {
   const filename = sourceFile instanceof File ? sourceFile.name : "source.wav"
   const contentType = sourceFile instanceof File ? sourceFile.type || "audio/wav" : "audio/wav"
   const sizeBytes = sourceFile instanceof File ? sourceFile.size : 6
+  const isVideo = contentType.startsWith("video/")
 
   return {
     source: {
       id: "source-1",
       filename,
       contentType,
-      mediaKind: "audio" as const,
+      mediaKind: isVideo ? "video" as const : "audio" as const,
       sizeBytes,
       sha256: "source-hash",
       durationSeconds: 240,
-      sampleRateHz: 44100,
-      audioStreams: [],
-      selectedAudioStream: null,
-      selectedAudioStreamIndex: null,
+      sampleRateHz: isVideo ? 48000 : 44100,
+      audioStreams: isVideo
+        ? [
+            {
+              index: 1,
+              codecName: "aac",
+              sampleRateHz: 48000,
+              channels: 2,
+              channelLayout: "stereo",
+              language: "eng",
+              title: "Main Audio",
+            },
+          ]
+        : [],
+      selectedAudioStream: isVideo
+        ? {
+            index: 1,
+            codecName: "aac",
+            sampleRateHz: 48000,
+            channels: 2,
+            channelLayout: "stereo",
+            language: "eng",
+            title: "Main Audio",
+          }
+        : null,
+      selectedAudioStreamIndex: isVideo ? 1 : null,
       chapters: [],
       warnings: [],
     },
@@ -3260,6 +3283,48 @@ describe("App", () => {
       expect(sampleProcessingPanel().queryByLabelText("Processed sample preview")).not.toBeInTheDocument()
     })
     expect(sampleProcessingPanel().queryByLabelText("Sample Processing Elapsed Time")).not.toBeInTheDocument()
+  })
+
+  it("creates a sample processing job from an uploaded video file", async () => {
+    const user = userEvent.setup()
+    const sourceFile = new File(["source"], "clip.mp4", { type: "video/mp4" })
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.click(sampleProcessingPanel().getByRole("radio", { name: "Video File" }))
+    expect(sampleProcessingPanel().getByLabelText("Video File")).toHaveAttribute("tabindex", "-1")
+    await user.upload(sampleProcessingPanel().getByLabelText("Video File"), sourceFile)
+
+    expect(await sampleProcessingPanel().findByText("Source Selection")).toBeInTheDocument()
+    expect(sampleProcessingPanel().getByText("Video")).toBeInTheDocument()
+    expect(sampleProcessingPanel().getByText("Audio Stream 1")).toBeInTheDocument()
+    expect(sampleProcessingPanel().getByText("Selected 2m")).toBeInTheDocument()
+    expect(sampleProcessingPanel().getByLabelText("clip.mp4 Video Preview")).toHaveAttribute(
+      "src",
+      "/api/sample-processing/sources/source-1/media"
+    )
+    const startButton = sampleProcessingPanel().getByRole("button", { name: "Start Processing" })
+    await waitFor(() => expect(startButton).toBeEnabled())
+
+    await user.click(startButton)
+
+    const jobCall = vi.mocked(fetch).mock.calls.find(
+      ([url, init]) => String(url) === "/api/sample-processing/jobs" && init?.method === "POST"
+    )
+    const jobBody = jobCall?.[1]?.body as FormData
+    expect(jobBody.get("operationId")).toBe("isolateVoice")
+    expect(jobBody.get("sourceFile")).toBeNull()
+    expect(jobBody.get("sourceMediaId")).toBe("source-1")
+    expect(JSON.parse(jobBody.get("sourceRanges") as string)).toEqual([
+      { startSeconds: 0, endSeconds: 120, label: "Selected Range" },
+    ])
+    expect(jobBody.get("sourceVoiceId")).toBeNull()
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/sample-processing/sources/source-1",
+        expect.objectContaining({ method: "DELETE" })
+      )
+    )
   })
 
   it("starts sample processing from selected M4B chapters", async () => {
