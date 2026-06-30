@@ -15,6 +15,10 @@ The FastAPI service is available at `http://localhost:6420` when the Docker stac
 - `DELETE /api/voices/{voiceId}`
 - `PUT /api/voices/default`
 - `GET /api/sample-processing/options`
+- `POST /api/sample-processing/sources`
+- `GET /api/sample-processing/sources/{sourceId}`
+- `GET /api/sample-processing/sources/{sourceId}/preview`
+- `DELETE /api/sample-processing/sources/{sourceId}`
 - `POST /api/sample-processing/jobs`
 - `GET /api/sample-processing/jobs/{jobId}`
 - `GET /api/sample-processing/jobs/{jobId}/result`
@@ -262,6 +266,34 @@ Operations can run alone or as a backend-owned stack. The recommended stacked or
 }
 ```
 
+`POST /api/sample-processing/sources` accepts multipart `sourceFile` and stages an inspectable media source under ignored `storage/sample-processing/sources/`. It accepts the same audio upload validation as sample processing, including `.m4b` files and MPEG-4 audio MIME aliases such as `audio/mp4`, `audio/mp4a-latm`, `audio/m4b`, and `audio/x-m4b`. The response includes FFprobe duration, first audio stream sample rate, parsed chapters when present, and warnings:
+
+```json
+{
+  "source": {
+    "id": "source-id",
+    "filename": "book.m4b",
+    "contentType": "audio/mp4",
+    "sizeBytes": 123,
+    "sha256": "...",
+    "durationSeconds": 3600.0,
+    "sampleRateHz": 44100,
+    "chapters": [
+      {
+        "id": "chapter-1",
+        "title": "Chapter 1",
+        "startSeconds": 0.0,
+        "endSeconds": 420.5,
+        "durationSeconds": 420.5
+      }
+    ],
+    "warnings": []
+  }
+}
+```
+
+`GET /api/sample-processing/sources/{sourceId}` returns the staged metadata. `GET /api/sample-processing/sources/{sourceId}/preview?startSeconds=0&durationSeconds=90` returns a cached bounded `audio/mpeg` preview clip for UI playback. `DELETE /api/sample-processing/sources/{sourceId}` removes the staged upload, metadata, and preview cache; the frontend calls it when a source is replaced or after job creation succeeds.
+
 `POST /api/sample-processing/jobs` accepts multipart form fields:
 
 - `operationId`: required for one-step jobs; operation id is currently `prepareVoice`, `isolateVoice`, `trimSilence`, or `separateSpeakers` when the matching local processor is enabled
@@ -273,8 +305,12 @@ Operations can run alone or as a backend-owned stack. The recommended stacked or
 - `sourceVoiceId`: optional saved local voice id
 - `sourcePreference`: optional, either `original` or `active`; `original` uses the retained full upload/source file when one exists and falls back to the active provider-facing sample when none exists; `active` always uses the provider-facing sample currently stored for the selected voice
 - `sourceFile`: optional uploaded audio source
+- `sourceMediaId`: optional staged media source id from `POST /api/sample-processing/sources`
+- `sourceRanges`: optional JSON array used with `sourceMediaId`; each entry is `{ "startSeconds": number, "endSeconds": number, "label"?: string }`
 
-Exactly one of `sourceVoiceId` or `sourceFile` is required. The endpoint returns `202` with the created job:
+Exactly one of `sourceVoiceId`, `sourceFile`, or `sourceMediaId` is required. When `sourceMediaId` is used, at least one finite nonnegative `sourceRanges` entry is required, each range must have `endSeconds > startSeconds`, and ranges must fit within known media duration. Selected ranges are extracted in request order to mono 16 kHz WAV; multiple ranges are concatenated before processing.
+
+The endpoint returns `202` with the created job:
 
 For a stacked workflow, send `workflowSteps` as JSON:
 
@@ -317,6 +353,17 @@ For a stacked workflow, send `workflowSteps` as JSON:
     "sourceSha256": "abc123",
     "sourceSizeBytes": 7340032,
     "sourcePreference": "original",
+    "sourceSelection": {
+      "sourceMediaId": "source-id",
+      "ranges": [
+        {
+          "startSeconds": 0.0,
+          "endSeconds": 420.5,
+          "durationSeconds": 420.5,
+          "label": "Chapter 1"
+        }
+      ]
+    },
     "engine": "demucs",
     "estimatedDurationRangeSeconds": null,
     "progressPhases": [],
