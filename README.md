@@ -122,6 +122,7 @@ The Docker build uses CPU-only PyTorch, Torchaudio, and TorchCodec wheels when `
 - [Public Media Guidelines](docs/PUBLIC_MEDIA.md): public-safe screenshot and documentation media rules.
 - [Architecture Standards](docs/ARCHITECTURE.md): backend/frontend boundaries for implementation work.
 - [How To Add A Provider](docs/ADDING_PROVIDER.md): provider adapter responsibilities and validation.
+- [Video Source Media Rollout Notes](docs/VIDEO_SOURCE_MEDIA_ROLLOUT.md): draft PR stack, validation evidence, and Ready gates for local video source media.
 
 ## Local Development
 
