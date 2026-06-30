@@ -2,11 +2,11 @@ import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 
-import { AudioFileDropZone } from "@/components/audio-file-drop-zone"
+import { MediaFileDropZone } from "@/components/media-file-drop-zone"
 
-describe("AudioFileDropZone", () => {
+describe("MediaFileDropZone", () => {
   it("shows supported audio formats in the helper copy", () => {
-    render(<AudioFileDropZone id="sample-file" label="Sample File" onFileSelect={vi.fn()} />)
+    render(<MediaFileDropZone id="sample-file" label="Sample File" onFileSelect={vi.fn()} />)
 
     expect(
       screen.getByText("Drag an audio file here, or choose one from your computer. Supports MP3, WAV, M4A, AAC, OGG, and FLAC.")
@@ -19,7 +19,7 @@ describe("AudioFileDropZone", () => {
 
   it("allows upload flows to provide broader accepted formats and helper copy", () => {
     render(
-      <AudioFileDropZone
+      <MediaFileDropZone
         accept="audio/*,.m4b"
         helperCopy="Supports MP3, WAV, M4A, M4B, AAC, OGG, and FLAC."
         id="sample-file"
@@ -34,7 +34,7 @@ describe("AudioFileDropZone", () => {
 
   it("allows source media flows to provide video labels and accepted formats", () => {
     render(
-      <AudioFileDropZone
+      <MediaFileDropZone
         accept=".mp4,.m4v,.mov,video/mp4,video/x-m4v,video/quicktime"
         ariaLabel="Video Drop Zone"
         chooseLabel="Choose Video"
@@ -61,7 +61,7 @@ describe("AudioFileDropZone", () => {
     const onFileSelect = vi.fn()
     const file = new File(["sample"], "voice.wav", { type: "audio/wav" })
 
-    render(<AudioFileDropZone id="sample-file" label="Sample File" onFileSelect={onFileSelect} />)
+    render(<MediaFileDropZone id="sample-file" label="Sample File" onFileSelect={onFileSelect} />)
 
     const input = screen.getByLabelText("Sample File") as HTMLInputElement
     await user.upload(input, file)

@@ -21,7 +21,7 @@ import {
   Wand2,
 } from "lucide-react"
 
-import { AudioFileDropZone } from "@/components/audio-file-drop-zone"
+import { MediaFileDropZone } from "@/components/media-file-drop-zone"
 import { AudioPlayer } from "@/components/audio-player"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -543,7 +543,7 @@ function SourceSelection({
         </>
       ) : (
         <>
-          <AudioFileDropZone
+          <MediaFileDropZone
             accept={uploadCopy.accept}
             ariaLabel={uploadCopy.dropZoneLabel}
             chooseLabel={uploadCopy.chooseLabel}
