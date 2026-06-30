@@ -17,6 +17,8 @@ import type {
   VoicePresetId,
 } from "@/types"
 
+import { useSampleProcessingMediaSource } from "./use-sample-processing-media-source"
+
 export type SampleProcessingSourceMode = "voice" | "upload"
 export type SampleProcessingStatus = "idle" | "starting" | "processing" | "success" | "error" | "canceled"
 
@@ -82,6 +84,7 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
   const assignmentRequestIdRef = useRef(0)
   const speakerSaveRequestIdRef = useRef(0)
   const candidateSaveRequestIdRef = useRef(0)
+  const mediaSource = useSampleProcessingMediaSource()
 
   const operations = useMemo(() => options?.operations ?? [], [options])
   const enabledOperations = useMemo(() => operations.filter((operation) => operation.enabled), [operations])
@@ -140,7 +143,12 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
     sourceMode === "voice" && sourcePreference === "original" && !canUseOriginalRecording ? "active" : sourcePreference
   const voiceOptions = useMemo(() => voices.map((voice) => ({ label: voice.name, value: voice.id })), [voices])
   const isProcessing = status === "starting" || status === "processing"
-  const hasSource = sourceMode === "upload" ? sourceFile !== null : resolvedSourceVoiceId.trim().length > 0
+  const hasUploadSource =
+    mediaSource.status === "success" &&
+    mediaSource.source !== null &&
+    mediaSource.selectedRanges.length > 0 &&
+    mediaSource.selectedDurationSeconds > 0
+  const hasSource = sourceMode === "upload" ? hasUploadSource : resolvedSourceVoiceId.trim().length > 0
   const canStart = !isProcessing && selectedWorkflowSteps.length > 0 && hasSource
   const canCancel = isProcessing && activeJobIdRef.current !== null
   const activeStep = (job?.steps ?? []).find((step) => step.id === job?.activeStepId) ?? null
@@ -152,7 +160,9 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
       estimatePrepareDurationRangeSeconds({
         cleanVoice: prepareCleanVoice && canCleanVoice,
         detectSpeakers: prepareDetectSpeakers && canDetectSpeakers,
-        sourceSizeBytes: isPrepareVoiceSelected && sourceMode === "upload" ? sourceFile?.size ?? null : null,
+        sourceSizeBytes: isPrepareVoiceSelected && sourceMode === "upload"
+          ? mediaSource.source?.sizeBytes ?? sourceFile?.size ?? null
+          : null,
         trimCandidates: prepareTrimCandidates,
       }),
     [
@@ -163,6 +173,7 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
       prepareCleanVoice,
       prepareDetectSpeakers,
       prepareTrimCandidates,
+      mediaSource.source?.sizeBytes,
       sourceFile?.size,
       sourceMode,
     ]
@@ -386,6 +397,10 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
       return
     }
     setSourceMode(nextMode)
+    if (nextMode === "voice") {
+      setSourceFile(null)
+      void mediaSource.deleteCurrentSource()
+    }
     resetProcessedCandidate()
   }
 
@@ -395,6 +410,7 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
 
   function handleSourceFileSelect(nextFile: File | null) {
     setSourceFile(nextFile)
+    void mediaSource.uploadSource(nextFile)
     resetProcessedCandidate()
   }
 
@@ -503,14 +519,18 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
 
     try {
       const isPrepareJob = workflowSteps.length === 1 && primaryStep?.operationId === "prepareVoice"
+      const stagedMediaSourceId = sourceMode === "upload" ? mediaSource.source?.id ?? null : null
+      const sourceRanges = sourceMode === "upload" ? mediaSource.selectedRanges : undefined
       const payload = await api.createSampleProcessingJob({
         cleanVoice: isPrepareJob ? prepareCleanVoice && canCleanVoice : undefined,
         detectSpeakers: isPrepareJob ? prepareDetectSpeakers && canDetectSpeakers : undefined,
         isolationPresetId: isPrepareJob && prepareCleanVoice && canCleanVoice ? prepareIsolationPresetId : undefined,
         operationId: workflowSteps.length === 1 ? primaryStep?.operationId : undefined,
         processingPresetId: workflowSteps.length === 1 && !isPrepareJob ? primaryStep?.processingPresetId : null,
-        sourceFile: sourceMode === "upload" ? sourceFile : null,
+        sourceFile: null,
+        sourceMediaId: stagedMediaSourceId,
         sourcePreference: sourceMode === "voice" ? effectiveSourcePreference : undefined,
+        sourceRanges,
         sourceVoiceId: sourceMode === "voice" ? resolvedSourceVoiceId : null,
         trimCandidates: isPrepareJob ? prepareTrimCandidates : undefined,
         trimPresetId: isPrepareJob && prepareTrimCandidates ? prepareTrimPresetIdForRequest : undefined,
@@ -520,6 +540,10 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
         return
       }
       updateJob(payload.job)
+      if (stagedMediaSourceId) {
+        setSourceFile(null)
+        void mediaSource.deleteCurrentSource()
+      }
       if (payload.job.status === "success") {
         finishProcessingTimer()
         setStatus("success")
@@ -988,6 +1012,7 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
     isPreparedSamplesJob,
     isSpeakerSeparationJob,
     job,
+    mediaSource,
     operationId,
     operations,
     options,

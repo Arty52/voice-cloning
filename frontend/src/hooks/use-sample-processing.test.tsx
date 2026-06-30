@@ -471,6 +471,49 @@ const runningPrepareJob: SampleProcessingJobResponse = {
   },
 }
 
+const mediaSourceResponse = {
+  source: {
+    id: "source-1",
+    filename: "conversation.wav",
+    contentType: "audio/wav",
+    sizeBytes: 3355443,
+    sha256: "source-hash",
+    durationSeconds: 240,
+    sampleRateHz: 44100,
+    chapters: [],
+    warnings: [],
+  },
+}
+
+const chapteredMediaSourceResponse = {
+  source: {
+    id: "source-book",
+    filename: "book.m4b",
+    contentType: "audio/mp4",
+    sizeBytes: 16777216,
+    sha256: "book-hash",
+    durationSeconds: 900,
+    sampleRateHz: 44100,
+    chapters: [
+      {
+        id: "chapter-1",
+        title: "Chapter 1",
+        startSeconds: 0,
+        endSeconds: 120,
+        durationSeconds: 120,
+      },
+      {
+        id: "chapter-2",
+        title: "Chapter 2",
+        startSeconds: 120,
+        endSeconds: 240,
+        durationSeconds: 120,
+      },
+    ],
+    warnings: [],
+  },
+}
+
 const canceledPrepareJob: SampleProcessingJobResponse = {
   job: {
     ...runningPrepareJob.job,
@@ -621,6 +664,12 @@ describe("useSampleProcessing stacked workflow state", () => {
         if (path === "/api/sample-processing/options" && !init) {
           return okJson(stackProcessingOptions)
         }
+        if (path === "/api/sample-processing/sources" && init?.method === "POST") {
+          return okJson(mediaSourceResponse, 201)
+        }
+        if (path === "/api/sample-processing/sources/source-1" && init?.method === "DELETE") {
+          return Promise.resolve(new Response(null, { status: 204 }))
+        }
         if (path === "/api/sample-processing/jobs" && init?.method === "POST") {
           return okJson(successfulStackJob, 202)
         }
@@ -666,6 +715,12 @@ describe("useSampleProcessing stacked workflow state", () => {
         if (path === "/api/sample-processing/options" && !init) {
           return okJson(stackProcessingOptions)
         }
+        if (path === "/api/sample-processing/sources" && init?.method === "POST") {
+          return okJson(mediaSourceResponse, 201)
+        }
+        if (path === "/api/sample-processing/sources/source-1" && init?.method === "DELETE") {
+          return Promise.resolve(new Response(null, { status: 204 }))
+        }
         if (path === "/api/sample-processing/jobs" && init?.method === "POST") {
           return okJson(successfulStackJob, 202)
         }
@@ -690,6 +745,7 @@ describe("useSampleProcessing stacked workflow state", () => {
       result.current.handleSourceModeChange("upload")
       result.current.handleSourceFileSelect(sourceFile)
     })
+    await waitFor(() => expect(result.current.mediaSource.status).toBe("success"))
     await act(async () => {
       await result.current.handleStartProcessing(formEvent())
     })
@@ -704,8 +760,71 @@ describe("useSampleProcessing stacked workflow state", () => {
       { operationId: "separateSpeakers", processingPresetId: null },
       { operationId: "trimSilence", processingPresetId: "trimAggressive" },
     ])
-    expect(body.get("sourceFile")).toBe(sourceFile)
+    expect(body.get("sourceFile")).toBeNull()
+    expect(body.get("sourceMediaId")).toBe("source-1")
+    expect(JSON.parse(body.get("sourceRanges") as string)).toEqual([
+      { startSeconds: 0, endSeconds: 120, label: "Selected Range" },
+    ])
     expect(result.current.selectedOperationIds).toEqual(["isolateVoice", "separateSpeakers", "trimSilence"])
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/sample-processing/sources/source-1",
+      expect.objectContaining({ method: "DELETE" })
+    )
+  })
+
+  it("requires an M4B chapter selection before submitting staged upload ranges", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path === "/api/sample-processing/options" && !init) {
+          return okJson(prepareProcessingOptions)
+        }
+        if (path === "/api/sample-processing/sources" && init?.method === "POST") {
+          return okJson(chapteredMediaSourceResponse, 201)
+        }
+        if (path === "/api/sample-processing/sources/source-book" && init?.method === "DELETE") {
+          return Promise.resolve(new Response(null, { status: 204 }))
+        }
+        if (path === "/api/sample-processing/jobs" && init?.method === "POST") {
+          return okJson(preparedSamplesJob, 202)
+        }
+        return okJson({})
+      })
+    )
+    const sourceFile = new File(["source"], "book.m4b", { type: "audio/mp4" })
+    const { result } = renderHook(() =>
+      useSampleProcessing({ onVoiceSaved: vi.fn(), selectedVoice: retainedSourceVoice, voices: [retainedSourceVoice] })
+    )
+
+    await waitFor(() => expect(result.current.optionsStatus).toBe("success"))
+    act(() => {
+      result.current.handleSourceModeChange("upload")
+      result.current.handleSourceFileSelect(sourceFile)
+    })
+    await waitFor(() => expect(result.current.mediaSource.status).toBe("success"))
+
+    expect(result.current.mediaSource.source?.filename).toBe("book.m4b")
+    expect(result.current.canStart).toBe(false)
+
+    act(() => {
+      result.current.mediaSource.setChapterSelected("chapter-2", true)
+    })
+    expect(result.current.canStart).toBe(true)
+
+    await act(async () => {
+      await result.current.handleStartProcessing(formEvent())
+    })
+
+    const createCall = vi
+      .mocked(fetch)
+      .mock.calls.find(([url, init]) => String(url) === "/api/sample-processing/jobs" && init?.method === "POST")
+    const body = createCall?.[1]?.body as FormData
+    expect(body.get("sourceMediaId")).toBe("source-book")
+    expect(JSON.parse(body.get("sourceRanges") as string)).toEqual([
+      { startSeconds: 120, endSeconds: 240, label: "Chapter 2" },
+    ])
+    expect(body.get("sourceFile")).toBeNull()
   })
 
   it("resets a selected stack when a single operation is selected again", async () => {
@@ -996,6 +1115,12 @@ describe("useSampleProcessing stacked workflow state", () => {
         if (path === "/api/sample-processing/options" && !init) {
           return okJson(prepareProcessingOptions)
         }
+        if (path === "/api/sample-processing/sources" && init?.method === "POST") {
+          return okJson(mediaSourceResponse, 201)
+        }
+        if (path === "/api/sample-processing/sources/source-1" && init?.method === "DELETE") {
+          return Promise.resolve(new Response(null, { status: 204 }))
+        }
         if (path === "/api/sample-processing/jobs" && init?.method === "POST") {
           return okJson(runningPrepareJob, 202)
         }
@@ -1018,6 +1143,7 @@ describe("useSampleProcessing stacked workflow state", () => {
       result.current.handleSourceModeChange("upload")
       result.current.handleSourceFileSelect(sourceFile)
     })
+    await waitFor(() => expect(result.current.mediaSource.status).toBe("success"))
 
     expect(result.current.prepareEstimateRangeSeconds).not.toBeNull()
 
