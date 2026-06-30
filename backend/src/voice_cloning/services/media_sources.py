@@ -32,10 +32,10 @@ class SampleProcessingMediaSourceService:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.sources_dir = settings.sample_processing_dir / "sources"
-        self.sources_dir.mkdir(parents=True, exist_ok=True)
 
     async def create_source(self, upload: UploadFile) -> SampleProcessingMediaSource:
         source_id = uuid4().hex
+        self.sources_dir.mkdir(parents=True, exist_ok=True)
         source_dir = self._source_dir(source_id)
         source_dir.mkdir(parents=True, exist_ok=False)
         try:
