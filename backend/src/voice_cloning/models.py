@@ -237,6 +237,23 @@ class SampleProcessingJobStep:
 
 
 @dataclass(frozen=True)
+class SampleProcessingDurationRange:
+    min_seconds: int
+    max_seconds: int
+
+
+@dataclass(frozen=True)
+class SampleProcessingProgressPhase:
+    id: str
+    label: str
+    status: SampleProcessingStepStatus
+    started_at: str | None = None
+    completed_at: str | None = None
+    error: str | None = None
+    detail: str | None = None
+
+
+@dataclass(frozen=True)
 class SampleProcessingJob:
     id: str
     operation_id: SampleProcessingOperationId
@@ -245,6 +262,7 @@ class SampleProcessingJob:
     source_filename: str
     source_content_type: str
     source_sha256: str
+    source_size_bytes: int | None
     source_preference: SampleProcessingSourcePreference
     created_at: str
     updated_at: str
@@ -256,6 +274,9 @@ class SampleProcessingJob:
     workflow_mode: SampleProcessingWorkflowMode = "single"
     steps: tuple[SampleProcessingJobStep, ...] = ()
     active_step_id: str | None = None
+    estimated_duration_range_seconds: SampleProcessingDurationRange | None = None
+    progress_phases: tuple[SampleProcessingProgressPhase, ...] = ()
+    active_progress_phase_id: str | None = None
 
 
 @dataclass(frozen=True)

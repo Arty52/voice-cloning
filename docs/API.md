@@ -315,8 +315,12 @@ For a stacked workflow, send `workflowSteps` as JSON:
     "processingPresetLabel": "Balanced",
     "sourceName": "Voice_Clone_01",
     "sourceSha256": "abc123",
+    "sourceSizeBytes": 7340032,
     "sourcePreference": "original",
     "engine": "demucs",
+    "estimatedDurationRangeSeconds": null,
+    "progressPhases": [],
+    "activeProgressPhaseId": null,
     "createdAt": "2026-06-19T12:00:00Z",
     "updatedAt": "2026-06-19T12:00:01Z",
     "error": null,
@@ -351,6 +355,32 @@ For a stacked workflow, send `workflowSteps` as JSON:
     "id": "sample-job-id",
     "operationId": "prepareVoice",
     "status": "success",
+    "sourceSizeBytes": 34603008,
+    "estimatedDurationRangeSeconds": {
+      "minSeconds": 84,
+      "maxSeconds": 234
+    },
+    "progressPhases": [
+      {
+        "id": "sample-job-id-phase-clean-voice",
+        "label": "Clean Voice",
+        "status": "success",
+        "startedAt": "2026-06-19T12:00:01Z",
+        "completedAt": "2026-06-19T12:00:42Z",
+        "error": null,
+        "detail": null
+      },
+      {
+        "id": "sample-job-id-phase-trim-normalize-candidates",
+        "label": "Trim And Normalize Candidates",
+        "status": "success",
+        "startedAt": "2026-06-19T12:01:20Z",
+        "completedAt": "2026-06-19T12:01:55Z",
+        "error": null,
+        "detail": "1 Candidate"
+      }
+    ],
+    "activeProgressPhaseId": null,
     "result": {
       "kind": "preparedSamples",
       "warnings": [],
@@ -383,6 +413,8 @@ For a stacked workflow, send `workflowSteps` as JSON:
   }
 }
 ```
+
+While a `prepareVoice` job is running, `activeProgressPhaseId` points at the currently running entry in `progressPhases`. The phase list is additive to the legacy `steps` array; older clients can continue polling `activeStepId`, while newer clients can render the finer Easy Prepare queue.
 
 `GET /api/sample-processing/jobs/{jobId}/candidates/{candidateId}/result` streams one prepared candidate WAV. `POST /api/sample-processing/jobs/{jobId}/candidate-voices` saves selected candidates through `VoiceLibrary`:
 

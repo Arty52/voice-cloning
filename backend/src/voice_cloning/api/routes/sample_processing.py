@@ -48,6 +48,8 @@ def create_sample_processing_router(sample_processing: SampleProcessingService) 
         cleanVoice: bool | None = Form(None),
         detectSpeakers: bool | None = Form(None),
         trimCandidates: bool | None = Form(None),
+        isolationPresetId: str | None = Form(None),
+        trimPresetId: str | None = Form(None),
         sourceFile: UploadFile | None = File(None),
     ) -> dict[str, object]:
         try:
@@ -61,6 +63,8 @@ def create_sample_processing_router(sample_processing: SampleProcessingService) 
                 clean_voice=cleanVoice,
                 detect_speakers=detectSpeakers,
                 trim_candidates=trimCandidates,
+                isolation_preset_id=isolationPresetId,
+                trim_preset_id=trimPresetId,
             )
         except SampleProcessingServiceError as exc:
             raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc

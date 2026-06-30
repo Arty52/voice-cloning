@@ -31,7 +31,10 @@ from voice_cloning.api.serializers import audio_response
 from voice_cloning.models import (
     CachedVoice,
     ModelSummary,
+    SampleProcessingJob,
+    SampleProcessingJobStep,
     SampleProcessingOperation,
+    SampleProcessingProgressPhase,
     SampleProcessingPresetId,
     SampleProcessingResult,
     SpeakerSeparationResult,
@@ -477,6 +480,37 @@ class FakeStackSampleProcessor:
         )
 
 
+class CapEnforcingStackSampleProcessor(FakeStackSampleProcessor):
+    def __init__(self, default_output_cap: int) -> None:
+        super().__init__()
+        self.default_output_cap = default_output_cap
+
+    async def process(self, request: SampleProcessingRequest) -> SampleProcessingResult | SpeakerSeparationResult | None:
+        result = await super().process(request)
+        cap = self.default_output_cap if request.max_output_bytes is None else request.max_output_bytes
+        output_paths: list[Path] = []
+        if result is None:
+            output_paths.append(request.output_path)
+        elif isinstance(result, SpeakerSeparationResult):
+            output_paths.extend(
+                request.job_dir.parent / speaker.result.path
+                for speaker in result.speakers
+                if speaker.result is not None
+            )
+        for output_path in output_paths:
+            if output_path.stat().st_size > cap:
+                raise SampleProcessingServiceError(f"Processed voice sample must be {cap} bytes or smaller.", 413)
+        return result
+
+
+class NoSpeakerDiarizationStackProcessor(FakeStackSampleProcessor):
+    async def process(self, request: SampleProcessingRequest) -> SampleProcessingResult | SpeakerSeparationResult | None:
+        if request.operation_id == "separateSpeakers":
+            self.requests.append(request)
+            raise SampleProcessingServiceError("Speaker diarization did not detect any speakers.", 422)
+        return await super().process(request)
+
+
 class InvalidSpeakerTranscriptOwnershipProcessor(FakeSpeakerSeparationProcessor):
     async def process(self, request: SampleProcessingRequest) -> SpeakerSeparationResult:
         result = await super().process(request)
@@ -582,7 +616,7 @@ def make_upload_file(filename: str, content: bytes, content_type: str) -> Upload
 
 def wait_for_processing_job(client: TestClient, job_id: str, status: str = "success") -> dict[str, object]:
     payload: dict[str, object] = {}
-    for _ in range(50):
+    for _ in range(150):
         response = client.get(f"/api/sample-processing/jobs/{job_id}")
         assert response.status_code == 200
         payload = response.json()["job"]
@@ -2076,7 +2110,11 @@ def test_prepare_voice_runs_cleanup_speaker_split_and_final_trim(tmp_path: Path)
     with TestClient(app) as client:
         create = client.post(
             "/api/sample-processing/jobs",
-            data={"operationId": "prepareVoice"},
+            data={
+                "operationId": "prepareVoice",
+                "isolationPresetId": "maxIsolation",
+                "trimPresetId": "trimAggressive",
+            },
             files={"sourceFile": ("conversation.wav", b"conversation", "audio/wav")},
         )
         job = wait_for_processing_job(client, create.json()["job"]["id"])
@@ -2085,20 +2123,162 @@ def test_prepare_voice_runs_cleanup_speaker_split_and_final_trim(tmp_path: Path)
 
     assert create.status_code == 202
     assert [request.operation_id for request in processor.requests] == ["isolateVoice", "separateSpeakers"]
+    assert processor.requests[0].processing_preset_id == "maxIsolation"
+    assert processor.requests[0].processing_preset_label == "Max Isolation"
     assert [request.max_output_bytes for request in processor.requests] == [
         settings.max_source_upload_bytes,
         settings.max_source_upload_bytes,
     ]
     assert processor.requests[1].source.content == b"isolated:conversation"
+    assert job["sourceSizeBytes"] == len(b"conversation")
+    assert job["estimatedDurationRangeSeconds"]["minSeconds"] >= 10
+    assert job["estimatedDurationRangeSeconds"]["maxSeconds"] > job["estimatedDurationRangeSeconds"]["minSeconds"]
+    assert job["activeProgressPhaseId"] is None
+    assert [(phase["label"], phase["status"]) for phase in job["progressPhases"]] == [
+        ("Clean Voice", "success"),
+        ("Detect Speakers", "success"),
+        ("Detect Speech Regions", "success"),
+        ("Rank Candidate Windows", "success"),
+        ("Trim And Normalize Candidates", "success"),
+        ("Complete", "success"),
+    ]
     assert job["result"]["kind"] == "preparedSamples"
     assert [candidate["speakerId"] for candidate in job["result"]["candidates"]] == ["speaker-1", "speaker-2"]
     assert all(candidate["sampleRateHz"] == 16000 for candidate in job["result"]["candidates"])
     assert candidate_calls
     final_args = candidate_calls[-1]
-    assert final_args[final_args.index("-af") + 1].startswith("silenceremove=")
+    assert "start_threshold=-38dB" in final_args[final_args.index("-af") + 1]
     assert final_args[final_args.index("-ar") + 1] == "16000"
     assert final_args[final_args.index("-c:a") + 1] == "pcm_s16le"
     assert final_args[final_args.index("-f") + 1] == "wav"
+
+
+@pytest.mark.parametrize(
+    ("preset_field", "preset_value"),
+    [
+        ("isolationPresetId", "tooStrong"),
+        ("trimPresetId", "tooTight"),
+    ],
+)
+def test_prepare_voice_rejects_invalid_cleanup_presets(
+    tmp_path: Path,
+    preset_field: str,
+    preset_value: str,
+) -> None:
+    settings = make_settings(tmp_path)
+    app = create_app(settings=settings, sample_processor=FakeStackSampleProcessor())
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "prepareVoice", preset_field: preset_value},
+            files={"sourceFile": ("conversation.wav", b"conversation", "audio/wav")},
+        )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == f"Unsupported processing preset: {preset_value}."
+
+
+def test_prepare_voice_falls_back_when_diarization_detects_no_speakers(tmp_path: Path) -> None:
+    settings = make_settings(
+        tmp_path,
+        sample_processing_ffmpeg_command=str(ffmpeg_fake_command(tmp_path / "ffmpeg-fake")),
+        sample_processing_ffprobe_command=str(ffprobe_fake_command(tmp_path / "ffprobe-fake", duration_seconds=45)),
+    )
+    processor = NoSpeakerDiarizationStackProcessor()
+    app = create_app(settings=settings, sample_processor=processor)
+    with TestClient(app) as client:
+        create = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "prepareVoice"},
+            files={"sourceFile": ("conversation.wav", b"conversation", "audio/wav")},
+        )
+        job = wait_for_processing_job(client, create.json()["job"]["id"])
+
+    assert create.status_code == 202
+    assert [request.operation_id for request in processor.requests] == ["isolateVoice", "separateSpeakers"]
+    assert job["status"] == "success"
+    assert job["result"]["kind"] == "preparedSamples"
+    assert "Speaker diarization did not detect any speakers; returned single-speaker candidates." in job["result"]["warnings"]
+    assert [candidate["speakerId"] for candidate in job["result"]["candidates"]] == ["speaker-1"]
+    detect_speakers_phase = next(phase for phase in job["progressPhases"] if phase["label"] == "Detect Speakers")
+    assert detect_speakers_phase["status"] == "success"
+    assert detect_speakers_phase["detail"] == "Single Speaker"
+
+
+def test_prepare_voice_reports_active_progress_phase_while_running(tmp_path: Path) -> None:
+    settings = make_settings(
+        tmp_path,
+        sample_processing_ffmpeg_command=str(ffmpeg_fake_command(tmp_path / "ffmpeg-fake")),
+        sample_processing_ffprobe_command=str(ffprobe_fake_command(tmp_path / "ffprobe-fake", duration_seconds=45)),
+    )
+    processor = FakeStackSampleProcessor(delay_seconds=0.2)
+    app = create_app(settings=settings, sample_processor=processor)
+    with TestClient(app) as client:
+        create = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "prepareVoice"},
+            files={"sourceFile": ("conversation.wav", b"conversation", "audio/wav")},
+        )
+        job_id = create.json()["job"]["id"]
+        running = wait_for_processing_job(client, job_id, status="running")
+        cancel = client.post(f"/api/sample-processing/jobs/{job_id}/cancel")
+
+    assert create.status_code == 202
+    assert running["activeProgressPhaseId"].endswith("-phase-clean-voice")
+    active_phase = next(phase for phase in running["progressPhases"] if phase["id"] == running["activeProgressPhaseId"])
+    assert active_phase["label"] == "Clean Voice"
+    assert active_phase["status"] == "running"
+    assert cancel.status_code == 200
+    assert cancel.json()["job"]["status"] == "canceled"
+    canceled_phase = next(
+        phase
+        for phase in cancel.json()["job"]["progressPhases"]
+        if phase["id"] == running["activeProgressPhaseId"]
+    )
+    assert canceled_phase["status"] == "canceled"
+
+
+def test_finished_progress_phase_clears_active_phase(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    voice_library = VoiceLibrary(settings)
+    service = SampleProcessingService(settings, voice_library, FakeStackSampleProcessor())
+    service._jobs["job-1"] = SampleProcessingJob(
+        id="job-1",
+        operation_id="prepareVoice",
+        status="running",
+        source_name="conversation",
+        source_filename="conversation.wav",
+        source_content_type="audio/wav",
+        source_sha256=sample_hash(b"conversation"),
+        source_size_bytes=len(b"conversation"),
+        source_preference="upload",
+        created_at="2026-06-29T00:00:00Z",
+        updated_at="2026-06-29T00:00:00Z",
+        steps=(
+            SampleProcessingJobStep(
+                id="job-1-step-prepareVoice",
+                operation_id="prepareVoice",
+                operation_label="Prepare Voice",
+                status="running",
+            ),
+        ),
+        progress_phases=(
+            SampleProcessingProgressPhase(
+                id="job-1-phase-clean-voice",
+                label="Clean Voice",
+                status="running",
+                started_at="2026-06-29T00:00:01Z",
+            ),
+        ),
+        active_progress_phase_id="job-1-phase-clean-voice",
+    )
+
+    service._finish_progress_phase("job-1", "job-1-phase-clean-voice")
+
+    job = service.get_job("job-1")
+    assert job.active_progress_phase_id is None
+    assert job.progress_phases[0].status == "success"
+    assert job.progress_phases[0].completed_at is not None
 
 
 def test_prepare_voice_allows_cleanup_intermediate_above_active_sample_cap(tmp_path: Path) -> None:
@@ -2220,6 +2400,10 @@ def test_sample_processing_stack_runs_single_audio_steps_in_recommended_order_an
 
     assert create.status_code == 202
     assert [request.operation_id for request in processor.requests] == ["isolateVoice", "trimSilence"]
+    assert [request.max_output_bytes for request in processor.requests] == [
+        settings.max_source_upload_bytes,
+        settings.max_source_upload_bytes,
+    ]
     assert processor.requests[1].source.content == b"isolated:raw-source"
     assert job["workflowMode"] == "stack"
     assert job["operationId"] == "trimSilence"
@@ -2239,6 +2423,38 @@ def test_sample_processing_stack_runs_single_audio_steps_in_recommended_order_an
     assert [step["operationId"] for step in voice["processingSteps"]] == ["isolateVoice", "trimSilence"]
     assert voice["processingSteps"][0]["sourceSha256"] == sample_hash(b"raw-source")
     assert voice["processingSteps"][1]["resultSha256"] == sample_hash(b"trimmed:isolated:raw-source")
+
+
+def test_sample_processing_stack_allows_intermediate_output_above_active_sample_cap(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path, max_upload_bytes=5, max_source_upload_bytes=128)
+    processor = CapEnforcingStackSampleProcessor(default_output_cap=settings.max_upload_bytes)
+    app = create_app(settings=settings, sample_processor=processor)
+    client = TestClient(app)
+    workflow_steps = [
+        {"operationId": "trimSilence", "processingPresetId": "trimBalanced"},
+        {"operationId": "isolateVoice", "processingPresetId": "balanced"},
+    ]
+
+    create = client.post(
+        "/api/sample-processing/jobs",
+        data={"workflowSteps": json.dumps(workflow_steps)},
+        files={"sourceFile": ("source.wav", b"raw-source", "audio/wav")},
+    )
+    job = wait_for_processing_job(client, create.json()["job"]["id"])
+    save = client.post(
+        f"/api/sample-processing/jobs/{job['id']}/voice",
+        json={"name": "Oversized Processed Voice"},
+    )
+
+    assert create.status_code == 202
+    assert job["status"] == "success"
+    assert [request.max_output_bytes for request in processor.requests] == [
+        settings.max_source_upload_bytes,
+        settings.max_source_upload_bytes,
+    ]
+    assert job["result"]["sha256"] == sample_hash(b"trimmed:isolated:raw-source")
+    assert save.status_code == 413
+    assert save.json()["detail"] == "Processed voice sample must be 5 bytes or smaller."
 
 
 def test_sample_processing_cancel_marks_running_stack_canceled(tmp_path: Path) -> None:
@@ -2567,6 +2783,12 @@ def test_sample_processing_stack_runs_speaker_split_then_trims_each_speaker(tmp_
         "trimSilence",
         "trimSilence",
     ]
+    assert [request.max_output_bytes for request in processor.requests] == [
+        settings.max_source_upload_bytes,
+        settings.max_source_upload_bytes,
+        settings.max_source_upload_bytes,
+        settings.max_source_upload_bytes,
+    ]
     assert processor.requests[1].source.content == b"isolated:conversation"
     assert processor.requests[2].source.content == b"speaker-one:isolated:conversation"
     assert processor.requests[3].source.content == b"speaker-two:isolated:conversation"
@@ -2589,6 +2811,98 @@ def test_sample_processing_stack_runs_speaker_split_then_trims_each_speaker(tmp_
     assert processing_steps[2]["speakerId"] == "speaker-1"
     assert processing_steps[2]["sourceSha256"] == sample_hash(b"speaker-one:isolated:conversation")
     assert processing_steps[2]["resultSha256"] == sample_hash(b"trimmed:speaker-one:isolated:conversation")
+
+
+def test_sample_processing_stack_falls_back_to_single_speaker_when_diarization_detects_no_speakers(
+    tmp_path: Path,
+) -> None:
+    settings = make_settings(
+        tmp_path,
+        sample_processing_ffmpeg_command=str(ffmpeg_fake_command(tmp_path / "ffmpeg-fake", output=b"fallback-speaker")),
+    )
+    processor = NoSpeakerDiarizationStackProcessor()
+    app = create_app(settings=settings, sample_processor=processor)
+    workflow_steps = [
+        {"operationId": "isolateVoice", "processingPresetId": "balanced"},
+        {"operationId": "separateSpeakers"},
+        {"operationId": "trimSilence", "processingPresetId": "trimBalanced"},
+    ]
+
+    with TestClient(app) as client:
+        create = client.post(
+            "/api/sample-processing/jobs",
+            data={"workflowSteps": json.dumps(workflow_steps)},
+            files={"sourceFile": ("conversation.wav", b"conversation", "audio/wav")},
+        )
+        job_id = create.json()["job"]["id"]
+        job = wait_for_processing_job(client, job_id)
+        speaker_one = client.get(f"/api/sample-processing/jobs/{job_id}/speakers/speaker-1/result")
+        save = client.post(
+            f"/api/sample-processing/jobs/{job_id}/speaker-voices",
+            json={"voices": [{"speakerId": "speaker-1", "name": "Morgan", "voicePresetId": "standardNarration"}]},
+        )
+
+    assert create.status_code == 202
+    assert [request.operation_id for request in processor.requests] == [
+        "isolateVoice",
+        "separateSpeakers",
+        "trimSilence",
+    ]
+    assert [step["operationId"] for step in job["steps"]] == ["isolateVoice", "separateSpeakers", "trimSilence"]
+    assert [step["status"] for step in job["steps"]] == ["success", "success", "success"]
+    assert job["status"] == "success"
+    assert job["error"] is None
+    assert job["result"]["kind"] == "speakerSeparation"
+    assert [speaker["id"] for speaker in job["result"]["speakers"]] == ["speaker-1"]
+    assert job["result"]["speakers"][0]["transcriptItemIds"] == []
+    assert job["result"]["transcript"]["items"] == []
+    assert job["result"]["speakers"][0]["result"]["sha256"] == sample_hash(b"trimmed:fallback-speaker")
+    assert speaker_one.status_code == 200
+    assert speaker_one.content == b"trimmed:fallback-speaker"
+    assert save.status_code == 201
+    processing_steps = save.json()["voices"][0]["processingSteps"]
+    assert [step["operationId"] for step in processing_steps] == ["isolateVoice", "separateSpeakers", "trimSilence"]
+    assert processing_steps[1]["speakerId"] == "speaker-1"
+    assert processing_steps[1]["resultSha256"] == sample_hash(b"fallback-speaker")
+    assert processing_steps[2]["speakerId"] == "speaker-1"
+    assert processing_steps[2]["sourceSha256"] == sample_hash(b"fallback-speaker")
+    assert processing_steps[2]["resultSha256"] == sample_hash(b"trimmed:fallback-speaker")
+
+
+def test_sample_processing_speaker_fallback_normalizes_uploaded_source_to_wav(tmp_path: Path) -> None:
+    settings = make_settings(
+        tmp_path,
+        sample_processing_ffmpeg_command=str(ffmpeg_fake_command(tmp_path / "ffmpeg-fake", output=b"fallback-wav")),
+    )
+    processor = NoSpeakerDiarizationStackProcessor()
+    app = create_app(settings=settings, sample_processor=processor)
+    with TestClient(app) as client:
+        create = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "separateSpeakers"},
+            files={"sourceFile": ("conversation.mp3", b"mp3-source", "audio/mpeg")},
+        )
+        job_id = create.json()["job"]["id"]
+        job = wait_for_processing_job(client, job_id)
+        speaker_one = client.get(f"/api/sample-processing/jobs/{job_id}/speakers/speaker-1/result")
+        save = client.post(
+            f"/api/sample-processing/jobs/{job_id}/speaker-voices",
+            json={"voices": [{"speakerId": "speaker-1", "name": "Fallback Speaker"}]},
+        )
+
+    assert create.status_code == 202
+    assert job["status"] == "success"
+    speaker_result = job["result"]["speakers"][0]["result"]
+    assert speaker_result["filename"] == "speaker-1.wav"
+    assert speaker_result["contentType"] == "audio/wav"
+    assert speaker_result["sha256"] == sample_hash(b"fallback-wav")
+    assert speaker_one.status_code == 200
+    assert speaker_one.headers["content-type"].startswith("audio/wav")
+    assert speaker_one.content == b"fallback-wav"
+    assert save.status_code == 201
+    voice = save.json()["voices"][0]
+    assert voice["contentType"] == "audio/wav"
+    assert voice["sha256"] == sample_hash(b"fallback-wav")
 
 
 def test_sample_processing_stack_retrims_speaker_assignment_updates(tmp_path: Path) -> None:
@@ -2979,7 +3293,7 @@ def test_diarization_processor_times_out_model_steps(
         make_settings(tmp_path),
         sample_processing_enable_diarization=True,
         sample_processing_hf_token="hf_test",
-        sample_processing_timeout_seconds=0.2,
+        sample_processing_timeout_seconds=0.9,
         sample_processing_ffmpeg_command=str(ffmpeg_fake_command(tmp_path / "ffmpeg-fake", output=b"fake-wav")),
     )
     app = create_app(settings=settings)
@@ -3131,6 +3445,7 @@ def test_diarization_processor_rejects_oversized_speaker_stream(
     settings = replace(
         make_settings(tmp_path),
         max_upload_bytes=5,
+        max_source_upload_bytes=5,
         sample_processing_enable_diarization=True,
         sample_processing_hf_token="hf_test",
         sample_processing_ffmpeg_command=str(ffmpeg_fake_command(tmp_path / "ffmpeg-fake", output=b"too-big")),
@@ -3140,7 +3455,7 @@ def test_diarization_processor_rejects_oversized_speaker_stream(
         create = client.post(
             "/api/sample-processing/jobs",
             data={"operationId": "separateSpeakers"},
-            files={"sourceFile": ("conversation.wav", b"speaker-source", "audio/wav")},
+            files={"sourceFile": ("conversation.wav", b"src", "audio/wav")},
         )
         job = wait_for_processing_job(client, create.json()["job"]["id"], status="error")
 
@@ -3473,12 +3788,13 @@ def test_ffmpeg_sample_processor_rejects_oversized_result(tmp_path: Path) -> Non
         tmp_path,
         ffmpeg_fake_command(tmp_path / "ffmpeg-fake", output=b"too-big"),
         max_upload_bytes=5,
+        max_source_upload_bytes=5,
     )
     with TestClient(create_app(settings=settings)) as client:
         response = client.post(
             "/api/sample-processing/jobs",
             data={"operationId": "trimSilence"},
-            files={"sourceFile": ("source.wav", b"source-audio", "audio/wav")},
+            files={"sourceFile": ("source.wav", b"src", "audio/wav")},
         )
         job = wait_for_processing_job(client, response.json()["job"]["id"], status="error")
 
@@ -3655,12 +3971,13 @@ def test_demucs_sample_processor_rejects_oversized_result(tmp_path: Path) -> Non
         demucs_fake_command(tmp_path / "demucs-fake"),
         ffmpeg_fake_command(tmp_path / "ffmpeg-fake", output=b"too-big"),
         max_upload_bytes=5,
+        max_source_upload_bytes=5,
     )
     with TestClient(create_app(settings=settings)) as client:
         response = client.post(
             "/api/sample-processing/jobs",
             data={"operationId": "isolateVoice"},
-            files={"sourceFile": ("source.wav", b"source-audio", "audio/wav")},
+            files={"sourceFile": ("source.wav", b"src", "audio/wav")},
         )
         job = wait_for_processing_job(client, response.json()["job"]["id"], status="error")
 

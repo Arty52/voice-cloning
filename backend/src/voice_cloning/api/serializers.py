@@ -7,7 +7,9 @@ from ..models import (
     ModelSummary,
     PreparedSampleCandidate,
     PreparedSamplesResult,
+    SampleProcessingDurationRange,
     SampleProcessingJob,
+    SampleProcessingProgressPhase,
     SampleProcessingJobStep,
     SampleProcessingJobResult,
     SampleProcessingOperation,
@@ -242,6 +244,7 @@ def sample_processing_job_payload(job: SampleProcessingJob) -> dict[str, object]
         "sourceFilename": job.source_filename,
         "sourceContentType": job.source_content_type,
         "sourceSha256": job.source_sha256,
+        "sourceSizeBytes": job.source_size_bytes,
         "sourcePreference": job.source_preference,
         "createdAt": job.created_at,
         "updatedAt": job.updated_at,
@@ -250,7 +253,33 @@ def sample_processing_job_payload(job: SampleProcessingJob) -> dict[str, object]
         "workflowMode": job.workflow_mode,
         "steps": [sample_processing_job_step_payload(step) for step in job.steps],
         "activeStepId": job.active_step_id,
+        "estimatedDurationRangeSeconds": (
+            sample_processing_duration_range_payload(job.estimated_duration_range_seconds)
+            if job.estimated_duration_range_seconds is not None
+            else None
+        ),
+        "progressPhases": [sample_processing_progress_phase_payload(phase) for phase in job.progress_phases],
+        "activeProgressPhaseId": job.active_progress_phase_id,
         "result": sample_processing_result_payload(job.result) if job.result is not None else None,
+    }
+
+
+def sample_processing_duration_range_payload(duration_range: SampleProcessingDurationRange) -> dict[str, object]:
+    return {
+        "minSeconds": duration_range.min_seconds,
+        "maxSeconds": duration_range.max_seconds,
+    }
+
+
+def sample_processing_progress_phase_payload(phase: SampleProcessingProgressPhase) -> dict[str, object]:
+    return {
+        "id": phase.id,
+        "label": phase.label,
+        "status": phase.status,
+        "startedAt": phase.started_at,
+        "completedAt": phase.completed_at,
+        "error": phase.error,
+        "detail": phase.detail,
     }
 
 
