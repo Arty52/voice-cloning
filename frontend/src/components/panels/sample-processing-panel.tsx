@@ -17,6 +17,7 @@ import {
   Sparkles,
   Upload,
   Users,
+  Video,
   Wand2,
 } from "lucide-react"
 
@@ -45,6 +46,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Slider } from "@/components/ui/slider"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { VoicePresetToggleGroup } from "@/components/voice-preset-toggle-group"
 import type { SampleProcessingController } from "@/hooks/use-sample-processing"
 import { formatCompactBytes, formatElapsedTime, formatMediaDuration } from "@/lib/formatters"
@@ -473,40 +475,51 @@ function SourceSelection({
   processing: SampleProcessingController
   voicePresets: { id: VoicePresetId; label: string; description: string }[]
 }) {
+  const sourceSelectionValue = processing.sourceMode === "voice" ? "voice" : processing.sourceUploadKind
+
   return (
     <>
       <Field>
         <FieldLabel>Source</FieldLabel>
-        <div className="grid grid-cols-2 gap-1 rounded-md border border-border bg-background/60 p-1" role="group" aria-label="Sample source">
-          <Button
-            aria-pressed={processing.sourceMode === "voice"}
-            className={cn(
-              "transition-[background-color,box-shadow]",
-              processing.sourceMode !== "voice" && "border border-transparent bg-transparent"
-            )}
+        <ToggleGroup
+          aria-label="Sample Source"
+          className="grid w-full grid-cols-1 gap-1 rounded-md border border-border bg-background/60 p-1 sm:grid-cols-3"
+          onValueChange={(value) => {
+            if (value === "voice") {
+              processing.handleSourceModeChange("voice")
+            }
+            if (value === "audio" || value === "video") {
+              processing.setSourceUploadKind(value)
+            }
+          }}
+          type="single"
+          value={sourceSelectionValue}
+        >
+          <ToggleGroupItem
+            className="h-9 justify-center gap-2"
             disabled={processing.isProcessing}
-            onClick={() => processing.handleSourceModeChange("voice")}
-            type="button"
-            variant={processing.sourceMode === "voice" ? "secondary" : "ghost"}
+            value="voice"
           >
-            <FileAudio aria-hidden="true" className="size-4" />
+            <FileAudio aria-hidden="true" data-icon="inline-start" />
             Saved Voice
-          </Button>
-          <Button
-            aria-pressed={processing.sourceMode === "upload"}
-            className={cn(
-              "transition-[background-color,box-shadow]",
-              processing.sourceMode !== "upload" && "border border-transparent bg-transparent"
-            )}
+          </ToggleGroupItem>
+          <ToggleGroupItem
+            className="h-9 justify-center gap-2"
             disabled={processing.isProcessing}
-            onClick={() => processing.handleSourceModeChange("upload")}
-            type="button"
-            variant={processing.sourceMode === "upload" ? "secondary" : "ghost"}
+            value="audio"
           >
-            <Upload aria-hidden="true" className="size-4" />
+            <Upload aria-hidden="true" data-icon="inline-start" />
             Audio File
-          </Button>
-        </div>
+          </ToggleGroupItem>
+          <ToggleGroupItem
+            className="h-9 justify-center gap-2"
+            disabled={processing.isProcessing}
+            value="video"
+          >
+            <Video aria-hidden="true" data-icon="inline-start" />
+            Video File
+          </ToggleGroupItem>
+        </ToggleGroup>
       </Field>
 
       {processing.sourceMode === "voice" ? (
