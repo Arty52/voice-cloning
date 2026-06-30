@@ -81,6 +81,9 @@ const PROCESS_FROM_SAVED_SAMPLE_DESCRIPTION = "Best for quick touch-ups. Uses th
 const PROCESS_AUDIO_ACCEPT = "audio/*,.mp3,.wav,.m4a,.m4b,.aac,.ogg,.flac"
 const PROCESS_AUDIO_UPLOAD_HELPER_COPY =
   "Drag an audio file here, or choose one from your computer. Supports MP3, WAV, M4A, M4B, AAC, OGG, and FLAC."
+const PROCESS_VIDEO_ACCEPT = ".mp4,.m4v,.mov,video/mp4,video/x-m4v,video/quicktime"
+const PROCESS_VIDEO_UPLOAD_HELPER_COPY =
+  "Drag a video file here, or choose one from your computer. Supports MP4, M4V, and MOV."
 const SPEAKER_COLORS = [
   "oklch(0.74 0.17 36)",
   "oklch(0.72 0.14 184)",
@@ -120,7 +123,7 @@ export function SampleProcessingPanel({
               </span>
             ) : null}
           </div>
-          <p className="mt-1 text-sm text-muted-foreground">Prepare source audio before saving it as a voice.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Prepare source media before saving it as a voice.</p>
         </div>
         {isCollapsible ? (
           <Button
@@ -180,9 +183,9 @@ export function SampleProcessingPanel({
                 {processing.status === "starting"
                   ? "Starting Processing"
                   : processing.status === "processing"
-                    ? "Processing Sample"
+                      ? "Processing Sample"
                     : processing.isPrepareVoiceSelected
-                      ? "Process Audio File"
+                      ? "Process Source Media"
                       : "Start Processing"}
               </Button>
               {processing.canCancel ? (
@@ -476,6 +479,7 @@ function SourceSelection({
   voicePresets: { id: VoicePresetId; label: string; description: string }[]
 }) {
   const sourceSelectionValue = processing.sourceMode === "voice" ? "voice" : processing.sourceUploadKind
+  const uploadCopy = sourceUploadCopy(processing.sourceUploadKind)
 
   return (
     <>
@@ -540,19 +544,46 @@ function SourceSelection({
       ) : (
         <>
           <AudioFileDropZone
-            accept={PROCESS_AUDIO_ACCEPT}
+            accept={uploadCopy.accept}
+            ariaLabel={uploadCopy.dropZoneLabel}
+            chooseLabel={uploadCopy.chooseLabel}
             disabled={processing.isProcessing}
-            helperCopy={PROCESS_AUDIO_UPLOAD_HELPER_COPY}
+            emptyLabel={uploadCopy.emptyLabel}
+            helperCopy={uploadCopy.helperCopy}
             id="sample-processing-file"
-            label="Audio File"
+            label={uploadCopy.label}
             onFileSelect={processing.handleSourceFileSelect}
             selectedFileName={processing.sourceFile?.name ?? processing.mediaSource.source?.filename ?? null}
+            selectedLabel={uploadCopy.selectedLabel}
           />
           <MediaSourceSelection processing={processing} />
         </>
       )}
     </>
   )
+}
+
+function sourceUploadCopy(kind: "audio" | "video") {
+  if (kind === "video") {
+    return {
+      accept: PROCESS_VIDEO_ACCEPT,
+      chooseLabel: "Choose Video",
+      dropZoneLabel: "Video Drop Zone",
+      emptyLabel: "Drop Video Here",
+      helperCopy: PROCESS_VIDEO_UPLOAD_HELPER_COPY,
+      label: "Video File",
+      selectedLabel: "Video Selected",
+    }
+  }
+  return {
+    accept: PROCESS_AUDIO_ACCEPT,
+    chooseLabel: "Choose Audio",
+    dropZoneLabel: "Audio Drop Zone",
+    emptyLabel: "Drop Audio Here",
+    helperCopy: PROCESS_AUDIO_UPLOAD_HELPER_COPY,
+    label: "Audio File",
+    selectedLabel: "Audio Selected",
+  }
 }
 
 function MediaSourceSelection({ processing }: { processing: SampleProcessingController }) {

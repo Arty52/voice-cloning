@@ -26,10 +26,10 @@ const PREPARE_AUDIO_OPTIONS: Array<{
     value: "addVoice",
   },
   {
-    cta: "Process Audio",
-    description: "Isolate speech, trim silence, or extract speakers from a longer recording.",
+    cta: "Process Source Media",
+    description: "Extract usable speech from a longer audio or video source.",
     icon: Wand2,
-    title: "Process Audio File",
+    title: "Process Source Media",
     value: "processAudio",
   },
 ]

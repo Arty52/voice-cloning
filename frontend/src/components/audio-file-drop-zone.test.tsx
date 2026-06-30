@@ -32,6 +32,30 @@ describe("AudioFileDropZone", () => {
     expect(screen.getByLabelText("Sample File")).toHaveAttribute("accept", "audio/*,.m4b")
   })
 
+  it("allows source media flows to provide video labels and accepted formats", () => {
+    render(
+      <AudioFileDropZone
+        accept=".mp4,.m4v,.mov,video/mp4,video/x-m4v,video/quicktime"
+        ariaLabel="Video Drop Zone"
+        chooseLabel="Choose Video"
+        emptyLabel="Drop Video Here"
+        helperCopy="Supports MP4, M4V, and MOV."
+        id="source-video"
+        label="Video File"
+        onFileSelect={vi.fn()}
+        selectedLabel="Video Selected"
+      />
+    )
+
+    expect(screen.getByRole("group", { name: "Video Drop Zone" })).toBeInTheDocument()
+    expect(screen.getByText("Drop Video Here")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /choose video/i })).toBeInTheDocument()
+    expect(screen.getByLabelText("Video File")).toHaveAttribute(
+      "accept",
+      ".mp4,.m4v,.mov,video/mp4,video/x-m4v,video/quicktime"
+    )
+  })
+
   it("clears the hidden file input after selection so the same file can be selected again", async () => {
     const user = userEvent.setup()
     const onFileSelect = vi.fn()
