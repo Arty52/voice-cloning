@@ -47,7 +47,7 @@ import { Slider } from "@/components/ui/slider"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { VoicePresetToggleGroup } from "@/components/voice-preset-toggle-group"
 import type { SampleProcessingController } from "@/hooks/use-sample-processing"
-import { formatCompactBytes, formatElapsedTime, formatRecordingDuration } from "@/lib/formatters"
+import { formatCompactBytes, formatElapsedTime, formatMediaDuration } from "@/lib/formatters"
 import { cn } from "@/lib/utils"
 import { voicePresetLabel } from "@/lib/voice-presets"
 import type {
@@ -563,7 +563,7 @@ function MediaSourceSelection({ processing }: { processing: SampleProcessingCont
           <div className="flex shrink-0 flex-wrap gap-1.5">
             <Badge variant="secondary">{formatCompactBytes(source.sizeBytes)}</Badge>
             {source.durationSeconds !== null ? (
-              <Badge variant="secondary">{formatRecordingDuration(source.durationSeconds)}</Badge>
+              <Badge variant="secondary">{formatMediaDuration(source.durationSeconds)}</Badge>
             ) : null}
             {source.chapters.length > 0 ? (
               <Badge variant="secondary">{source.chapters.length} Chapters</Badge>
@@ -601,7 +601,7 @@ function MediaSourceSelection({ processing }: { processing: SampleProcessingCont
           )}
 
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <Badge variant="secondary">Selected {formatRecordingDuration(media.selectedDurationSeconds)}</Badge>
+            <Badge variant="secondary">Selected {formatMediaDuration(media.selectedDurationSeconds)}</Badge>
             <span className="min-w-0 truncate">{source.filename}</span>
           </div>
 
@@ -658,9 +658,10 @@ function ChapterSourceSelection({ processing }: { processing: SampleProcessingCo
                   />
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-medium">{chapter.title}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {formatRecordingDuration(chapter.startSeconds)} to {formatRecordingDuration(chapter.endSeconds)} -{" "}
-                      {formatRecordingDuration(chapter.durationSeconds)}
+                    <span className="flex flex-wrap gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                      <span>Starts {formatMediaDuration(chapter.startSeconds)}</span>
+                      <span>Ends {formatMediaDuration(chapter.endSeconds)}</span>
+                      <span>Duration {formatMediaDuration(chapter.durationSeconds)}</span>
                     </span>
                   </span>
                 </label>
@@ -702,7 +703,7 @@ function ManualSourceRangeSelection({ processing }: { processing: SampleProcessi
       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <div className="text-sm font-medium">Manual Range</div>
         <Badge variant="secondary">
-          {formatRecordingDuration(range.startSeconds)} to {formatRecordingDuration(range.endSeconds)}
+          {formatMediaDuration(range.startSeconds)} to {formatMediaDuration(range.endSeconds)}
         </Badge>
       </div>
       {source.durationSeconds === null ? (
@@ -727,10 +728,10 @@ function ManualSourceRangeSelection({ processing }: { processing: SampleProcessi
       />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap gap-1.5 text-xs text-muted-foreground">
-          <Badge variant="secondary">Start {formatRecordingDuration(range.startSeconds)}</Badge>
-          <Badge variant="secondary">End {formatRecordingDuration(range.endSeconds)}</Badge>
+          <Badge variant="secondary">Start {formatMediaDuration(range.startSeconds)}</Badge>
+          <Badge variant="secondary">End {formatMediaDuration(range.endSeconds)}</Badge>
           <Badge variant="secondary">
-            Duration {formatRecordingDuration(Math.max(0, range.endSeconds - range.startSeconds))}
+            Duration {formatMediaDuration(Math.max(0, range.endSeconds - range.startSeconds))}
           </Badge>
         </div>
         <Button

@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest"
 
-import { formatCompactBytes, formatElapsedTime, formatExactBytes, formatGenerationElapsedTime } from "./formatters"
+import {
+  formatCompactBytes,
+  formatElapsedTime,
+  formatExactBytes,
+  formatGenerationElapsedTime,
+  formatMediaDuration,
+} from "./formatters"
 
 const formatTestNumber = (value: number) => new Intl.NumberFormat().format(value)
 
@@ -28,6 +34,16 @@ describe("formatGenerationElapsedTime", () => {
     expect(formatGenerationElapsedTime(850)).toBe("0.9s")
     expect(formatGenerationElapsedTime(12_300)).toBe("12s")
     expect(formatGenerationElapsedTime(65_000)).toBe("1m 5s")
+  })
+})
+
+describe("formatMediaDuration", () => {
+  it("formats media positions as compact human-readable units", () => {
+    expect(formatMediaDuration(0)).toBe("0s")
+    expect(formatMediaDuration(39)).toBe("39s")
+    expect(formatMediaDuration(365)).toBe("6m 5s")
+    expect(formatMediaDuration(367 * 60)).toBe("6h 7m")
+    expect(formatMediaDuration(373 * 60 + 5)).toBe("6h 13m 5s")
   })
 })
 

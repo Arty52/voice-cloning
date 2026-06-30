@@ -240,13 +240,15 @@ describe("SampleProcessingPanel ranked candidates", () => {
   })
 
   it("constrains long chapter source lists to a scrollable viewport", () => {
+    const baseStartSeconds = 367 * 60
     const chapters = Array.from({ length: 9 }, (_, index) => {
-      const chapterNumber = index + 1
+      const chapterNumber = index + 34
+      const startSeconds = baseStartSeconds + index * 60
       return {
         id: `chapter-${chapterNumber}`,
         title: `Chapter ${chapterNumber}`,
-        startSeconds: index * 60,
-        endSeconds: chapterNumber * 60,
+        startSeconds,
+        endSeconds: startSeconds + 60,
         durationSeconds: 60,
       }
     })
@@ -358,6 +360,9 @@ describe("SampleProcessingPanel ranked candidates", () => {
     const chapterList = screen.getByRole("region", { name: "Chapter List" })
     expect(chapterList).toHaveClass("h-72")
     expect(chapterList).not.toHaveClass("max-h-72")
-    expect(within(chapterList).getByText("Chapter 9")).toBeInTheDocument()
+    expect(within(chapterList).getByText("Chapter 42")).toBeInTheDocument()
+    expect(within(chapterList).getAllByText("Starts 6h 7m").length).toBeGreaterThan(0)
+    expect(within(chapterList).getAllByText("Duration 1m").length).toBeGreaterThan(0)
+    expect(within(chapterList).queryByText("367:00", { exact: false })).not.toBeInTheDocument()
   })
 })
