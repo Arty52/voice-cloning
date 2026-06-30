@@ -3,7 +3,9 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+import hashlib
 import json
+import math
 from pathlib import Path
 import shutil
 from typing import Protocol, cast
@@ -25,6 +27,8 @@ from ..models import (
     SampleProcessingPreset,
     SampleProcessingPresetId,
     SampleProcessingResult,
+    SampleProcessingSourceRange,
+    SampleProcessingSourceSelection,
     SampleProcessingSourcePreference,
     SampleProcessingWorkflowMode,
     SpeakerSeparationResult,
@@ -42,6 +46,7 @@ from .media_commands import (
     run_capture_command as _run_media_capture_command,
     seconds_arg as _seconds_arg,
 )
+from .media_sources import MediaSourceServiceError, SampleProcessingMediaSourceService
 from ..voice_library import VoiceLibrary
 
 
@@ -178,6 +183,13 @@ class SampleProcessingWorkflowStepInput:
 
 
 @dataclass(frozen=True)
+class SourceRangeInput:
+    start_seconds: float
+    end_seconds: float
+    label: str | None = None
+
+
+@dataclass(frozen=True)
 class ResolvedSampleProcessingWorkflowStep:
     operation: SampleProcessingOperation
     processing_preset_id: SampleProcessingPresetId | None = None
@@ -306,10 +318,12 @@ class SampleProcessingService:
         settings: Settings,
         voice_library: VoiceLibrary,
         processor: SampleProcessor | None = None,
+        media_source_service: SampleProcessingMediaSourceService | None = None,
     ) -> None:
         self.settings = settings
         self.voice_library = voice_library
         self.processor = processor or UnavailableSampleProcessor()
+        self.media_source_service = media_source_service or SampleProcessingMediaSourceService(settings)
         self.processing_dir = settings.sample_processing_dir
         self.processing_dir.mkdir(parents=True, exist_ok=True)
         self._jobs: dict[str, SampleProcessingJob] = {}
@@ -360,6 +374,8 @@ class SampleProcessingService:
         source_preference: str | None,
         source_voice_id: str | None = None,
         source_upload: UploadFile | None = None,
+        source_media_id: str | None = None,
+        source_ranges: tuple[SourceRangeInput, ...] | None = None,
         workflow_steps: tuple[SampleProcessingWorkflowStepInput, ...] | None = None,
         clean_voice: bool | None = None,
         detect_speakers: bool | None = None,
@@ -375,6 +391,8 @@ class SampleProcessingService:
                 source_preference=resolved_source_preference,
                 source_voice_id=source_voice_id,
                 source_upload=source_upload,
+                source_media_id=source_media_id,
+                source_ranges=source_ranges,
                 clean_voice=clean_voice,
                 detect_speakers=detect_speakers,
                 trim_candidates=trim_candidates,
@@ -390,24 +408,22 @@ class SampleProcessingService:
         terminal_operation = _terminal_operation_id(resolved_steps)
         first_step = resolved_steps[0]
 
-        if bool(source_voice_id and source_voice_id.strip()) == bool(source_upload):
-            raise SampleProcessingServiceError("Choose one source voice or upload one source file.", 422)
+        self._validate_source_inputs(source_voice_id, source_upload, source_media_id, source_ranges)
 
         job_id = uuid4().hex
         job_dir = self._job_dir(job_id)
         job_dir_created = False
         try:
-            if source_upload is not None:
-                job_dir.mkdir(parents=True, exist_ok=False)
-                job_dir_created = True
-                source_path, source_sample, source_name = await self._source_from_upload(job_dir, source_upload)
-            else:
-                source_path, source_sample, source_name = self._source_from_voice(
-                    (source_voice_id or "").strip(),
-                    resolved_source_preference,
-                )
-                job_dir.mkdir(parents=True, exist_ok=False)
-                job_dir_created = True
+            job_dir.mkdir(parents=True, exist_ok=False)
+            job_dir_created = True
+            source_path, source_sample, source_name, source_selection = await self._resolve_job_source(
+                job_dir=job_dir,
+                source_preference=resolved_source_preference,
+                source_voice_id=source_voice_id,
+                source_upload=source_upload,
+                source_media_id=source_media_id,
+                source_ranges=source_ranges,
+            )
 
             source_size_bytes = _path_size_bytes(source_path)
             now = _utc_now()
@@ -434,6 +450,7 @@ class SampleProcessingService:
                 processing_preset_label=first_step.processing_preset_label,
                 workflow_mode=workflow_mode,
                 steps=job_steps,
+                source_selection=source_selection,
             )
             self._jobs[job_id] = job
             self._source_paths[job_id] = source_path
@@ -465,6 +482,8 @@ class SampleProcessingService:
         source_preference: SampleProcessingSourcePreference,
         source_voice_id: str | None,
         source_upload: UploadFile | None,
+        source_media_id: str | None,
+        source_ranges: tuple[SourceRangeInput, ...] | None,
         clean_voice: bool | None,
         detect_speakers: bool | None,
         trim_candidates: bool | None,
@@ -472,24 +491,22 @@ class SampleProcessingService:
         trim_preset_id: str | None,
     ) -> SampleProcessingJob:
         prepare_operation = self._enabled_operation("prepareVoice")
-        if bool(source_voice_id and source_voice_id.strip()) == bool(source_upload):
-            raise SampleProcessingServiceError("Choose one source voice or upload one source file.", 422)
+        self._validate_source_inputs(source_voice_id, source_upload, source_media_id, source_ranges)
 
         job_id = uuid4().hex
         job_dir = self._job_dir(job_id)
         job_dir_created = False
         try:
-            if source_upload is not None:
-                job_dir.mkdir(parents=True, exist_ok=False)
-                job_dir_created = True
-                source_path, source_sample, source_name = await self._source_from_upload(job_dir, source_upload)
-            else:
-                source_path, source_sample, source_name = self._source_from_voice(
-                    (source_voice_id or "").strip(),
-                    source_preference,
-                )
-                job_dir.mkdir(parents=True, exist_ok=False)
-                job_dir_created = True
+            job_dir.mkdir(parents=True, exist_ok=False)
+            job_dir_created = True
+            source_path, source_sample, source_name, source_selection = await self._resolve_job_source(
+                job_dir=job_dir,
+                source_preference=source_preference,
+                source_voice_id=source_voice_id,
+                source_upload=source_upload,
+                source_media_id=source_media_id,
+                source_ranges=source_ranges,
+            )
 
             source_size_bytes = _path_size_bytes(source_path)
             options = self._prepare_voice_options(
@@ -524,6 +541,7 @@ class SampleProcessingService:
                 steps=(step,),
                 estimated_duration_range_seconds=_estimate_prepare_voice_duration(source_size_bytes, options),
                 progress_phases=_initial_prepare_voice_progress_phases(job_id, options),
+                source_selection=source_selection,
             )
             self._jobs[job_id] = job
             self._source_paths[job_id] = source_path
@@ -1777,6 +1795,134 @@ class SampleProcessingService:
             )
         return tuple(normalized)
 
+    def _validate_source_inputs(
+        self,
+        source_voice_id: str | None,
+        source_upload: UploadFile | None,
+        source_media_id: str | None,
+        source_ranges: tuple[SourceRangeInput, ...] | None,
+    ) -> None:
+        provided_sources = sum(
+            (
+                bool(source_voice_id and source_voice_id.strip()),
+                source_upload is not None,
+                bool(source_media_id and source_media_id.strip()),
+            )
+        )
+        if provided_sources != 1:
+            raise SampleProcessingServiceError("Choose one source voice, uploaded source file, or media source.", 422)
+        if source_ranges is not None and not (source_media_id and source_media_id.strip()):
+            raise SampleProcessingServiceError("sourceRanges can only be used with sourceMediaId.", 422)
+        if source_media_id and source_media_id.strip() and not source_ranges:
+            raise SampleProcessingServiceError("Choose at least one source range for the media source.", 422)
+
+    async def _resolve_job_source(
+        self,
+        *,
+        job_dir: Path,
+        source_preference: SampleProcessingSourcePreference,
+        source_voice_id: str | None,
+        source_upload: UploadFile | None,
+        source_media_id: str | None,
+        source_ranges: tuple[SourceRangeInput, ...] | None,
+    ) -> tuple[Path, VoiceSample, str, SampleProcessingSourceSelection | None]:
+        if source_upload is not None:
+            source_path, source_sample, source_name = await self._source_from_upload(job_dir, source_upload)
+            return source_path, source_sample, source_name, None
+        if source_media_id and source_media_id.strip():
+            return await self._source_from_media(job_dir, source_media_id.strip(), source_ranges or ())
+        source_path, source_sample, source_name = self._source_from_voice(
+            (source_voice_id or "").strip(),
+            source_preference,
+        )
+        return source_path, source_sample, source_name, None
+
+    async def _source_from_media(
+        self,
+        job_dir: Path,
+        source_media_id: str,
+        source_ranges: tuple[SourceRangeInput, ...],
+    ) -> tuple[Path, VoiceSample, str, SampleProcessingSourceSelection]:
+        try:
+            media_source = self.media_source_service.get_source(source_media_id)
+            media_source_path = self.media_source_service.source_path(source_media_id)
+        except MediaSourceServiceError as exc:
+            raise SampleProcessingServiceError(exc.detail, exc.status_code) from exc
+
+        selected_ranges = _normalize_source_ranges(source_ranges, duration_seconds=media_source.duration_seconds)
+        selected_path = await self._extract_source_ranges(
+            media_source_path,
+            job_dir,
+            selected_ranges,
+        )
+        sha256 = _file_sha256(selected_path)
+        source_sample = VoiceSample(
+            content=b"",
+            filename=selected_path.name,
+            content_type=RESULT_CONTENT_TYPE,
+            sha256=sha256,
+        )
+        source_name = Path(media_source.filename).stem or "Media Source"
+        return (
+            selected_path,
+            source_sample,
+            source_name,
+            SampleProcessingSourceSelection(source_media_id=source_media_id, ranges=selected_ranges),
+        )
+
+    async def _extract_source_ranges(
+        self,
+        media_source_path: Path,
+        job_dir: Path,
+        selected_ranges: tuple[SampleProcessingSourceRange, ...],
+    ) -> Path:
+        range_dir = job_dir / "source-ranges"
+        range_dir.mkdir(parents=True, exist_ok=True)
+        segment_paths: list[Path] = []
+        for index, selected_range in enumerate(selected_ranges, start=1):
+            segment_path = range_dir / f"range-{index}.wav"
+            await _extract_source_range(
+                self.settings,
+                media_source_path,
+                segment_path,
+                selected_range,
+                max_output_bytes=self.settings.max_source_upload_bytes,
+            )
+            segment_paths.append(segment_path)
+        if len(segment_paths) == 1:
+            return segment_paths[0]
+        output_path = job_dir / "selected-source.wav"
+        concat_manifest = range_dir / "concat.txt"
+        concat_manifest.write_text(
+            "".join(f"file '{_escape_ffconcat_path(path)}'\n" for path in segment_paths),
+            encoding="utf-8",
+        )
+        await _run_capture_command(
+            [
+                self.settings.sample_processing_ffmpeg_command,
+                "-y",
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                str(concat_manifest),
+                "-c",
+                "copy",
+                str(output_path),
+            ],
+            "ffmpeg",
+            self.settings.sample_processing_timeout_seconds,
+        )
+        if not output_path.exists() or output_path.stat().st_size == 0:
+            raise SampleProcessingServiceError("FFmpeg did not produce a selected media source.", 502)
+        _reject_oversized_output(
+            output_path,
+            self.settings.max_source_upload_bytes,
+            oversize_label="Selected media source",
+        )
+        return output_path
+
     async def _source_from_upload(
         self,
         job_dir: Path,
@@ -2405,6 +2551,88 @@ async def _write_normalized_wav(
         )
 
 
+async def _extract_source_range(
+    settings: Settings,
+    source_path: Path,
+    output_path: Path,
+    source_range: SampleProcessingSourceRange,
+    *,
+    max_output_bytes: int,
+) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    await _run_capture_command(
+        [
+            settings.sample_processing_ffmpeg_command,
+            "-y",
+            "-ss",
+            _seconds_arg(source_range.start_seconds),
+            "-t",
+            _seconds_arg(source_range.duration_seconds),
+            "-i",
+            str(source_path),
+            "-ac",
+            "1",
+            "-ar",
+            str(PREPARED_SAMPLE_RATE_HZ),
+            "-vn",
+            "-c:a",
+            "pcm_s16le",
+            "-f",
+            "wav",
+            str(output_path),
+        ],
+        "ffmpeg",
+        settings.sample_processing_timeout_seconds,
+    )
+    if not output_path.exists() or output_path.stat().st_size == 0:
+        raise SampleProcessingServiceError("FFmpeg did not produce a selected media source range.", 502)
+    _reject_oversized_output(output_path, max_output_bytes, oversize_label="Selected media source")
+
+
+def _normalize_source_ranges(
+    ranges: tuple[SourceRangeInput, ...],
+    *,
+    duration_seconds: float | None,
+) -> tuple[SampleProcessingSourceRange, ...]:
+    if not ranges:
+        raise SampleProcessingServiceError("Choose at least one source range for the media source.", 422)
+    normalized: list[SampleProcessingSourceRange] = []
+    for source_range in ranges:
+        start_seconds = _validate_range_seconds(source_range.start_seconds, "sourceRanges startSeconds")
+        end_seconds = _validate_range_seconds(source_range.end_seconds, "sourceRanges endSeconds")
+        if end_seconds <= start_seconds:
+            raise SampleProcessingServiceError("sourceRanges endSeconds must be greater than startSeconds.", 422)
+        if duration_seconds is not None and end_seconds > duration_seconds:
+            raise SampleProcessingServiceError("sourceRanges endSeconds must be within the media source duration.", 422)
+        label = source_range.label.strip() if isinstance(source_range.label, str) else None
+        normalized.append(
+            SampleProcessingSourceRange(
+                start_seconds=start_seconds,
+                end_seconds=end_seconds,
+                duration_seconds=end_seconds - start_seconds,
+                label=label or None,
+            )
+        )
+    return tuple(normalized)
+
+
+def _validate_range_seconds(value: float, field_name: str) -> float:
+    if not math.isfinite(value):
+        raise SampleProcessingServiceError(f"{field_name} must be finite.", 422)
+    if value < 0:
+        raise SampleProcessingServiceError(f"{field_name} must be non-negative.", 422)
+    return value
+
+
+def _reject_oversized_output(path: Path, max_output_bytes: int, *, oversize_label: str) -> None:
+    if path.stat().st_size > max_output_bytes:
+        path.unlink(missing_ok=True)
+        raise SampleProcessingServiceError(
+            f"{oversize_label} must be {_bytes_label(max_output_bytes)} or smaller.",
+            413,
+        )
+
+
 def _prepare_final_trim_filter_for_preset(preset_id: SampleProcessingPresetId | None) -> str:
     resolved_preset_id = preset_id or DEFAULT_TRIM_SILENCE_PROCESSING_PRESET_ID
     return PREPARE_FINAL_TRIM_FILTERS.get(
@@ -2441,6 +2669,18 @@ def _float_after_marker(line: str, marker: str) -> float | None:
         return float(raw_value)
     except (IndexError, ValueError):
         return None
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as file:
+        while chunk := file.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _escape_ffconcat_path(path: Path) -> str:
+    return str(path).replace("\\", "\\\\").replace("'", "\\'")
 
 
 def _bytes_label(max_bytes: int) -> str:
