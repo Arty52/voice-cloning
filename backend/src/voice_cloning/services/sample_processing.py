@@ -1935,7 +1935,7 @@ class SampleProcessingService:
                 media_source_path,
                 segment_path,
                 selected_range,
-                max_output_bytes=self.settings.max_source_upload_bytes,
+                max_output_bytes=self.settings.max_selected_source_audio_bytes,
             )
             segment_paths.append(segment_path)
         if len(segment_paths) == 1:
@@ -1967,7 +1967,7 @@ class SampleProcessingService:
             raise SampleProcessingServiceError("FFmpeg did not produce a selected media source.", 502)
         _reject_oversized_output(
             output_path,
-            self.settings.max_source_upload_bytes,
+            self.settings.max_selected_source_audio_bytes,
             oversize_label="Selected media source",
         )
         return output_path
@@ -2619,6 +2619,8 @@ async def _extract_source_range(
             _seconds_arg(source_range.duration_seconds),
             "-i",
             str(source_path),
+            "-map",
+            "0:a:0",
             "-ac",
             "1",
             "-ar",

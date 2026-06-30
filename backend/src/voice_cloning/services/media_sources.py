@@ -11,8 +11,13 @@ from uuid import uuid4
 from fastapi import UploadFile
 
 from ..config import Settings
-from ..models import SampleProcessingMediaSource, SampleProcessingMediaSourceChapter
-from ..samples import save_uploaded_sample_stream
+from ..models import (
+    SampleProcessingMediaKind,
+    SampleProcessingMediaSource,
+    SampleProcessingMediaSourceAudioStream,
+    SampleProcessingMediaSourceChapter,
+)
+from ..samples import save_uploaded_media_source_stream
 from .media_commands import (
     non_negative_float as _non_negative_float,
     non_negative_float_from_payload as _non_negative_float_from_payload,
@@ -48,13 +53,13 @@ class SampleProcessingMediaSourceService:
         source_dir.mkdir(parents=True, exist_ok=False)
         try:
             source_path = source_dir / _source_filename(upload.filename)
-            stored = await save_uploaded_sample_stream(
+            stored = await save_uploaded_media_source_stream(
                 upload,
                 source_path,
                 self.settings,
                 max_bytes=self.settings.max_source_upload_bytes,
             )
-            duration_seconds, sample_rate_hz, chapters, warnings = await self._probe_source(stored.path)
+            media_kind, audio_streams, duration_seconds, sample_rate_hz, chapters, warnings = await self._probe_source(stored.path)
             source = SampleProcessingMediaSource(
                 id=source_id,
                 path=stored.path.name,
@@ -66,6 +71,9 @@ class SampleProcessingMediaSourceService:
                 sample_rate_hz=sample_rate_hz,
                 chapters=chapters,
                 warnings=warnings,
+                media_kind=media_kind,
+                audio_streams=audio_streams,
+                selected_audio_stream_index=audio_streams[0].index if audio_streams else None,
             )
             self._write_source(source)
             return source
@@ -122,6 +130,8 @@ class SampleProcessingMediaSourceService:
                     seconds_arg(duration),
                     "-i",
                     str(source_path),
+                    "-map",
+                    "0:a:0",
                     "-vn",
                     "-ac",
                     "1",
@@ -174,17 +184,22 @@ class SampleProcessingMediaSourceService:
     async def _probe_source(
         self,
         path: Path,
-    ) -> tuple[float | None, int | None, tuple[SampleProcessingMediaSourceChapter, ...], tuple[str, ...]]:
+    ) -> tuple[
+        SampleProcessingMediaKind,
+        tuple[SampleProcessingMediaSourceAudioStream, ...],
+        float | None,
+        int | None,
+        tuple[SampleProcessingMediaSourceChapter, ...],
+        tuple[str, ...],
+    ]:
         try:
             stdout, _ = await run_capture_command(
                 [
                     self.settings.sample_processing_ffprobe_command,
                     "-v",
                     "error",
-                    "-select_streams",
-                    "a:0",
                     "-show_entries",
-                    "format=duration:stream=sample_rate",
+                    "format=duration:stream=index,codec_type,codec_name,sample_rate,channels,channel_layout:stream_tags=language,title:stream_disposition=attached_pic",
                     "-show_chapters",
                     "-of",
                     "json",
@@ -196,12 +211,16 @@ class SampleProcessingMediaSourceService:
             )
             payload = json.loads(stdout.decode("utf-8"))
         except (MediaSourceServiceError, json.JSONDecodeError):
-            return None, None, (), ("FFprobe metadata was unavailable for this media source.",)
+            return "audio", (), None, None, (), ("FFprobe metadata was unavailable for this media source.",)
 
+        media_kind = _media_kind_from_payload(payload)
+        audio_streams = _audio_streams_from_payload(payload)
+        if media_kind == "video" and not audio_streams:
+            raise MediaSourceServiceError("Video source must include at least one audio stream.", 422)
         duration_seconds = _positive_float_from_payload(payload.get("format", {}), "duration")
-        sample_rate_hz = _sample_rate_from_payload(payload)
+        sample_rate_hz = audio_streams[0].sample_rate_hz if audio_streams else None
         chapters = _chapters_from_payload(payload, duration_seconds)
-        return duration_seconds, sample_rate_hz, chapters, ()
+        return media_kind, audio_streams, duration_seconds, sample_rate_hz, chapters, ()
 
 
 def _source_filename(filename: str | None) -> str:
@@ -215,6 +234,10 @@ def _source_from_payload(payload: object) -> SampleProcessingMediaSource:
     try:
         chapters = tuple(_chapter_from_payload(item) for item in payload.get("chapters", []))
         warnings = tuple(str(item) for item in payload.get("warnings", []))
+        audio_streams = tuple(_audio_stream_from_payload(item) for item in payload.get("audio_streams", []))
+        selected_audio_stream_index = _optional_int(payload.get("selected_audio_stream_index"))
+        if selected_audio_stream_index is None and audio_streams:
+            selected_audio_stream_index = audio_streams[0].index
         return SampleProcessingMediaSource(
             id=str(payload["id"]),
             path=str(payload["path"]),
@@ -226,6 +249,9 @@ def _source_from_payload(payload: object) -> SampleProcessingMediaSource:
             sample_rate_hz=_optional_int(payload.get("sample_rate_hz")),
             chapters=chapters,
             warnings=warnings,
+            media_kind=_media_kind_from_value(payload.get("media_kind")),
+            audio_streams=audio_streams,
+            selected_audio_stream_index=selected_audio_stream_index,
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise MediaSourceServiceError("Sample processing media source metadata is invalid.", 500) from exc
@@ -240,6 +266,20 @@ def _chapter_from_payload(payload: object) -> SampleProcessingMediaSourceChapter
         start_seconds=float(payload["start_seconds"]),
         end_seconds=float(payload["end_seconds"]),
         duration_seconds=float(payload["duration_seconds"]),
+    )
+
+
+def _audio_stream_from_payload(payload: object) -> SampleProcessingMediaSourceAudioStream:
+    if not isinstance(payload, dict):
+        raise ValueError("audio stream payload must be an object")
+    return SampleProcessingMediaSourceAudioStream(
+        index=int(payload["index"]),
+        codec_name=_optional_string(payload.get("codec_name")),
+        sample_rate_hz=_optional_int(payload.get("sample_rate_hz")),
+        channels=_optional_int(payload.get("channels")),
+        channel_layout=_optional_string(payload.get("channel_layout")),
+        language=_optional_string(payload.get("language")),
+        title=_optional_string(payload.get("title")),
     )
 
 
@@ -283,13 +323,61 @@ def _chapter_title(payload: dict[str, object], index: int) -> str:
     return f"Chapter {index}"
 
 
-def _sample_rate_from_payload(payload: object) -> int | None:
+def _media_kind_from_payload(payload: object) -> SampleProcessingMediaKind:
     if not isinstance(payload, dict):
-        return None
+        return "audio"
     streams = payload.get("streams")
-    if not isinstance(streams, list) or not streams:
-        return None
-    sample_rate = _positive_float_from_payload(streams[0], "sample_rate")
+    if not isinstance(streams, list):
+        return "audio"
+    return "video" if any(_is_real_video_stream(stream) for stream in streams if isinstance(stream, dict)) else "audio"
+
+
+def _media_kind_from_value(value: object) -> SampleProcessingMediaKind:
+    return "video" if value == "video" else "audio"
+
+
+def _is_real_video_stream(stream: dict[str, object]) -> bool:
+    if stream.get("codec_type") != "video":
+        return False
+    disposition = stream.get("disposition")
+    if not isinstance(disposition, dict):
+        return True
+    return disposition.get("attached_pic") not in (1, "1", True)
+
+
+def _audio_streams_from_payload(payload: object) -> tuple[SampleProcessingMediaSourceAudioStream, ...]:
+    if not isinstance(payload, dict):
+        return ()
+    streams = payload.get("streams")
+    if not isinstance(streams, list):
+        return ()
+    audio_streams: list[SampleProcessingMediaSourceAudioStream] = []
+    for position, stream in enumerate(streams):
+        if not isinstance(stream, dict):
+            continue
+        codec_type = stream.get("codec_type")
+        if codec_type not in (None, "audio"):
+            continue
+        stream_index = _optional_int(stream.get("index"))
+        if stream_index is None:
+            stream_index = position
+        tags = stream.get("tags")
+        audio_streams.append(
+            SampleProcessingMediaSourceAudioStream(
+                index=stream_index,
+                codec_name=_optional_string(stream.get("codec_name")),
+                sample_rate_hz=_sample_rate_from_stream(stream),
+                channels=_optional_int(stream.get("channels")),
+                channel_layout=_optional_string(stream.get("channel_layout")),
+                language=_optional_string(tags.get("language")) if isinstance(tags, dict) else None,
+                title=_optional_string(tags.get("title")) if isinstance(tags, dict) else None,
+            )
+        )
+    return tuple(audio_streams)
+
+
+def _sample_rate_from_stream(payload: dict[str, object]) -> int | None:
+    sample_rate = _positive_float_from_payload(payload, "sample_rate")
     return int(sample_rate) if sample_rate is not None else None
 
 
@@ -304,6 +392,13 @@ def _optional_int(value: object) -> int | None:
     if value is None:
         return None
     return int(value)
+
+
+def _optional_string(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    return stripped or None
 
 
 def _validated_seconds(value: float, field_name: str, *, allow_zero: bool) -> float:

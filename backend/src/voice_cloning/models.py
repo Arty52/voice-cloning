@@ -10,6 +10,7 @@ DEFAULT_VOICE_PRESET_ID: VoicePresetId = "standardNarration"
 SampleProcessingOperationId = Literal["prepareVoice", "isolateVoice", "trimSilence", "separateSpeakers"]
 SampleProcessingPresetId = Literal["fast", "balanced", "clean", "maxIsolation", "trimLight", "trimBalanced", "trimAggressive"]
 SampleProcessingSourcePreference = Literal["original", "active"]
+SampleProcessingMediaKind = Literal["audio", "video"]
 SampleProcessingJobStatus = Literal["pending", "running", "success", "error", "canceled"]
 SampleProcessingStepStatus = Literal["pending", "running", "success", "error", "canceled"]
 SampleProcessingWorkflowMode = Literal["single", "stack"]
@@ -173,6 +174,17 @@ class SampleProcessingMediaSourceChapter:
 
 
 @dataclass(frozen=True)
+class SampleProcessingMediaSourceAudioStream:
+    index: int
+    codec_name: str | None = None
+    sample_rate_hz: int | None = None
+    channels: int | None = None
+    channel_layout: str | None = None
+    language: str | None = None
+    title: str | None = None
+
+
+@dataclass(frozen=True)
 class SampleProcessingMediaSource:
     id: str
     path: str
@@ -184,6 +196,9 @@ class SampleProcessingMediaSource:
     sample_rate_hz: int | None
     chapters: tuple[SampleProcessingMediaSourceChapter, ...] = ()
     warnings: tuple[str, ...] = ()
+    media_kind: SampleProcessingMediaKind = "audio"
+    audio_streams: tuple[SampleProcessingMediaSourceAudioStream, ...] = ()
+    selected_audio_stream_index: int | None = None
 
 
 @dataclass(frozen=True)

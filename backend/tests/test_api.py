@@ -553,6 +553,7 @@ def make_settings(
     with_default_sample: bool = True,
     max_upload_bytes: int = 10 * 1024 * 1024,
     max_source_upload_bytes: int = 1024 * 1024 * 1024,
+    max_selected_source_audio_bytes: int = 1024 * 1024 * 1024,
     sample_processing_ffmpeg_command: str = "ffmpeg",
     sample_processing_ffprobe_command: str = "ffprobe",
 ) -> Settings:
@@ -575,6 +576,7 @@ def make_settings(
         cors_allowed_origins=["http://localhost:4340"],
         max_upload_bytes=max_upload_bytes,
         max_source_upload_bytes=max_source_upload_bytes,
+        max_selected_source_audio_bytes=max_selected_source_audio_bytes,
         sample_processing_ffmpeg_command=sample_processing_ffmpeg_command,
         sample_processing_ffprobe_command=sample_processing_ffprobe_command,
     )
@@ -586,6 +588,7 @@ def make_client(
     with_default_sample: bool = True,
     max_upload_bytes: int = 10 * 1024 * 1024,
     max_source_upload_bytes: int = 1024 * 1024 * 1024,
+    max_selected_source_audio_bytes: int = 1024 * 1024 * 1024,
     ffmpeg_command: Path | None = None,
 ) -> tuple[TestClient, FakeElevenLabsProvider]:
     settings = make_settings(
@@ -594,6 +597,7 @@ def make_client(
         with_default_sample=with_default_sample,
         max_upload_bytes=max_upload_bytes,
         max_source_upload_bytes=max_source_upload_bytes,
+        max_selected_source_audio_bytes=max_selected_source_audio_bytes,
         sample_processing_ffmpeg_command=str(ffmpeg_command or ffmpeg_fake_command(tmp_path / "ffmpeg-fake")),
     )
     fake_client = FakeElevenLabsProvider().bind_settings(settings)
@@ -653,12 +657,28 @@ def test_settings_blank_sample_processing_timeout_uses_default(
 def test_settings_loads_upload_caps_from_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("APP_ROOT", str(tmp_path))
     monkeypatch.setenv("MAX_UPLOAD_BYTES", "12345")
-    monkeypatch.setenv("MAX_SOURCE_UPLOAD_BYTES", "1073741824")
+    monkeypatch.setenv("MAX_SOURCE_UPLOAD_BYTES", "123456")
+    monkeypatch.setenv("MAX_SELECTED_SOURCE_AUDIO_BYTES", "654321")
 
     settings = Settings.from_env()
 
     assert settings.max_upload_bytes == 12345
-    assert settings.max_source_upload_bytes == 1024 * 1024 * 1024
+    assert settings.max_source_upload_bytes == 123456
+    assert settings.max_selected_source_audio_bytes == 654321
+
+
+def test_settings_defaults_selected_source_audio_cap_to_source_upload_cap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_ROOT", str(tmp_path))
+    monkeypatch.setenv("MAX_SOURCE_UPLOAD_BYTES", "123456")
+    monkeypatch.delenv("MAX_SELECTED_SOURCE_AUDIO_BYTES", raising=False)
+
+    settings = Settings.from_env()
+
+    assert settings.max_source_upload_bytes == 123456
+    assert settings.max_selected_source_audio_bytes == 123456
 
 
 def test_streamed_upload_writes_file_and_sha_metadata(tmp_path: Path) -> None:
@@ -825,6 +845,185 @@ def test_sample_processing_media_source_upload_reads_chapters(tmp_path: Path) ->
     ).read_bytes() == b"audiobook-source"
 
 
+def test_sample_processing_media_source_audio_with_cover_art_stays_audio(tmp_path: Path) -> None:
+    settings = make_settings(
+        tmp_path,
+        sample_processing_ffprobe_command=str(ffprobe_audio_cover_art_fake_command(tmp_path / "ffprobe-cover-art-fake")),
+    )
+    app = create_app(settings=settings)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/sample-processing/sources",
+        files={"sourceFile": ("book.m4b", b"audiobook-source", "audio/mp4")},
+    )
+
+    assert response.status_code == 201
+    source = response.json()["source"]
+    assert source["mediaKind"] == "audio"
+    assert source["durationSeconds"] == 900.5
+    assert source["sampleRateHz"] == 44100
+    assert source["selectedAudioStreamIndex"] == 0
+    assert source["audioStreams"] == [
+        {
+            "index": 0,
+            "codecName": "aac",
+            "sampleRateHz": 44100,
+            "channels": 2,
+            "channelLayout": "stereo",
+            "language": "eng",
+            "title": "Narration",
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    ("filename", "content_type"),
+    [
+        ("clip.mp4", "video/mp4"),
+        ("clip.m4v", "video/x-m4v"),
+        ("clip.mov", "video/quicktime"),
+    ],
+)
+def test_sample_processing_media_source_upload_accepts_video_with_audio_stream_metadata(
+    tmp_path: Path,
+    filename: str,
+    content_type: str,
+) -> None:
+    settings = make_settings(
+        tmp_path,
+        sample_processing_ffprobe_command=str(ffprobe_video_fake_command(tmp_path / "ffprobe-video-fake")),
+    )
+    app = create_app(settings=settings)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/sample-processing/sources",
+        files={"sourceFile": (filename, b"video-source", content_type)},
+    )
+
+    assert response.status_code == 201
+    source = response.json()["source"]
+    assert source["filename"] == filename
+    assert source["contentType"] == content_type
+    assert source["mediaKind"] == "video"
+    assert source["durationSeconds"] == 37.25
+    assert source["sampleRateHz"] == 48000
+    assert source["selectedAudioStreamIndex"] == 1
+    assert source["selectedAudioStream"] == {
+        "index": 1,
+        "codecName": "aac",
+        "sampleRateHz": 48000,
+        "channels": 2,
+        "channelLayout": "stereo",
+        "language": "eng",
+        "title": "Main Audio",
+    }
+    assert source["audioStreams"] == [
+        {
+            "index": 1,
+            "codecName": "aac",
+            "sampleRateHz": 48000,
+            "channels": 2,
+            "channelLayout": "stereo",
+            "language": "eng",
+            "title": "Main Audio",
+        },
+        {
+            "index": 2,
+            "codecName": "aac",
+            "sampleRateHz": 44100,
+            "channels": 1,
+            "channelLayout": "mono",
+            "language": "spa",
+            "title": None,
+        },
+    ]
+    assert (settings.sample_processing_dir / "sources" / source["id"] / f"source{Path(filename).suffix}").read_bytes() == b"video-source"
+
+
+def test_sample_processing_media_source_upload_rejects_video_without_audio_stream(tmp_path: Path) -> None:
+    settings = make_settings(
+        tmp_path,
+        sample_processing_ffprobe_command=str(ffprobe_video_without_audio_fake_command(tmp_path / "ffprobe-no-audio-fake")),
+    )
+    app = create_app(settings=settings)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/sample-processing/sources",
+        files={"sourceFile": ("silent.mp4", b"video-source", "video/mp4")},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Video source must include at least one audio stream."
+    assert [path for path in (settings.sample_processing_dir / "sources").iterdir()] == []
+
+
+def test_sample_processing_media_source_media_endpoint_serves_staged_file(tmp_path: Path) -> None:
+    settings = make_settings(
+        tmp_path,
+        sample_processing_ffprobe_command=str(ffprobe_video_fake_command(tmp_path / "ffprobe-video-fake")),
+    )
+    app = create_app(settings=settings)
+    client = TestClient(app)
+    upload = client.post(
+        "/api/sample-processing/sources",
+        files={"sourceFile": ("clip.mp4", b"video-source", "video/mp4")},
+    )
+    source = upload.json()["source"]
+
+    response = client.get(f"/api/sample-processing/sources/{source['id']}/media")
+
+    assert response.status_code == 200
+    assert response.content == b"video-source"
+    assert response.headers["content-type"].startswith("video/mp4")
+    assert 'filename="clip.mp4"' in response.headers["content-disposition"]
+
+
+def test_sample_processing_media_source_media_endpoint_uses_safe_content_type(tmp_path: Path) -> None:
+    settings = make_settings(
+        tmp_path,
+        sample_processing_ffprobe_command=str(ffprobe_video_fake_command(tmp_path / "ffprobe-video-fake")),
+    )
+    app = create_app(settings=settings)
+    client = TestClient(app)
+    upload = client.post(
+        "/api/sample-processing/sources",
+        files={"sourceFile": ("clip.mp4", b"video-source", "text/html")},
+    )
+    source = upload.json()["source"]
+
+    response = client.get(f"/api/sample-processing/sources/{source['id']}/media")
+
+    assert response.status_code == 200
+    assert response.content == b"video-source"
+    assert response.headers["content-type"].startswith("video/mp4")
+
+
+def test_sample_processing_media_source_media_endpoint_rejects_invalid_source_path(tmp_path: Path) -> None:
+    settings = make_settings(
+        tmp_path,
+        sample_processing_ffprobe_command=str(ffprobe_video_fake_command(tmp_path / "ffprobe-video-fake")),
+    )
+    app = create_app(settings=settings)
+    client = TestClient(app)
+    upload = client.post(
+        "/api/sample-processing/sources",
+        files={"sourceFile": ("clip.mp4", b"video-source", "video/mp4")},
+    )
+    source_id = upload.json()["source"]["id"]
+    metadata_path = settings.sample_processing_dir / "sources" / source_id / "source.json"
+    payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+    payload["path"] = "../source.mp4"
+    metadata_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    response = client.get(f"/api/sample-processing/sources/{source_id}/media")
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Sample processing media source path is invalid."
+
+
 def test_sample_processing_media_source_preview_is_cached_and_bounded(tmp_path: Path) -> None:
     ffmpeg_args_log_path = tmp_path / "ffmpeg-args-log.json"
     settings = make_settings(
@@ -865,6 +1064,7 @@ def test_sample_processing_media_source_preview_is_cached_and_bounded(tmp_path: 
     preview_args = args_log[0]
     assert preview_args[preview_args.index("-ss") + 1] == "10"
     assert preview_args[preview_args.index("-t") + 1] == "90"
+    assert preview_args[preview_args.index("-map") + 1] == "0:a:0"
     assert preview_args[preview_args.index("-c:a") + 1] == "libmp3lame"
 
 
@@ -898,18 +1098,32 @@ def test_sample_processing_media_source_preview_failure_removes_partial_cache(tm
     assert not list(previews_dir.iterdir())
 
 
-def test_sample_processing_media_source_rejects_invalid_upload(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("filename", "content", "content_type"),
+    [
+        ("notes.txt", b"not-audio", "text/plain"),
+        ("notes.txt", b"not-audio", "application/octet-stream"),
+        ("clip.webm", b"video-source", "video/webm"),
+        ("clip.mkv", b"video-source", "video/x-matroska"),
+    ],
+)
+def test_sample_processing_media_source_rejects_invalid_upload(
+    tmp_path: Path,
+    filename: str,
+    content: bytes,
+    content_type: str,
+) -> None:
     settings = make_settings(tmp_path)
     app = create_app(settings=settings)
     client = TestClient(app)
 
     response = client.post(
         "/api/sample-processing/sources",
-        files={"sourceFile": ("notes.txt", b"not-audio", "text/plain")},
+        files={"sourceFile": (filename, content, content_type)},
     )
 
     assert response.status_code == 422
-    assert "Voice sample must be an audio file" in response.json()["detail"]
+    assert "Source media must be an audio or video file" in response.json()["detail"]
     assert [path for path in (settings.sample_processing_dir / "sources").iterdir()] == []
 
 
@@ -942,11 +1156,14 @@ def test_sample_processing_media_source_invalid_id_uses_not_found_detail(tmp_pat
     expected_detail = "Sample processing media source was not found."
 
     fetched = client.get("/api/sample-processing/sources/not-a-source")
+    media = client.get("/api/sample-processing/sources/not-a-source/media")
     preview = client.get("/api/sample-processing/sources/not-a-source/preview")
     deleted = client.delete("/api/sample-processing/sources/not-a-source")
 
     assert fetched.status_code == 404
     assert fetched.json()["detail"] == expected_detail
+    assert media.status_code == 404
+    assert media.json()["detail"] == expected_detail
     assert preview.status_code == 404
     assert preview.json()["detail"] == expected_detail
     assert deleted.status_code == 404
@@ -1162,6 +1379,89 @@ sys.stdout.write(json.dumps({
     )
 
 
+def ffprobe_audio_cover_art_fake_command(path: Path) -> Path:
+    return write_fake_command(
+        path,
+        """
+import json
+import sys
+sys.stdout.write(json.dumps({
+    "streams": [
+        {
+            "index": 0,
+            "codec_type": "audio",
+            "codec_name": "aac",
+            "sample_rate": "44100",
+            "channels": 2,
+            "channel_layout": "stereo",
+            "tags": {"language": "eng", "title": "Narration"},
+        },
+        {
+            "index": 1,
+            "codec_type": "video",
+            "codec_name": "mjpeg",
+            "disposition": {"attached_pic": 1},
+        },
+    ],
+    "format": {"duration": "900.5"},
+    "chapters": [],
+}))
+""",
+    )
+
+
+def ffprobe_video_fake_command(path: Path) -> Path:
+    return write_fake_command(
+        path,
+        """
+import json
+import sys
+sys.stdout.write(json.dumps({
+    "streams": [
+        {"index": 0, "codec_type": "video", "codec_name": "h264"},
+        {
+            "index": 1,
+            "codec_type": "audio",
+            "codec_name": "aac",
+            "sample_rate": "48000",
+            "channels": 2,
+            "channel_layout": "stereo",
+            "tags": {"language": "eng", "title": "Main Audio"},
+        },
+        {
+            "index": 2,
+            "codec_type": "audio",
+            "codec_name": "aac",
+            "sample_rate": "44100",
+            "channels": 1,
+            "channel_layout": "mono",
+            "tags": {"language": "spa"},
+        },
+    ],
+    "format": {"duration": "37.25"},
+    "chapters": [],
+}))
+""",
+    )
+
+
+def ffprobe_video_without_audio_fake_command(path: Path) -> Path:
+    return write_fake_command(
+        path,
+        """
+import json
+import sys
+sys.stdout.write(json.dumps({
+    "streams": [
+        {"index": 0, "codec_type": "video", "codec_name": "h264"},
+    ],
+    "format": {"duration": "37.25"},
+    "chapters": [],
+}))
+""",
+    )
+
+
 class FakeDiarizationSegment:
     def __init__(self, start: float, end: float) -> None:
         self.start = start
@@ -1363,6 +1663,7 @@ def test_providers_endpoint_returns_public_provider_descriptor(tmp_path: Path) -
         "targetSampleRateHz": 16000,
         "maxUploadBytes": 10 * 1024 * 1024,
         "maxSourceUploadBytes": 1024 * 1024 * 1024,
+        "maxSelectedSourceAudioBytes": 1024 * 1024 * 1024,
     }
     assert provider["links"][0]["label"] == "API Requests"
     assert "server-secret" not in response.text
@@ -3792,6 +4093,9 @@ def test_sample_processing_job_accepts_selected_media_source_range(tmp_path: Pat
     extract_args = args_log[0]
     assert extract_args[extract_args.index("-ss") + 1] == "0"
     assert extract_args[extract_args.index("-t") + 1] == "420.5"
+    assert extract_args[extract_args.index("-map") + 1] == "0:a:0"
+    assert extract_args[extract_args.index("-ac") + 1] == "1"
+    assert extract_args[extract_args.index("-ar") + 1] == "16000"
     assert extract_args[extract_args.index("-c:a") + 1] == "pcm_s16le"
 
 
@@ -3923,7 +4227,7 @@ def test_sample_processing_job_rejects_missing_media_source(tmp_path: Path) -> N
 def test_sample_processing_job_enforces_selected_media_source_cap(tmp_path: Path) -> None:
     settings = make_settings(
         tmp_path,
-        max_source_upload_bytes=10,
+        max_selected_source_audio_bytes=10,
         sample_processing_ffmpeg_command=str(
             ffmpeg_fake_command(tmp_path / "ffmpeg-fake", output=b"larger-than-cap")
         ),

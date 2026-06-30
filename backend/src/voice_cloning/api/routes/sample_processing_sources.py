@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 
+from ...samples import media_source_response_content_type
 from ...services.media_sources import (
     MEDIA_SOURCE_PREVIEW_CONTENT_TYPE,
     MEDIA_SOURCE_PREVIEW_MAX_SECONDS,
@@ -32,6 +33,19 @@ def create_sample_processing_sources_router(
         except MediaSourceServiceError as exc:
             raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
         return {"source": sample_processing_media_source_payload(source)}
+
+    @router.get("/api/sample-processing/sources/{source_id}/media")
+    def sample_processing_source_media(source_id: str) -> FileResponse:
+        try:
+            source = media_sources.get_source(source_id)
+            path = media_sources.source_path(source_id)
+        except MediaSourceServiceError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+        return FileResponse(
+            path,
+            filename=source.filename,
+            media_type=media_source_response_content_type(source.filename, source.content_type),
+        )
 
     @router.get("/api/sample-processing/sources/{source_id}/preview")
     async def sample_processing_source_preview(

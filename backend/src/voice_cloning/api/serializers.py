@@ -10,6 +10,7 @@ from ..models import (
     SampleProcessingDurationRange,
     SampleProcessingJob,
     SampleProcessingMediaSource,
+    SampleProcessingMediaSourceAudioStream,
     SampleProcessingMediaSourceChapter,
     SampleProcessingProgressPhase,
     SampleProcessingJobStep,
@@ -115,6 +116,7 @@ def providers_payload(
     *,
     max_upload_bytes: int,
     max_source_upload_bytes: int,
+    max_selected_source_audio_bytes: int,
 ) -> dict[str, object]:
     return {
         "defaultProviderId": default_provider_id,
@@ -135,6 +137,7 @@ def providers_payload(
                     "targetSampleRateHz": provider.sample.target_sample_rate_hz,
                     "maxUploadBytes": max_upload_bytes,
                     "maxSourceUploadBytes": max_source_upload_bytes,
+                    "maxSelectedSourceAudioBytes": max_selected_source_audio_bytes,
                 },
             }
             for provider in providers
@@ -237,16 +240,42 @@ def sample_processing_preset_payload(preset: SampleProcessingPreset) -> dict[str
 
 
 def sample_processing_media_source_payload(source: SampleProcessingMediaSource) -> dict[str, object]:
+    selected_audio_stream = next(
+        (stream for stream in source.audio_streams if stream.index == source.selected_audio_stream_index),
+        None,
+    )
     return {
         "id": source.id,
         "filename": source.filename,
         "contentType": source.content_type,
+        "mediaKind": source.media_kind,
         "sizeBytes": source.size_bytes,
         "sha256": source.sha256,
         "durationSeconds": source.duration_seconds,
         "sampleRateHz": source.sample_rate_hz,
+        "audioStreams": [sample_processing_media_source_audio_stream_payload(stream) for stream in source.audio_streams],
+        "selectedAudioStream": (
+            sample_processing_media_source_audio_stream_payload(selected_audio_stream)
+            if selected_audio_stream is not None
+            else None
+        ),
+        "selectedAudioStreamIndex": source.selected_audio_stream_index,
         "chapters": [sample_processing_media_source_chapter_payload(chapter) for chapter in source.chapters],
         "warnings": list(source.warnings),
+    }
+
+
+def sample_processing_media_source_audio_stream_payload(
+    stream: SampleProcessingMediaSourceAudioStream,
+) -> dict[str, object]:
+    return {
+        "index": stream.index,
+        "codecName": stream.codec_name,
+        "sampleRateHz": stream.sample_rate_hz,
+        "channels": stream.channels,
+        "channelLayout": stream.channel_layout,
+        "language": stream.language,
+        "title": stream.title,
     }
 
 
