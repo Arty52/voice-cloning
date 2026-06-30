@@ -7,7 +7,8 @@ import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 
-const AUDIO_ACCEPT = "audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac"
+const AUDIO_ACCEPT =
+  ".mp3,.wav,.m4a,.aac,.ogg,.flac,audio/mpeg,audio/wav,audio/x-wav,audio/aac,audio/ogg,audio/flac"
 const DEFAULT_HELPER_COPY =
   "Drag an audio file here, or choose one from your computer. Supports MP3, WAV, M4A, AAC, OGG, and FLAC."
 
