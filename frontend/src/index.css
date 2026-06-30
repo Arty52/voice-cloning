@@ -91,14 +91,16 @@ audio {
   min-height: 42px;
 }
 
+.pending-work-status,
 .source-inspection-loading {
   border-color: color-mix(in oklch, var(--primary) 34%, var(--border));
   box-shadow:
     0 0 0 1px color-mix(in oklch, var(--primary) 12%, transparent),
     0 0 22px color-mix(in oklch, var(--primary) 8%, transparent);
-  animation: source-inspection-border 2.6s ease-in-out infinite;
+  animation: pending-work-status-border 2.6s ease-in-out infinite;
 }
 
+.pending-work-status__shine,
 .source-inspection-loading__shine {
   position: absolute;
   inset-block: 0;
@@ -111,11 +113,11 @@ audio {
     color-mix(in oklch, var(--primary) 20%, transparent) 50%,
     transparent 62%
   );
-  animation: source-inspection-shine 3s ease-in-out infinite;
+  animation: pending-work-status-shine 3s ease-in-out infinite;
   pointer-events: none;
 }
 
-@keyframes source-inspection-border {
+@keyframes pending-work-status-border {
   0%,
   100% {
     border-color: color-mix(in oklch, var(--primary) 26%, var(--border));
@@ -132,7 +134,7 @@ audio {
   }
 }
 
-@keyframes source-inspection-shine {
+@keyframes pending-work-status-shine {
   0%,
   35% {
     transform: translateX(0);
@@ -145,6 +147,8 @@ audio {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .pending-work-status,
+  .pending-work-status__shine,
   .source-inspection-loading,
   .source-inspection-loading__shine {
     animation: none;
