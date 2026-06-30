@@ -19,6 +19,7 @@ import type { ProvidersResponse } from "./types"
 const audioBlob = new Blob(["fake audio"], { type: "audio/mpeg" })
 const formatTestNumber = (value: number) => new Intl.NumberFormat().format(value)
 const ACTIVE_SAMPLE_PROCESSING_JOB_STORAGE_KEY = "voice-cloning.activeSampleProcessingJobId.v1"
+let scrollIntoView: ReturnType<typeof vi.fn>
 
 const defaultVoice = {
   id: "default",
@@ -1124,6 +1125,24 @@ describe("App", () => {
     Object.defineProperty(HTMLTextAreaElement.prototype, "scrollHeight", {
       configurable: true,
       value: 320,
+    })
+    scrollIntoView = vi.fn(function (this: HTMLElement) {
+      return undefined
+    })
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    })
+    Object.defineProperty(window, "requestAnimationFrame", {
+      configurable: true,
+      value: vi.fn((callback: FrameRequestCallback) => {
+        callback(performance.now())
+        return 0
+      }),
+    })
+    Object.defineProperty(window, "cancelAnimationFrame", {
+      configurable: true,
+      value: vi.fn(),
     })
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:voice")
     vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined)
@@ -2464,6 +2483,58 @@ describe("App", () => {
     expect(preparePanel.getByText("Active Phase: Detect Speech Regions")).toBeInTheDocument()
     expect(preparePanel.getByText("Estimated Time 1m 15s to 3m 30s")).toBeInTheDocument()
     expect(localStorage.getItem(ACTIVE_SAMPLE_PROCESSING_JOB_STORAGE_KEY)).toBe("job-prepare")
+    expect(scrollIntoView).not.toHaveBeenCalled()
+  })
+
+  it("scrolls to sample processing progress when source media processing starts", async () => {
+    window.history.replaceState(null, "", "/#prepare")
+    const baseFetch = mockFetch()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/sample-processing/options" && !init) {
+          return okJson({
+            ...sampleProcessingOptions,
+            recommendedWorkflowOrder: ["prepareVoice", ...sampleProcessingOptions.recommendedWorkflowOrder],
+            operations: [
+              {
+                id: "prepareVoice",
+                label: "Prepare Voice",
+                description: "Rank provider-ready samples.",
+                enabled: true,
+                defaultProcessingPresetId: null,
+                processingPresets: [],
+              },
+              ...sampleProcessingOptions.operations,
+            ],
+          })
+        }
+        return baseFetch(input, init)
+      })
+    )
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.click(prepareAudioPanel().getByRole("button", { name: /process source media/i }))
+    await user.click(sampleProcessingPanel().getByRole("radio", { name: "Saved Voice" }))
+    const processButton = sampleProcessingPanel().getByRole("button", { name: "Process Source Media" })
+    await waitFor(() => expect(processButton).toBeEnabled())
+
+    await user.click(processButton)
+
+    const progressHeading = await sampleProcessingPanel().findByText("Workflow Progress")
+    const progressSection = progressHeading.closest("section")
+    expect(progressSection?.parentElement).not.toBeNull()
+    await waitFor(() =>
+      expect(scrollIntoView).toHaveBeenCalledWith({
+        behavior: "smooth",
+        block: "start",
+        inline: "nearest",
+      })
+    )
+    expect(scrollIntoView.mock.contexts).toContain(progressSection?.parentElement)
   })
 
   it("orders sample processing controls from source to workflow to action", async () => {
@@ -3559,6 +3630,16 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: /generating/i })).toBeDisabled()
     expect(screen.getByRole("button", { name: /cancel/i })).toBeInTheDocument()
     const latestHeading = screen.getByRole("heading", { name: "Latest Generated Audio" })
+    const latestScrollPanel = latestHeading.closest("section")
+    expect(latestScrollPanel).not.toBeNull()
+    await waitFor(() =>
+      expect(scrollIntoView).toHaveBeenCalledWith({
+        behavior: "smooth",
+        block: "start",
+        inline: "nearest",
+      })
+    )
+    expect(scrollIntoView.mock.contexts).toContain(latestScrollPanel)
     const textLabel = screen.getByText("Text to Speak")
     const generateSection = document.querySelector('[data-section-id="generate"]')
     expect(generateSection).not.toBeNull()
