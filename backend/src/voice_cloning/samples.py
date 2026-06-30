@@ -28,7 +28,6 @@ ALLOWED_AUDIO_CONTENT_TYPES = {
     "audio/x-m4a",
     "audio/x-m4b",
     "audio/x-wav",
-    "application/octet-stream",
 }
 ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".m4v", ".mov"}
 ALLOWED_VIDEO_CONTENT_TYPES = {
@@ -38,6 +37,19 @@ ALLOWED_VIDEO_CONTENT_TYPES = {
 }
 ALLOWED_MEDIA_SOURCE_EXTENSIONS = ALLOWED_AUDIO_EXTENSIONS | ALLOWED_VIDEO_EXTENSIONS
 ALLOWED_MEDIA_SOURCE_CONTENT_TYPES = ALLOWED_AUDIO_CONTENT_TYPES | ALLOWED_VIDEO_CONTENT_TYPES
+GENERIC_UPLOAD_CONTENT_TYPE = "application/octet-stream"
+MEDIA_SOURCE_CONTENT_TYPES_BY_EXTENSION = {
+    ".aac": "audio/aac",
+    ".flac": "audio/flac",
+    ".m4a": "audio/mp4",
+    ".m4b": "audio/mp4",
+    ".mov": "video/quicktime",
+    ".mp3": "audio/mpeg",
+    ".mp4": "video/mp4",
+    ".m4v": "video/x-m4v",
+    ".ogg": "audio/ogg",
+    ".wav": "audio/wav",
+}
 UPLOAD_CHUNK_SIZE_BYTES = 1024 * 1024
 
 
@@ -65,7 +77,7 @@ def slugify_voice_name(name: str) -> str:
 def _validate_audio_file(filename: str, content_type: str | None) -> None:
     suffix = Path(filename).suffix.lower()
     normalized_content_type = (content_type or "").lower()
-    if suffix not in ALLOWED_AUDIO_EXTENSIONS and normalized_content_type not in ALLOWED_AUDIO_CONTENT_TYPES:
+    if not _has_allowed_upload_type(suffix, normalized_content_type, ALLOWED_AUDIO_EXTENSIONS, ALLOWED_AUDIO_CONTENT_TYPES):
         raise HTTPException(
             status_code=422,
             detail="Voice sample must be an audio file: mp3, wav, m4a, m4b, aac, ogg, or flac.",
@@ -75,7 +87,12 @@ def _validate_audio_file(filename: str, content_type: str | None) -> None:
 def _validate_media_source_file(filename: str, content_type: str | None) -> None:
     suffix = Path(filename).suffix.lower()
     normalized_content_type = (content_type or "").lower()
-    if suffix not in ALLOWED_MEDIA_SOURCE_EXTENSIONS and normalized_content_type not in ALLOWED_MEDIA_SOURCE_CONTENT_TYPES:
+    if not _has_allowed_upload_type(
+        suffix,
+        normalized_content_type,
+        ALLOWED_MEDIA_SOURCE_EXTENSIONS,
+        ALLOWED_MEDIA_SOURCE_CONTENT_TYPES,
+    ):
         raise HTTPException(
             status_code=422,
             detail=(
@@ -83,6 +100,29 @@ def _validate_media_source_file(filename: str, content_type: str | None) -> None
                 "mp4, m4v, or mov."
             ),
         )
+
+
+def _has_allowed_upload_type(
+    suffix: str,
+    content_type: str,
+    allowed_extensions: set[str],
+    allowed_content_types: set[str],
+) -> bool:
+    if suffix in allowed_extensions:
+        return True
+    if content_type == GENERIC_UPLOAD_CONTENT_TYPE:
+        return False
+    return content_type in allowed_content_types
+
+
+def media_source_response_content_type(filename: str, content_type: str | None) -> str:
+    suffix = Path(filename).suffix.lower()
+    if suffix in MEDIA_SOURCE_CONTENT_TYPES_BY_EXTENSION:
+        return MEDIA_SOURCE_CONTENT_TYPES_BY_EXTENSION[suffix]
+    normalized_content_type = (content_type or "").lower()
+    if normalized_content_type in ALLOWED_MEDIA_SOURCE_CONTENT_TYPES:
+        return normalized_content_type
+    return GENERIC_UPLOAD_CONTENT_TYPE
 
 
 def load_default_sample(settings: Settings) -> VoiceSample:
@@ -120,7 +160,7 @@ def load_sample_file(path: Path, content_type: str) -> VoiceSample:
 
 async def load_uploaded_sample(upload: UploadFile, settings: Settings, max_bytes: int | None = None) -> VoiceSample:
     filename = upload.filename or "uploaded-sample"
-    content_type = upload.content_type or "application/octet-stream"
+    content_type = upload.content_type or GENERIC_UPLOAD_CONTENT_TYPE
     _validate_audio_file(filename, content_type)
 
     resolved_max_bytes = settings.max_upload_bytes if max_bytes is None else max_bytes
@@ -186,7 +226,7 @@ async def _save_uploaded_stream(
     limit_detail_prefix: str,
 ) -> StoredSampleFile:
     filename = upload.filename or "uploaded-sample"
-    content_type = upload.content_type or "application/octet-stream"
+    content_type = upload.content_type or GENERIC_UPLOAD_CONTENT_TYPE
     validate_file(filename, content_type)
 
     resolved_max_bytes = settings.max_upload_bytes if max_bytes is None else max_bytes

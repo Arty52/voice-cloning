@@ -981,6 +981,26 @@ def test_sample_processing_media_source_media_endpoint_serves_staged_file(tmp_pa
     assert 'filename="clip.mp4"' in response.headers["content-disposition"]
 
 
+def test_sample_processing_media_source_media_endpoint_uses_safe_content_type(tmp_path: Path) -> None:
+    settings = make_settings(
+        tmp_path,
+        sample_processing_ffprobe_command=str(ffprobe_video_fake_command(tmp_path / "ffprobe-video-fake")),
+    )
+    app = create_app(settings=settings)
+    client = TestClient(app)
+    upload = client.post(
+        "/api/sample-processing/sources",
+        files={"sourceFile": ("clip.mp4", b"video-source", "text/html")},
+    )
+    source = upload.json()["source"]
+
+    response = client.get(f"/api/sample-processing/sources/{source['id']}/media")
+
+    assert response.status_code == 200
+    assert response.content == b"video-source"
+    assert response.headers["content-type"].startswith("video/mp4")
+
+
 def test_sample_processing_media_source_media_endpoint_rejects_invalid_source_path(tmp_path: Path) -> None:
     settings = make_settings(
         tmp_path,
@@ -1082,6 +1102,7 @@ def test_sample_processing_media_source_preview_failure_removes_partial_cache(tm
     ("filename", "content", "content_type"),
     [
         ("notes.txt", b"not-audio", "text/plain"),
+        ("notes.txt", b"not-audio", "application/octet-stream"),
         ("clip.webm", b"video-source", "video/webm"),
         ("clip.mkv", b"video-source", "video/x-matroska"),
     ],
