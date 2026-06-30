@@ -9,19 +9,12 @@ export function useScrollIntoViewOnSignal<TElement extends HTMLElement>(
 ) {
   const targetRef = useRef<TElement | null>(null)
   const hasMountedRef = useRef(false)
-  const previousSignalRef = useRef(signal)
 
   useEffect(() => {
     if (!hasMountedRef.current) {
       hasMountedRef.current = true
-      previousSignalRef.current = signal
       return undefined
     }
-
-    if (Object.is(previousSignalRef.current, signal)) {
-      return undefined
-    }
-    previousSignalRef.current = signal
 
     if (signal === null || signal === undefined) {
       return undefined
@@ -47,5 +40,9 @@ export function useScrollIntoViewOnSignal<TElement extends HTMLElement>(
 }
 
 function prefersReducedMotion() {
-  return typeof window.matchMedia === "function" && window.matchMedia(REDUCED_MOTION_QUERY).matches
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia(REDUCED_MOTION_QUERY).matches
+  )
 }

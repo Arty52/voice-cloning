@@ -64,6 +64,24 @@ describe("useScrollIntoViewOnSignal", () => {
     })
   })
 
+  it("does not scroll when the changed signal is empty", () => {
+    const { rerender } = render(<ScrollAttentionProbe signal={1} />)
+
+    rerender(<ScrollAttentionProbe signal={null} />)
+
+    expect(window.requestAnimationFrame).not.toHaveBeenCalled()
+    expect(scrollIntoView).not.toHaveBeenCalled()
+  })
+
+  it("does not scroll when the target ref is unset", () => {
+    const { rerender } = render(<ScrollAttentionProbe attachTarget={false} signal={1} />)
+
+    rerender(<ScrollAttentionProbe attachTarget={false} signal={2} />)
+
+    expect(window.requestAnimationFrame).not.toHaveBeenCalled()
+    expect(scrollIntoView).not.toHaveBeenCalled()
+  })
+
   it("uses auto scrolling when reduced motion is preferred", () => {
     vi.mocked(window.matchMedia).mockReturnValue({ matches: true } as MediaQueryList)
     const { rerender } = render(<ScrollAttentionProbe signal="idle" />)
@@ -110,8 +128,18 @@ describe("useScrollIntoViewOnSignal", () => {
   }
 })
 
-function ScrollAttentionProbe({ signal }: { signal: number | string }) {
+function ScrollAttentionProbe({
+  attachTarget = true,
+  signal,
+}: {
+  attachTarget?: boolean
+  signal: number | string | null | undefined
+}) {
   const attentionRef = useScrollIntoViewOnSignal<HTMLDivElement>(signal)
+
+  if (!attachTarget) {
+    return <div data-testid="placeholder" />
+  }
 
   return <div data-testid="target" ref={attentionRef} />
 }
