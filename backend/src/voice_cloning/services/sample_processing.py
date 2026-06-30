@@ -174,6 +174,7 @@ class SampleProcessingRequest:
     processing_preset_id: SampleProcessingPresetId | None = None
     processing_preset_label: str | None = None
     max_output_bytes: int | None = None
+    source_selection: SampleProcessingSourceSelection | None = None
 
 
 @dataclass(frozen=True)
@@ -463,6 +464,7 @@ class SampleProcessingService:
                 source=source_sample,
                 processing_preset_id=first_step.processing_preset_id,
                 processing_preset_label=first_step.processing_preset_label,
+                source_selection=source_selection,
             )
             self._tasks[job_id] = asyncio.create_task(self._run_job(job_id, request, resolved_steps))
             return job
@@ -551,6 +553,7 @@ class SampleProcessingService:
                     job_dir=job_dir,
                     source_path=source_path,
                     source_sample=source_sample,
+                    source_selection=source_selection,
                     options=options,
                 )
             )
@@ -803,6 +806,7 @@ class SampleProcessingService:
         job_dir: Path,
         source_path: Path,
         source_sample: VoiceSample,
+        source_selection: SampleProcessingSourceSelection | None,
         options: PrepareVoiceOptions,
     ) -> None:
         step = self.get_job(job_id).steps[0]
@@ -811,7 +815,20 @@ class SampleProcessingService:
         current_sample = source_sample
         try:
             self._update_job(job_id, status="running")
-            self._start_step(job_id, step.id, source_sha256=source_sample.sha256)
+            current_path, current_sample = await self._materialize_selected_source(
+                job_id=job_id,
+                job_dir=job_dir,
+                source_path=current_path,
+                source_sample=current_sample,
+                source_selection=source_selection,
+            )
+            if source_selection is not None:
+                self._update_job(
+                    job_id,
+                    estimated_duration_range_seconds=_estimate_prepare_voice_duration(_path_size_bytes(current_path), options),
+                )
+            root_source_sha256 = current_sample.sha256
+            self._start_step(job_id, step.id, source_sha256=current_sample.sha256)
 
             if options.clean_voice:
                 clean_phase_id = _prepare_voice_phase_id(job_id, "clean-voice")
@@ -898,7 +915,7 @@ class SampleProcessingService:
                             label="Prepare Voice",
                             operation_id="prepareVoice",
                             created_at=_utc_now(),
-                            source_sha256=source_sample.sha256,
+                            source_sha256=root_source_sha256,
                             result_sha256=candidate.sha256,
                             engine=self._prepare_voice_engine(options),
                             speaker_id=candidate.speaker_id,
@@ -1073,6 +1090,13 @@ class SampleProcessingService:
         result: SampleProcessingJobResult | None = None
         prior_voice_steps: list[VoiceProcessingStep] = []
         try:
+            current_path, current_sample = await self._materialize_selected_source(
+                job_id=job_id,
+                job_dir=initial_request.job_dir,
+                source_path=current_path,
+                source_sample=current_sample,
+                source_selection=initial_request.source_selection,
+            )
             for index, workflow_step in enumerate(workflow_steps):
                 step = self.get_job(job_id).steps[index]
                 if speaker_result is not None and workflow_step.operation.id != "trimSilence":
@@ -1188,6 +1212,38 @@ class SampleProcessingService:
             self._update_job(job_id, status="error", error="Sample processing failed.", active_step_id=None)
         finally:
             self._tasks.pop(job_id, None)
+
+    async def _materialize_selected_source(
+        self,
+        *,
+        job_id: str,
+        job_dir: Path,
+        source_path: Path,
+        source_sample: VoiceSample,
+        source_selection: SampleProcessingSourceSelection | None,
+    ) -> tuple[Path, VoiceSample]:
+        if source_selection is None:
+            return source_path, source_sample
+        selected_path = await self._extract_source_ranges(
+            source_path,
+            job_dir,
+            source_selection.ranges,
+        )
+        selected_sample = VoiceSample(
+            content=b"",
+            filename=selected_path.name,
+            content_type=RESULT_CONTENT_TYPE,
+            sha256=_file_sha256(selected_path),
+        )
+        self._source_paths[job_id] = selected_path
+        self._update_job(
+            job_id,
+            source_filename=selected_sample.filename,
+            source_content_type=selected_sample.content_type,
+            source_sha256=selected_sample.sha256,
+            source_size_bytes=_path_size_bytes(selected_path),
+        )
+        return selected_path, selected_sample
 
     async def _run_trim_on_speakers(
         self,
@@ -1830,7 +1886,7 @@ class SampleProcessingService:
             source_path, source_sample, source_name = await self._source_from_upload(job_dir, source_upload)
             return source_path, source_sample, source_name, None
         if source_media_id and source_media_id.strip():
-            return await self._source_from_media(job_dir, source_media_id.strip(), source_ranges or ())
+            return await self._source_from_media(source_media_id.strip(), source_ranges or ())
         source_path, source_sample, source_name = self._source_from_voice(
             (source_voice_id or "").strip(),
             source_preference,
@@ -1839,7 +1895,6 @@ class SampleProcessingService:
 
     async def _source_from_media(
         self,
-        job_dir: Path,
         source_media_id: str,
         source_ranges: tuple[SourceRangeInput, ...],
     ) -> tuple[Path, VoiceSample, str, SampleProcessingSourceSelection]:
@@ -1850,21 +1905,15 @@ class SampleProcessingService:
             raise SampleProcessingServiceError(exc.detail, exc.status_code) from exc
 
         selected_ranges = _normalize_source_ranges(source_ranges, duration_seconds=media_source.duration_seconds)
-        selected_path = await self._extract_source_ranges(
-            media_source_path,
-            job_dir,
-            selected_ranges,
-        )
-        sha256 = _file_sha256(selected_path)
         source_sample = VoiceSample(
             content=b"",
-            filename=selected_path.name,
-            content_type=RESULT_CONTENT_TYPE,
-            sha256=sha256,
+            filename=media_source.filename,
+            content_type=media_source.content_type,
+            sha256=media_source.sha256,
         )
         source_name = Path(media_source.filename).stem or "Media Source"
         return (
-            selected_path,
+            media_source_path,
             source_sample,
             source_name,
             SampleProcessingSourceSelection(source_media_id=source_media_id, ranges=selected_ranges),

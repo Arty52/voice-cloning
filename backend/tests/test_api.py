@@ -3747,26 +3747,27 @@ def test_sample_processing_job_accepts_selected_media_source_range(tmp_path: Pat
     )
     processor = FakeSampleProcessor()
     app = create_app(settings=settings, sample_processor=processor)
-    client = TestClient(app)
-    upload = client.post(
-        "/api/sample-processing/sources",
-        files={"sourceFile": ("book.m4b", b"audiobook-source", "audio/mp4")},
-    )
-    source = upload.json()["source"]
+    with TestClient(app) as client:
+        upload = client.post(
+            "/api/sample-processing/sources",
+            files={"sourceFile": ("book.m4b", b"audiobook-source", "audio/mp4")},
+        )
+        source = upload.json()["source"]
 
-    response = client.post(
-        "/api/sample-processing/jobs",
-        data={
-            "operationId": "isolateVoice",
-            "sourceMediaId": source["id"],
-            "sourceRanges": json.dumps(
-                [{"startSeconds": 0, "endSeconds": 420.5, "label": "Opening Credits"}]
-            ),
-        },
-    )
-    job = wait_for_processing_job(client, response.json()["job"]["id"])
+        response = client.post(
+            "/api/sample-processing/jobs",
+            data={
+                "operationId": "isolateVoice",
+                "sourceMediaId": source["id"],
+                "sourceRanges": json.dumps(
+                    [{"startSeconds": 0, "endSeconds": 420.5, "label": "Opening Credits"}]
+                ),
+            },
+        )
+        assert response.status_code == 202
+        assert response.json()["job"]["sourceFilename"] == "book.m4b"
+        job = wait_for_processing_job(client, response.json()["job"]["id"])
 
-    assert response.status_code == 202
     assert job["sourceName"] == "book"
     assert job["sourceFilename"] == "range-1.wav"
     assert job["sourceContentType"] == "audio/wav"
@@ -3809,29 +3810,30 @@ def test_sample_processing_job_concatenates_selected_media_source_ranges(tmp_pat
     )
     processor = FakeSampleProcessor()
     app = create_app(settings=settings, sample_processor=processor)
-    client = TestClient(app)
-    upload = client.post(
-        "/api/sample-processing/sources",
-        files={"sourceFile": ("book.m4b", b"audiobook-source", "audio/mp4")},
-    )
-    source = upload.json()["source"]
+    with TestClient(app) as client:
+        upload = client.post(
+            "/api/sample-processing/sources",
+            files={"sourceFile": ("book.m4b", b"audiobook-source", "audio/mp4")},
+        )
+        source = upload.json()["source"]
 
-    response = client.post(
-        "/api/sample-processing/jobs",
-        data={
-            "operationId": "isolateVoice",
-            "sourceMediaId": source["id"],
-            "sourceRanges": json.dumps(
-                [
-                    {"startSeconds": 0, "endSeconds": 120, "label": "First"},
-                    {"startSeconds": 420.5, "endSeconds": 600, "label": "Second"},
-                ]
-            ),
-        },
-    )
-    job = wait_for_processing_job(client, response.json()["job"]["id"])
+        response = client.post(
+            "/api/sample-processing/jobs",
+            data={
+                "operationId": "isolateVoice",
+                "sourceMediaId": source["id"],
+                "sourceRanges": json.dumps(
+                    [
+                        {"startSeconds": 0, "endSeconds": 120, "label": "First"},
+                        {"startSeconds": 420.5, "endSeconds": 600, "label": "Second"},
+                    ]
+                ),
+            },
+        )
+        assert response.status_code == 202
+        assert response.json()["job"]["sourceFilename"] == "book.m4b"
+        job = wait_for_processing_job(client, response.json()["job"]["id"])
 
-    assert response.status_code == 202
     assert job["sourceFilename"] == "selected-source.wav"
     assert job["sourceSelection"]["ranges"] == [
         {"startSeconds": 0.0, "endSeconds": 120.0, "durationSeconds": 120.0, "label": "First"},
@@ -3928,23 +3930,24 @@ def test_sample_processing_job_enforces_selected_media_source_cap(tmp_path: Path
         sample_processing_ffprobe_command=str(ffprobe_chapter_fake_command(tmp_path / "ffprobe-fake")),
     )
     app = create_app(settings=settings, sample_processor=FakeSampleProcessor())
-    client = TestClient(app)
-    upload = client.post(
-        "/api/sample-processing/sources",
-        files={"sourceFile": ("book.m4b", b"source", "audio/mp4")},
-    )
+    with TestClient(app) as client:
+        upload = client.post(
+            "/api/sample-processing/sources",
+            files={"sourceFile": ("book.m4b", b"source", "audio/mp4")},
+        )
 
-    response = client.post(
-        "/api/sample-processing/jobs",
-        data={
-            "operationId": "isolateVoice",
-            "sourceMediaId": upload.json()["source"]["id"],
-            "sourceRanges": json.dumps([{"startSeconds": 0, "endSeconds": 10}]),
-        },
-    )
+        response = client.post(
+            "/api/sample-processing/jobs",
+            data={
+                "operationId": "isolateVoice",
+                "sourceMediaId": upload.json()["source"]["id"],
+                "sourceRanges": json.dumps([{"startSeconds": 0, "endSeconds": 10}]),
+            },
+        )
+        job = wait_for_processing_job(client, response.json()["job"]["id"], status="error")
 
-    assert response.status_code == 413
-    assert response.json()["detail"] == "Selected media source must be 10 bytes or smaller."
+    assert response.status_code == 202
+    assert job["error"] == "Selected media source must be 10 bytes or smaller."
 
 
 def test_sample_processing_job_accepts_selected_processing_preset(tmp_path: Path) -> None:
