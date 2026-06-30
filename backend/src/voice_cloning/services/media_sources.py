@@ -199,7 +199,7 @@ class SampleProcessingMediaSourceService:
                     "-v",
                     "error",
                     "-show_entries",
-                    "format=duration:stream=index,codec_type,codec_name,sample_rate,channels,channel_layout:stream_tags=language,title",
+                    "format=duration:stream=index,codec_type,codec_name,sample_rate,channels,channel_layout:stream_tags=language,title:stream_disposition=attached_pic",
                     "-show_chapters",
                     "-of",
                     "json",
@@ -329,11 +329,20 @@ def _media_kind_from_payload(payload: object) -> SampleProcessingMediaKind:
     streams = payload.get("streams")
     if not isinstance(streams, list):
         return "audio"
-    return "video" if any(isinstance(stream, dict) and stream.get("codec_type") == "video" for stream in streams) else "audio"
+    return "video" if any(_is_real_video_stream(stream) for stream in streams if isinstance(stream, dict)) else "audio"
 
 
 def _media_kind_from_value(value: object) -> SampleProcessingMediaKind:
     return "video" if value == "video" else "audio"
+
+
+def _is_real_video_stream(stream: dict[str, object]) -> bool:
+    if stream.get("codec_type") != "video":
+        return False
+    disposition = stream.get("disposition")
+    if not isinstance(disposition, dict):
+        return True
+    return disposition.get("attached_pic") not in (1, "1", True)
 
 
 def _audio_streams_from_payload(payload: object) -> tuple[SampleProcessingMediaSourceAudioStream, ...]:

@@ -845,6 +845,38 @@ def test_sample_processing_media_source_upload_reads_chapters(tmp_path: Path) ->
     ).read_bytes() == b"audiobook-source"
 
 
+def test_sample_processing_media_source_audio_with_cover_art_stays_audio(tmp_path: Path) -> None:
+    settings = make_settings(
+        tmp_path,
+        sample_processing_ffprobe_command=str(ffprobe_audio_cover_art_fake_command(tmp_path / "ffprobe-cover-art-fake")),
+    )
+    app = create_app(settings=settings)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/sample-processing/sources",
+        files={"sourceFile": ("book.m4b", b"audiobook-source", "audio/mp4")},
+    )
+
+    assert response.status_code == 201
+    source = response.json()["source"]
+    assert source["mediaKind"] == "audio"
+    assert source["durationSeconds"] == 900.5
+    assert source["sampleRateHz"] == 44100
+    assert source["selectedAudioStreamIndex"] == 0
+    assert source["audioStreams"] == [
+        {
+            "index": 0,
+            "codecName": "aac",
+            "sampleRateHz": 44100,
+            "channels": 2,
+            "channelLayout": "stereo",
+            "language": "eng",
+            "title": "Narration",
+        }
+    ]
+
+
 @pytest.mark.parametrize(
     ("filename", "content_type"),
     [
@@ -1321,6 +1353,37 @@ sys.stdout.write(json.dumps({
             "tags": {},
         },
     ],
+}))
+""",
+    )
+
+
+def ffprobe_audio_cover_art_fake_command(path: Path) -> Path:
+    return write_fake_command(
+        path,
+        """
+import json
+import sys
+sys.stdout.write(json.dumps({
+    "streams": [
+        {
+            "index": 0,
+            "codec_type": "audio",
+            "codec_name": "aac",
+            "sample_rate": "44100",
+            "channels": 2,
+            "channel_layout": "stereo",
+            "tags": {"language": "eng", "title": "Narration"},
+        },
+        {
+            "index": 1,
+            "codec_type": "video",
+            "codec_name": "mjpeg",
+            "disposition": {"attached_pic": 1},
+        },
+    ],
+    "format": {"duration": "900.5"},
+    "chapters": [],
 }))
 """,
     )
