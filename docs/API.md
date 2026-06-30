@@ -17,6 +17,7 @@ The FastAPI service is available at `http://localhost:6420` when the Docker stac
 - `GET /api/sample-processing/options`
 - `POST /api/sample-processing/sources`
 - `GET /api/sample-processing/sources/{sourceId}`
+- `GET /api/sample-processing/sources/{sourceId}/media`
 - `GET /api/sample-processing/sources/{sourceId}/preview`
 - `DELETE /api/sample-processing/sources/{sourceId}`
 - `POST /api/sample-processing/jobs`
@@ -103,7 +104,8 @@ Provider-backed routes accept an optional `providerId` request value and an opti
         "recommendedMaxSeconds": 120,
         "targetSampleRateHz": 16000,
         "maxUploadBytes": 10485760,
-        "maxSourceUploadBytes": 1073741824
+        "maxSourceUploadBytes": 1073741824,
+        "maxSelectedSourceAudioBytes": 1073741824
       }
     }
   ]
@@ -266,18 +268,42 @@ Operations can run alone or as a backend-owned stack. The recommended stacked or
 }
 ```
 
-`POST /api/sample-processing/sources` accepts multipart `sourceFile` and stages an inspectable media source under ignored `storage/sample-processing/sources/`. It accepts the same audio upload validation as sample processing, including `.m4b` files and MPEG-4 audio MIME aliases such as `audio/mp4`, `audio/mp4a-latm`, `audio/m4b`, and `audio/x-m4b`. The response includes FFprobe duration, first audio stream sample rate, parsed chapters when present, and warnings:
+`POST /api/sample-processing/sources` accepts multipart `sourceFile` and stages an inspectable source media file under ignored `storage/sample-processing/sources/`. It accepts the same audio upload validation as sample processing, including `.m4b` files and MPEG-4 audio MIME aliases such as `audio/mp4`, `audio/mp4a-latm`, `audio/m4b`, and `audio/x-m4b`. It also accepts local video source media in `.mp4`, `.m4v`, and `.mov` containers with `video/mp4`, `video/x-m4v`, or `video/quicktime`. WebM, MKV, AVI, WMV, FLV, TS, MTS, and M2TS are intentionally deferred. Direct job `sourceFile` uploads remain audio-only; upload video through this staged source endpoint, then create a job with `sourceMediaId` and `sourceRanges`.
+
+The response includes FFprobe duration, media kind, parsed audio stream metadata, the first audio stream selected for extraction by default, first audio stream sample rate, parsed chapters when present, and warnings. A probed video without any audio stream is rejected:
 
 ```json
 {
   "source": {
     "id": "source-id",
-    "filename": "book.m4b",
-    "contentType": "audio/mp4",
+    "filename": "clip.mp4",
+    "contentType": "video/mp4",
     "sizeBytes": 123,
     "sha256": "...",
     "durationSeconds": 3600.0,
     "sampleRateHz": 44100,
+    "mediaKind": "video",
+    "audioStreams": [
+      {
+        "index": 1,
+        "codecName": "aac",
+        "sampleRateHz": 44100,
+        "channels": 2,
+        "channelLayout": "stereo",
+        "language": "eng",
+        "title": "Main Audio"
+      }
+    ],
+    "selectedAudioStream": {
+      "index": 1,
+      "codecName": "aac",
+      "sampleRateHz": 44100,
+      "channels": 2,
+      "channelLayout": "stereo",
+      "language": "eng",
+      "title": "Main Audio"
+    },
+    "selectedAudioStreamIndex": 1,
     "chapters": [
       {
         "id": "chapter-1",
@@ -292,7 +318,7 @@ Operations can run alone or as a backend-owned stack. The recommended stacked or
 }
 ```
 
-`GET /api/sample-processing/sources/{sourceId}` returns the staged metadata. `GET /api/sample-processing/sources/{sourceId}/preview?startSeconds=0&durationSeconds=90` returns a cached bounded `audio/mpeg` preview clip for UI playback. `DELETE /api/sample-processing/sources/{sourceId}` removes the staged upload, metadata, and preview cache; the frontend calls it when a source is replaced or after job creation succeeds.
+`GET /api/sample-processing/sources/{sourceId}` returns the staged metadata. `GET /api/sample-processing/sources/{sourceId}/media` streams the staged media file with its stored content type for browser-native playback, including video preview when the browser supports the staged container and codecs. `GET /api/sample-processing/sources/{sourceId}/preview?startSeconds=0&durationSeconds=90` returns a cached bounded `audio/mpeg` preview clip for UI playback. `DELETE /api/sample-processing/sources/{sourceId}` removes the staged upload, metadata, and preview cache; the frontend calls it when a source is replaced or after job creation succeeds.
 
 `POST /api/sample-processing/jobs` accepts multipart form fields:
 
@@ -304,11 +330,11 @@ Operations can run alone or as a backend-owned stack. The recommended stacked or
 - `trimCandidates`: optional boolean for `prepareVoice`; defaults to true and applies final Trim Silence-style cleanup before 16 kHz WAV output
 - `sourceVoiceId`: optional saved local voice id
 - `sourcePreference`: optional, either `original` or `active`; `original` uses the retained full upload/source file when one exists and falls back to the active provider-facing sample when none exists; `active` always uses the provider-facing sample currently stored for the selected voice
-- `sourceFile`: optional uploaded audio source
+- `sourceFile`: optional uploaded audio source; video is not accepted on the direct job upload path
 - `sourceMediaId`: optional staged media source id from `POST /api/sample-processing/sources`
 - `sourceRanges`: optional JSON array used with `sourceMediaId`; each entry is `{ "startSeconds": number, "endSeconds": number, "label"?: string }`
 
-Exactly one of `sourceVoiceId`, `sourceFile`, or `sourceMediaId` is required. When `sourceMediaId` is used, at least one finite nonnegative `sourceRanges` entry is required, each range must have `endSeconds > startSeconds`, and ranges must fit within known media duration. Selected ranges are extracted in request order to mono 16 kHz WAV; multiple ranges are concatenated before processing.
+Exactly one of `sourceVoiceId`, `sourceFile`, or `sourceMediaId` is required. When `sourceMediaId` is used, at least one finite nonnegative `sourceRanges` entry is required, each range must have `endSeconds > startSeconds`, and ranges must fit within known media duration. Selected ranges are extracted in request order from the default first audio stream to mono 16 kHz WAV; multiple ranges are concatenated before processing. The selected extracted audio is capped by `MAX_SELECTED_SOURCE_AUDIO_BYTES`, exposed as `providers[].sample.maxSelectedSourceAudioBytes`, and defaults to `MAX_SOURCE_UPLOAD_BYTES` for backward compatibility.
 
 The endpoint returns `202` with the created job:
 

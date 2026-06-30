@@ -73,7 +73,7 @@ http://localhost:6420
 
 The Voice Studio opens on `Overview`. Use the sidebar to move between stable workflow sections:
 
-1. `Prepare Audio` (`#prepare`, optional step 0): choose Add Voice for ready samples or Process Audio for cleanup, trimming, and speaker extraction before saving.
+1. `Prepare Audio` (`#prepare`, optional step 0): choose Add Voice for ready samples or Process Source Media for cleanup, trimming, and speaker extraction before saving.
 2. `Voices` (`#voices`, step 1): select, preview, rename, and manage local voice samples, then save default voice tuning for future generations.
 3. `Generate Speech` (`#generate`, step 2): enter text, optionally assign selected text spans to saved voices, generate speech with saved voice defaults, play combined and segment results, and regenerate individual multi-voice segments with contextual overrides.
 4. `Generated Audio` (`#archive`, optional): review, download, remove, or clear browser-saved generated audio, including Multi-Voice metadata for combined speech jobs.
@@ -112,7 +112,7 @@ SAMPLE_PROCESSING_WHISPER_COMPUTE_TYPE=int8
 PYANNOTE_METRICS_ENABLED=0
 ```
 
-The Docker build uses CPU-only PyTorch, Torchaudio, and TorchCodec wheels when `INSTALL_SAMPLE_PROCESSING=1` or `INSTALL_DIARIZATION=1`, then installs the requested optional backend extras. Rebuild with `make recycle` after changing either flag. The backend calls FFmpeg and FFprobe as external commands, stores multi-voice speech job output under ignored `storage/speech-jobs/`, normalizes provider-facing voice samples and successful sample-processing results to mono 16 kHz WAV, and stores sample-processing job output under ignored `storage/sample-processing/`. Active provider samples are capped by `MAX_UPLOAD_BYTES` and retained local source files are capped by `MAX_SOURCE_UPLOAD_BYTES`, which defaults to 1 GB. Demucs, pyannote, and faster-whisper model files and caches are runtime data under ignored `storage/model-cache/`. Isolate Voice includes Fast, Balanced, Clean, and Max Isolation strength presets; Balanced preserves the default behavior. Trim Silence includes Light, Balanced, and Aggressive trim presets; Balanced is the default. Speaker Separation is V1 diarized speaker-turn extraction, not neural unmixing of simultaneous speakers. Prepare Voice ranks provider-sized candidates from long sources, optionally runs isolation and speaker detection first, trims candidate nonspeech, then outputs mono 16 kHz WAV candidates.
+The Docker build uses CPU-only PyTorch, Torchaudio, and TorchCodec wheels when `INSTALL_SAMPLE_PROCESSING=1` or `INSTALL_DIARIZATION=1`, then installs the requested optional backend extras. Rebuild with `make recycle` after changing either flag. The backend calls FFmpeg and FFprobe as external commands, stores multi-voice speech job output under ignored `storage/speech-jobs/`, normalizes provider-facing voice samples and successful sample-processing results to mono 16 kHz WAV, and stores sample-processing job output under ignored `storage/sample-processing/`. Active provider samples are capped by `MAX_UPLOAD_BYTES`, full staged source media uploads are capped by `MAX_SOURCE_UPLOAD_BYTES`, and selected extracted source audio is capped by `MAX_SELECTED_SOURCE_AUDIO_BYTES`; both source caps default to 1 GB. Process Source Media accepts Audio File uploads for MP3, WAV, M4A, M4B, AAC, OGG, and FLAC, plus Video File uploads for local `.mp4`, `.m4v`, and `.mov` clips. Video source jobs require a selected chapter or manual range, extract the first audio stream to mono 16 kHz WAV, and do not process the full file by default. Demucs, pyannote, and faster-whisper model files and caches are runtime data under ignored `storage/model-cache/`. Isolate Voice includes Fast, Balanced, Clean, and Max Isolation strength presets; Balanced preserves the default behavior. Trim Silence includes Light, Balanced, and Aggressive trim presets; Balanced is the default. Speaker Separation is V1 diarized speaker-turn extraction, not neural unmixing of simultaneous speakers. Prepare Voice ranks provider-sized candidates from long sources, optionally runs isolation and speaker detection first, trims candidate nonspeech, then outputs mono 16 kHz WAV candidates.
 
 ## Documentation
 
@@ -122,6 +122,7 @@ The Docker build uses CPU-only PyTorch, Torchaudio, and TorchCodec wheels when `
 - [Public Media Guidelines](docs/PUBLIC_MEDIA.md): public-safe screenshot and documentation media rules.
 - [Architecture Standards](docs/ARCHITECTURE.md): backend/frontend boundaries for implementation work.
 - [How To Add A Provider](docs/ADDING_PROVIDER.md): provider adapter responsibilities and validation.
+- [Video Source Media Rollout Notes](docs/VIDEO_SOURCE_MEDIA_ROLLOUT.md): draft PR stack, validation evidence, and Ready gates for local video source media.
 
 ## Local Development
 
