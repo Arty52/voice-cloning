@@ -624,6 +624,7 @@ function ChapterSourceSelection({ processing }: { processing: SampleProcessingCo
     return null
   }
   const selectedIds = new Set(media.selectedChapterIds)
+  const hasScrollableChapterList = source.chapters.length > 4
 
   return (
     <div className="rounded-md border border-border bg-background/60">
@@ -631,7 +632,11 @@ function ChapterSourceSelection({ processing }: { processing: SampleProcessingCo
         <div className="text-sm font-medium">Chapters</div>
         <Badge variant="secondary">{media.selectedChapterIds.length} Selected</Badge>
       </div>
-      <ScrollArea className="max-h-72">
+      <ScrollArea
+        aria-label="Chapter List"
+        className={cn(hasScrollableChapterList ? "h-72" : "max-h-72")}
+        role="region"
+      >
         <div className="flex flex-col gap-2 p-2">
           {source.chapters.map((chapter) => {
             const checkboxId = `media-source-chapter-${chapter.id}`

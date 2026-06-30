@@ -238,4 +238,126 @@ describe("SampleProcessingPanel ranked candidates", () => {
       "/api/sample-processing/jobs/job-prepare/candidates/candidate-1/result"
     )
   })
+
+  it("constrains long chapter source lists to a scrollable viewport", () => {
+    const chapters = Array.from({ length: 9 }, (_, index) => {
+      const chapterNumber = index + 1
+      return {
+        id: `chapter-${chapterNumber}`,
+        title: `Chapter ${chapterNumber}`,
+        startSeconds: index * 60,
+        endSeconds: chapterNumber * 60,
+        durationSeconds: 60,
+      }
+    })
+    const processing = {
+      activeStep: null,
+      activeProgressPhase: null,
+      canCancel: false,
+      canCleanVoice: true,
+      canDetectSpeakers: false,
+      canSave: false,
+      canSaveSelectedCandidates: false,
+      canSaveSelectedSpeakers: false,
+      canStart: false,
+      canUseOriginalRecording: false,
+      candidateNameAssignments: {},
+      candidateResultUrls: {},
+      candidateSaveError: null,
+      candidateSaveStatus: "idle",
+      candidateVoicePresetIds: {},
+      effectiveSourcePreference: "active",
+      enabledOperations: [],
+      error: null,
+      handleCancelProcessing: vi.fn(),
+      handleCandidateNameChange: vi.fn(),
+      handleCandidateSaveSelectionChange: vi.fn(),
+      handleCandidateVoicePresetChange: vi.fn(),
+      handleSaveCandidateVoices: vi.fn((event?: { preventDefault: () => void }) => event?.preventDefault()),
+      handleSaveProcessedVoice: vi.fn(),
+      handleSaveSpeakerVoices: vi.fn(),
+      handleSourceFileSelect: vi.fn(),
+      handleSourceModeChange: vi.fn(),
+      handleStartProcessing: vi.fn((event: { preventDefault: () => void }) => event.preventDefault()),
+      isPrepareVoiceSelected: true,
+      isProcessing: false,
+      job: null,
+      mediaSource: {
+        deleteCurrentSource: vi.fn(),
+        error: null,
+        hasChapters: true,
+        manualDurationSeconds: 300,
+        manualRange: { startSeconds: 0, endSeconds: 120 },
+        preview: null,
+        selectedChapterIds: [],
+        selectedChapters: [],
+        selectedDurationSeconds: 0,
+        selectedRanges: [],
+        setChapterSelected: vi.fn(),
+        setManualRangeSeconds: vi.fn(),
+        showPreview: vi.fn(),
+        source: {
+          id: "source-book",
+          filename: "book.m4b",
+          contentType: "audio/mp4",
+          sizeBytes: 516_400_000,
+          sha256: "source-hash",
+          durationSeconds: 34_084,
+          sampleRateHz: 44_100,
+          chapters,
+          warnings: [],
+        },
+        status: "success",
+        uploadSource: vi.fn(),
+      },
+      operations: [],
+      optionsError: null,
+      optionsStatus: "success",
+      prepareCleanVoice: true,
+      prepareDetectSpeakers: false,
+      prepareEstimateRangeSeconds: {
+        minSeconds: 60,
+        maxSeconds: 180,
+      },
+      prepareTrimCandidates: true,
+      preparedSamplesResult: null,
+      processingElapsedMs: null,
+      progressPhases: [],
+      recommendedWorkflowOrder: [],
+      resultUrl: null,
+      selectedCandidateIds: [],
+      selectedOperationIds: ["prepareVoice"],
+      selectedWorkflowSteps: [],
+      setPrepareCleanVoice: vi.fn(),
+      setPrepareDetectSpeakers: vi.fn(),
+      setPrepareTrimCandidates: vi.fn(),
+      setSourcePreference: vi.fn(),
+      setSourceVoiceId: vi.fn(),
+      setWorkflowStepSelected: vi.fn(),
+      sourceFile: null,
+      sourceMode: "upload",
+      sourceVoices: [],
+      sourceVoiceId: "",
+      speakerSeparationResult: null,
+      speakerSourceUrl: null,
+      status: "idle",
+    } as unknown as SampleProcessingController
+
+    render(
+      <TooltipProvider>
+        <SampleProcessingPanel
+          isCollapsible={false}
+          isExpanded={true}
+          onToggleExpanded={vi.fn()}
+          processing={processing}
+          voicePresets={voicePresets}
+        />
+      </TooltipProvider>
+    )
+
+    const chapterList = screen.getByRole("region", { name: "Chapter List" })
+    expect(chapterList).toHaveClass("h-72")
+    expect(chapterList).not.toHaveClass("max-h-72")
+    expect(within(chapterList).getByText("Chapter 9")).toBeInTheDocument()
+  })
 })
