@@ -43,10 +43,11 @@ import { MenuSelect } from "@/components/ui/menu-select"
 import { Popover, PopoverContent, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
+import { Slider } from "@/components/ui/slider"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { VoicePresetToggleGroup } from "@/components/voice-preset-toggle-group"
 import type { SampleProcessingController } from "@/hooks/use-sample-processing"
-import { formatCompactBytes, formatElapsedTime } from "@/lib/formatters"
+import { formatCompactBytes, formatElapsedTime, formatRecordingDuration } from "@/lib/formatters"
 import { cn } from "@/lib/utils"
 import { voicePresetLabel } from "@/lib/voice-presets"
 import type {
@@ -75,6 +76,9 @@ const PROCESS_FROM_ORIGINAL_DESCRIPTION =
   "Best for cleanup, splitting speakers, and trimming. Uses the full uploaded source when available."
 const PROCESS_FROM_ORIGINAL_UNAVAILABLE_DESCRIPTION = "This saved voice does not have a retained original recording."
 const PROCESS_FROM_SAVED_SAMPLE_DESCRIPTION = "Best for quick touch-ups. Uses the current library sample."
+const PROCESS_AUDIO_ACCEPT = "audio/*,.mp3,.wav,.m4a,.m4b,.aac,.ogg,.flac"
+const PROCESS_AUDIO_UPLOAD_HELPER_COPY =
+  "Drag an audio file here, or choose one from your computer. Supports MP3, WAV, M4A, M4B, AAC, OGG, and FLAC."
 const SPEAKER_COLORS = [
   "oklch(0.74 0.17 36)",
   "oklch(0.72 0.14 184)",
@@ -521,15 +525,221 @@ function SourceSelection({
           <ProcessFromSelection processing={processing} />
         </>
       ) : (
-        <AudioFileDropZone
-          disabled={processing.isProcessing}
-          id="sample-processing-file"
-          label="Audio File"
-          onFileSelect={processing.handleSourceFileSelect}
-          selectedFileName={processing.sourceFile?.name ?? null}
-        />
+        <>
+          <AudioFileDropZone
+            accept={PROCESS_AUDIO_ACCEPT}
+            disabled={processing.isProcessing}
+            helperCopy={PROCESS_AUDIO_UPLOAD_HELPER_COPY}
+            id="sample-processing-file"
+            label="Audio File"
+            onFileSelect={processing.handleSourceFileSelect}
+            selectedFileName={processing.sourceFile?.name ?? processing.mediaSource.source?.filename ?? null}
+          />
+          <MediaSourceSelection processing={processing} />
+        </>
       )}
     </>
+  )
+}
+
+function MediaSourceSelection({ processing }: { processing: SampleProcessingController }) {
+  const media = processing.mediaSource
+  const source = media.source
+
+  if (media.status === "idle" && source === null && !processing.sourceFile) {
+    return null
+  }
+
+  return (
+    <Field>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <FieldLabel>Source Selection</FieldLabel>
+          <FieldDescription>
+            Select only the media portion to pre-process. Preview clips are capped for responsiveness.
+          </FieldDescription>
+        </div>
+        {source ? (
+          <div className="flex shrink-0 flex-wrap gap-1.5">
+            <Badge variant="secondary">{formatCompactBytes(source.sizeBytes)}</Badge>
+            {source.durationSeconds !== null ? (
+              <Badge variant="secondary">{formatRecordingDuration(source.durationSeconds)}</Badge>
+            ) : null}
+            {source.chapters.length > 0 ? (
+              <Badge variant="secondary">{source.chapters.length} Chapters</Badge>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+
+      {media.status === "loading" ? (
+        <div className="rounded-md border border-border bg-background/60 p-3">
+          <Loading text="Inspecting Source" variant="secondary" />
+        </div>
+      ) : null}
+
+      {media.error ? (
+        <Alert className="border-destructive/40 bg-destructive/10 text-destructive" role="alert">
+          <AlertTitle>Source Inspection Failed</AlertTitle>
+          <AlertDescription>{media.error}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      {source ? (
+        <>
+          {source.warnings.length > 0 ? (
+            <Alert>
+              <AlertTitle>Source Warnings</AlertTitle>
+              <AlertDescription>{source.warnings.join(" ")}</AlertDescription>
+            </Alert>
+          ) : null}
+
+          {media.hasChapters ? (
+            <ChapterSourceSelection processing={processing} />
+          ) : (
+            <ManualSourceRangeSelection processing={processing} />
+          )}
+
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <Badge variant="secondary">Selected {formatRecordingDuration(media.selectedDurationSeconds)}</Badge>
+            <span className="min-w-0 truncate">{source.filename}</span>
+          </div>
+
+          {media.preview ? (
+            <div className="rounded-md border border-border bg-background/60 p-3">
+              <div className="mb-2 text-sm font-medium">{media.preview.label} Preview</div>
+              <AudioPlayer ariaLabel={`${media.preview.label} preview`} src={media.preview.src} />
+            </div>
+          ) : null}
+        </>
+      ) : null}
+    </Field>
+  )
+}
+
+function ChapterSourceSelection({ processing }: { processing: SampleProcessingController }) {
+  const media = processing.mediaSource
+  const source = media.source
+  if (!source) {
+    return null
+  }
+  const selectedIds = new Set(media.selectedChapterIds)
+
+  return (
+    <div className="rounded-md border border-border bg-background/60">
+      <div className="flex items-center justify-between gap-3 border-b border-border px-3 py-2">
+        <div className="text-sm font-medium">Chapters</div>
+        <Badge variant="secondary">{media.selectedChapterIds.length} Selected</Badge>
+      </div>
+      <ScrollArea className="max-h-72">
+        <div className="flex flex-col gap-2 p-2">
+          {source.chapters.map((chapter) => {
+            const checkboxId = `media-source-chapter-${chapter.id}`
+            const isSelected = selectedIds.has(chapter.id)
+            return (
+              <div
+                className={cn(
+                  "grid gap-3 rounded-md border border-border bg-card/70 p-3 sm:grid-cols-[minmax(0,1fr)_auto]",
+                  isSelected && "border-primary/60 bg-primary/10"
+                )}
+                key={chapter.id}
+              >
+                <label className="flex min-w-0 items-start gap-3" htmlFor={checkboxId}>
+                  <Checkbox
+                    checked={isSelected}
+                    disabled={processing.isProcessing}
+                    id={checkboxId}
+                    onCheckedChange={(checked) => media.setChapterSelected(chapter.id, checked === true)}
+                  />
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium">{chapter.title}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {formatRecordingDuration(chapter.startSeconds)} to {formatRecordingDuration(chapter.endSeconds)} -{" "}
+                      {formatRecordingDuration(chapter.durationSeconds)}
+                    </span>
+                  </span>
+                </label>
+                <Button
+                  disabled={processing.isProcessing}
+                  onClick={() => media.showPreview(chapter, chapter.title)}
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                >
+                  <Play aria-hidden="true" data-icon="inline-start" />
+                  Play Preview
+                </Button>
+              </div>
+            )
+          })}
+        </div>
+      </ScrollArea>
+      {media.selectedChapterIds.length === 0 ? (
+        <div className="flex items-start gap-2 border-t border-border px-3 py-2 text-xs text-muted-foreground">
+          <CircleAlert aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
+          Select at least one chapter before starting.
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function ManualSourceRangeSelection({ processing }: { processing: SampleProcessingController }) {
+  const media = processing.mediaSource
+  const source = media.source
+  if (!source) {
+    return null
+  }
+  const range = media.manualRange
+
+  return (
+    <div className="flex flex-col gap-3 rounded-md border border-border bg-background/60 p-3">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <div className="text-sm font-medium">Manual Range</div>
+        <Badge variant="secondary">
+          {formatRecordingDuration(range.startSeconds)} to {formatRecordingDuration(range.endSeconds)}
+        </Badge>
+      </div>
+      {source.durationSeconds === null ? (
+        <Alert>
+          <AlertTitle>Duration Unavailable</AlertTitle>
+          <AlertDescription>
+            Metadata did not include a duration, so the range selector uses the first five minutes.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+      <Slider
+        aria-label="Manual source range"
+        disabled={processing.isProcessing}
+        max={media.manualDurationSeconds}
+        min={0}
+        onValueChange={(value) => {
+          const [startSeconds = 0, endSeconds = media.manualDurationSeconds] = value
+          media.setManualRangeSeconds({ startSeconds, endSeconds })
+        }}
+        step={1}
+        value={[range.startSeconds, range.endSeconds]}
+      />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap gap-1.5 text-xs text-muted-foreground">
+          <Badge variant="secondary">Start {formatRecordingDuration(range.startSeconds)}</Badge>
+          <Badge variant="secondary">End {formatRecordingDuration(range.endSeconds)}</Badge>
+          <Badge variant="secondary">
+            Duration {formatRecordingDuration(Math.max(0, range.endSeconds - range.startSeconds))}
+          </Badge>
+        </div>
+        <Button
+          disabled={processing.isProcessing}
+          onClick={() => media.showPreview({ ...range, label: "Selected Range" }, "Selected Range")}
+          size="sm"
+          type="button"
+          variant="secondary"
+        >
+          <Play aria-hidden="true" data-icon="inline-start" />
+          Play Preview
+        </Button>
+      </div>
+    </div>
   )
 }
 
