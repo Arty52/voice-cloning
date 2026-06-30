@@ -11,17 +11,21 @@ from fastapi import HTTPException, UploadFile
 from .config import Settings
 from .models import VoiceSample
 
-ALLOWED_AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac"}
+ALLOWED_AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".m4b", ".aac", ".ogg", ".flac"}
 ALLOWED_AUDIO_CONTENT_TYPES = {
     "audio/aac",
     "audio/flac",
     "audio/m4a",
+    "audio/m4b",
     "audio/mpeg",
+    "audio/mp4",
+    "audio/mp4a-latm",
     "audio/mp3",
     "audio/ogg",
     "audio/wav",
     "audio/wave",
     "audio/x-m4a",
+    "audio/x-m4b",
     "audio/x-wav",
     "application/octet-stream",
 }
@@ -55,7 +59,7 @@ def _validate_audio_file(filename: str, content_type: str | None) -> None:
     if suffix not in ALLOWED_AUDIO_EXTENSIONS and normalized_content_type not in ALLOWED_AUDIO_CONTENT_TYPES:
         raise HTTPException(
             status_code=422,
-            detail="Voice sample must be an audio file: mp3, wav, m4a, aac, ogg, or flac.",
+            detail="Voice sample must be an audio file: mp3, wav, m4a, m4b, aac, ogg, or flac.",
         )
 
 
