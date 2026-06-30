@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 
 import * as api from "@/lib/api"
 import type {
@@ -39,6 +39,15 @@ export function useSampleProcessingMediaSource() {
   const [preview, setPreview] = useState<SampleProcessingMediaPreview>(null)
   const requestIdRef = useRef(0)
   const sourceIdRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    return () => {
+      requestIdRef.current += 1
+      const sourceId = sourceIdRef.current
+      sourceIdRef.current = null
+      void cleanupSource(sourceId)
+    }
+  }, [])
 
   const hasChapters = (source?.chapters.length ?? 0) > 0
   const manualDurationSeconds = manualDurationForSource(source)

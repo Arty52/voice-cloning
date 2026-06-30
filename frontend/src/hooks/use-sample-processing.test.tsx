@@ -772,6 +772,52 @@ describe("useSampleProcessing stacked workflow state", () => {
     )
   })
 
+  it("deletes a staged upload when sample processing unmounts before job creation", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path === "/api/sample-processing/options" && !init) {
+          return okJson(stackProcessingOptions)
+        }
+        if (path === "/api/sample-processing/sources" && init?.method === "POST") {
+          return okJson(mediaSourceResponse, 201)
+        }
+        if (path === "/api/sample-processing/sources/source-1" && init?.method === "DELETE") {
+          return Promise.resolve(new Response(null, { status: 204 }))
+        }
+        if (path === "/api/sample-processing/jobs" && init?.method === "POST") {
+          return okJson(successfulStackJob, 202)
+        }
+        return okJson({})
+      })
+    )
+    const onVoiceSaved = vi.fn()
+    const sourceFile = new File(["source"], "conversation.wav", { type: "audio/wav" })
+    const { result, unmount } = renderHook(() =>
+      useSampleProcessing({ onVoiceSaved, selectedVoice: sourceVoice, voices: [sourceVoice] })
+    )
+
+    await waitFor(() => expect(result.current.optionsStatus).toBe("success"))
+    act(() => {
+      result.current.handleSourceModeChange("upload")
+      result.current.handleSourceFileSelect(sourceFile)
+    })
+    await waitFor(() => expect(result.current.mediaSource.status).toBe("success"))
+
+    act(() => {
+      unmount()
+    })
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/sample-processing/sources/source-1",
+        expect.objectContaining({ method: "DELETE" })
+      )
+    )
+    expect(fetch).not.toHaveBeenCalledWith("/api/sample-processing/jobs", expect.anything())
+  })
+
   it("requires an M4B chapter selection before submitting staged upload ranges", async () => {
     vi.stubGlobal(
       "fetch",
