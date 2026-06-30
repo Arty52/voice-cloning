@@ -22,10 +22,10 @@ export function PendingWorkStatus({
 }: PendingWorkStatusProps) {
   return (
     <section
-      aria-live="polite"
-      className={cn("pending-work-status relative overflow-hidden rounded-md border border-border bg-background/60 p-3", className)}
-      role="status"
       {...props}
+      className={cn("pending-work-status relative overflow-hidden rounded-md border border-border bg-background/60 p-3", className)}
+      aria-live="polite"
+      role="status"
     >
       <span aria-hidden="true" className="pending-work-status__shine" />
       <div className="relative flex flex-col gap-3">
@@ -44,7 +44,7 @@ export function PendingWorkStatus({
             </div>
           ) : null}
         </div>
-        {children ? <div className="flex flex-col gap-2">{children}</div> : null}
+        {children !== null && children !== undefined ? <div className="flex flex-col gap-2">{children}</div> : null}
       </div>
     </section>
   )

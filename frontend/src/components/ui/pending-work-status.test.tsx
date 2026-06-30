@@ -48,4 +48,16 @@ describe("PendingWorkStatus", () => {
     expect(status).toHaveClass("custom-status")
     expect(status.querySelector(".pending-work-status__shine")).toBeInTheDocument()
   })
+
+  it("keeps enforced live-region attributes and renders valid falsy children", () => {
+    render(
+      <PendingWorkStatus aria-live="off" data-testid="pending-status" title="Counting Segments">
+        {0}
+      </PendingWorkStatus>
+    )
+
+    const status = screen.getByTestId("pending-status")
+    expect(status).toHaveAttribute("aria-live", "polite")
+    expect(status).toHaveTextContent("0")
+  })
 })
