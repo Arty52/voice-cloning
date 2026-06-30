@@ -363,7 +363,7 @@ export type SpeechJobResponse = {
   job: SpeechJob
 }
 
-export type GenerationPendingSegmentStatus = "pending" | "running" | "success" | "error" | "canceled"
+export type GenerationPendingSegmentStatus = SpeechSegmentStatus
 
 export type GenerationPendingSegment = {
   detail: string | null

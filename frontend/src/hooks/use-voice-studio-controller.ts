@@ -642,6 +642,7 @@ function buildGenerationPendingStatus({
     segments.find((segment) => segment.id === job?.activeSegmentId) ??
     segments.find((segment) => segment.status === "running") ??
     null
+  const activeSegmentId = job?.activeSegmentId ?? activeSegment?.id ?? null
   const title = latestGenerationMode === "dialogue" ? "Generating Dialogue" : "Generating Assigned Speech"
   const description =
     latestGenerationMode === "dialogue"
@@ -657,7 +658,7 @@ function buildGenerationPendingStatus({
       detail: segment.error || formatPendingSegmentText(segment.text),
       id: segment.id,
       index: segment.index,
-      isActive: segment.id === job?.activeSegmentId,
+      isActive: segment.id === activeSegmentId,
       label: `Segment ${segment.index + 1}`,
       status: segment.status,
       voiceName: segment.voiceName,
@@ -678,7 +679,16 @@ function formatPendingSegmentText(text: string, maxLength = 72) {
   if (normalized.length <= maxLength) {
     return normalized
   }
-  return `${normalized.slice(0, Math.max(0, maxLength - 1))}...`
+  if (maxLength <= 0) {
+    return ""
+  }
+
+  const ellipsis = "..."
+  if (maxLength <= ellipsis.length) {
+    return ellipsis.slice(0, maxLength)
+  }
+
+  return `${normalized.slice(0, maxLength - ellipsis.length)}${ellipsis}`
 }
 
 function requestStatusFromMultiVoiceStatus(status: MultiVoiceGenerationStatus): RequestStatus {

@@ -686,11 +686,15 @@ function speechJobFromSubmitted(
   }
 }
 
-function runningSpeechJobFromSubmitted(submittedJob: NonNullable<Parameters<typeof speechJobFromSubmitted>[0]> | null) {
+function runningSpeechJobFromSubmitted(
+  submittedJob: NonNullable<Parameters<typeof speechJobFromSubmitted>[0]> | null,
+  overrides: { activeSegmentId?: string | null } = {}
+) {
   const job = speechJobFromSubmitted(submittedJob)
+  const activeSegmentId = "activeSegmentId" in overrides ? overrides.activeSegmentId : (job.segments[0]?.id ?? null)
   return {
     ...job,
-    activeSegmentId: job.segments[0]?.id ?? null,
+    activeSegmentId,
     resultSha256: null,
     segments: job.segments.map((segment, index) => ({
       ...segment,
@@ -1676,7 +1680,7 @@ describe("App", () => {
         }
         if (path === "/api/speech/jobs" && init?.method === "POST") {
           createJobBody = JSON.parse(String(init.body))
-          return okJson({ job: runningSpeechJobFromSubmitted(createJobBody) })
+          return okJson({ job: runningSpeechJobFromSubmitted(createJobBody, { activeSegmentId: null }) })
         }
         if (path === "/api/speech/jobs/job-1" && !init) {
           pollRequested = true
@@ -1712,6 +1716,8 @@ describe("App", () => {
     expect(pending).toHaveTextContent("Running")
     expect(pending).toHaveTextContent("Segment 2")
     expect(pending).toHaveTextContent("Queued")
+    const progress = within(pending).getByRole("list", { name: "Generation Progress" })
+    expect(within(progress).getAllByRole("listitem")[0]).toHaveClass("border-primary/60")
 
     await waitFor(() => expect(pollRequested).toBe(true))
   })
