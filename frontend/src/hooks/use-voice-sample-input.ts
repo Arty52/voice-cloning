@@ -15,6 +15,7 @@ import type {
 } from "@/types"
 
 const DEFAULT_PROVIDER_SAMPLE: ProviderSampleMetadata = {
+  maxSelectedSourceAudioBytes: 1024 * 1024 * 1024,
   maxWindowSeconds: 120,
   maxSourceUploadBytes: 1024 * 1024 * 1024,
   maxUploadBytes: 10 * 1024 * 1024,

@@ -8,6 +8,7 @@ import {
   createSpeechJob,
   deleteSampleProcessingSource,
   providerHeaders,
+  sampleProcessingSourceMediaUrl,
   sampleProcessingSourcePreviewUrl,
   fetchSpeechJob,
   uploadSampleProcessingSource,
@@ -174,6 +175,7 @@ describe("voice API helpers", () => {
     expect(sampleProcessingSourcePreviewUrl("source 1", 12.5, 90)).toBe(
       "/api/sample-processing/sources/source%201/preview?startSeconds=12.5&durationSeconds=90"
     )
+    expect(sampleProcessingSourceMediaUrl("source 1")).toBe("/api/sample-processing/sources/source%201/media")
   })
 
   it("creates a stacked sample processing job", async () => {

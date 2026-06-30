@@ -207,6 +207,7 @@ const providersResponse: ProvidersResponse = {
         },
       ],
       sample: {
+        maxSelectedSourceAudioBytes: 1024 * 1024 * 1024,
         maxSourceUploadBytes: 1024 * 1024 * 1024,
         maxUploadBytes: 10 * 1024 * 1024,
         maxWindowSeconds: 120,
@@ -554,10 +555,14 @@ function sampleProcessingMediaSourceFrom(init?: RequestInit) {
       id: "source-1",
       filename,
       contentType,
+      mediaKind: "audio" as const,
       sizeBytes,
       sha256: "source-hash",
       durationSeconds: 240,
       sampleRateHz: 44100,
+      audioStreams: [],
+      selectedAudioStream: null,
+      selectedAudioStreamIndex: null,
       chapters: [],
       warnings: [],
     },
@@ -570,10 +575,14 @@ function chapteredSampleProcessingMediaSource() {
       id: "source-book",
       filename: "book.m4b",
       contentType: "audio/mp4",
+      mediaKind: "audio" as const,
       sizeBytes: 16777216,
       sha256: "book-hash",
       durationSeconds: 900,
       sampleRateHz: 44100,
+      audioStreams: [],
+      selectedAudioStream: null,
+      selectedAudioStreamIndex: null,
       chapters: [
         {
           id: "chapter-1",
@@ -3659,6 +3668,7 @@ describe("App", () => {
           {
             ...providersResponse.providers[0],
             sample: {
+              maxSelectedSourceAudioBytes: 1024 * 1024 * 1024,
               maxSourceUploadBytes: 1024 * 1024 * 1024,
               maxUploadBytes: 10 * 1024 * 1024,
               maxWindowSeconds: 2,
@@ -3737,6 +3747,7 @@ describe("App", () => {
             {
               ...providersResponse.providers[0],
               sample: {
+                maxSelectedSourceAudioBytes: 1024 * 1024 * 1024,
                 maxSourceUploadBytes: 1024 * 1024 * 1024,
                 maxUploadBytes: 10 * 1024 * 1024,
                 maxWindowSeconds: 2,
@@ -3775,6 +3786,7 @@ describe("App", () => {
           {
             ...providersResponse.providers[0],
             sample: {
+              maxSelectedSourceAudioBytes: 1024 * 1024 * 1024,
               maxSourceUploadBytes: 1024 * 1024 * 1024,
               maxUploadBytes: 10 * 1024 * 1024,
               maxWindowSeconds: 2,

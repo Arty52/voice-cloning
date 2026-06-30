@@ -40,6 +40,7 @@ const provider: VoiceProvider = {
   links: [],
   manageKeyUrl: "https://example.test/key",
   sample: {
+    maxSelectedSourceAudioBytes: 1024 * 1024 * 1024,
     maxSourceUploadBytes: 1024 * 1024 * 1024,
     maxUploadBytes: 10 * 1024 * 1024,
     maxWindowSeconds: 120,
