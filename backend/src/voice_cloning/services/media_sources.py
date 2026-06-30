@@ -102,32 +102,38 @@ class SampleProcessingMediaSourceService:
             return preview_path
 
         preview_path.parent.mkdir(parents=True, exist_ok=True)
-        await _run_external_command(
-            [
-                self.settings.sample_processing_ffmpeg_command,
-                "-y",
-                "-ss",
-                _seconds_arg(start),
-                "-t",
-                _seconds_arg(duration),
-                "-i",
-                str(source_path),
-                "-vn",
-                "-ac",
-                "1",
-                "-ar",
-                "16000",
-                "-c:a",
-                "libmp3lame",
-                "-f",
-                "mp3",
-                str(preview_path),
-            ],
-            "ffmpeg",
-            self.settings.sample_processing_timeout_seconds,
-        )
-        if not preview_path.exists() or preview_path.stat().st_size == 0:
-            raise MediaSourceServiceError("FFmpeg did not produce a media source preview.", 502)
+        temporary_preview_path = preview_path.with_name(f"{preview_path.stem}.{uuid4().hex}.tmp")
+        try:
+            await _run_external_command(
+                [
+                    self.settings.sample_processing_ffmpeg_command,
+                    "-y",
+                    "-ss",
+                    _seconds_arg(start),
+                    "-t",
+                    _seconds_arg(duration),
+                    "-i",
+                    str(source_path),
+                    "-vn",
+                    "-ac",
+                    "1",
+                    "-ar",
+                    "16000",
+                    "-c:a",
+                    "libmp3lame",
+                    "-f",
+                    "mp3",
+                    str(temporary_preview_path),
+                ],
+                "ffmpeg",
+                self.settings.sample_processing_timeout_seconds,
+            )
+            if not temporary_preview_path.exists() or temporary_preview_path.stat().st_size == 0:
+                raise MediaSourceServiceError("FFmpeg did not produce a media source preview.", 502)
+            temporary_preview_path.replace(preview_path)
+        except Exception:
+            temporary_preview_path.unlink(missing_ok=True)
+            raise
         return preview_path
 
     def delete_source(self, source_id: str) -> None:

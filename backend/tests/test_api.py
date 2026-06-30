@@ -868,6 +868,36 @@ def test_sample_processing_media_source_preview_is_cached_and_bounded(tmp_path: 
     assert preview_args[preview_args.index("-c:a") + 1] == "libmp3lame"
 
 
+def test_sample_processing_media_source_preview_failure_removes_partial_cache(tmp_path: Path) -> None:
+    settings = make_settings(
+        tmp_path,
+        sample_processing_ffmpeg_command=str(
+            ffmpeg_fake_command(
+                tmp_path / "ffmpeg-fake",
+                exit_code=7,
+                failure_output=b"partial-preview",
+            )
+        ),
+        sample_processing_ffprobe_command=str(ffprobe_chapter_fake_command(tmp_path / "ffprobe-fake")),
+    )
+    app = create_app(settings=settings)
+    client = TestClient(app)
+    upload = client.post(
+        "/api/sample-processing/sources",
+        files={"sourceFile": ("book.m4b", b"audiobook-source", "audio/mp4")},
+    )
+    source_id = upload.json()["source"]["id"]
+
+    response = client.get(
+        f"/api/sample-processing/sources/{source_id}/preview",
+        params={"startSeconds": "10", "durationSeconds": "20"},
+    )
+
+    assert response.status_code == 502
+    previews_dir = settings.sample_processing_dir / "sources" / source_id / "previews"
+    assert not list(previews_dir.iterdir())
+
+
 def test_sample_processing_media_source_rejects_invalid_upload(tmp_path: Path) -> None:
     settings = make_settings(tmp_path)
     app = create_app(settings=settings)
@@ -1004,13 +1034,17 @@ def ffmpeg_fake_command(
     args_path: Path | None = None,
     args_log_path: Path | None = None,
     exit_code: int = 0,
+    failure_output: bytes | None = None,
     stderr: str = "ffmpeg failed in test",
 ) -> Path:
     if exit_code != 0:
         return write_fake_command(
             path,
             f"""
+from pathlib import Path
 import sys
+if {failure_output!r} is not None and sys.argv[-1] != "-":
+    Path(sys.argv[-1]).write_bytes({failure_output!r})
 sys.stderr.write({stderr!r})
 raise SystemExit({exit_code})
 """,
