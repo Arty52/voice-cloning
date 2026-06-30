@@ -908,6 +908,50 @@ def test_sample_processing_media_source_upload_rejects_video_without_audio_strea
     assert [path for path in (settings.sample_processing_dir / "sources").iterdir()] == []
 
 
+def test_sample_processing_media_source_media_endpoint_serves_staged_file(tmp_path: Path) -> None:
+    settings = make_settings(
+        tmp_path,
+        sample_processing_ffprobe_command=str(ffprobe_video_fake_command(tmp_path / "ffprobe-video-fake")),
+    )
+    app = create_app(settings=settings)
+    client = TestClient(app)
+    upload = client.post(
+        "/api/sample-processing/sources",
+        files={"sourceFile": ("clip.mp4", b"video-source", "video/mp4")},
+    )
+    source = upload.json()["source"]
+
+    response = client.get(f"/api/sample-processing/sources/{source['id']}/media")
+
+    assert response.status_code == 200
+    assert response.content == b"video-source"
+    assert response.headers["content-type"].startswith("video/mp4")
+    assert 'filename="clip.mp4"' in response.headers["content-disposition"]
+
+
+def test_sample_processing_media_source_media_endpoint_rejects_invalid_source_path(tmp_path: Path) -> None:
+    settings = make_settings(
+        tmp_path,
+        sample_processing_ffprobe_command=str(ffprobe_video_fake_command(tmp_path / "ffprobe-video-fake")),
+    )
+    app = create_app(settings=settings)
+    client = TestClient(app)
+    upload = client.post(
+        "/api/sample-processing/sources",
+        files={"sourceFile": ("clip.mp4", b"video-source", "video/mp4")},
+    )
+    source_id = upload.json()["source"]["id"]
+    metadata_path = settings.sample_processing_dir / "sources" / source_id / "source.json"
+    payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+    payload["path"] = "../source.mp4"
+    metadata_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    response = client.get(f"/api/sample-processing/sources/{source_id}/media")
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Sample processing media source path is invalid."
+
+
 def test_sample_processing_media_source_preview_is_cached_and_bounded(tmp_path: Path) -> None:
     ffmpeg_args_log_path = tmp_path / "ffmpeg-args-log.json"
     settings = make_settings(
@@ -1025,11 +1069,14 @@ def test_sample_processing_media_source_invalid_id_uses_not_found_detail(tmp_pat
     expected_detail = "Sample processing media source was not found."
 
     fetched = client.get("/api/sample-processing/sources/not-a-source")
+    media = client.get("/api/sample-processing/sources/not-a-source/media")
     preview = client.get("/api/sample-processing/sources/not-a-source/preview")
     deleted = client.delete("/api/sample-processing/sources/not-a-source")
 
     assert fetched.status_code == 404
     assert fetched.json()["detail"] == expected_detail
+    assert media.status_code == 404
+    assert media.json()["detail"] == expected_detail
     assert preview.status_code == 404
     assert preview.json()["detail"] == expected_detail
     assert deleted.status_code == 404

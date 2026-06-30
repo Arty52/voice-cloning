@@ -33,6 +33,15 @@ def create_sample_processing_sources_router(
             raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
         return {"source": sample_processing_media_source_payload(source)}
 
+    @router.get("/api/sample-processing/sources/{source_id}/media")
+    def sample_processing_source_media(source_id: str) -> FileResponse:
+        try:
+            source = media_sources.get_source(source_id)
+            path = media_sources.source_path(source_id)
+        except MediaSourceServiceError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+        return FileResponse(path, filename=source.filename, media_type=source.content_type)
+
     @router.get("/api/sample-processing/sources/{source_id}/preview")
     async def sample_processing_source_preview(
         source_id: str,
