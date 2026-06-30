@@ -6,8 +6,11 @@ import {
   cancelSpeechJob,
   createSampleProcessingJob,
   createSpeechJob,
+  deleteSampleProcessingSource,
   providerHeaders,
+  sampleProcessingSourcePreviewUrl,
   fetchSpeechJob,
+  uploadSampleProcessingSource,
   regenerateSpeechJobVoice,
   regenerateSpeechJobSegment,
   saveProcessedVoice,
@@ -140,6 +143,37 @@ describe("voice API helpers", () => {
     expect(body.get("operationId")).toBe("isolateVoice")
     expect(body.get("sourceFile")).toBe(source)
     expect(body.get("sourceVoiceId")).toBeNull()
+  })
+
+  it("uploads, previews, deletes, and submits a staged media source", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => okJson({ source: { id: "source-1" } })))
+    const source = new File(["source"], "book.m4b", { type: "audio/mp4" })
+
+    await uploadSampleProcessingSource(source)
+
+    expect(fetch).toHaveBeenCalledWith("/api/sample-processing/sources", expect.objectContaining({ method: "POST" }))
+    let body = vi.mocked(fetch).mock.calls[0][1]?.body as FormData
+    expect(body.get("sourceFile")).toBe(source)
+
+    await createSampleProcessingJob({
+      operationId: "prepareVoice",
+      sourceMediaId: "source-1",
+      sourceRanges: [{ startSeconds: 120, endSeconds: 240, label: "Chapter 2" }],
+    })
+
+    body = vi.mocked(fetch).mock.calls[1][1]?.body as FormData
+    expect(body.get("sourceMediaId")).toBe("source-1")
+    expect(body.get("sourceFile")).toBeNull()
+    expect(body.get("sourceRanges")).toBe(
+      JSON.stringify([{ startSeconds: 120, endSeconds: 240, label: "Chapter 2" }])
+    )
+
+    await deleteSampleProcessingSource("source-1")
+
+    expect(fetch).toHaveBeenLastCalledWith("/api/sample-processing/sources/source-1", expect.objectContaining({ method: "DELETE" }))
+    expect(sampleProcessingSourcePreviewUrl("source 1", 12.5, 90)).toBe(
+      "/api/sample-processing/sources/source%201/preview?startSeconds=12.5&durationSeconds=90"
+    )
   })
 
   it("creates a stacked sample processing job", async () => {

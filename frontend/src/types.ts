@@ -154,6 +154,30 @@ export type SampleProcessingOptionsResponse = {
   recommendedWorkflowOrder: SampleProcessingOperationId[]
 }
 
+export type SampleProcessingMediaSourceChapter = {
+  id: string
+  title: string
+  startSeconds: number
+  endSeconds: number
+  durationSeconds: number
+}
+
+export type SampleProcessingMediaSource = {
+  id: string
+  filename: string
+  contentType: string
+  sizeBytes: number
+  sha256: string
+  durationSeconds: number | null
+  sampleRateHz: number | null
+  chapters: SampleProcessingMediaSourceChapter[]
+  warnings: string[]
+}
+
+export type SampleProcessingMediaSourceResponse = {
+  source: SampleProcessingMediaSource
+}
+
 export type SampleProcessingAudioResult = {
   path?: string
   filename: string
@@ -234,6 +258,18 @@ export type SampleProcessingDurationRange = {
   maxSeconds: number
 }
 
+export type SampleProcessingSourceRange = {
+  startSeconds: number
+  endSeconds: number
+  durationSeconds: number
+  label: string | null
+}
+
+export type SampleProcessingSourceSelection = {
+  sourceMediaId: string
+  ranges: SampleProcessingSourceRange[]
+}
+
 export type SampleProcessingProgressPhase = {
   id: string
   label: string
@@ -264,6 +300,7 @@ export type SampleProcessingJob = {
   estimatedDurationRangeSeconds?: SampleProcessingDurationRange | null
   progressPhases?: SampleProcessingProgressPhase[]
   activeProgressPhaseId?: string | null
+  sourceSelection?: SampleProcessingSourceSelection | null
   createdAt: string
   updatedAt: string
   error: string | null

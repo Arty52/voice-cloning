@@ -11,6 +11,25 @@ describe("AudioFileDropZone", () => {
     expect(
       screen.getByText("Drag an audio file here, or choose one from your computer. Supports MP3, WAV, M4A, AAC, OGG, and FLAC.")
     ).toBeInTheDocument()
+    expect(screen.getByLabelText("Sample File")).toHaveAttribute(
+      "accept",
+      ".mp3,.wav,.m4a,.aac,.ogg,.flac,audio/mpeg,audio/wav,audio/x-wav,audio/aac,audio/ogg,audio/flac"
+    )
+  })
+
+  it("allows upload flows to provide broader accepted formats and helper copy", () => {
+    render(
+      <AudioFileDropZone
+        accept="audio/*,.m4b"
+        helperCopy="Supports MP3, WAV, M4A, M4B, AAC, OGG, and FLAC."
+        id="sample-file"
+        label="Sample File"
+        onFileSelect={vi.fn()}
+      />
+    )
+
+    expect(screen.getByText("Supports MP3, WAV, M4A, M4B, AAC, OGG, and FLAC.")).toBeInTheDocument()
+    expect(screen.getByLabelText("Sample File")).toHaveAttribute("accept", "audio/*,.m4b")
   })
 
   it("clears the hidden file input after selection so the same file can be selected again", async () => {
