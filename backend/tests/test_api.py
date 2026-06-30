@@ -681,6 +681,25 @@ def test_streamed_upload_writes_file_and_sha_metadata(tmp_path: Path) -> None:
     assert stored.sha256 == sample_hash(b"streamed-sample")
 
 
+def test_streamed_upload_accepts_m4b_source_audio(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    destination = tmp_path / "streamed" / "book.m4b"
+
+    stored = asyncio.run(
+        save_uploaded_sample_stream(
+            make_upload_file("book.m4b", b"audiobook-source", "audio/mp4"),
+            destination,
+            settings,
+            max_bytes=20,
+        )
+    )
+
+    assert destination.read_bytes() == b"audiobook-source"
+    assert stored.filename == "book.m4b"
+    assert stored.content_type == "audio/mp4"
+    assert stored.sha256 == sample_hash(b"audiobook-source")
+
+
 def test_streamed_upload_rejects_oversized_file_and_cleans_partial(tmp_path: Path) -> None:
     settings = make_settings(tmp_path)
     destination = tmp_path / "streamed" / "voice.wav"
@@ -755,6 +774,183 @@ def test_streamed_upload_rejects_invalid_audio(tmp_path: Path) -> None:
 
     assert exc.value.status_code == 422
     assert "Voice sample must be an audio file" in exc.value.detail
+
+
+def test_sample_processing_media_source_upload_reads_chapters(tmp_path: Path) -> None:
+    settings = make_settings(
+        tmp_path,
+        sample_processing_ffprobe_command=str(ffprobe_chapter_fake_command(tmp_path / "ffprobe-fake")),
+    )
+    app = create_app(settings=settings)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/sample-processing/sources",
+        files={"sourceFile": ("book.m4b", b"audiobook-source", "audio/mp4")},
+    )
+
+    assert response.status_code == 201
+    source = response.json()["source"]
+    assert source["filename"] == "book.m4b"
+    assert source["contentType"] == "audio/mp4"
+    assert source["sizeBytes"] == len(b"audiobook-source")
+    assert source["sha256"] == sample_hash(b"audiobook-source")
+    assert source["durationSeconds"] == 900.5
+    assert source["sampleRateHz"] == 44100
+    assert source["warnings"] == []
+    assert "path" not in source
+    assert source["chapters"] == [
+        {
+            "id": "chapter-1",
+            "title": "Opening Credits",
+            "startSeconds": 0.0,
+            "endSeconds": 420.5,
+            "durationSeconds": 420.5,
+        },
+        {
+            "id": "chapter-2",
+            "title": "Chapter 2",
+            "startSeconds": 420.5,
+            "endSeconds": 900.5,
+            "durationSeconds": 480.0,
+        },
+    ]
+
+    fetched = client.get(f"/api/sample-processing/sources/{source['id']}")
+
+    assert fetched.status_code == 200
+    assert fetched.json()["source"] == source
+    assert (
+        settings.sample_processing_dir / "sources" / source["id"] / "source.m4b"
+    ).read_bytes() == b"audiobook-source"
+
+
+def test_sample_processing_media_source_preview_is_cached_and_bounded(tmp_path: Path) -> None:
+    ffmpeg_args_log_path = tmp_path / "ffmpeg-args-log.json"
+    settings = make_settings(
+        tmp_path,
+        sample_processing_ffmpeg_command=str(
+            ffmpeg_fake_command(
+                tmp_path / "ffmpeg-fake",
+                output=b"preview-mp3",
+                args_log_path=ffmpeg_args_log_path,
+            )
+        ),
+        sample_processing_ffprobe_command=str(ffprobe_chapter_fake_command(tmp_path / "ffprobe-fake")),
+    )
+    app = create_app(settings=settings)
+    client = TestClient(app)
+    upload = client.post(
+        "/api/sample-processing/sources",
+        files={"sourceFile": ("book.m4b", b"audiobook-source", "audio/mp4")},
+    )
+    source_id = upload.json()["source"]["id"]
+
+    first = client.get(
+        f"/api/sample-processing/sources/{source_id}/preview",
+        params={"startSeconds": "10", "durationSeconds": "120"},
+    )
+    second = client.get(
+        f"/api/sample-processing/sources/{source_id}/preview",
+        params={"startSeconds": "10", "durationSeconds": "120"},
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.headers["content-type"].startswith("audio/mpeg")
+    assert first.content == b"preview-mp3"
+    assert second.content == b"preview-mp3"
+    args_log = json.loads(ffmpeg_args_log_path.read_text(encoding="utf-8"))
+    assert len(args_log) == 1
+    preview_args = args_log[0]
+    assert preview_args[preview_args.index("-ss") + 1] == "10"
+    assert preview_args[preview_args.index("-t") + 1] == "90"
+    assert preview_args[preview_args.index("-c:a") + 1] == "libmp3lame"
+
+
+def test_sample_processing_media_source_preview_failure_removes_partial_cache(tmp_path: Path) -> None:
+    settings = make_settings(
+        tmp_path,
+        sample_processing_ffmpeg_command=str(
+            ffmpeg_fake_command(
+                tmp_path / "ffmpeg-fake",
+                exit_code=7,
+                failure_output=b"partial-preview",
+            )
+        ),
+        sample_processing_ffprobe_command=str(ffprobe_chapter_fake_command(tmp_path / "ffprobe-fake")),
+    )
+    app = create_app(settings=settings)
+    client = TestClient(app)
+    upload = client.post(
+        "/api/sample-processing/sources",
+        files={"sourceFile": ("book.m4b", b"audiobook-source", "audio/mp4")},
+    )
+    source_id = upload.json()["source"]["id"]
+
+    response = client.get(
+        f"/api/sample-processing/sources/{source_id}/preview",
+        params={"startSeconds": "10", "durationSeconds": "20"},
+    )
+
+    assert response.status_code == 502
+    previews_dir = settings.sample_processing_dir / "sources" / source_id / "previews"
+    assert not list(previews_dir.iterdir())
+
+
+def test_sample_processing_media_source_rejects_invalid_upload(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    app = create_app(settings=settings)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/sample-processing/sources",
+        files={"sourceFile": ("notes.txt", b"not-audio", "text/plain")},
+    )
+
+    assert response.status_code == 422
+    assert "Voice sample must be an audio file" in response.json()["detail"]
+    assert [path for path in (settings.sample_processing_dir / "sources").iterdir()] == []
+
+
+def test_sample_processing_media_source_delete_cleans_staged_files(tmp_path: Path) -> None:
+    settings = make_settings(
+        tmp_path,
+        sample_processing_ffprobe_command=str(ffprobe_chapter_fake_command(tmp_path / "ffprobe-fake")),
+    )
+    app = create_app(settings=settings)
+    client = TestClient(app)
+    upload = client.post(
+        "/api/sample-processing/sources",
+        files={"sourceFile": ("book.m4b", b"audiobook-source", "audio/mp4")},
+    )
+    source_id = upload.json()["source"]["id"]
+    source_dir = settings.sample_processing_dir / "sources" / source_id
+
+    response = client.delete(f"/api/sample-processing/sources/{source_id}")
+    fetched = client.get(f"/api/sample-processing/sources/{source_id}")
+
+    assert response.status_code == 204
+    assert fetched.status_code == 404
+    assert not source_dir.exists()
+
+
+def test_sample_processing_media_source_invalid_id_uses_not_found_detail(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    app = create_app(settings=settings)
+    client = TestClient(app)
+    expected_detail = "Sample processing media source was not found."
+
+    fetched = client.get("/api/sample-processing/sources/not-a-source")
+    preview = client.get("/api/sample-processing/sources/not-a-source/preview")
+    deleted = client.delete("/api/sample-processing/sources/not-a-source")
+
+    assert fetched.status_code == 404
+    assert fetched.json()["detail"] == expected_detail
+    assert preview.status_code == 404
+    assert preview.json()["detail"] == expected_detail
+    assert deleted.status_code == 404
+    assert deleted.json()["detail"] == expected_detail
 
 
 def test_settings_reads_speech_job_segment_gap_environment(
@@ -856,13 +1052,17 @@ def ffmpeg_fake_command(
     args_path: Path | None = None,
     args_log_path: Path | None = None,
     exit_code: int = 0,
+    failure_output: bytes | None = None,
     stderr: str = "ffmpeg failed in test",
 ) -> Path:
     if exit_code != 0:
         return write_fake_command(
             path,
             f"""
+from pathlib import Path
 import sys
+if {failure_output!r} is not None and sys.argv[-1] != "-":
+    Path(sys.argv[-1]).write_bytes({failure_output!r})
 sys.stderr.write({stderr!r})
 raise SystemExit({exit_code})
 """,
@@ -930,6 +1130,34 @@ raise SystemExit({exit_code})
 import json
 import sys
 sys.stdout.write(json.dumps({{"streams": [{{"sample_rate": {str(sample_rate_hz)!r}}}], "format": {{"duration": {str(duration_seconds)!r}}}}}))
+""",
+    )
+
+
+def ffprobe_chapter_fake_command(path: Path) -> Path:
+    return write_fake_command(
+        path,
+        """
+import json
+import sys
+sys.stdout.write(json.dumps({
+    "streams": [{"sample_rate": "44100"}],
+    "format": {"duration": "900.5"},
+    "chapters": [
+        {
+            "id": 0,
+            "start_time": "0.000000",
+            "end_time": "420.500000",
+            "tags": {"title": "Opening Credits"},
+        },
+        {
+            "id": 1,
+            "start_time": "420.500000",
+            "end_time": "900.500000",
+            "tags": {},
+        },
+    ],
+}))
 """,
     )
 

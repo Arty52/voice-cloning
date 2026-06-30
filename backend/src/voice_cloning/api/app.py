@@ -8,6 +8,7 @@ from ..config import Settings
 from ..elevenlabs_client import ElevenLabsProvider
 from ..providers import ProviderRegistry
 from ..sample_processors import create_sample_processor
+from ..services.media_sources import SampleProcessingMediaSourceService
 from ..services.sample_processing import SampleProcessingService, SampleProcessor
 from ..services.speech_jobs import SpeechJobService
 from ..services.voice_ingestion import VoiceIngestionService
@@ -15,6 +16,7 @@ from ..voice_library import VoiceLibrary
 from .routes.health import create_health_router
 from .routes.metadata import create_metadata_router
 from .routes.sample_processing import create_sample_processing_router
+from .routes.sample_processing_sources import create_sample_processing_sources_router
 from .routes.speech import create_speech_router
 from .routes.speech_jobs import create_speech_jobs_router
 from .routes.voices import create_voices_router
@@ -27,6 +29,7 @@ def create_app(
     voice_library: VoiceLibrary | None = None,
     voice_ingestion_service: VoiceIngestionService | None = None,
     sample_processor: SampleProcessor | None = None,
+    sample_processing_media_source_service: SampleProcessingMediaSourceService | None = None,
     sample_processing_service: SampleProcessingService | None = None,
     speech_job_service: SpeechJobService | None = None,
 ) -> FastAPI:
@@ -39,6 +42,9 @@ def create_app(
         resolved_settings,
         resolved_library,
         sample_processor or create_sample_processor(resolved_settings),
+    )
+    resolved_sample_processing_media_sources = (
+        sample_processing_media_source_service or SampleProcessingMediaSourceService(resolved_settings)
     )
     resolved_speech_jobs = speech_job_service or SpeechJobService(
         resolved_settings,
@@ -67,6 +73,7 @@ def create_app(
 
     app.include_router(create_health_router(resolved_settings, resolved_library, resolved_provider_registry))
     app.include_router(create_voices_router(resolved_library, resolved_provider_registry, resolved_voice_ingestion))
+    app.include_router(create_sample_processing_sources_router(resolved_sample_processing_media_sources))
     app.include_router(create_sample_processing_router(resolved_sample_processing))
     app.include_router(create_metadata_router(resolved_settings, resolved_provider_registry))
     app.include_router(create_speech_jobs_router(resolved_provider_registry, resolved_speech_jobs))
