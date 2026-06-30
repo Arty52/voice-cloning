@@ -9,6 +9,8 @@ from ..models import (
     PreparedSamplesResult,
     SampleProcessingDurationRange,
     SampleProcessingJob,
+    SampleProcessingMediaSource,
+    SampleProcessingMediaSourceChapter,
     SampleProcessingProgressPhase,
     SampleProcessingJobStep,
     SampleProcessingJobResult,
@@ -229,6 +231,32 @@ def sample_processing_preset_payload(preset: SampleProcessingPreset) -> dict[str
         "id": preset.id,
         "label": preset.label,
         "description": preset.description,
+    }
+
+
+def sample_processing_media_source_payload(source: SampleProcessingMediaSource) -> dict[str, object]:
+    return {
+        "id": source.id,
+        "filename": source.filename,
+        "contentType": source.content_type,
+        "sizeBytes": source.size_bytes,
+        "sha256": source.sha256,
+        "durationSeconds": source.duration_seconds,
+        "sampleRateHz": source.sample_rate_hz,
+        "chapters": [sample_processing_media_source_chapter_payload(chapter) for chapter in source.chapters],
+        "warnings": list(source.warnings),
+    }
+
+
+def sample_processing_media_source_chapter_payload(
+    chapter: SampleProcessingMediaSourceChapter,
+) -> dict[str, object]:
+    return {
+        "id": chapter.id,
+        "title": chapter.title,
+        "startSeconds": chapter.start_seconds,
+        "endSeconds": chapter.end_seconds,
+        "durationSeconds": chapter.duration_seconds,
     }
 
 

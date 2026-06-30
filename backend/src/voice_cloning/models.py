@@ -164,6 +164,29 @@ class SampleProcessingResult:
 
 
 @dataclass(frozen=True)
+class SampleProcessingMediaSourceChapter:
+    id: str
+    title: str
+    start_seconds: float
+    end_seconds: float
+    duration_seconds: float
+
+
+@dataclass(frozen=True)
+class SampleProcessingMediaSource:
+    id: str
+    path: str
+    filename: str
+    content_type: str
+    size_bytes: int
+    sha256: str
+    duration_seconds: float | None
+    sample_rate_hz: int | None
+    chapters: tuple[SampleProcessingMediaSourceChapter, ...] = ()
+    warnings: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class SpeakerTranscriptItem:
     id: str
     text: str
