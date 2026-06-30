@@ -909,7 +909,7 @@ def test_sample_processing_media_source_rejects_invalid_upload(tmp_path: Path) -
     )
 
     assert response.status_code == 422
-    assert "Voice sample must be an audio file" in response.json()["detail"]
+    assert "Source media must be an audio or video file" in response.json()["detail"]
     assert [path for path in (settings.sample_processing_dir / "sources").iterdir()] == []
 
 

@@ -12,7 +12,7 @@ from fastapi import UploadFile
 
 from ..config import Settings
 from ..models import SampleProcessingMediaSource, SampleProcessingMediaSourceChapter
-from ..samples import save_uploaded_sample_stream
+from ..samples import save_uploaded_media_source_stream
 from .media_commands import (
     non_negative_float as _non_negative_float,
     non_negative_float_from_payload as _non_negative_float_from_payload,
@@ -48,7 +48,7 @@ class SampleProcessingMediaSourceService:
         source_dir.mkdir(parents=True, exist_ok=False)
         try:
             source_path = source_dir / _source_filename(upload.filename)
-            stored = await save_uploaded_sample_stream(
+            stored = await save_uploaded_media_source_stream(
                 upload,
                 source_path,
                 self.settings,

@@ -5,6 +5,7 @@ import hashlib
 from pathlib import Path
 import re
 import shutil
+from typing import Callable
 
 from fastapi import HTTPException, UploadFile
 
@@ -29,6 +30,14 @@ ALLOWED_AUDIO_CONTENT_TYPES = {
     "audio/x-wav",
     "application/octet-stream",
 }
+ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".m4v", ".mov"}
+ALLOWED_VIDEO_CONTENT_TYPES = {
+    "video/mp4",
+    "video/quicktime",
+    "video/x-m4v",
+}
+ALLOWED_MEDIA_SOURCE_EXTENSIONS = ALLOWED_AUDIO_EXTENSIONS | ALLOWED_VIDEO_EXTENSIONS
+ALLOWED_MEDIA_SOURCE_CONTENT_TYPES = ALLOWED_AUDIO_CONTENT_TYPES | ALLOWED_VIDEO_CONTENT_TYPES
 UPLOAD_CHUNK_SIZE_BYTES = 1024 * 1024
 
 
@@ -60,6 +69,19 @@ def _validate_audio_file(filename: str, content_type: str | None) -> None:
         raise HTTPException(
             status_code=422,
             detail="Voice sample must be an audio file: mp3, wav, m4a, m4b, aac, ogg, or flac.",
+        )
+
+
+def _validate_media_source_file(filename: str, content_type: str | None) -> None:
+    suffix = Path(filename).suffix.lower()
+    normalized_content_type = (content_type or "").lower()
+    if suffix not in ALLOWED_MEDIA_SOURCE_EXTENSIONS and normalized_content_type not in ALLOWED_MEDIA_SOURCE_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Source media must be an audio or video file: mp3, wav, m4a, m4b, aac, ogg, flac, "
+                "mp4, m4v, or mov."
+            ),
         )
 
 
@@ -125,9 +147,47 @@ async def save_uploaded_sample_stream(
     settings: Settings,
     max_bytes: int | None = None,
 ) -> StoredSampleFile:
+    return await _save_uploaded_stream(
+        upload,
+        destination,
+        settings,
+        max_bytes=max_bytes,
+        validate_file=_validate_audio_file,
+        empty_detail="Uploaded voice sample is empty.",
+        limit_detail_prefix="Uploaded voice sample",
+    )
+
+
+async def save_uploaded_media_source_stream(
+    upload: UploadFile,
+    destination: Path,
+    settings: Settings,
+    max_bytes: int | None = None,
+) -> StoredSampleFile:
+    return await _save_uploaded_stream(
+        upload,
+        destination,
+        settings,
+        max_bytes=max_bytes,
+        validate_file=_validate_media_source_file,
+        empty_detail="Uploaded source media is empty.",
+        limit_detail_prefix="Uploaded source media",
+    )
+
+
+async def _save_uploaded_stream(
+    upload: UploadFile,
+    destination: Path,
+    settings: Settings,
+    *,
+    max_bytes: int | None,
+    validate_file: Callable[[str, str | None], None],
+    empty_detail: str,
+    limit_detail_prefix: str,
+) -> StoredSampleFile:
     filename = upload.filename or "uploaded-sample"
     content_type = upload.content_type or "application/octet-stream"
-    _validate_audio_file(filename, content_type)
+    validate_file(filename, content_type)
 
     resolved_max_bytes = settings.max_upload_bytes if max_bytes is None else max_bytes
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -144,12 +204,12 @@ async def save_uploaded_sample_stream(
                 if total_bytes > resolved_max_bytes:
                     raise HTTPException(
                         status_code=413,
-                        detail=f"Uploaded voice sample must be {_upload_limit_label(resolved_max_bytes)} or smaller.",
+                        detail=f"{limit_detail_prefix} must be {_upload_limit_label(resolved_max_bytes)} or smaller.",
                     )
                 digest.update(chunk)
                 output.write(chunk)
         if total_bytes == 0:
-            raise HTTPException(status_code=422, detail="Uploaded voice sample is empty.")
+            raise HTTPException(status_code=422, detail=empty_detail)
         shutil.move(str(temp_path), str(destination))
     except Exception:
         temp_path.unlink(missing_ok=True)
