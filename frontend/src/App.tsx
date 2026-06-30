@@ -23,6 +23,7 @@ import { useVoiceStudioController } from "@/hooks/use-voice-studio-controller"
 function App() {
   const [prepareAudioWorkflow, setPrepareAudioWorkflow] = useState<PrepareAudioWorkflow | null>(null)
   const [generatedAudioAttentionSignal, setGeneratedAudioAttentionSignal] = useState(0)
+  const [sampleProcessingAttentionSignal, setSampleProcessingAttentionSignal] = useState(0)
   const hasEnteredProcessAudioWorkflowRef = useRef(false)
   const {
     activeSectionId,
@@ -87,6 +88,7 @@ function App() {
     voiceInput.isUploading || voiceInput.isPreparingSample || voiceInput.isRecorderBusy || sampleProcessing.isProcessing
   const visiblePrepareAudioWorkflow = prepareAudioWorkflow ?? (sampleProcessing.job ? "processAudio" : null)
   const generatedAudioAttentionRef = useScrollIntoViewOnSignal<HTMLElement>(generatedAudioAttentionSignal)
+  const sampleProcessingAttentionRef = useScrollIntoViewOnSignal<HTMLDivElement>(sampleProcessingAttentionSignal)
 
   function handlePrepareAudioWorkflowSelect(workflow: PrepareAudioWorkflow) {
     if (isPrepareWorkflowSwitchDisabled) {
@@ -108,6 +110,10 @@ function App() {
     }
     setGeneratedAudioAttentionSignal((currentSignal) => currentSignal + 1)
     handleGenerate()
+  }
+
+  function requestSampleProcessingAttention() {
+    setSampleProcessingAttentionSignal((currentSignal) => currentSignal + 1)
   }
 
   return (
@@ -165,8 +171,10 @@ function App() {
 
           {visiblePrepareAudioWorkflow === "processAudio" ? (
             <SampleProcessingPanel
+              attentionRef={sampleProcessingAttentionRef}
               isCollapsible={false}
               isExpanded
+              onAttentionRequest={requestSampleProcessingAttention}
               onToggleExpanded={() => undefined}
               processing={sampleProcessing}
               voicePresets={providerKeys.voicePresets}

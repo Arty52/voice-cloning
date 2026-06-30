@@ -1,4 +1,13 @@
-import { type CSSProperties, type ReactNode, useCallback, useEffect, useRef, useState } from "react"
+import {
+  type CSSProperties,
+  type FormEvent,
+  type ReactNode,
+  type RefObject,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react"
 import {
   AudioLines,
   Ban,
@@ -67,8 +76,10 @@ import type {
 } from "@/types"
 
 type SampleProcessingPanelProps = {
+  attentionRef?: RefObject<HTMLDivElement | null>
   isCollapsible?: boolean
   isExpanded: boolean
+  onAttentionRequest?: () => void
   onToggleExpanded: () => void
   processing: SampleProcessingController
   voicePresets: { id: VoicePresetId; label: string; description: string }[]
@@ -94,9 +105,15 @@ const SPEAKER_COLORS = [
   "oklch(0.74 0.16 247)",
 ]
 
+function noopAttentionRequest() {
+  return undefined
+}
+
 export function SampleProcessingPanel({
+  attentionRef,
   isCollapsible = true,
   isExpanded,
+  onAttentionRequest = noopAttentionRequest,
   onToggleExpanded,
   processing,
   voicePresets,
@@ -108,6 +125,13 @@ export function SampleProcessingPanel({
   const statusLabel = panelStatusLabel(processing)
   const elapsedTimeLabel = panelElapsedTimeLabel(processing)
   const isDetailsVisible = isExpanded || !isCollapsible
+
+  function handleStartProcessing(event: FormEvent<HTMLFormElement>) {
+    if (processing.canStart) {
+      onAttentionRequest()
+    }
+    processing.handleStartProcessing(event)
+  }
 
   return (
     <section aria-busy={processing.isProcessing} className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5">
@@ -165,21 +189,23 @@ export function SampleProcessingPanel({
             </Alert>
           ) : null}
 
-          <form className="flex flex-col gap-3" onSubmit={processing.handleStartProcessing}>
+          <form className="flex flex-col gap-3" onSubmit={handleStartProcessing}>
             <FieldGroup>
               <SourceSelection processing={processing} voicePresets={voicePresets} />
               <WorkflowStackSelection processing={processing} />
               <PrepareAdvancedOptions processing={processing} />
             </FieldGroup>
 
-            {processing.job ? <ProcessingProgress processing={processing} /> : null}
+            <div className="flex flex-col gap-4 scroll-mt-4" ref={attentionRef}>
+              {processing.job ? <ProcessingProgress processing={processing} /> : null}
 
-            {processing.error ? (
-              <Alert className="border-destructive/40 bg-destructive/10 text-destructive" role="alert">
-                <AlertTitle>Processing Failed</AlertTitle>
-                <AlertDescription>{processing.error}</AlertDescription>
-              </Alert>
-            ) : null}
+              {processing.error ? (
+                <Alert className="border-destructive/40 bg-destructive/10 text-destructive" role="alert">
+                  <AlertTitle>Processing Failed</AlertTitle>
+                  <AlertDescription>{processing.error}</AlertDescription>
+                </Alert>
+              ) : null}
+            </div>
 
             <div className={cn("grid gap-2", processing.canCancel && "sm:grid-cols-[minmax(0,1fr)_auto]")}>
               <Button className="w-full" disabled={!processing.canStart} type="submit">
