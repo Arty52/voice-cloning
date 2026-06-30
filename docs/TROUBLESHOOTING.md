@@ -93,7 +93,15 @@ Max Isolation uses the finetuned `htdemucs_ft` model. The first run may download
 
 Stacked workflows run each selected operation in order, so their total runtime is roughly the sum of the selected steps. Clean Up Voice + Split Speakers + Tighten Pauses can be significantly slower than any individual operation because Trim Silence runs once for each detected speaker stream.
 
+For M4B or other large Process Audio uploads, use Source Selection before starting the job. Chapter selection and manual ranges limit the media extracted into the job; uploading a large source alone does not mean the whole file must be processed. Preview clips are intentionally bounded and cached as `audio/mpeg`, so preview playback can succeed or fail independently from the full selected range extraction.
+
 If you abort a job, the backend marks the job `canceled` and skips remaining stack steps. FFmpeg and Demucs subprocesses are killed. Pyannote or faster-whisper work may keep using CPU briefly if it was already running in a worker thread, but its job result is discarded.
+
+## M4B Source Inspection Or Preview Fails
+
+Process Audio accepts `.m4b` files and common MPEG-4 audio MIME aliases, but FFprobe must still be able to inspect the file. If upload inspection fails, verify `SAMPLE_PROCESSING_FFPROBE_COMMAND` and `SAMPLE_PROCESSING_FFMPEG_COMMAND` point to working binaries in the backend runtime. If no chapters appear, the file may not contain chapter metadata; use the manual range selector instead.
+
+Preview clips use FFmpeg to extract a short MP3 under `storage/sample-processing/sources/`. A preview failure usually means FFmpeg could not decode that section or timed out. Try a different chapter/range, confirm the staged source still exists, or delete and re-upload the file. Staged sources are runtime data and are deleted when replaced or after job creation succeeds.
 
 ## Sample Processing Output Is Missing Or Too Large
 
@@ -107,7 +115,7 @@ Remove backend cache data:
 make clean-cache
 ```
 
-Sample-processing jobs, diarization transcripts, generated speaker streams, and intermediate stems live under ignored `storage/sample-processing/`. Docker-routed Demucs, pyannote, and faster-whisper model caches live under ignored `storage/model-cache/`. Remove either directory when you want to clear local processing artifacts or force model downloads again.
+Sample-processing jobs, staged media sources, preview clips, diarization transcripts, generated speaker streams, and intermediate stems live under ignored `storage/sample-processing/`. Docker-routed Demucs, pyannote, and faster-whisper model caches live under ignored `storage/model-cache/`. Remove either directory when you want to clear local processing artifacts or force model downloads again.
 
 Generated audio saved in the browser can be removed from `Generated Audio` with Remove or Clear All. The section also lets you choose a browser storage cap of 25 MB, 50 MB, 100 MB, or 250 MB. Lowering the cap prompts before pruning older saved audio. Saved generated audio metadata includes model, provider request metadata when returned, tuning snapshot metadata when available, and browser-measured generation elapsed time for new generations.
 

@@ -564,6 +564,37 @@ function sampleProcessingMediaSourceFrom(init?: RequestInit) {
   }
 }
 
+function chapteredSampleProcessingMediaSource() {
+  return {
+    source: {
+      id: "source-book",
+      filename: "book.m4b",
+      contentType: "audio/mp4",
+      sizeBytes: 16777216,
+      sha256: "book-hash",
+      durationSeconds: 900,
+      sampleRateHz: 44100,
+      chapters: [
+        {
+          id: "chapter-1",
+          title: "Chapter 1",
+          startSeconds: 0,
+          endSeconds: 120,
+          durationSeconds: 120,
+        },
+        {
+          id: "chapter-2",
+          title: "Chapter 2",
+          startSeconds: 120,
+          endSeconds: 240,
+          durationSeconds: 120,
+        },
+      ],
+      warnings: [],
+    },
+  }
+}
+
 function speechJobFromSubmitted(
   submittedJob: {
     defaultVoiceId: string
@@ -3220,6 +3251,49 @@ describe("App", () => {
       expect(sampleProcessingPanel().queryByLabelText("Processed sample preview")).not.toBeInTheDocument()
     })
     expect(sampleProcessingPanel().queryByLabelText("Sample Processing Elapsed Time")).not.toBeInTheDocument()
+  })
+
+  it("starts sample processing from selected M4B chapters", async () => {
+    const user = userEvent.setup()
+    const sourceFile = new File(["source"], "book.m4b", { type: "audio/mp4" })
+    const baseFetch = mockFetch()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/sample-processing/sources" && init?.method === "POST") {
+          return okJson(chapteredSampleProcessingMediaSource())
+        }
+        if (path === "/api/sample-processing/sources/source-book" && init?.method === "DELETE") {
+          return okNoContent()
+        }
+        return baseFetch(input, init)
+      })
+    )
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    await user.click(sampleProcessingPanel().getByRole("button", { name: "Audio File" }))
+    await user.upload(sampleProcessingPanel().getByLabelText("Audio File"), sourceFile)
+
+    expect(await sampleProcessingPanel().findByText("Source Selection")).toBeInTheDocument()
+    expect(sampleProcessingPanel().getByText("2 Chapters")).toBeInTheDocument()
+    expect(sampleProcessingPanel().getByRole("button", { name: "Start Processing" })).toBeDisabled()
+
+    await user.click(sampleProcessingPanel().getByLabelText(/Chapter 2/i))
+    const startButton = sampleProcessingPanel().getByRole("button", { name: "Start Processing" })
+    await waitFor(() => expect(startButton).toBeEnabled())
+    await user.click(startButton)
+
+    const jobCall = vi.mocked(fetch).mock.calls.find(
+      ([url, init]) => String(url) === "/api/sample-processing/jobs" && init?.method === "POST"
+    )
+    const jobBody = jobCall?.[1]?.body as FormData
+    expect(jobBody.get("sourceFile")).toBeNull()
+    expect(jobBody.get("sourceMediaId")).toBe("source-book")
+    expect(JSON.parse(jobBody.get("sourceRanges") as string)).toEqual([
+      { startSeconds: 120, endSeconds: 240, label: "Chapter 2" },
+    ])
   })
 
   it("creates a sample processing job from a dropped audio file", async () => {
