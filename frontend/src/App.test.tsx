@@ -686,6 +686,21 @@ function speechJobFromSubmitted(
   }
 }
 
+function runningSpeechJobFromSubmitted(submittedJob: NonNullable<Parameters<typeof speechJobFromSubmitted>[0]> | null) {
+  const job = speechJobFromSubmitted(submittedJob)
+  return {
+    ...job,
+    activeSegmentId: job.segments[0]?.id ?? null,
+    resultSha256: null,
+    segments: job.segments.map((segment, index) => ({
+      ...segment,
+      resultSha256: null,
+      status: index === 0 ? ("running" as const) : ("pending" as const),
+    })),
+    status: "running" as const,
+  }
+}
+
 function deferredResponse() {
   let resolve: (value: Response) => void = () => undefined
   const promise = new Promise<Response>((nextResolve) => {
@@ -1632,6 +1647,73 @@ describe("App", () => {
         useSpeakerBoost: true,
       },
     ])
+  })
+
+  it("shows lifted dialogue pending progress while a speech job runs", async () => {
+    window.history.replaceState(null, "", "/#generate")
+    let createJobBody: NonNullable<Parameters<typeof speechJobFromSubmitted>[0]> | null = null
+    let pollRequested = false
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/providers" && !init) {
+          return okJson(providersResponse)
+        }
+        if (path === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "default", voices: [defaultVoice] })
+        }
+        if (path === "/api/subscription" && !init) {
+          return okJson(subscription)
+        }
+        if (path === "/api/models" && !init) {
+          return okJson({
+            available: true,
+            error: null,
+            defaultModelId: "eleven_multilingual_v2",
+            models: [multilingualModel, flashModel],
+          })
+        }
+        if (path === "/api/speech/jobs" && init?.method === "POST") {
+          createJobBody = JSON.parse(String(init.body))
+          return okJson({ job: runningSpeechJobFromSubmitted(createJobBody) })
+        }
+        if (path === "/api/speech/jobs/job-1" && !init) {
+          pollRequested = true
+          return new Promise<Response>(() => undefined)
+        }
+        if (path === "/api/speech/jobs/job-1/result" && !init) {
+          return okAudio()
+        }
+        if (path.startsWith("/api/speech/jobs/job-1/segments/") && path.endsWith("/result") && !init) {
+          return okAudio()
+        }
+        return okJson({})
+      })
+    )
+    const user = userEvent.setup()
+    renderApp()
+
+    await screen.findByText("default/default-voice.mp3")
+    fireEvent.change(screen.getByLabelText(/text to speak/i), {
+      target: { value: "Skippy: One.\nSkippy: Two." },
+    })
+    await user.click(screen.getByRole("radio", { name: "Dialogue Rows" }))
+    await user.click(screen.getByRole("button", { name: "Import Dialogue" }))
+    await user.click(screen.getByRole("button", { name: "Map Voice" }))
+    await user.click(screen.getByRole("button", { name: "Default voice" }))
+    await user.click(screen.getByRole("button", { name: /^Generate$/ }))
+
+    const pending = await screen.findByRole("status", { name: "Generating Dialogue" })
+    expect(pending).toHaveTextContent("Rendering dialogue rows into a combined audio result.")
+    expect(pending).toHaveTextContent("2 Segments")
+    expect(pending).toHaveTextContent("Active: Segment 1: Default voice")
+    expect(pending).toHaveTextContent("Segment 1")
+    expect(pending).toHaveTextContent("Running")
+    expect(pending).toHaveTextContent("Segment 2")
+    expect(pending).toHaveTextContent("Queued")
+
+    await waitFor(() => expect(pollRequested).toBe(true))
   })
 
   it("saves generated dialogue row tuning to the voice library", async () => {

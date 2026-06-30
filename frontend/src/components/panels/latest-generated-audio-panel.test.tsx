@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event"
 import type { ReactNode } from "react"
 import { describe, expect, it, vi } from "vitest"
 
-import type { GeneratedResult, ProviderTuningControl, VoiceAsset } from "@/types"
+import type { GenerationPendingStatus, GeneratedResult, ProviderTuningControl, VoiceAsset } from "@/types"
 import { TooltipProvider } from "@/components/ui/tooltip"
 
 import { LatestGeneratedAudioPanel } from "./latest-generated-audio-panel"
@@ -107,6 +107,118 @@ function voice(id: string, name: string): VoiceAsset {
 function renderLatestPanel(ui: ReactNode) {
   return render(<TooltipProvider>{ui}</TooltipProvider>)
 }
+
+describe("LatestGeneratedAudioPanel pending generation", () => {
+  it("renders lifted dialogue progress while generation is running", () => {
+    const generationPendingStatus: GenerationPendingStatus = {
+      activeDetail: "Segment 2: Villain",
+      description: "Rendering dialogue rows into a combined audio result.",
+      elapsedMs: 1234,
+      meta: ["5 Segments"],
+      segments: [
+        {
+          detail: "Narrator opens.",
+          id: "segment-one",
+          index: 0,
+          isActive: false,
+          label: "Segment 1",
+          status: "success",
+          voiceName: "Narrator",
+        },
+        {
+          detail: "Villain replies.",
+          id: "segment-two",
+          index: 1,
+          isActive: true,
+          label: "Segment 2",
+          status: "running",
+          voiceName: "Villain",
+        },
+        {
+          detail: "Hero waits.",
+          id: "segment-three",
+          index: 2,
+          isActive: false,
+          label: "Segment 3",
+          status: "pending",
+          voiceName: "Hero",
+        },
+        {
+          detail: "Segment failed.",
+          id: "segment-four",
+          index: 3,
+          isActive: false,
+          label: "Segment 4",
+          status: "error",
+          voiceName: "Narrator",
+        },
+        {
+          detail: "Segment canceled.",
+          id: "segment-five",
+          index: 4,
+          isActive: false,
+          label: "Segment 5",
+          status: "canceled",
+          voiceName: "Villain",
+        },
+      ],
+      statusLabel: "Running",
+      title: "Generating Dialogue",
+    }
+
+    renderLatestPanel(
+      <LatestGeneratedAudioPanel
+        activeProviderId="elevenlabs"
+        error={null}
+        generationPendingStatus={generationPendingStatus}
+        isDeleteDisabled={false}
+        item={null}
+        onDelete={vi.fn()}
+        onRegenerateSegment={vi.fn()}
+        segmentResultUrls={{}}
+        status="generating"
+        storageError={null}
+        voices={[narrator, villain]}
+      />
+    )
+
+    const pending = screen.getByRole("status", { name: "Generating Dialogue" })
+    expect(pending).toHaveTextContent("Rendering dialogue rows into a combined audio result.")
+    expect(pending).toHaveTextContent("Elapsed 1.2s")
+    expect(pending).toHaveTextContent("5 Segments")
+    expect(pending).toHaveTextContent("Active: Segment 2: Villain")
+    expect(screen.getByRole("list", { name: "Generation Progress" })).toBeInTheDocument()
+    expect(pending).toHaveTextContent("Segment 1")
+    expect(pending).toHaveTextContent("Complete")
+    expect(pending).toHaveTextContent("Segment 2")
+    expect(pending).toHaveTextContent("Running")
+    expect(pending).toHaveTextContent("Segment 3")
+    expect(pending).toHaveTextContent("Queued")
+    expect(pending).toHaveTextContent("Segment 4")
+    expect(pending).toHaveTextContent("Error")
+    expect(pending).toHaveTextContent("Segment 5")
+    expect(pending).toHaveTextContent("Canceled")
+  })
+
+  it("falls back to speech generation copy without a detailed pending model", () => {
+    renderLatestPanel(
+      <LatestGeneratedAudioPanel
+        activeProviderId="elevenlabs"
+        error={null}
+        isDeleteDisabled={false}
+        item={null}
+        onDelete={vi.fn()}
+        onRegenerateSegment={vi.fn()}
+        segmentResultUrls={{}}
+        status="generating"
+        storageError={null}
+        voices={[narrator]}
+      />
+    )
+
+    expect(screen.getByRole("status", { name: "Generating Speech" })).toHaveTextContent("Running")
+  })
+})
 
 describe("LatestGeneratedAudioPanel multi-voice results", () => {
   it("keeps segment controls collapsed until opened", async () => {

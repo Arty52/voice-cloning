@@ -35,6 +35,7 @@ function App() {
     dialogueSpeechSegmentCount,
     estimatedCredits,
     generatedAudio,
+    generationPendingStatus,
     handleGenerate,
     handleStorageLimitChange,
     handleTextSelectionChange,
@@ -221,6 +222,7 @@ function App() {
           <LatestGeneratedAudioPanel
             activeProviderId={providerKeys.activeProviderId}
             error={speechError}
+            generationPendingStatus={generationPendingStatus}
             isDeleteDisabled={generatedAudio.generatedAudioMutation === "delete"}
             isSavingVoiceTuning={voiceLibrary.isUpdatingVoice}
             item={latestGeneratedAudioItem}

@@ -17,7 +17,7 @@ import { useVoiceSampleInput } from "@/hooks/use-voice-sample-input"
 import { useVoiceTuning } from "@/hooks/use-voice-tuning"
 import { useWorkflowNavigation } from "@/hooks/use-workflow-navigation"
 import { isTemporaryGeneratedAudioId } from "@/lib/generated-audio-view-model"
-import { formatBytes } from "@/lib/formatters"
+import { formatBytes, formatNumber } from "@/lib/formatters"
 import type { VoiceUpdate } from "@/lib/api"
 import {
   loadNaturalHandoffsPreference,
@@ -38,12 +38,16 @@ import {
   type WorkflowSectionId,
 } from "@/lib/workflow-sections"
 import type {
+  GenerationPendingStatus,
   ProviderTuningMetadata,
   RequestStatus,
+  SpeechJob,
   VoiceAsset,
   VoiceTuningSaveRequest,
   VoiceTuningValues,
 } from "@/types"
+
+type LatestGenerationMode = "assignments" | "dialogue" | "single"
 
 const EMPTY_TUNING_METADATA: ProviderTuningMetadata = {
   controls: [],
@@ -56,7 +60,7 @@ export function useVoiceStudioController() {
   const [isCostQuotaExpanded, setIsCostQuotaExpanded] = useState(false)
   const [isSampleProcessingExpanded, setIsSampleProcessingExpanded] = useState(false)
   const [latestGeneratedAudioId, setLatestGeneratedAudioId] = useState<string | null>(null)
-  const [latestGenerationMode, setLatestGenerationMode] = useState<"single" | "multi">("single")
+  const [latestGenerationMode, setLatestGenerationMode] = useState<LatestGenerationMode>("single")
   const [savedNaturalHandoffsEnabled, setSavedNaturalHandoffsEnabled] = useState(() =>
     loadNaturalHandoffsPreference()
   )
@@ -160,9 +164,20 @@ export function useVoiceStudioController() {
   const dialogueSpeechSegmentCount =
     isDialogueMode && !dialogue.segmentBuild.error ? dialogue.segmentBuild.segments.length : null
   const isSpeechGenerating = speech.isGenerating || multiVoiceSpeech.isGenerating
-  const activeSpeechStatus =
-    latestGenerationMode === "multi" ? requestStatusFromMultiVoiceStatus(multiVoiceSpeech.status) : speech.status
-  const activeSpeechError = latestGenerationMode === "multi" ? multiVoiceSpeech.error : speech.error
+  const isMultiVoiceGenerationMode = latestGenerationMode !== "single"
+  const activeSpeechStatus = isMultiVoiceGenerationMode ? requestStatusFromMultiVoiceStatus(multiVoiceSpeech.status) : speech.status
+  const activeSpeechError = isMultiVoiceGenerationMode ? multiVoiceSpeech.error : speech.error
+  const generationPendingStatus = isSpeechGenerating
+    ? buildGenerationPendingStatus({
+        characterCount,
+        job: multiVoiceSpeech.job,
+        latestGenerationMode,
+        multiVoiceElapsedMs: multiVoiceSpeech.generationElapsedMs,
+        multiVoiceStatus: multiVoiceSpeech.status,
+        selectedVoiceName: voiceLibrary.selectedVoice?.name ?? null,
+        singleElapsedMs: speech.generationElapsedMs,
+      })
+    : null
   const modelMultiplier = selectedModel?.characterCostMultiplier ?? null
   const estimatedCredits = modelMultiplier === null ? characterCount : Math.ceil(characterCount * modelMultiplier)
   const hasModelRate = modelMultiplier !== null
@@ -269,7 +284,7 @@ export function useVoiceStudioController() {
 
   async function generateSpeech() {
     if (isDialogueMode) {
-      setLatestGenerationMode("multi")
+      setLatestGenerationMode("dialogue")
       const generatedResult = await multiVoiceSpeech.generateSpeech({
         backendDefaultModelId: metadata.backendDefaultModelId,
         canUseProvider: providerKeys.canUseProvider,
@@ -293,7 +308,7 @@ export function useVoiceStudioController() {
     }
 
     if (hasVoiceAssignments) {
-      setLatestGenerationMode("multi")
+      setLatestGenerationMode("assignments")
       const generatedResult = await multiVoiceSpeech.generateSpeech({
         backendDefaultModelId: metadata.backendDefaultModelId,
         canUseProvider: providerKeys.canUseProvider,
@@ -341,7 +356,7 @@ export function useVoiceStudioController() {
     voiceId?: string | null,
     voiceSettings?: VoiceTuningValues | null
   ) {
-    setLatestGenerationMode("multi")
+    setLatestGenerationMode("assignments")
     const generatedResult = await multiVoiceSpeech.regenerateSegment({
       providerKey: providerKeys.activeProviderKey,
       segmentId,
@@ -355,7 +370,7 @@ export function useVoiceStudioController() {
   }
 
   async function regenerateMultiVoiceSegmentsForVoice(voiceId: string, voiceSettings: VoiceTuningValues) {
-    setLatestGenerationMode("multi")
+    setLatestGenerationMode("assignments")
     const generatedResult = await multiVoiceSpeech.regenerateVoiceSegments({
       providerKey: providerKeys.activeProviderKey,
       storageLimitBytes: generatedAudio.storageLimitBytes,
@@ -519,6 +534,7 @@ export function useVoiceStudioController() {
     handleTextSelectionChange,
     hasModelRate,
     hasVoiceAssignments,
+    generationPendingStatus,
     isCostQuotaExpanded,
     isSampleProcessingExpanded,
     latestGeneratedAudioItem,
@@ -588,6 +604,81 @@ function createVoiceAssignmentId() {
     return `assignment-${window.crypto.randomUUID()}`
   }
   return `assignment-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
+function buildGenerationPendingStatus({
+  characterCount,
+  job,
+  latestGenerationMode,
+  multiVoiceElapsedMs,
+  multiVoiceStatus,
+  selectedVoiceName,
+  singleElapsedMs,
+}: {
+  characterCount: number
+  job: SpeechJob | null
+  latestGenerationMode: LatestGenerationMode
+  multiVoiceElapsedMs: number | null
+  multiVoiceStatus: MultiVoiceGenerationStatus
+  selectedVoiceName: string | null
+  singleElapsedMs: number | null
+}): GenerationPendingStatus {
+  if (latestGenerationMode === "single") {
+    return {
+      activeDetail: selectedVoiceName ? `Voice: ${selectedVoiceName}` : null,
+      description: selectedVoiceName
+        ? `Generating speech with ${selectedVoiceName}.`
+        : "Generating speech with the selected voice.",
+      elapsedMs: singleElapsedMs,
+      meta: [selectedVoiceName ?? "Selected Voice", `${formatNumber(characterCount)} Characters`],
+      segments: [],
+      statusLabel: "Running",
+      title: "Generating Speech",
+    }
+  }
+
+  const segments = job?.segments ?? []
+  const activeSegment =
+    segments.find((segment) => segment.id === job?.activeSegmentId) ??
+    segments.find((segment) => segment.status === "running") ??
+    null
+  const title = latestGenerationMode === "dialogue" ? "Generating Dialogue" : "Generating Assigned Speech"
+  const description =
+    latestGenerationMode === "dialogue"
+      ? "Rendering dialogue rows into a combined audio result."
+      : "Rendering assigned text ranges into a combined audio result."
+
+  return {
+    activeDetail: activeSegment ? `Segment ${activeSegment.index + 1}: ${activeSegment.voiceName}` : null,
+    description,
+    elapsedMs: multiVoiceElapsedMs,
+    meta: segments.length > 0 ? [`${formatNumber(segments.length)} Segments`] : ["Preparing Job"],
+    segments: segments.map((segment) => ({
+      detail: segment.error || formatPendingSegmentText(segment.text),
+      id: segment.id,
+      index: segment.index,
+      isActive: segment.id === job?.activeSegmentId,
+      label: `Segment ${segment.index + 1}`,
+      status: segment.status,
+      voiceName: segment.voiceName,
+    })),
+    statusLabel: multiVoiceStatus === "starting" ? "Starting" : "Running",
+    title,
+  }
+}
+
+function formatPendingSegmentText(text: string, maxLength = 72) {
+  const normalized = text
+    .replace(/\r?\n/g, " / ")
+    .replace(/[ \t]+/g, " ")
+    .trim()
+  if (!normalized) {
+    return null
+  }
+  if (normalized.length <= maxLength) {
+    return normalized
+  }
+  return `${normalized.slice(0, Math.max(0, maxLength - 1))}...`
 }
 
 function requestStatusFromMultiVoiceStatus(status: MultiVoiceGenerationStatus): RequestStatus {

@@ -29,17 +29,35 @@ type UseSpeechGenerationOptions = {
   persistGeneratedAudio: (input: SaveGeneratedAudioInput, limitBytes: number) => Promise<GeneratedResult>
 }
 
+const TIMER_INTERVAL_MS = 100
+
 export function useSpeechGeneration({ persistGeneratedAudio }: UseSpeechGenerationOptions) {
   const [status, setStatus] = useState<RequestStatus>("idle")
   const [error, setError] = useState<string | null>(null)
+  const [generationElapsedMs, setGenerationElapsedMs] = useState<number | null>(null)
   const generationAbortController = useRef<AbortController | null>(null)
+  const generationStartedAtRef = useRef<number | null>(null)
   const isGenerating = status === "generating"
 
   useEffect(() => {
     return () => {
       generationAbortController.current?.abort()
+      generationStartedAtRef.current = null
     }
   }, [])
+
+  useEffect(() => {
+    if (!isGenerating || generationStartedAtRef.current === null) {
+      return
+    }
+    const intervalId = window.setInterval(() => {
+      const startedAt = generationStartedAtRef.current
+      if (startedAt !== null) {
+        setGenerationElapsedMs(Math.max(0, Math.round(performance.now() - startedAt)))
+      }
+    }, TIMER_INTERVAL_MS)
+    return () => window.clearInterval(intervalId)
+  }, [isGenerating])
 
   async function generateSpeech({
     backendDefaultModelId,
@@ -68,12 +86,12 @@ export function useSpeechGeneration({ persistGeneratedAudio }: UseSpeechGenerati
 
     setStatus("generating")
     setError(null)
+    startGenerationTimer()
     const abortController = new AbortController()
     generationAbortController.current = abortController
     const submittedModelId = hasModel(models, selectedModelId) ? selectedModelId : null
 
     try {
-      const generationStartedAt = performance.now()
       const response = await createSpeech({
         modelId: submittedModelId,
         providerId,
@@ -84,11 +102,12 @@ export function useSpeechGeneration({ persistGeneratedAudio }: UseSpeechGenerati
         voiceId: selectedVoice.id,
       })
       if (response.status === "canceled") {
+        finishGenerationTimer()
         setStatus("canceled")
         setError(CANCELED_GENERATION_MESSAGE)
         return null
       }
-      const generationElapsedMs = Math.max(0, Math.round(performance.now() - generationStartedAt))
+      const generationElapsedMs = finishGenerationTimer()
 
       const createdAt = new Date().toISOString()
       const generatedAudioInput = {
@@ -115,10 +134,12 @@ export function useSpeechGeneration({ persistGeneratedAudio }: UseSpeechGenerati
       return generatedResult
     } catch (caught) {
       if (isAbortError(caught)) {
+        finishGenerationTimer()
         setStatus("canceled")
         setError(CANCELED_GENERATION_MESSAGE)
         return null
       }
+      finishGenerationTimer()
       setStatus("error")
       setError(caught instanceof Error ? caught.message : "Unable to generate speech.")
       return null
@@ -144,9 +165,31 @@ export function useSpeechGeneration({ persistGeneratedAudio }: UseSpeechGenerati
     cancelGeneration,
     error,
     generateSpeech,
+    generationElapsedMs,
     isGenerating,
     status,
   }
+
+  function startGenerationTimer() {
+    generationStartedAtRef.current = performance.now()
+    setGenerationElapsedMs(0)
+  }
+
+  function finishGenerationTimer() {
+    const elapsedMs = currentGenerationElapsedMs()
+    setGenerationElapsedMs(elapsedMs)
+    generationStartedAtRef.current = null
+    return elapsedMs
+  }
+
+  function currentGenerationElapsedMs() {
+    const startedAt = generationStartedAtRef.current
+    if (startedAt === null) {
+      return generationElapsedMs
+    }
+    return Math.max(0, Math.round(performance.now() - startedAt))
+  }
+
 }
 
 function isAbortError(value: unknown) {
