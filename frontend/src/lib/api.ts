@@ -3,9 +3,11 @@ import type {
   ModelsResponse,
   ProvidersResponse,
   SampleProcessingJobResponse,
+  SampleProcessingMediaSourceResponse,
   SampleProcessingOperationId,
   SampleProcessingOptionsResponse,
   SampleProcessingPresetId,
+  SampleProcessingSourceRange,
   SampleProcessingSourcePreference,
   SpeechJobResponse,
   SpeechSegmentAssignmentKind,
@@ -46,7 +48,9 @@ export type CreateSampleProcessingJobRequest = {
   operationId?: SampleProcessingOperationId
   processingPresetId?: SampleProcessingPresetId | null
   sourceFile?: File | null
+  sourceMediaId?: string | null
   sourcePreference?: SampleProcessingSourcePreference
+  sourceRanges?: SampleProcessingSourceRangeRequest[] | null
   sourceVoiceId?: string | null
   trimCandidates?: boolean | null
   trimPresetId?: SampleProcessingPresetId | null
@@ -56,6 +60,10 @@ export type CreateSampleProcessingJobRequest = {
 export type SampleProcessingWorkflowStepRequest = {
   operationId: SampleProcessingOperationId
   processingPresetId?: SampleProcessingPresetId | null
+}
+
+export type SampleProcessingSourceRangeRequest = Pick<SampleProcessingSourceRange, "startSeconds" | "endSeconds"> & {
+  label?: string | null
 }
 
 export type SaveProcessedVoiceRequest = {
@@ -224,6 +232,38 @@ export async function fetchSampleProcessingOptions() {
   return fetchJson<SampleProcessingOptionsResponse>("/api/sample-processing/options")
 }
 
+export async function uploadSampleProcessingSource(sourceFile: File) {
+  const formData = new FormData()
+  formData.append("sourceFile", sourceFile)
+  return fetchJson<SampleProcessingMediaSourceResponse>("/api/sample-processing/sources", {
+    method: "POST",
+    body: formData,
+  })
+}
+
+export async function fetchSampleProcessingSource(sourceId: string) {
+  return fetchJson<SampleProcessingMediaSourceResponse>(
+    `/api/sample-processing/sources/${encodeURIComponent(sourceId)}`
+  )
+}
+
+export async function deleteSampleProcessingSource(sourceId: string) {
+  const response = await fetch(`/api/sample-processing/sources/${encodeURIComponent(sourceId)}`, {
+    method: "DELETE",
+  })
+  if (!response.ok) {
+    throw new Error(await readError(response))
+  }
+}
+
+export function sampleProcessingSourcePreviewUrl(sourceId: string, startSeconds: number, durationSeconds: number) {
+  const params = new URLSearchParams({
+    startSeconds: formatSecondsParam(startSeconds),
+    durationSeconds: formatSecondsParam(durationSeconds),
+  })
+  return `/api/sample-processing/sources/${encodeURIComponent(sourceId)}/preview?${params.toString()}`
+}
+
 export async function createSampleProcessingJob({
   cleanVoice,
   detectSpeakers,
@@ -231,7 +271,9 @@ export async function createSampleProcessingJob({
   operationId,
   processingPresetId,
   sourceFile,
+  sourceMediaId,
   sourcePreference,
+  sourceRanges,
   sourceVoiceId,
   trimCandidates,
   trimPresetId,
@@ -281,6 +323,12 @@ export async function createSampleProcessingJob({
   }
   if (sourceFile) {
     formData.append("sourceFile", sourceFile)
+  }
+  if (sourceMediaId) {
+    formData.append("sourceMediaId", sourceMediaId)
+  }
+  if (sourceRanges?.length) {
+    formData.append("sourceRanges", JSON.stringify(sourceRanges))
   }
   return fetchJson<SampleProcessingJobResponse>("/api/sample-processing/jobs", {
     method: "POST",
@@ -547,4 +595,8 @@ function parseNullableInt(value: string | null) {
   }
   const parsed = Number.parseInt(value, 10)
   return Number.isNaN(parsed) ? null : parsed
+}
+
+function formatSecondsParam(value: number) {
+  return Number.isFinite(value) ? String(Math.max(0, value)) : "0"
 }
