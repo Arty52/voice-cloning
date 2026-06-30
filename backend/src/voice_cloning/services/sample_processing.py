@@ -30,7 +30,7 @@ from ..models import (
     VoiceProcessingStep,
     VoiceSample,
 )
-from ..samples import load_sample_file, load_uploaded_sample, sample_hash, save_sample_file, slugify_voice_name
+from ..samples import load_sample_file, sample_hash, save_sample_file, save_uploaded_sample_stream, slugify_voice_name
 from .cancellation import cancel_and_drain_task
 from ..voice_library import VoiceLibrary
 
@@ -995,15 +995,21 @@ class SampleProcessingService:
         job_dir: Path,
         upload: UploadFile,
     ) -> tuple[Path, VoiceSample, str]:
-        source_sample = await load_uploaded_sample(
+        source_path = job_dir / f"source{Path(upload.filename or '').suffix.lower() or '.wav'}"
+        source_file = await save_uploaded_sample_stream(
             upload,
+            source_path,
             self.settings,
             max_bytes=self.settings.max_source_upload_bytes,
         )
+        source_sample = VoiceSample(
+            content=b"",
+            filename=source_file.filename,
+            content_type=source_file.content_type,
+            sha256=source_file.sha256,
+        )
         source_name = Path(source_sample.filename).stem or "Uploaded Source"
-        source_path = job_dir / f"source{Path(source_sample.filename).suffix.lower() or '.wav'}"
-        saved_source = save_sample_file(source_sample, source_path)
-        return source_path, saved_source, source_name
+        return source_path, source_sample, source_name
 
     def _source_from_voice(
         self,
@@ -1013,26 +1019,30 @@ class SampleProcessingService:
         if not voice_id:
             raise SampleProcessingServiceError("Source voice is required.", 422)
         asset = self.voice_library.get_asset(voice_id)
-        source_path = self._voice_source_path(asset, source_preference)
-        content_type = (
-            asset.source_content_type
-            if source_preference == "original" and asset.source_file_path
-            else asset.content_type
-        )
-        sample = load_sample_file(source_path, content_type or asset.content_type)
+        source_path, uses_retained_source = self._voice_source_path(asset, source_preference)
+        content_type = asset.source_content_type if uses_retained_source else asset.content_type
+        if uses_retained_source and asset.source_sha256:
+            sample = VoiceSample(
+                content=b"",
+                filename=source_path.name,
+                content_type=content_type or asset.content_type,
+                sha256=asset.source_sha256,
+            )
+        else:
+            sample = load_sample_file(source_path, content_type or asset.content_type)
         return source_path, sample, asset.name
 
     def _voice_source_path(
         self,
         asset: VoiceAsset,
         source_preference: SampleProcessingSourcePreference,
-    ) -> Path:
+    ) -> tuple[Path, bool]:
         if source_preference == "original" and asset.source_file_path:
             source_path = (self.voice_library.assets_dir / asset.source_file_path).resolve()
             _require_relative_path(source_path, self.voice_library.assets_dir)
             if source_path.exists():
-                return source_path
-        return self.voice_library.resolve_asset_path(asset)
+                return source_path, True
+        return self.voice_library.resolve_asset_path(asset), False
 
     def _job_dir(self, job_id: str) -> Path:
         path = (self.processing_dir / job_id).resolve()

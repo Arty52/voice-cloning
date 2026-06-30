@@ -96,7 +96,10 @@ Provider-backed routes accept an optional `providerId` request value and an opti
       "sample": {
         "maxWindowSeconds": 120,
         "recommendedMinSeconds": 60,
-        "recommendedMaxSeconds": 120
+        "recommendedMaxSeconds": 120,
+        "targetSampleRateHz": 16000,
+        "maxUploadBytes": 10485760,
+        "maxSourceUploadBytes": 1073741824
       }
     }
   ]
@@ -155,7 +158,7 @@ If model metadata is unavailable, generation still works by omitting `modelId` a
 - `windowDurationSeconds`: optional selected window duration in seconds
 - `voicePresetId`: optional local preset assignment, either `standardNarration` or `animatedDialogue`; defaults to `standardNarration`
 
-Voice payloads include `voicePresetId` and `voiceSettingsByProvider` alongside the active sample metadata. `voiceSettingsByProvider` is keyed by provider id and stores normalized provider-specific tuning that should replace preset-derived tuning for that voice when the same provider is active. Active provider samples are capped at 10 MB. Original source files retained for `sourceWindow` assets are local-only and capped at 50 MB. For the built-in ElevenLabs provider, `/api/providers` reports a 120-second maximum sample window with a 60-120 second recommended window. Existing voice manifest entries without sample-window metadata are treated as `excerpt` assets.
+Voice payloads include `voicePresetId` and `voiceSettingsByProvider` alongside the active sample metadata. `voiceSettingsByProvider` is keyed by provider id and stores normalized provider-specific tuning that should replace preset-derived tuning for that voice when the same provider is active. New active provider samples are normalized to mono 16 kHz WAV before persistence and capped by `MAX_UPLOAD_BYTES`, which defaults to 10 MB. Original source files retained for `sourceWindow` assets are local-only, are not sent to providers, and are capped by `MAX_SOURCE_UPLOAD_BYTES`, which defaults to 1 GB. For the built-in ElevenLabs provider, `/api/providers` reports a 120-second maximum sample window with a 60-120 second recommended window. Existing voice manifest entries without sample-window metadata are treated as `excerpt` assets.
 Existing voice manifest entries without preset metadata, or with an unsupported preset id, are migrated to `standardNarration`.
 Existing voice manifest entries without saved provider tuning are migrated to `voiceSettingsByProvider: {}`.
 Existing voice manifest entries without processing metadata are migrated to `processingSteps: []`.
@@ -311,7 +314,7 @@ For a stacked workflow, send `workflowSteps` as JSON:
 }
 ```
 
-`GET /api/sample-processing/jobs/{jobId}` returns the same job shape while polling. A successful single-audio job includes a normalized mono 32 kHz WAV result:
+`GET /api/sample-processing/jobs/{jobId}` returns the same job shape while polling. A successful single-audio job includes a normalized mono 16 kHz WAV result:
 
 ```json
 {

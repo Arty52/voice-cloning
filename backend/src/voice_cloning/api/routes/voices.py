@@ -4,12 +4,17 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from ...providers import ProviderError, ProviderRegistry
+from ...services.voice_ingestion import VoiceIngestionService, VoiceIngestionServiceError
 from ...voice_library import VoiceLibrary
 from ..schemas import DefaultVoiceRequest, VoiceUpdateRequest
 from ..serializers import voice_asset_payload
 
 
-def create_voices_router(voice_library: VoiceLibrary, provider_registry: ProviderRegistry) -> APIRouter:
+def create_voices_router(
+    voice_library: VoiceLibrary,
+    provider_registry: ProviderRegistry,
+    voice_ingestion: VoiceIngestionService,
+) -> APIRouter:
     router = APIRouter()
 
     @router.get("/api/samples/default")
@@ -34,15 +39,18 @@ def create_voices_router(voice_library: VoiceLibrary, provider_registry: Provide
         windowDurationSeconds: float | None = Form(None),
         voicePresetId: str | None = Form(None),
     ) -> dict[str, object]:
-        asset = await voice_library.add_upload(
-            name,
-            sampleFile,
-            sample_mode=sampleMode,
-            source_upload=sourceFile,
-            window_start_seconds=windowStartSeconds,
-            window_duration_seconds=windowDurationSeconds,
-            voice_preset_id=voicePresetId,
-        )
+        try:
+            asset = await voice_ingestion.add_upload(
+                name=name,
+                sample_upload=sampleFile,
+                sample_mode=sampleMode,
+                source_upload=sourceFile,
+                window_start_seconds=windowStartSeconds,
+                window_duration_seconds=windowDurationSeconds,
+                voice_preset_id=voicePresetId,
+            )
+        except VoiceIngestionServiceError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
         return {"voice": voice_asset_payload(asset)}
 
     @router.patch("/api/voices/{voice_id}")

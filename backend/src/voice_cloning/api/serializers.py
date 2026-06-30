@@ -104,6 +104,9 @@ def providers_payload(
     default_provider_id: str,
     providers: list[ProviderDescriptor],
     server_key_configured_by_provider: dict[str, bool],
+    *,
+    max_upload_bytes: int,
+    max_source_upload_bytes: int,
 ) -> dict[str, object]:
     return {
         "defaultProviderId": default_provider_id,
@@ -121,6 +124,9 @@ def providers_payload(
                     "maxWindowSeconds": provider.sample.max_window_seconds,
                     "recommendedMinSeconds": provider.sample.recommended_min_seconds,
                     "recommendedMaxSeconds": provider.sample.recommended_max_seconds,
+                    "targetSampleRateHz": provider.sample.target_sample_rate_hz,
+                    "maxUploadBytes": max_upload_bytes,
+                    "maxSourceUploadBytes": max_source_upload_bytes,
                 },
             }
             for provider in providers

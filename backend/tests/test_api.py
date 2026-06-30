@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import replace
+from io import BytesIO
 import json
 import os
 from pathlib import Path
@@ -10,10 +11,12 @@ import time
 from typing import Callable, get_args
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 from fastapi.testclient import TestClient
+from starlette.datastructures import Headers
 
 import voice_cloning.sample_processors as sample_processors_module
+import voice_cloning.services.voice_ingestion as voice_ingestion_module
 import voice_cloning.voice_library as voice_library_module
 from voice_cloning.api import SpeechGenerationCanceled, _await_or_cancel_on_disconnect, create_app
 from voice_cloning.cache import VoiceCache
@@ -57,7 +60,7 @@ from voice_cloning.sample_processors import (
     _run_external_command,
     create_sample_processor,
 )
-from voice_cloning.samples import sample_hash
+from voice_cloning.samples import sample_hash, save_uploaded_sample_stream
 from voice_cloning.services.sample_processing import (
     DEFAULT_ISOLATION_PROCESSING_PRESET_ID,
     DEFAULT_TRIM_SILENCE_PROCESSING_PRESET_ID,
@@ -386,15 +389,16 @@ class FakeStackSampleProcessor:
         self.requests.append(request)
         if self.delay_seconds:
             await asyncio.sleep(self.delay_seconds)
+        source_content = request.source.content or request.source_path.read_bytes()
         if request.operation_id == "isolateVoice":
-            request.output_path.write_bytes(b"isolated:" + request.source.content)
+            request.output_path.write_bytes(b"isolated:" + source_content)
             return None
         if request.operation_id == "trimSilence":
-            request.output_path.write_bytes(b"trimmed:" + request.source.content)
+            request.output_path.write_bytes(b"trimmed:" + source_content)
             return None
         if request.operation_id == "separateSpeakers":
-            speaker_one_content = b"speaker-one:" + request.source.content
-            speaker_two_content = b"speaker-two:" + request.source.content
+            speaker_one_content = b"speaker-one:" + source_content
+            speaker_two_content = b"speaker-two:" + source_content
             speaker_one_path = request.job_dir / "speaker-1.wav"
             speaker_two_path = request.job_dir / "speaker-2.wav"
             speaker_one_path.write_bytes(speaker_one_content)
@@ -509,7 +513,9 @@ def make_settings(
     tmp_path: Path,
     api_key: str = "test-key",
     with_default_sample: bool = True,
-    max_source_upload_bytes: int = 50 * 1024 * 1024,
+    max_upload_bytes: int = 10 * 1024 * 1024,
+    max_source_upload_bytes: int = 1024 * 1024 * 1024,
+    sample_processing_ffmpeg_command: str = "ffmpeg",
 ) -> Settings:
     voice_assets_dir = tmp_path / "assets" / "voices"
     sample_path = voice_assets_dir / "default" / "default-voice.mp3"
@@ -528,7 +534,9 @@ def make_settings(
         sample_processing_dir=tmp_path / "storage" / "sample-processing",
         speech_jobs_dir=tmp_path / "storage" / "speech-jobs",
         cors_allowed_origins=["http://localhost:4340"],
+        max_upload_bytes=max_upload_bytes,
         max_source_upload_bytes=max_source_upload_bytes,
+        sample_processing_ffmpeg_command=sample_processing_ffmpeg_command,
     )
 
 
@@ -536,13 +544,17 @@ def make_client(
     tmp_path: Path,
     api_key: str = "test-key",
     with_default_sample: bool = True,
-    max_source_upload_bytes: int = 50 * 1024 * 1024,
+    max_upload_bytes: int = 10 * 1024 * 1024,
+    max_source_upload_bytes: int = 1024 * 1024 * 1024,
+    ffmpeg_command: Path | None = None,
 ) -> tuple[TestClient, FakeElevenLabsProvider]:
     settings = make_settings(
         tmp_path,
         api_key=api_key,
         with_default_sample=with_default_sample,
+        max_upload_bytes=max_upload_bytes,
         max_source_upload_bytes=max_source_upload_bytes,
+        sample_processing_ffmpeg_command=str(ffmpeg_command or ffmpeg_fake_command(tmp_path / "ffmpeg-fake")),
     )
     fake_client = FakeElevenLabsProvider().bind_settings(settings)
     app = create_app(
@@ -552,6 +564,14 @@ def make_client(
         voice_library=VoiceLibrary(settings),
     )
     return TestClient(app), fake_client
+
+
+def make_upload_file(filename: str, content: bytes, content_type: str) -> UploadFile:
+    return UploadFile(
+        file=BytesIO(content),
+        filename=filename,
+        headers=Headers({"content-type": content_type}),
+    )
 
 
 def wait_for_processing_job(client: TestClient, job_id: str, status: str = "success") -> dict[str, object]:
@@ -588,6 +608,113 @@ def test_settings_blank_sample_processing_timeout_uses_default(
     settings = Settings.from_env()
 
     assert settings.sample_processing_timeout_seconds == 900
+
+
+def test_settings_loads_upload_caps_from_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_ROOT", str(tmp_path))
+    monkeypatch.setenv("MAX_UPLOAD_BYTES", "12345")
+    monkeypatch.setenv("MAX_SOURCE_UPLOAD_BYTES", "1073741824")
+
+    settings = Settings.from_env()
+
+    assert settings.max_upload_bytes == 12345
+    assert settings.max_source_upload_bytes == 1024 * 1024 * 1024
+
+
+def test_streamed_upload_writes_file_and_sha_metadata(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    destination = tmp_path / "streamed" / "voice.wav"
+
+    stored = asyncio.run(
+        save_uploaded_sample_stream(
+            make_upload_file("voice.wav", b"streamed-sample", "audio/wav"),
+            destination,
+            settings,
+            max_bytes=20,
+        )
+    )
+
+    assert destination.read_bytes() == b"streamed-sample"
+    assert stored.path == destination
+    assert stored.filename == "voice.wav"
+    assert stored.content_type == "audio/wav"
+    assert stored.sha256 == sample_hash(b"streamed-sample")
+
+
+def test_streamed_upload_rejects_oversized_file_and_cleans_partial(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    destination = tmp_path / "streamed" / "voice.wav"
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(
+            save_uploaded_sample_stream(
+                make_upload_file("voice.wav", b"too-large", "audio/wav"),
+                destination,
+                settings,
+                max_bytes=5,
+            )
+        )
+
+    assert exc.value.status_code == 413
+    assert exc.value.detail == "Uploaded voice sample must be 5 bytes or smaller."
+    assert not destination.exists()
+    assert not destination.with_suffix(".wav.tmp").exists()
+
+
+def test_streamed_upload_failure_preserves_existing_destination(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    destination = tmp_path / "streamed" / "voice.wav"
+    destination.parent.mkdir(parents=True)
+    destination.write_bytes(b"existing-sample")
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(
+            save_uploaded_sample_stream(
+                make_upload_file("voice.wav", b"too-large", "audio/wav"),
+                destination,
+                settings,
+                max_bytes=5,
+            )
+        )
+
+    assert exc.value.status_code == 413
+    assert destination.read_bytes() == b"existing-sample"
+    assert not destination.with_suffix(".wav.tmp").exists()
+
+
+def test_streamed_upload_rejects_empty_file_and_cleans_partial(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    destination = tmp_path / "streamed" / "voice.wav"
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(
+            save_uploaded_sample_stream(
+                make_upload_file("voice.wav", b"", "audio/wav"),
+                destination,
+                settings,
+            )
+        )
+
+    assert exc.value.status_code == 422
+    assert exc.value.detail == "Uploaded voice sample is empty."
+    assert not destination.exists()
+    assert not destination.with_suffix(".wav.tmp").exists()
+
+
+def test_streamed_upload_rejects_invalid_audio(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(
+            save_uploaded_sample_stream(
+                make_upload_file("notes.txt", b"not-audio", "text/plain"),
+                tmp_path / "streamed" / "notes.txt",
+                settings,
+            )
+        )
+
+    assert exc.value.status_code == 422
+    assert "Voice sample must be an audio file" in exc.value.detail
 
 
 def test_settings_reads_speech_job_segment_gap_environment(
@@ -920,6 +1047,9 @@ def test_providers_endpoint_returns_public_provider_descriptor(tmp_path: Path) -
         "maxWindowSeconds": 120,
         "recommendedMinSeconds": 60,
         "recommendedMaxSeconds": 120,
+        "targetSampleRateHz": 16000,
+        "maxUploadBytes": 10 * 1024 * 1024,
+        "maxSourceUploadBytes": 1024 * 1024 * 1024,
     }
     assert provider["links"][0]["label"] == "API Requests"
     assert "server-secret" not in response.text
@@ -1874,7 +2004,10 @@ def test_sample_processing_cancel_marks_running_stack_canceled(tmp_path: Path) -
 
 
 def test_sample_processing_job_uses_original_voice_source_and_saves_result_as_voice(tmp_path: Path) -> None:
-    settings = make_settings(tmp_path)
+    settings = make_settings(
+        tmp_path,
+        sample_processing_ffmpeg_command=str(ffmpeg_fake_command(tmp_path / "ffmpeg-fake")),
+    )
     voice_library = VoiceLibrary(settings)
     processor = FakeSampleProcessor()
     fake_provider = FakeElevenLabsProvider().bind_settings(settings)
@@ -1915,7 +2048,8 @@ def test_sample_processing_job_uses_original_voice_source_and_saves_result_as_vo
 
     assert upload.status_code == 201
     assert processor.requests[0].source_path == settings.voice_assets_dir / "sources" / "voice-clone-01.wav"
-    assert processor.requests[0].source.content == b"original-source"
+    assert processor.requests[0].source.content == b""
+    assert processor.requests[0].source.sha256 == sample_hash(b"original-source")
     assert processor.requests[0].processing_preset_id == "balanced"
     assert processor.requests[0].processing_preset_label == "Balanced"
     assert job["status"] == "success"
@@ -1947,6 +2081,49 @@ def test_sample_processing_job_uses_original_voice_source_and_saves_result_as_vo
     ]
     assert (settings.voice_assets_dir / "voice-clone-01-isolated.wav").read_bytes() == b"isolated-voice"
     assert speech.status_code == 200
+
+
+def test_sample_processing_original_fallback_uses_active_sample_sha(tmp_path: Path) -> None:
+    settings = make_settings(
+        tmp_path,
+        sample_processing_ffmpeg_command=str(ffmpeg_fake_command(tmp_path / "ffmpeg-fake")),
+    )
+    voice_library = VoiceLibrary(settings)
+    processor = FakeSampleProcessor()
+    app = create_app(
+        settings=settings,
+        voice_library=voice_library,
+        sample_processor=processor,
+    )
+    client = TestClient(app)
+    upload = client.post(
+        "/api/voices",
+        data={
+            "name": "Voice_Clone_01",
+            "sampleMode": "sourceWindow",
+            "windowStartSeconds": "0",
+            "windowDurationSeconds": "30",
+        },
+        files={
+            "sampleFile": ("active.wav", b"active-excerpt", "audio/wav"),
+            "sourceFile": ("source.wav", b"original-source", "audio/wav"),
+        },
+    )
+    retained_source_path = settings.voice_assets_dir / "sources" / "voice-clone-01.wav"
+    retained_source_path.unlink()
+
+    response = client.post(
+        "/api/sample-processing/jobs",
+        data={"operationId": "isolateVoice", "sourceVoiceId": "voice-clone-01"},
+    )
+    job = wait_for_processing_job(client, response.json()["job"]["id"])
+
+    assert upload.status_code == 201
+    assert response.status_code == 202
+    assert processor.requests[0].source_path == settings.voice_assets_dir / "voice-clone-01.wav"
+    assert processor.requests[0].source.sha256 == sample_hash(b"normalized-voice")
+    assert job["sourceSha256"] == sample_hash(b"normalized-voice")
+    assert job["steps"][0]["sourceSha256"] == sample_hash(b"normalized-voice")
 
 
 def test_sample_processing_speaker_separation_contract_updates_and_saves_speakers(tmp_path: Path) -> None:
@@ -1987,7 +2164,8 @@ def test_sample_processing_speaker_separation_contract_updates_and_saves_speaker
 
     assert create.status_code == 202
     assert processor.requests[0].operation_id == "separateSpeakers"
-    assert processor.requests[0].source.content == b"speaker-source"
+    assert processor.requests[0].source.content == b""
+    assert processor.requests[0].source_path.read_bytes() == b"speaker-source"
     assert job["status"] == "success"
     assert job["engine"] == "fake-diarization"
     assert job["result"] == {
@@ -2709,7 +2887,8 @@ def test_sample_processing_job_accepts_uploaded_source(tmp_path: Path) -> None:
     assert response.status_code == 202
     assert job["sourceName"] == "uploaded"
     assert job["sourceSha256"] == sample_hash(b"uploaded-source")
-    assert processor.requests[0].source.content == b"uploaded-source"
+    assert processor.requests[0].source.content == b""
+    assert processor.requests[0].source_path.read_bytes() == b"uploaded-source"
 
 
 def test_sample_processing_job_accepts_selected_processing_preset(tmp_path: Path) -> None:
@@ -2932,7 +3111,7 @@ def test_ffmpeg_sample_processor_maps_trim_presets_to_silenceremove(
     assert f"stop_duration={expected_stop_duration}" in trim_filter
     assert f"stop_silence={expected_stop_silence}" in trim_filter
     assert ffmpeg_args[ffmpeg_args.index("-ac") + 1] == "1"
-    assert ffmpeg_args[ffmpeg_args.index("-ar") + 1] == "32000"
+    assert ffmpeg_args[ffmpeg_args.index("-ar") + 1] == "16000"
 
 
 @pytest.mark.parametrize(
@@ -3780,7 +3959,11 @@ def test_create_speech_rejects_unknown_voice_setting(tmp_path: Path) -> None:
 
 
 def test_add_uploaded_voice_stores_named_asset(tmp_path: Path) -> None:
-    client, _ = make_client(tmp_path)
+    ffmpeg_args_path = tmp_path / "voice-ingestion-ffmpeg-args.json"
+    client, _ = make_client(
+        tmp_path,
+        ffmpeg_command=ffmpeg_fake_command(tmp_path / "ffmpeg-fake", args_path=ffmpeg_args_path),
+    )
 
     response = client.post(
         "/api/voices",
@@ -3797,7 +3980,16 @@ def test_add_uploaded_voice_stores_named_asset(tmp_path: Path) -> None:
     assert response.json()["voice"]["sourceFilePath"] is None
     assert response.json()["voice"]["voicePresetId"] == "standardNarration"
     assert response.json()["voice"]["voiceSettingsByProvider"] == {}
-    assert (tmp_path / "assets" / "voices" / "voice-clone-01.mp3").read_bytes() == b"uploaded-sample"
+    assert response.json()["voice"]["filePath"] == "voice-clone-01.wav"
+    assert response.json()["voice"]["contentType"] == "audio/wav"
+    assert response.json()["voice"]["sha256"] == sample_hash(b"normalized-voice")
+    assert (tmp_path / "assets" / "voices" / "voice-clone-01.wav").read_bytes() == b"normalized-voice"
+    ffmpeg_args = json.loads(ffmpeg_args_path.read_text(encoding="utf-8"))
+    assert ffmpeg_args[ffmpeg_args.index("-ac") + 1] == "1"
+    assert ffmpeg_args[ffmpeg_args.index("-ar") + 1] == "16000"
+    assert "-vn" in ffmpeg_args
+    assert ffmpeg_args[ffmpeg_args.index("-c:a") + 1] == "pcm_s16le"
+    assert ffmpeg_args[ffmpeg_args.index("-f") + 1] == "wav"
 
 
 def test_add_uploaded_voice_stores_requested_preset(tmp_path: Path) -> None:
@@ -3826,7 +4018,25 @@ def test_add_uploaded_voice_rejects_unknown_preset(tmp_path: Path) -> None:
 
     assert response.status_code == 422
     assert response.json()["detail"] == "Voice preset must be standardNarration or animatedDialogue."
-    assert not (tmp_path / "assets" / "voices" / "voice-clone-01.mp3").exists()
+    assert not (tmp_path / "assets" / "voices" / "voice-clone-01.wav").exists()
+
+
+def test_add_uploaded_voice_rejects_oversized_normalized_sample(tmp_path: Path) -> None:
+    client, _ = make_client(
+        tmp_path,
+        max_upload_bytes=5,
+        ffmpeg_command=ffmpeg_fake_command(tmp_path / "ffmpeg-fake", output=b"too-big"),
+    )
+
+    response = client.post(
+        "/api/voices",
+        data={"name": "Voice_Clone_01"},
+        files={"sampleFile": ("voice.wav", b"input", "audio/wav")},
+    )
+
+    assert response.status_code == 413
+    assert response.json()["detail"] == "Normalized voice sample must be 5 bytes or smaller."
+    assert not (tmp_path / "assets" / "voices" / "voice-clone-01.wav").exists()
 
 
 def test_add_source_window_voice_stores_active_sample_and_local_source(tmp_path: Path) -> None:
@@ -3851,18 +4061,18 @@ def test_add_source_window_voice_stores_active_sample_and_local_source(tmp_path:
     voice = response.json()["voice"]
     assert voice["sampleMode"] == "sourceWindow"
     assert voice["filePath"] == "voice-clone-01.wav"
-    assert voice["sha256"] == sample_hash(b"active-excerpt")
+    assert voice["sha256"] == sample_hash(b"normalized-voice")
     assert voice["windowStartSeconds"] == 12.5
     assert voice["windowDurationSeconds"] == 60
     assert voice["sourceFilePath"] == "sources/voice-clone-01.mp3"
     assert voice["sourceContentType"] == "audio/mpeg"
     assert voice["sourceSha256"] == sample_hash(b"original-source")
     assert voice["voicePresetId"] == "standardNarration"
-    assert (tmp_path / "assets" / "voices" / "voice-clone-01.wav").read_bytes() == b"active-excerpt"
+    assert (tmp_path / "assets" / "voices" / "voice-clone-01.wav").read_bytes() == b"normalized-voice"
     assert (tmp_path / "assets" / "voices" / "sources" / "voice-clone-01.mp3").read_bytes() == b"original-source"
     assert speech.status_code == 200
     assert fake_client.created_samples[0].filename == "voice-clone-01.wav"
-    assert fake_client.created_samples[0].content == b"active-excerpt"
+    assert fake_client.created_samples[0].content == b"normalized-voice"
 
 
 def test_source_window_voice_requires_source_file_and_window(tmp_path: Path) -> None:
@@ -3964,13 +4174,21 @@ def test_source_window_cleans_active_file_when_source_write_fails(tmp_path: Path
     assert not (tmp_path / "assets" / "voices" / "sources" / "voice-clone-01.mp3").exists()
 
 
-def test_source_window_duplicate_name_is_rejected_before_source_write(tmp_path: Path) -> None:
+def test_source_window_duplicate_name_is_rejected_before_source_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     client, _ = make_client(tmp_path)
     first = client.post(
         "/api/voices",
         data={"name": "Voice_Clone_01"},
         files={"sampleFile": ("voice.mp3", b"uploaded-sample", "audio/mpeg")},
     )
+
+    async def fail_stream_before_preflight(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("Upload streams should not be read before duplicate-name validation.")
+
+    monkeypatch.setattr(voice_ingestion_module, "save_uploaded_sample_stream", fail_stream_before_preflight)
 
     response = client.post(
         "/api/voices",
@@ -3990,6 +4208,30 @@ def test_source_window_duplicate_name_is_rejected_before_source_write(tmp_path: 
     assert response.status_code == 409
     assert "already exists" in response.json()["detail"]
     assert not (tmp_path / "assets" / "voices" / "sources").exists()
+
+
+def test_normalized_voice_conflict_is_rejected_before_upload_stream(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, _ = make_client(tmp_path)
+    existing_destination = tmp_path / "assets" / "voices" / "voice-clone-01.wav"
+    existing_destination.write_bytes(b"existing-normalized-sample")
+
+    async def fail_stream_before_preflight(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("Upload streams should not be read before normalized file validation.")
+
+    monkeypatch.setattr(voice_ingestion_module, "save_uploaded_sample_stream", fail_stream_before_preflight)
+
+    response = client.post(
+        "/api/voices",
+        data={"name": "Voice Clone 01"},
+        files={"sampleFile": ("voice.mp3", b"uploaded-sample", "audio/mpeg")},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "A voice asset file with that name already exists."
+    assert existing_destination.read_bytes() == b"existing-normalized-sample"
 
 
 def test_add_uploaded_voice_rejects_duplicate_slug(tmp_path: Path) -> None:
@@ -4223,7 +4465,7 @@ def test_delete_last_voice_leaves_empty_library(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert response.json() == {"defaultVoiceId": "", "voices": []}
-    assert not (tmp_path / "assets" / "voices" / "voice-clone-01.mp3").exists()
+    assert not (tmp_path / "assets" / "voices" / "voice-clone-01.wav").exists()
 
 
 def test_set_default_voice_persists(tmp_path: Path) -> None:
@@ -4256,7 +4498,7 @@ def test_selected_voice_sample_is_used_for_speech(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert fake_client.created_samples[0].filename == "voice-clone-01.wav"
-    assert fake_client.created_samples[0].content == b"uploaded-wave"
+    assert fake_client.created_samples[0].content == b"normalized-voice"
 
 
 def test_text_is_required(tmp_path: Path) -> None:

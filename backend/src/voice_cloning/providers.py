@@ -65,6 +65,7 @@ class ProviderSampleMetadata:
     max_window_seconds: int
     recommended_min_seconds: int
     recommended_max_seconds: int
+    target_sample_rate_hz: int = 16000
 
 
 @dataclass(frozen=True)
