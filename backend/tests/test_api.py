@@ -825,6 +825,89 @@ def test_sample_processing_media_source_upload_reads_chapters(tmp_path: Path) ->
     ).read_bytes() == b"audiobook-source"
 
 
+@pytest.mark.parametrize(
+    ("filename", "content_type"),
+    [
+        ("clip.mp4", "video/mp4"),
+        ("clip.m4v", "video/x-m4v"),
+        ("clip.mov", "video/quicktime"),
+    ],
+)
+def test_sample_processing_media_source_upload_accepts_video_with_audio_stream_metadata(
+    tmp_path: Path,
+    filename: str,
+    content_type: str,
+) -> None:
+    settings = make_settings(
+        tmp_path,
+        sample_processing_ffprobe_command=str(ffprobe_video_fake_command(tmp_path / "ffprobe-video-fake")),
+    )
+    app = create_app(settings=settings)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/sample-processing/sources",
+        files={"sourceFile": (filename, b"video-source", content_type)},
+    )
+
+    assert response.status_code == 201
+    source = response.json()["source"]
+    assert source["filename"] == filename
+    assert source["contentType"] == content_type
+    assert source["mediaKind"] == "video"
+    assert source["durationSeconds"] == 37.25
+    assert source["sampleRateHz"] == 48000
+    assert source["selectedAudioStreamIndex"] == 1
+    assert source["selectedAudioStream"] == {
+        "index": 1,
+        "codecName": "aac",
+        "sampleRateHz": 48000,
+        "channels": 2,
+        "channelLayout": "stereo",
+        "language": "eng",
+        "title": "Main Audio",
+    }
+    assert source["audioStreams"] == [
+        {
+            "index": 1,
+            "codecName": "aac",
+            "sampleRateHz": 48000,
+            "channels": 2,
+            "channelLayout": "stereo",
+            "language": "eng",
+            "title": "Main Audio",
+        },
+        {
+            "index": 2,
+            "codecName": "aac",
+            "sampleRateHz": 44100,
+            "channels": 1,
+            "channelLayout": "mono",
+            "language": "spa",
+            "title": None,
+        },
+    ]
+    assert (settings.sample_processing_dir / "sources" / source["id"] / f"source{Path(filename).suffix}").read_bytes() == b"video-source"
+
+
+def test_sample_processing_media_source_upload_rejects_video_without_audio_stream(tmp_path: Path) -> None:
+    settings = make_settings(
+        tmp_path,
+        sample_processing_ffprobe_command=str(ffprobe_video_without_audio_fake_command(tmp_path / "ffprobe-no-audio-fake")),
+    )
+    app = create_app(settings=settings)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/sample-processing/sources",
+        files={"sourceFile": ("silent.mp4", b"video-source", "video/mp4")},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Video source must include at least one audio stream."
+    assert [path for path in (settings.sample_processing_dir / "sources").iterdir()] == []
+
+
 def test_sample_processing_media_source_preview_is_cached_and_bounded(tmp_path: Path) -> None:
     ffmpeg_args_log_path = tmp_path / "ffmpeg-args-log.json"
     settings = make_settings(
@@ -1157,6 +1240,58 @@ sys.stdout.write(json.dumps({
             "tags": {},
         },
     ],
+}))
+""",
+    )
+
+
+def ffprobe_video_fake_command(path: Path) -> Path:
+    return write_fake_command(
+        path,
+        """
+import json
+import sys
+sys.stdout.write(json.dumps({
+    "streams": [
+        {"index": 0, "codec_type": "video", "codec_name": "h264"},
+        {
+            "index": 1,
+            "codec_type": "audio",
+            "codec_name": "aac",
+            "sample_rate": "48000",
+            "channels": 2,
+            "channel_layout": "stereo",
+            "tags": {"language": "eng", "title": "Main Audio"},
+        },
+        {
+            "index": 2,
+            "codec_type": "audio",
+            "codec_name": "aac",
+            "sample_rate": "44100",
+            "channels": 1,
+            "channel_layout": "mono",
+            "tags": {"language": "spa"},
+        },
+    ],
+    "format": {"duration": "37.25"},
+    "chapters": [],
+}))
+""",
+    )
+
+
+def ffprobe_video_without_audio_fake_command(path: Path) -> Path:
+    return write_fake_command(
+        path,
+        """
+import json
+import sys
+sys.stdout.write(json.dumps({
+    "streams": [
+        {"index": 0, "codec_type": "video", "codec_name": "h264"},
+    ],
+    "format": {"duration": "37.25"},
+    "chapters": [],
 }))
 """,
     )
