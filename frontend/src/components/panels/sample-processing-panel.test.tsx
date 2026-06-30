@@ -221,6 +221,7 @@ describe("SampleProcessingPanel ranked candidates", () => {
     expect(screen.getByText("Ranked Candidates")).toBeInTheDocument()
     expect(screen.getByText("Estimated Time 1m 0s to 3m 0s")).toBeInTheDocument()
     expect(screen.getByText("Workflow Progress")).toBeInTheDocument()
+    expect(screen.getByRole("region", { name: "Workflow Progress" })).toBeInTheDocument()
     expect(screen.getAllByText("Complete").length).toBeGreaterThan(0)
     expect(screen.getByText("2 Candidates")).toBeInTheDocument()
     expect(screen.getByText("Speaker 1")).toBeInTheDocument()
@@ -473,11 +474,11 @@ describe("SampleProcessingPanel ranked candidates", () => {
     )
 
     const inspectionText = screen.getByText("Inspecting Source")
-    const inspectionSurface = inspectionText.closest(".source-inspection-loading")
+    const inspectionSurface = inspectionText.closest(".pending-work-status")
 
     expect(inspectionText).toBeInTheDocument()
-    expect(inspectionSurface).toHaveClass("source-inspection-loading")
-    expect(inspectionSurface?.querySelector(".source-inspection-loading__shine")).toBeInTheDocument()
+    expect(inspectionSurface).toHaveClass("pending-work-status")
+    expect(inspectionSurface?.querySelector(".pending-work-status__shine")).toBeInTheDocument()
   })
 
   it("renders staged video preview and falls back when browser playback fails", () => {

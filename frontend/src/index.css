@@ -91,8 +91,7 @@ audio {
   min-height: 42px;
 }
 
-.pending-work-status,
-.source-inspection-loading {
+.pending-work-status {
   border-color: color-mix(in oklch, var(--primary) 34%, var(--border));
   box-shadow:
     0 0 0 1px color-mix(in oklch, var(--primary) 12%, transparent),
@@ -100,8 +99,7 @@ audio {
   animation: pending-work-status-border 2.6s ease-in-out infinite;
 }
 
-.pending-work-status__shine,
-.source-inspection-loading__shine {
+.pending-work-status__shine {
   position: absolute;
   inset-block: 0;
   left: -55%;
@@ -148,9 +146,7 @@ audio {
 
 @media (prefers-reduced-motion: reduce) {
   .pending-work-status,
-  .pending-work-status__shine,
-  .source-inspection-loading,
-  .source-inspection-loading__shine {
+  .pending-work-status__shine {
     animation: none;
   }
 }

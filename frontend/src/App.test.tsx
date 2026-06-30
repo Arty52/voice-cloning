@@ -3154,6 +3154,7 @@ describe("App", () => {
 
     const progressHeading = await sampleProcessingPanel().findByText("Workflow Progress")
     expect(progressHeading).toBeInTheDocument()
+    expect(sampleProcessingPanel().getByRole("status", { name: "Workflow Progress" })).toBeInTheDocument()
     expect(sampleProcessingPanel().getByText("Active Step: Isolate Voice")).toBeInTheDocument()
     expect(sampleProcessingPanel().getByText("Queued")).toBeInTheDocument()
     expect(progressHeading.closest("section")?.querySelector(".animate-spin")).toBeInTheDocument()

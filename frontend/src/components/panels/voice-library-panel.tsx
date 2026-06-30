@@ -19,7 +19,7 @@ import { ActionMenu } from "@/components/ui/action-menu"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import { Loading } from "@/components/ui/loading"
+import { PendingWorkStatus } from "@/components/ui/pending-work-status"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { VoicePresetToggleGroup } from "@/components/voice-preset-toggle-group"
@@ -390,9 +390,12 @@ function SelectedVoiceTuning({
               />
 
               {isLoading ? (
-                <div className="rounded-md border border-border bg-background/60 p-3">
-                  <Loading text="Loading Voice Tuning" variant="secondary" />
-                </div>
+                <PendingWorkStatus
+                  aria-label="Loading Voice Tuning"
+                  description="Fetching provider tuning controls for this voice."
+                  statusLabel="Loading"
+                  title="Loading Voice Tuning"
+                />
               ) : null}
 
               {!isLoading && providerTuning.controls.length > 0 ? (

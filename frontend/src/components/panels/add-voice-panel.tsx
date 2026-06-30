@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Loading } from "@/components/ui/loading"
+import { PendingWorkStatus } from "@/components/ui/pending-work-status"
 import { VoicePresetToggleGroup } from "@/components/voice-preset-toggle-group"
 import type { AudioWindow } from "@/lib/audio-window"
 import { formatRecordingDuration } from "@/lib/formatters"
@@ -136,9 +137,12 @@ export function AddVoicePanel({
           </MediaFileDropZone>
 
           {isPreparingSample ? (
-            <div className="rounded-md border border-border bg-background/60 p-3">
-              <Loading text="Preparing Sample" variant="secondary" />
-            </div>
+            <PendingWorkStatus
+              aria-label="Preparing Sample"
+              description="Decoding the selected audio and preparing the sample window."
+              statusLabel="Preparing"
+              title="Preparing Sample"
+            />
           ) : null}
           {recorderPanelVisible ? (
             <div className="rounded-md border border-border bg-background/60 p-3">
