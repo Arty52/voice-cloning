@@ -573,8 +573,9 @@ function MediaSourceSelection({ processing }: { processing: SampleProcessingCont
       </div>
 
       {media.status === "loading" ? (
-        <div className="rounded-md border border-border bg-background/60 p-3">
-          <Loading text="Inspecting Source" variant="secondary" />
+        <div className="source-inspection-loading relative overflow-hidden rounded-md border border-border bg-background/60 p-3">
+          <span aria-hidden="true" className="source-inspection-loading__shine" />
+          <Loading className="relative" text="Inspecting Source" variant="secondary" />
         </div>
       ) : null}
 

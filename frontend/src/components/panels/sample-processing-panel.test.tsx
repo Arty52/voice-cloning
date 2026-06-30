@@ -365,4 +365,108 @@ describe("SampleProcessingPanel ranked candidates", () => {
     expect(within(chapterList).getAllByText("Duration 1m").length).toBeGreaterThan(0)
     expect(within(chapterList).queryByText("367:00", { exact: false })).not.toBeInTheDocument()
   })
+
+  it("highlights source inspection while media metadata is loading", () => {
+    const processing = {
+      activeStep: null,
+      activeProgressPhase: null,
+      canCancel: false,
+      canCleanVoice: true,
+      canDetectSpeakers: false,
+      canSave: false,
+      canSaveSelectedCandidates: false,
+      canSaveSelectedSpeakers: false,
+      canStart: false,
+      canUseOriginalRecording: false,
+      candidateNameAssignments: {},
+      candidateResultUrls: {},
+      candidateSaveError: null,
+      candidateSaveStatus: "idle",
+      candidateVoicePresetIds: {},
+      effectiveSourcePreference: "active",
+      enabledOperations: [],
+      error: null,
+      handleCancelProcessing: vi.fn(),
+      handleCandidateNameChange: vi.fn(),
+      handleCandidateSaveSelectionChange: vi.fn(),
+      handleCandidateVoicePresetChange: vi.fn(),
+      handleSaveCandidateVoices: vi.fn((event?: { preventDefault: () => void }) => event?.preventDefault()),
+      handleSaveProcessedVoice: vi.fn(),
+      handleSaveSpeakerVoices: vi.fn(),
+      handleSourceFileSelect: vi.fn(),
+      handleSourceModeChange: vi.fn(),
+      handleStartProcessing: vi.fn((event: { preventDefault: () => void }) => event.preventDefault()),
+      isPrepareVoiceSelected: true,
+      isProcessing: false,
+      job: null,
+      mediaSource: {
+        deleteCurrentSource: vi.fn(),
+        error: null,
+        hasChapters: false,
+        manualDurationSeconds: 300,
+        manualRange: { startSeconds: 0, endSeconds: 120 },
+        preview: null,
+        selectedChapterIds: [],
+        selectedChapters: [],
+        selectedDurationSeconds: 0,
+        selectedRanges: [],
+        setChapterSelected: vi.fn(),
+        setManualRangeSeconds: vi.fn(),
+        showPreview: vi.fn(),
+        source: null,
+        status: "loading",
+        uploadSource: vi.fn(),
+      },
+      operations: [],
+      optionsError: null,
+      optionsStatus: "success",
+      prepareCleanVoice: true,
+      prepareDetectSpeakers: false,
+      prepareEstimateRangeSeconds: {
+        minSeconds: 60,
+        maxSeconds: 180,
+      },
+      prepareTrimCandidates: true,
+      preparedSamplesResult: null,
+      processingElapsedMs: null,
+      progressPhases: [],
+      recommendedWorkflowOrder: [],
+      resultUrl: null,
+      selectedCandidateIds: [],
+      selectedOperationIds: ["prepareVoice"],
+      selectedWorkflowSteps: [],
+      setPrepareCleanVoice: vi.fn(),
+      setPrepareDetectSpeakers: vi.fn(),
+      setPrepareTrimCandidates: vi.fn(),
+      setSourcePreference: vi.fn(),
+      setSourceVoiceId: vi.fn(),
+      setWorkflowStepSelected: vi.fn(),
+      sourceFile: new File(["source"], "book.m4b", { type: "audio/mp4" }),
+      sourceMode: "upload",
+      sourceVoices: [],
+      sourceVoiceId: "",
+      speakerSeparationResult: null,
+      speakerSourceUrl: null,
+      status: "idle",
+    } as unknown as SampleProcessingController
+
+    render(
+      <TooltipProvider>
+        <SampleProcessingPanel
+          isCollapsible={false}
+          isExpanded={true}
+          onToggleExpanded={vi.fn()}
+          processing={processing}
+          voicePresets={voicePresets}
+        />
+      </TooltipProvider>
+    )
+
+    const inspectionText = screen.getByText("Inspecting Source")
+    const inspectionSurface = inspectionText.closest(".source-inspection-loading")
+
+    expect(inspectionText).toBeInTheDocument()
+    expect(inspectionSurface).toHaveClass("source-inspection-loading")
+    expect(inspectionSurface?.querySelector(".source-inspection-loading__shine")).toBeInTheDocument()
+  })
 })
