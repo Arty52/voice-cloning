@@ -1,5 +1,5 @@
 import { Ban, CheckCircle2, ChevronDown, Circle, CircleAlert, Loader2, RefreshCw, SlidersHorizontal } from "lucide-react"
-import { useState } from "react"
+import { useState, type RefObject } from "react"
 
 import { AudioPlayer } from "@/components/audio-player"
 import { GeneratedAudioItem } from "@/components/generated-audio-item"
@@ -37,6 +37,7 @@ import type {
 
 type LatestGeneratedAudioPanelProps = {
   activeProviderId?: string | null
+  attentionRef?: RefObject<HTMLElement | null>
   error: string | null
   generationPendingStatus?: GenerationPendingStatus | null
   isDeleteDisabled: boolean
@@ -56,6 +57,7 @@ type LatestGeneratedAudioPanelProps = {
 
 export function LatestGeneratedAudioPanel({
   activeProviderId = null,
+  attentionRef,
   error,
   generationPendingStatus = null,
   isDeleteDisabled,
@@ -81,7 +83,11 @@ export function LatestGeneratedAudioPanel({
   }
 
   return (
-    <section aria-busy={isGenerating} className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5">
+    <section
+      aria-busy={isGenerating}
+      className="scroll-mt-4 rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5"
+      ref={attentionRef}
+    >
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-medium">Latest Generated Audio</h2>

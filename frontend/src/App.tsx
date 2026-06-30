@@ -1,4 +1,4 @@
-import { useRef, useState } from "react"
+import { type FormEvent, useRef, useState } from "react"
 
 import { AppHeader } from "@/components/app-header"
 import { ConfirmationDialog } from "@/components/dialogs/confirmation-dialog"
@@ -17,10 +17,12 @@ import { SampleProcessingPanel } from "@/components/panels/sample-processing-pan
 import { SpeechInputPanel } from "@/components/panels/speech-input-panel"
 import { StudioOverviewPanel } from "@/components/panels/studio-overview-panel"
 import { VoiceLibraryPanel } from "@/components/panels/voice-library-panel"
+import { useScrollIntoViewOnSignal } from "@/hooks/use-scroll-into-view-on-signal"
 import { useVoiceStudioController } from "@/hooks/use-voice-studio-controller"
 
 function App() {
   const [prepareAudioWorkflow, setPrepareAudioWorkflow] = useState<PrepareAudioWorkflow | null>(null)
+  const [generatedAudioAttentionSignal, setGeneratedAudioAttentionSignal] = useState(0)
   const hasEnteredProcessAudioWorkflowRef = useRef(false)
   const {
     activeSectionId,
@@ -84,6 +86,7 @@ function App() {
   const isPrepareWorkflowSwitchDisabled =
     voiceInput.isUploading || voiceInput.isPreparingSample || voiceInput.isRecorderBusy || sampleProcessing.isProcessing
   const visiblePrepareAudioWorkflow = prepareAudioWorkflow ?? (sampleProcessing.job ? "processAudio" : null)
+  const generatedAudioAttentionRef = useScrollIntoViewOnSignal<HTMLElement>(generatedAudioAttentionSignal)
 
   function handlePrepareAudioWorkflowSelect(workflow: PrepareAudioWorkflow) {
     if (isPrepareWorkflowSwitchDisabled) {
@@ -96,6 +99,15 @@ function App() {
         sampleProcessing.handleSourceModeChange("upload")
       }
     }
+  }
+
+  function handleGenerateWithAttention(event?: FormEvent<HTMLFormElement>) {
+    event?.preventDefault()
+    if (!canGenerate) {
+      return
+    }
+    setGeneratedAudioAttentionSignal((currentSignal) => currentSignal + 1)
+    handleGenerate()
   }
 
   return (
@@ -201,7 +213,7 @@ function App() {
             onCancelGeneration={cancelGeneration}
             onClearAssignments={clearVoiceAssignments}
             onEditAssignmentVoice={updateVoiceAssignment}
-            onGenerate={handleGenerate}
+            onGenerate={handleGenerateWithAttention}
             onNaturalHandoffsEnabledChange={setNaturalHandoffsEnabled}
             onSaveNaturalHandoffsDefault={saveNaturalHandoffsDefault}
             onRemoveAssignment={removeVoiceAssignment}
@@ -221,6 +233,7 @@ function App() {
 
           <LatestGeneratedAudioPanel
             activeProviderId={providerKeys.activeProviderId}
+            attentionRef={generatedAudioAttentionRef}
             error={speechError}
             generationPendingStatus={generationPendingStatus}
             isDeleteDisabled={generatedAudio.generatedAudioMutation === "delete"}
