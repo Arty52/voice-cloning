@@ -20,6 +20,7 @@ import type {
 import { useSampleProcessingMediaSource } from "./use-sample-processing-media-source"
 
 export type SampleProcessingSourceMode = "voice" | "upload"
+export type SampleProcessingSourceUploadKind = "audio" | "video"
 export type SampleProcessingStatus = "idle" | "starting" | "processing" | "success" | "error" | "canceled"
 
 type UseSampleProcessingOptions = {
@@ -47,6 +48,7 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
     isolateVoice: DEFAULT_PROCESSING_PRESET_ID,
   })
   const [sourceMode, setSourceMode] = useState<SampleProcessingSourceMode>("voice")
+  const [sourceUploadKind, setSourceUploadKind] = useState<SampleProcessingSourceUploadKind>("audio")
   const [sourceVoiceId, setSourceVoiceId] = useState("")
   const [sourcePreference, setSourcePreference] = useState<SampleProcessingSourcePreference>("original")
   const [sourceFile, setSourceFile] = useState<File | null>(null)
@@ -398,6 +400,20 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
     }
     setSourceMode(nextMode)
     if (nextMode === "voice") {
+      setSourceFile(null)
+      void mediaSource.deleteCurrentSource()
+    }
+    resetProcessedCandidate()
+  }
+
+  function handleSourceUploadKindChange(nextKind: SampleProcessingSourceUploadKind) {
+    if (sourceMode === "upload" && sourceUploadKind === nextKind) {
+      return
+    }
+    const shouldClearUpload = sourceMode === "upload" && sourceUploadKind !== nextKind
+    setSourceMode("upload")
+    setSourceUploadKind(nextKind)
+    if (shouldClearUpload) {
       setSourceFile(null)
       void mediaSource.deleteCurrentSource()
     }
@@ -1057,6 +1073,7 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
     setSelectedSpeakerIds,
     setWorkflowStepSelected: handleWorkflowStepSelected,
     setSourcePreference: handleSourcePreferenceChange,
+    setSourceUploadKind: handleSourceUploadKindChange,
     setSourceVoiceId: handleSourceVoiceChange,
     speakerNameAssignments,
     speakerResultUrls,
@@ -1067,6 +1084,7 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
     speakerVoicePresetIds,
     sourceFile,
     sourceMode,
+    sourceUploadKind,
     sourcePreference,
     sourceVoices: voices,
     sourceVoiceId: resolvedSourceVoiceId,
