@@ -23,7 +23,7 @@ These notes capture the draft PR stack for local video source media in Prepare A
   `./.venv/bin/pytest backend/tests/test_api.py -k "sample_processing_media_source or selected_media_source"`
 - Backend stack `make check` passed after PR 1 commits.
 - Frontend focused tests passed:
-  `npm --prefix frontend test -- --run src/lib/api.test.ts src/hooks/use-sample-processing.test.tsx src/components/panels/sample-processing-panel.test.tsx src/components/audio-file-drop-zone.test.tsx`
+  `npm --prefix frontend test -- --run src/lib/api.test.ts src/hooks/use-sample-processing.test.tsx src/components/panels/sample-processing-panel.test.tsx src/components/media-file-drop-zone.test.tsx`
 - Frontend app workflow tests passed for uploaded audio/video source media, range selection, job payloads, and cleanup.
 - Frontend stack `make check` passed after PR 2 commits.
 - Live local API smoke passed for MP4 with audio: staged upload classified as `mediaKind: "video"`, stored audio stream metadata, served `GET /api/sample-processing/sources/{sourceId}/media` as `video/mp4`, created a range job with `sourceMediaId` and `sourceRanges`, completed as mono 16 kHz WAV, then deleted the staged source.
