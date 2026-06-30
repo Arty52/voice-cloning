@@ -8,10 +8,14 @@ import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 
 const AUDIO_ACCEPT = "audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac"
+const DEFAULT_HELPER_COPY =
+  "Drag an audio file here, or choose one from your computer. Supports MP3, WAV, M4A, AAC, OGG, and FLAC."
 
 type AudioFileDropZoneProps = {
+  accept?: string
   children?: ReactNode
   disabled?: boolean
+  helperCopy?: string
   id: string
   label: string
   onFileSelect: (file: File | null) => void
@@ -19,8 +23,10 @@ type AudioFileDropZoneProps = {
 }
 
 export function AudioFileDropZone({
+  accept = AUDIO_ACCEPT,
   children,
   disabled = false,
+  helperCopy = DEFAULT_HELPER_COPY,
   id,
   label,
   onFileSelect,
@@ -72,7 +78,7 @@ export function AudioFileDropZone({
         role="group"
       >
         <Input
-          accept={AUDIO_ACCEPT}
+          accept={accept}
           className="sr-only size-px border-0 p-0"
           disabled={disabled}
           id={id}
@@ -87,9 +93,7 @@ export function AudioFileDropZone({
         <Upload aria-hidden="true" className="size-5 text-primary" />
         <div className="flex flex-col gap-1">
           <span className="text-sm font-medium">{selectedFileName ? "Audio Selected" : "Drop Audio Here"}</span>
-          <FieldDescription id={descriptionId}>
-            Drag an audio file here, or choose one from your computer. Supports MP3, WAV, M4A, AAC, OGG, and FLAC.
-          </FieldDescription>
+          <FieldDescription id={descriptionId}>{helperCopy}</FieldDescription>
         </div>
         {selectedFileName ? <Badge variant="secondary">{selectedFileName}</Badge> : null}
         <div className="flex w-full flex-col items-center gap-3">
