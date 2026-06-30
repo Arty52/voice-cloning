@@ -1387,7 +1387,7 @@ function ProcessingProgressSurface({
   if (processing.isProcessing) {
     return (
       <PendingWorkStatus
-        aria-label="Sample Processing Progress"
+        aria-label="Workflow Progress"
         description="Running the selected sample processing workflow."
         meta={activeLabel ? <Badge variant="secondary">{activeLabel}</Badge> : null}
         statusLabel={panelStatusLabel(processing)}
@@ -1399,7 +1399,7 @@ function ProcessingProgressSurface({
   }
 
   return (
-    <section aria-label="Sample Processing Progress" className="rounded-md border border-border bg-background/60 p-3">
+    <section aria-label="Workflow Progress" className="rounded-md border border-border bg-background/60 p-3">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <div className="text-sm font-medium">Workflow Progress</div>
         {activeLabel ? <Badge variant="secondary">{activeLabel}</Badge> : null}

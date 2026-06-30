@@ -221,6 +221,7 @@ describe("SampleProcessingPanel ranked candidates", () => {
     expect(screen.getByText("Ranked Candidates")).toBeInTheDocument()
     expect(screen.getByText("Estimated Time 1m 0s to 3m 0s")).toBeInTheDocument()
     expect(screen.getByText("Workflow Progress")).toBeInTheDocument()
+    expect(screen.getByRole("region", { name: "Workflow Progress" })).toBeInTheDocument()
     expect(screen.getAllByText("Complete").length).toBeGreaterThan(0)
     expect(screen.getByText("2 Candidates")).toBeInTheDocument()
     expect(screen.getByText("Speaker 1")).toBeInTheDocument()
