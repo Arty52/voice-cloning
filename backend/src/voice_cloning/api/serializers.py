@@ -17,6 +17,8 @@ from ..models import (
     SampleProcessingOperation,
     SampleProcessingPreset,
     SampleProcessingResult,
+    SampleProcessingSourceRange,
+    SampleProcessingSourceSelection,
     SpeakerSeparationResult,
     SpeakerSeparationSpeaker,
     SpeakerSeparationTranscript,
@@ -288,7 +290,28 @@ def sample_processing_job_payload(job: SampleProcessingJob) -> dict[str, object]
         ),
         "progressPhases": [sample_processing_progress_phase_payload(phase) for phase in job.progress_phases],
         "activeProgressPhaseId": job.active_progress_phase_id,
+        "sourceSelection": (
+            sample_processing_source_selection_payload(job.source_selection)
+            if job.source_selection is not None
+            else None
+        ),
         "result": sample_processing_result_payload(job.result) if job.result is not None else None,
+    }
+
+
+def sample_processing_source_selection_payload(selection: SampleProcessingSourceSelection) -> dict[str, object]:
+    return {
+        "sourceMediaId": selection.source_media_id,
+        "ranges": [sample_processing_source_range_payload(source_range) for source_range in selection.ranges],
+    }
+
+
+def sample_processing_source_range_payload(source_range: SampleProcessingSourceRange) -> dict[str, object]:
+    return {
+        "startSeconds": source_range.start_seconds,
+        "endSeconds": source_range.end_seconds,
+        "durationSeconds": source_range.duration_seconds,
+        "label": source_range.label,
     }
 
 

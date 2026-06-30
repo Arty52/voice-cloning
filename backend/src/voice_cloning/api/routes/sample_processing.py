@@ -10,6 +10,7 @@ from ...services.sample_processing import (
     SampleProcessingWorkflowStepInput,
     SampleProcessingService,
     SampleProcessingServiceError,
+    SourceRangeInput,
     SpeakerNameAssignment,
     SpeakerTranscriptAssignment,
     SpeakerVoiceSelection,
@@ -44,6 +45,8 @@ def create_sample_processing_router(sample_processing: SampleProcessingService) 
         processingPresetId: str | None = Form(None),
         sourceVoiceId: str | None = Form(None),
         sourcePreference: str = Form("original"),
+        sourceMediaId: str | None = Form(None),
+        sourceRanges: str | None = Form(None),
         workflowSteps: str | None = Form(None),
         cleanVoice: bool | None = Form(None),
         detectSpeakers: bool | None = Form(None),
@@ -59,6 +62,8 @@ def create_sample_processing_router(sample_processing: SampleProcessingService) 
                 source_voice_id=sourceVoiceId,
                 source_preference=sourcePreference,
                 source_upload=sourceFile,
+                source_media_id=sourceMediaId,
+                source_ranges=_parse_source_ranges(sourceRanges),
                 workflow_steps=_parse_workflow_steps(workflowSteps),
                 clean_voice=cleanVoice,
                 detect_speakers=detectSpeakers,
@@ -222,3 +227,37 @@ def _parse_workflow_steps(value: str | None) -> tuple[SampleProcessingWorkflowSt
             )
         )
     return tuple(steps)
+
+
+def _parse_source_ranges(value: str | None) -> tuple[SourceRangeInput, ...] | None:
+    if value is None or not value.strip():
+        return None
+    try:
+        raw_ranges = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=422, detail="sourceRanges must be valid JSON.") from exc
+    if not isinstance(raw_ranges, list):
+        raise HTTPException(status_code=422, detail="sourceRanges must be a JSON array.")
+    ranges: list[SourceRangeInput] = []
+    for raw_range in raw_ranges:
+        if not isinstance(raw_range, dict):
+            raise HTTPException(status_code=422, detail="sourceRanges entries must be objects.")
+        start_seconds = raw_range.get("startSeconds")
+        end_seconds = raw_range.get("endSeconds")
+        label = raw_range.get("label")
+        if not _is_json_number(start_seconds) or not _is_json_number(end_seconds):
+            raise HTTPException(status_code=422, detail="sourceRanges startSeconds and endSeconds are required.")
+        if label is not None and not isinstance(label, str):
+            raise HTTPException(status_code=422, detail="sourceRanges label must be a string.")
+        ranges.append(
+            SourceRangeInput(
+                start_seconds=float(start_seconds),
+                end_seconds=float(end_seconds),
+                label=label,
+            )
+        )
+    return tuple(ranges)
+
+
+def _is_json_number(value: object) -> bool:
+    return not isinstance(value, bool) and isinstance(value, int | float)
