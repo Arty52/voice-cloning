@@ -1046,14 +1046,27 @@ def test_sample_processing_media_source_preview_failure_removes_partial_cache(tm
     assert not list(previews_dir.iterdir())
 
 
-def test_sample_processing_media_source_rejects_invalid_upload(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("filename", "content", "content_type"),
+    [
+        ("notes.txt", b"not-audio", "text/plain"),
+        ("clip.webm", b"video-source", "video/webm"),
+        ("clip.mkv", b"video-source", "video/x-matroska"),
+    ],
+)
+def test_sample_processing_media_source_rejects_invalid_upload(
+    tmp_path: Path,
+    filename: str,
+    content: bytes,
+    content_type: str,
+) -> None:
     settings = make_settings(tmp_path)
     app = create_app(settings=settings)
     client = TestClient(app)
 
     response = client.post(
         "/api/sample-processing/sources",
-        files={"sourceFile": ("notes.txt", b"not-audio", "text/plain")},
+        files={"sourceFile": (filename, content, content_type)},
     )
 
     assert response.status_code == 422
