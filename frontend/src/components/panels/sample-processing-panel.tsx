@@ -589,6 +589,7 @@ function sourceUploadCopy(kind: "audio" | "video") {
 function MediaSourceSelection({ processing }: { processing: SampleProcessingController }) {
   const media = processing.mediaSource
   const source = media.source
+  const [failedVideoSourceId, setFailedVideoSourceId] = useState<string | null>(null)
 
   if (media.status === "idle" && source === null && !processing.sourceFile) {
     return null
@@ -605,9 +606,13 @@ function MediaSourceSelection({ processing }: { processing: SampleProcessingCont
         </div>
         {source ? (
           <div className="flex shrink-0 flex-wrap gap-1.5">
+            <Badge variant="secondary">{source.mediaKind === "video" ? "Video" : "Audio"}</Badge>
             <Badge variant="secondary">{formatCompactBytes(source.sizeBytes)}</Badge>
             {source.durationSeconds !== null ? (
               <Badge variant="secondary">{formatMediaDuration(source.durationSeconds)}</Badge>
+            ) : null}
+            {source.mediaKind === "video" && source.selectedAudioStreamIndex !== null ? (
+              <Badge variant="secondary">Audio Stream {source.selectedAudioStreamIndex}</Badge>
             ) : null}
             {source.chapters.length > 0 ? (
               <Badge variant="secondary">{source.chapters.length} Chapters</Badge>
@@ -639,6 +644,15 @@ function MediaSourceSelection({ processing }: { processing: SampleProcessingCont
             </Alert>
           ) : null}
 
+          {source.mediaKind === "video" ? (
+            <VideoSourcePreview
+              failed={failedVideoSourceId === source.id}
+              onError={() => setFailedVideoSourceId(source.id)}
+              sourceLabel={source.filename}
+              src={media.sourceMediaUrl}
+            />
+          ) : null}
+
           {media.hasChapters ? (
             <ChapterSourceSelection processing={processing} />
           ) : (
@@ -659,6 +673,44 @@ function MediaSourceSelection({ processing }: { processing: SampleProcessingCont
         </>
       ) : null}
     </Field>
+  )
+}
+
+function VideoSourcePreview({
+  failed,
+  onError,
+  sourceLabel,
+  src,
+}: {
+  failed: boolean
+  onError: () => void
+  sourceLabel: string
+  src: string | null
+}) {
+  if (!src || failed) {
+    return (
+      <Alert>
+        <AlertTitle>Video Preview Unavailable</AlertTitle>
+        <AlertDescription>The staged video is still available for range selection and background extraction.</AlertDescription>
+      </Alert>
+    )
+  }
+
+  return (
+    <div className="rounded-md border border-border bg-background/60 p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="text-sm font-medium">Video Preview</div>
+        <Badge variant="secondary">Browser Playback</Badge>
+      </div>
+      <video
+        aria-label={`${sourceLabel} Video Preview`}
+        className="aspect-video w-full rounded-md border border-border bg-background object-contain"
+        controls
+        onError={onError}
+        preload="metadata"
+        src={src}
+      />
+    </div>
   )
 }
 

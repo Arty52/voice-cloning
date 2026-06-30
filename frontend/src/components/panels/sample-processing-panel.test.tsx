@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react"
+import { fireEvent, render, screen, within } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -478,5 +478,144 @@ describe("SampleProcessingPanel ranked candidates", () => {
     expect(inspectionText).toBeInTheDocument()
     expect(inspectionSurface).toHaveClass("source-inspection-loading")
     expect(inspectionSurface?.querySelector(".source-inspection-loading__shine")).toBeInTheDocument()
+  })
+
+  it("renders staged video preview and falls back when browser playback fails", () => {
+    const processing = {
+      activeStep: null,
+      activeProgressPhase: null,
+      canCancel: false,
+      canCleanVoice: true,
+      canDetectSpeakers: false,
+      canSave: false,
+      canSaveSelectedCandidates: false,
+      canSaveSelectedSpeakers: false,
+      canStart: true,
+      canUseOriginalRecording: false,
+      candidateNameAssignments: {},
+      candidateResultUrls: {},
+      candidateSaveError: null,
+      candidateSaveStatus: "idle",
+      candidateVoicePresetIds: {},
+      effectiveSourcePreference: "active",
+      enabledOperations: [],
+      error: null,
+      handleCancelProcessing: vi.fn(),
+      handleCandidateNameChange: vi.fn(),
+      handleCandidateSaveSelectionChange: vi.fn(),
+      handleCandidateVoicePresetChange: vi.fn(),
+      handleSaveCandidateVoices: vi.fn((event?: { preventDefault: () => void }) => event?.preventDefault()),
+      handleSaveProcessedVoice: vi.fn(),
+      handleSaveSpeakerVoices: vi.fn(),
+      handleSourceFileSelect: vi.fn(),
+      handleSourceModeChange: vi.fn(),
+      handleStartProcessing: vi.fn((event: { preventDefault: () => void }) => event.preventDefault()),
+      isPrepareVoiceSelected: true,
+      isProcessing: false,
+      job: null,
+      mediaSource: {
+        deleteCurrentSource: vi.fn(),
+        error: null,
+        hasChapters: false,
+        manualDurationSeconds: 37.25,
+        manualRange: { startSeconds: 0, endSeconds: 30 },
+        preview: null,
+        selectedChapterIds: [],
+        selectedChapters: [],
+        selectedDurationSeconds: 30,
+        selectedRanges: [{ startSeconds: 0, endSeconds: 30, label: "Selected Range" }],
+        setChapterSelected: vi.fn(),
+        setManualRangeSeconds: vi.fn(),
+        showPreview: vi.fn(),
+        source: {
+          id: "source-video",
+          filename: "clip.mp4",
+          contentType: "video/mp4",
+          mediaKind: "video",
+          sizeBytes: 8_388_608,
+          sha256: "video-hash",
+          durationSeconds: 37.25,
+          sampleRateHz: 48_000,
+          audioStreams: [
+            {
+              index: 1,
+              codecName: "aac",
+              sampleRateHz: 48_000,
+              channels: 2,
+              channelLayout: "stereo",
+              language: "eng",
+              title: "Main Audio",
+            },
+          ],
+          selectedAudioStream: {
+            index: 1,
+            codecName: "aac",
+            sampleRateHz: 48_000,
+            channels: 2,
+            channelLayout: "stereo",
+            language: "eng",
+            title: "Main Audio",
+          },
+          selectedAudioStreamIndex: 1,
+          chapters: [],
+          warnings: [],
+        },
+        sourceMediaUrl: "/api/sample-processing/sources/source-video/media",
+        status: "success",
+        uploadSource: vi.fn(),
+      },
+      operations: [],
+      optionsError: null,
+      optionsStatus: "success",
+      prepareCleanVoice: true,
+      prepareDetectSpeakers: false,
+      prepareEstimateRangeSeconds: null,
+      prepareTrimCandidates: true,
+      preparedSamplesResult: null,
+      processingElapsedMs: null,
+      progressPhases: [],
+      recommendedWorkflowOrder: [],
+      resultUrl: null,
+      selectedCandidateIds: [],
+      selectedOperationIds: ["prepareVoice"],
+      selectedWorkflowSteps: [],
+      setPrepareCleanVoice: vi.fn(),
+      setPrepareDetectSpeakers: vi.fn(),
+      setPrepareTrimCandidates: vi.fn(),
+      setSourcePreference: vi.fn(),
+      setSourceUploadKind: vi.fn(),
+      setSourceVoiceId: vi.fn(),
+      setWorkflowStepSelected: vi.fn(),
+      sourceFile: new File(["source"], "clip.mp4", { type: "video/mp4" }),
+      sourceMode: "upload",
+      sourceUploadKind: "video",
+      sourceVoices: [],
+      sourceVoiceId: "",
+      speakerSeparationResult: null,
+      speakerSourceUrl: null,
+      status: "idle",
+    } as unknown as SampleProcessingController
+
+    render(
+      <TooltipProvider>
+        <SampleProcessingPanel
+          isCollapsible={false}
+          isExpanded={true}
+          onToggleExpanded={vi.fn()}
+          processing={processing}
+          voicePresets={voicePresets}
+        />
+      </TooltipProvider>
+    )
+
+    const video = screen.getByLabelText("clip.mp4 Video Preview")
+    expect(video).toHaveAttribute("src", "/api/sample-processing/sources/source-video/media")
+    expect(screen.getByText("Video")).toBeInTheDocument()
+    expect(screen.getByText("Audio Stream 1")).toBeInTheDocument()
+    expect(screen.getByText("Selected 30s")).toBeInTheDocument()
+
+    fireEvent.error(video)
+
+    expect(screen.getByText("Video Preview Unavailable")).toBeInTheDocument()
   })
 })
