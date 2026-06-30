@@ -935,6 +935,24 @@ def test_sample_processing_media_source_delete_cleans_staged_files(tmp_path: Pat
     assert not source_dir.exists()
 
 
+def test_sample_processing_media_source_invalid_id_uses_not_found_detail(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    app = create_app(settings=settings)
+    client = TestClient(app)
+    expected_detail = "Sample processing media source was not found."
+
+    fetched = client.get("/api/sample-processing/sources/not-a-source")
+    preview = client.get("/api/sample-processing/sources/not-a-source/preview")
+    deleted = client.delete("/api/sample-processing/sources/not-a-source")
+
+    assert fetched.status_code == 404
+    assert fetched.json()["detail"] == expected_detail
+    assert preview.status_code == 404
+    assert preview.json()["detail"] == expected_detail
+    assert deleted.status_code == 404
+    assert deleted.json()["detail"] == expected_detail
+
+
 def test_settings_reads_speech_job_segment_gap_environment(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

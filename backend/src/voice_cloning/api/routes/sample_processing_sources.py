@@ -5,6 +5,7 @@ from fastapi.responses import FileResponse
 
 from ...services.media_sources import (
     MEDIA_SOURCE_PREVIEW_CONTENT_TYPE,
+    MEDIA_SOURCE_PREVIEW_MAX_SECONDS,
     MediaSourceServiceError,
     SampleProcessingMediaSourceService,
 )
@@ -36,7 +37,7 @@ def create_sample_processing_sources_router(
     async def sample_processing_source_preview(
         source_id: str,
         startSeconds: float = Query(0),
-        durationSeconds: float = Query(90),
+        durationSeconds: float = Query(MEDIA_SOURCE_PREVIEW_MAX_SECONDS),
     ) -> FileResponse:
         try:
             path = await media_sources.preview_path(source_id, startSeconds, durationSeconds)

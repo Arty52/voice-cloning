@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from dataclasses import asdict
 import hashlib
 import json
@@ -14,6 +13,15 @@ from fastapi import UploadFile
 from ..config import Settings
 from ..models import SampleProcessingMediaSource, SampleProcessingMediaSourceChapter
 from ..samples import save_uploaded_sample_stream
+from .media_commands import (
+    non_negative_float as _non_negative_float,
+    non_negative_float_from_payload as _non_negative_float_from_payload,
+    positive_float as _positive_float,
+    positive_float_from_payload as _positive_float_from_payload,
+    run_capture_command,
+    run_external_command,
+    seconds_arg,
+)
 
 
 MEDIA_SOURCE_METADATA_FILENAME = "source.json"
@@ -104,14 +112,14 @@ class SampleProcessingMediaSourceService:
         preview_path.parent.mkdir(parents=True, exist_ok=True)
         temporary_preview_path = preview_path.with_name(f"{preview_path.stem}.{uuid4().hex}.tmp")
         try:
-            await _run_external_command(
+            await run_external_command(
                 [
                     self.settings.sample_processing_ffmpeg_command,
                     "-y",
                     "-ss",
-                    _seconds_arg(start),
+                    seconds_arg(start),
                     "-t",
-                    _seconds_arg(duration),
+                    seconds_arg(duration),
                     "-i",
                     str(source_path),
                     "-vn",
@@ -127,6 +135,7 @@ class SampleProcessingMediaSourceService:
                 ],
                 "ffmpeg",
                 self.settings.sample_processing_timeout_seconds,
+                MediaSourceServiceError,
             )
             if not temporary_preview_path.exists() or temporary_preview_path.stat().st_size == 0:
                 raise MediaSourceServiceError("FFmpeg did not produce a media source preview.", 502)
@@ -144,7 +153,7 @@ class SampleProcessingMediaSourceService:
 
     def _source_dir(self, source_id: str) -> Path:
         if not _is_source_id(source_id):
-            raise MediaSourceServiceError("Sample processing media source id is invalid.", 404)
+            raise MediaSourceServiceError("Sample processing media source was not found.", 404)
         source_dir = (self.sources_dir / source_id).resolve()
         _require_relative_path(source_dir, self.sources_dir)
         return source_dir
@@ -167,7 +176,7 @@ class SampleProcessingMediaSourceService:
         path: Path,
     ) -> tuple[float | None, int | None, tuple[SampleProcessingMediaSourceChapter, ...], tuple[str, ...]]:
         try:
-            stdout, _ = await _run_capture_command(
+            stdout, _ = await run_capture_command(
                 [
                     self.settings.sample_processing_ffprobe_command,
                     "-v",
@@ -183,6 +192,7 @@ class SampleProcessingMediaSourceService:
                 ],
                 "ffprobe",
                 self.settings.sample_processing_timeout_seconds,
+                MediaSourceServiceError,
             )
             payload = json.loads(stdout.decode("utf-8"))
         except (MediaSourceServiceError, json.JSONDecodeError):
@@ -283,18 +293,6 @@ def _sample_rate_from_payload(payload: object) -> int | None:
     return int(sample_rate) if sample_rate is not None else None
 
 
-def _positive_float_from_payload(payload: object, key: str) -> float | None:
-    if not isinstance(payload, dict):
-        return None
-    return _positive_float(payload.get(key))
-
-
-def _non_negative_float_from_payload(payload: object, key: str) -> float | None:
-    if not isinstance(payload, dict):
-        return None
-    return _non_negative_float(payload.get(key))
-
-
 def _optional_float(value: object) -> float | None:
     if value is None:
         return None
@@ -308,26 +306,6 @@ def _optional_int(value: object) -> int | None:
     return int(value)
 
 
-def _positive_float(value: object) -> float | None:
-    try:
-        parsed = float(value)
-    except (TypeError, ValueError):
-        return None
-    if parsed <= 0:
-        return None
-    return parsed
-
-
-def _non_negative_float(value: object) -> float | None:
-    try:
-        parsed = float(value)
-    except (TypeError, ValueError):
-        return None
-    if parsed < 0:
-        return None
-    return parsed
-
-
 def _validated_seconds(value: float, field_name: str, *, allow_zero: bool) -> float:
     if not math.isfinite(value):
         raise MediaSourceServiceError(f"{field_name} must be finite.", 422)
@@ -337,51 +315,6 @@ def _validated_seconds(value: float, field_name: str, *, allow_zero: bool) -> fl
     elif value <= 0:
         raise MediaSourceServiceError(f"{field_name} must be greater than 0.", 422)
     return value
-
-
-async def _run_capture_command(args: list[str], label: str, timeout_seconds: float) -> tuple[bytes, bytes]:
-    try:
-        process = await asyncio.create_subprocess_exec(
-            *args,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-    except FileNotFoundError as exc:
-        raise MediaSourceServiceError(f"{label} command was not found.", 503) from exc
-
-    try:
-        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout_seconds)
-    except asyncio.CancelledError:
-        _kill_process(process)
-        await process.communicate()
-        raise
-    except TimeoutError as exc:
-        _kill_process(process)
-        await process.communicate()
-        raise MediaSourceServiceError(f"{label} timed out.", 504) from exc
-
-    if process.returncode != 0:
-        message = " ".join(stderr.decode("utf-8", errors="replace").split())[-500:]
-        detail = f"{label} failed with exit code {process.returncode}."
-        if message:
-            detail = f"{detail} {message}"
-        raise MediaSourceServiceError(detail, 502)
-    return stdout, stderr
-
-
-async def _run_external_command(args: list[str], label: str, timeout_seconds: float) -> None:
-    await _run_capture_command(args, label, timeout_seconds)
-
-
-def _kill_process(process: asyncio.subprocess.Process) -> None:
-    try:
-        process.kill()
-    except ProcessLookupError:
-        pass
-
-
-def _seconds_arg(value: float) -> str:
-    return f"{max(0.0, value):.3f}".rstrip("0").rstrip(".") or "0"
 
 
 def _is_source_id(value: str) -> bool:

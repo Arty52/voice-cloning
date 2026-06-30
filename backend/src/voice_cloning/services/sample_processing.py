@@ -37,6 +37,11 @@ from ..models import (
 )
 from ..samples import load_sample_file, sample_hash, save_sample_file, save_uploaded_sample_stream, slugify_voice_name
 from .cancellation import cancel_and_drain_task
+from .media_commands import (
+    positive_float_from_payload as _positive_float_from_payload,
+    run_capture_command as _run_media_capture_command,
+    seconds_arg as _seconds_arg,
+)
 from ..voice_library import VoiceLibrary
 
 
@@ -2413,40 +2418,7 @@ async def _run_capture_command(
     label: str,
     timeout_seconds: float,
 ) -> tuple[bytes, bytes]:
-    try:
-        process = await asyncio.create_subprocess_exec(
-            *args,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-    except FileNotFoundError as exc:
-        raise SampleProcessingServiceError(f"{label} command was not found.", 503) from exc
-
-    try:
-        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout_seconds)
-    except asyncio.CancelledError:
-        _kill_process(process)
-        await process.communicate()
-        raise
-    except TimeoutError as exc:
-        _kill_process(process)
-        await process.communicate()
-        raise SampleProcessingServiceError(f"{label} timed out.", 504) from exc
-
-    if process.returncode != 0:
-        message = " ".join(stderr.decode("utf-8", errors="replace").split())[-500:]
-        detail = f"{label} failed with exit code {process.returncode}."
-        if message:
-            detail = f"{detail} {message}"
-        raise SampleProcessingServiceError(detail, 502)
-    return stdout, stderr
-
-
-def _kill_process(process: asyncio.subprocess.Process) -> None:
-    try:
-        process.kill()
-    except ProcessLookupError:
-        pass
+    return await _run_media_capture_command(args, label, timeout_seconds, SampleProcessingServiceError)
 
 
 def _prepared_candidate_by_id(result: PreparedSamplesResult, candidate_id: str) -> PreparedSampleCandidate:
@@ -2463,29 +2435,12 @@ def _aggregate_prepared_candidate_sha256(result: PreparedSamplesResult) -> str |
     return sample_hash("|".join(hashes).encode("utf-8"))
 
 
-def _positive_float_from_payload(payload: object, key: str) -> float | None:
-    if not isinstance(payload, dict):
-        return None
-    value = payload.get(key)
-    try:
-        parsed = float(value)
-    except (TypeError, ValueError):
-        return None
-    if parsed <= 0:
-        return None
-    return parsed
-
-
 def _float_after_marker(line: str, marker: str) -> float | None:
     try:
         raw_value = line.split(marker, 1)[1].strip().split(" ", 1)[0]
         return float(raw_value)
     except (IndexError, ValueError):
         return None
-
-
-def _seconds_arg(value: float) -> str:
-    return f"{max(0.0, value):.3f}".rstrip("0").rstrip(".") or "0"
 
 
 def _bytes_label(max_bytes: int) -> str:
