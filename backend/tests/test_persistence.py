@@ -76,6 +76,7 @@ def test_settings_resolves_generated_audio_storage_dir_from_env(
     settings = Settings.from_env()
 
     assert settings.generated_audio_storage_dir == tmp_path / "storage" / "generated-audio"
+    assert settings.generated_audio_export_dir is None
     assert settings.database_url == ""
 
 
@@ -94,6 +95,19 @@ def test_settings_uses_configured_generated_audio_storage_dir(
     assert settings.database_url == "postgresql+psycopg://user:pass@localhost:5432/app"
 
 
+def test_settings_uses_configured_generated_audio_export_dir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    export_dir = tmp_path / "exports"
+    monkeypatch.setenv("APP_ROOT", str(tmp_path))
+    monkeypatch.setenv("GENERATED_AUDIO_EXPORT_DIR", str(export_dir))
+
+    settings = Settings.from_env()
+
+    assert settings.generated_audio_export_dir == export_dir
+
+
 def test_settings_resolves_relative_storage_env_paths_from_app_root(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -109,6 +123,21 @@ def test_settings_resolves_relative_storage_env_paths_from_app_root(
     assert settings.generated_audio_storage_dir == tmp_path / "storage" / "generated-audio"
 
 
+def test_settings_resolves_relative_generated_audio_export_dir_from_app_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workdir = tmp_path / "backend"
+    workdir.mkdir()
+    monkeypatch.chdir(workdir)
+    monkeypatch.setenv("APP_ROOT", str(tmp_path))
+    monkeypatch.setenv("GENERATED_AUDIO_EXPORT_DIR", "exports/generated-audio")
+
+    settings = Settings.from_env()
+
+    assert settings.generated_audio_export_dir == tmp_path / "exports" / "generated-audio"
+
+
 def test_create_app_creates_runtime_storage_roots(tmp_path: Path) -> None:
     from voice_cloning.api.app import create_app
 
@@ -119,6 +148,17 @@ def test_create_app_creates_runtime_storage_roots(tmp_path: Path) -> None:
     assert settings.voice_assets_dir.exists()
     assert settings.storage_dir.exists()
     assert settings.generated_audio_storage_dir.exists()
+
+
+def test_create_app_creates_configured_generated_audio_export_root(tmp_path: Path) -> None:
+    from voice_cloning.api.app import create_app
+
+    settings = replace(make_settings(tmp_path), generated_audio_export_dir=tmp_path / "exports")
+
+    create_app(settings=settings)
+
+    assert settings.generated_audio_export_dir is not None
+    assert settings.generated_audio_export_dir.exists()
 
 
 def test_generated_audio_file_store_resolves_paths_under_root(tmp_path: Path) -> None:
@@ -717,13 +757,14 @@ def test_postgres_migrations_upgrade_to_head() -> None:
         table_names = set(inspect(connection).get_table_names())
         version = connection.execute(text("select version_num from alembic_version")).scalar_one()
 
-    assert version == "202607010001"
+    assert version == "202607010002"
     assert {
         "voices",
         "voice_processing_steps",
         "voice_library_state",
         "voice_tuning_presets",
         "generated_audio",
+        "generated_audio_export_ledger",
         "app_settings",
         "sample_processing_jobs",
         "speech_generation_jobs",
@@ -764,9 +805,10 @@ def test_postgres_migrations_roundtrip_on_disposable_database() -> None:
             table_names = set(inspect(connection).get_table_names())
             version = connection.execute(text("select version_num from alembic_version")).scalar_one()
 
-        assert version == "202607010001"
+        assert version == "202607010002"
         assert "voices" in table_names
         assert "generated_audio" in table_names
+        assert "generated_audio_export_ledger" in table_names
     finally:
         if roundtrip_engine is not None:
             roundtrip_engine.dispose()
