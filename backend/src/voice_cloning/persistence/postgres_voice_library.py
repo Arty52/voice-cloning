@@ -338,6 +338,11 @@ class PostgresVoiceLibrary(VoiceLibrary):
                         continue
                     target_asset = asset
                     if existing is not None and existing.sha256 != asset.sha256:
+                        conflict_existing = repository.get_asset(_manifest_conflict_import_id(asset))
+                        if conflict_existing is not None and conflict_existing.sha256 == asset.sha256:
+                            already_imported += 1
+                            default_id_by_manifest_id[asset.id] = conflict_existing.id
+                            continue
                         target_asset, staged_moves = self._renamed_manifest_conflict(asset, active_path)
                         renamed_conflicts += 1
                     else:
@@ -358,9 +363,13 @@ class PostgresVoiceLibrary(VoiceLibrary):
         with unit_of_work(self.session_factory) as session:
             repository = SqlAlchemyVoiceRepository(session)
             assets = repository.list_assets()
-            if default_voice_id:
+            asset_ids = {asset.id for asset in assets}
+            current_default = repository.get_default_voice_id()
+            if current_default in asset_ids:
+                default_voice_id = current_default or ""
+            elif default_voice_id:
                 repository.set_default_voice_id(default_voice_id)
-            elif repository.get_default_voice_id() is None and assets:
+            elif assets:
                 default_voice_id = assets[0].id
                 repository.set_default_voice_id(default_voice_id)
 
@@ -445,7 +454,7 @@ class PostgresVoiceLibrary(VoiceLibrary):
         return self.assets_dir / ".staged" / uuid4().hex / destination.name
 
     def _renamed_manifest_conflict(self, asset: VoiceAsset, active_path: Path) -> tuple[VoiceAsset, list[tuple[Path, Path]]]:
-        new_id = f"{asset.id}-import-{asset.sha256[:8]}"
+        new_id = _manifest_conflict_import_id(asset)
         destination = self.assets_dir / f"{new_id}{active_path.suffix.lower() or '.wav'}"
         staged_active = self._staged_path(destination)
         staged_active.parent.mkdir(parents=True, exist_ok=True)
@@ -507,3 +516,7 @@ class PostgresVoiceLibrary(VoiceLibrary):
                 raise HTTPException(status_code=500, detail="Voice asset path is invalid.") from exc
             paths.append(source_path)
         return paths
+
+
+def _manifest_conflict_import_id(asset: VoiceAsset) -> str:
+    return f"{asset.id}-import-{asset.sha256[:8]}"

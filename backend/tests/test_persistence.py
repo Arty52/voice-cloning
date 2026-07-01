@@ -227,6 +227,31 @@ def test_postgres_voice_library_import_renames_hash_conflict(tmp_path: Path) -> 
     assert sorted(asset.id for asset in library.list_assets()) == ["narrator", renamed_id]
     assert (settings.voice_assets_dir / f"{renamed_id}.mp3").read_bytes() == b"voice-one"
 
+    library.update_asset(renamed_id, name="Edited Import")
+    second_report = library.import_manifest()
+
+    assert second_report.already_imported == 1
+    assert library.get_asset(renamed_id).name == "Edited Import"
+
+
+def test_postgres_voice_library_import_preserves_database_default(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    library = make_postgres_voice_library(settings)
+    write_manifest_voice(settings, "narrator", b"voice-one")
+    library.import_manifest()
+    other = library.add_processed_sample(
+        "Other Voice",
+        VoiceSample(content=b"voice-two", filename="other.wav", content_type="audio/wav", sha256=sample_hash(b"voice-two")),
+        (),
+    )
+    library.set_default(other.id)
+
+    report = library.import_manifest()
+
+    assert report.already_imported == 1
+    assert report.default_voice_id == other.id
+    assert library.list_payload()["defaultVoiceId"] == other.id
+
 
 def test_postgres_voice_library_restores_file_when_delete_rolls_back(
     tmp_path: Path,
