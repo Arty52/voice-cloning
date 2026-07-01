@@ -3,11 +3,12 @@
 PYTHON ?= python3
 VENV_DIR := .venv
 VENV_PYTHON := $(VENV_DIR)/bin/python
+DATABASE_URL ?= postgresql+psycopg://voice_cloning:voice_cloning@localhost:5432/voice_cloning
 
 .PHONY: \
 	setup install-backend install-backend-processing install-frontend \
 	up down recycle destroy build logs ps \
-	test-backend test-frontend test check \
+	migrate test-postgres test-backend test-frontend test check \
 	smoke-live clean-cache
 
 setup: install-backend install-frontend
@@ -44,6 +45,13 @@ logs:
 
 ps:
 	docker compose ps
+
+migrate:
+	cd backend && DATABASE_URL="$(DATABASE_URL)" ../$(VENV_PYTHON) -m alembic -c alembic.ini upgrade head
+
+test-postgres:
+	docker compose up -d db
+	cd backend && DATABASE_URL="$(DATABASE_URL)" ../$(VENV_PYTHON) -m pytest -m postgres tests/test_persistence.py
 
 test-backend:
 	cd backend && ../$(VENV_PYTHON) -m pytest

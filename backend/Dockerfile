@@ -10,6 +10,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 COPY backend/pyproject.toml /app/backend/pyproject.toml
+COPY backend/alembic.ini /app/backend/alembic.ini
+COPY backend/alembic /app/backend/alembic
 COPY backend/src /app/backend/src
 
 RUN apt-get update \
