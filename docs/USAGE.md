@@ -121,6 +121,8 @@ Each local voice has a provider-independent voice preset assignment. Choose Stan
 
 The assignment is saved as local voice metadata and is not a provider clone id or provider secret. In `#voices`, Voice Tuning is collapsed by default inside the selected voice. It starts from saved tuning for the active provider when that voice has it. Otherwise it starts from the active provider preset mapped to the voice assignment. If the active provider has no saved tuning and no matching mapped preset, Voice Tuning uses that provider's default values instead. Edits are local draft changes until you choose Save Voice Tuning, and Reset Changes restores the draft to the currently saved voice metadata without sending a PATCH. Saving tuning in `#voices` opens a confirmation because it updates the voice default for future generations; segment-level tuning in `#generate` remains a one-off override unless you explicitly save generated segment tuning back to that voice.
 
+User Tuning Presets are named tuning profiles you create from the active Voice Tuning draft. When `DATABASE_URL` is configured, they are stored by the backend and survive browser resets. Without backend persistence, they use browser-local storage as a transition fallback. Applying a user preset selects its settings for generation, and manual tuning edits clear that selection until you save or update a preset again. Generated Audio metadata keeps a snapshot of the preset id, name, provider, voice preset, and settings used for that generation.
+
 Existing voices or older manifests without an assignment default to Standard Narration. Existing voices without saved provider tuning behave as before and resolve tuning from their preset assignment.
 
 ## Multi-Voice Generation
