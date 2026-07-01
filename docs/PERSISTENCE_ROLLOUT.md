@@ -32,6 +32,9 @@ All PRs start as Draft and move to Open only after their validation gates pass.
    - Validation: file/database consistency tests, archive API route tests, idempotency/conflict tests, `make check`, `make test-postgres`.
 4. Frontend Archive And Migration UI
    - Migrate generated-audio archive calls from IndexedDB source-of-truth to server APIs while retaining IndexedDB as cache/draft buffer.
+   - Runtime behavior: the frontend probes `GET /api/generated-audio`; a valid archive response activates server mode, while `503`, `404`, fetch failure, or an incomplete transition response keeps browser IndexedDB mode.
+   - Migration behavior: existing IndexedDB records upload by stable id; same id plus same hash is marked imported, same id plus different hash is reported as a conflict and not retried, and intentionally removed/cleared ids are remembered so browser records do not resurrect server-cleared items.
+   - Browser data is never deleted automatically during server import. Remove/Clear All mutate the active source of truth, while IndexedDB remains local fallback/migration state.
    - Validation: hook/component tests, migration conflict tests, browser smoke, `make check`.
 5. Preference And Settings Persistence
    - Move durable app/provider preferences behind backend settings APIs and add any needed settings placement in `#provider` or a dedicated `#settings` section.

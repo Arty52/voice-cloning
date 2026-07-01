@@ -199,7 +199,7 @@ All fields are optional, but at least one of `name`, `voicePresetId`, or `voiceS
 
 ## Generated Audio Archive
 
-Generated-audio archive routes require backend persistence. When `DATABASE_URL` is blank, these routes return `503` and the frontend can continue using IndexedDB as a local draft/cache store. Archive files are stored under `GENERATED_AUDIO_STORAGE_DIR`; clients never send file paths.
+Generated-audio archive routes require backend persistence. When `DATABASE_URL` is blank, these routes return `503` and the frontend continues using IndexedDB as a local draft/cache store. Archive files are stored under `GENERATED_AUDIO_STORAGE_DIR`; clients never send file paths. The frontend treats a valid `GET /api/generated-audio` payload as server archive availability, then imports existing IndexedDB records idempotently by stable id without deleting browser data.
 
 `GET /api/generated-audio` returns saved metadata and current usage:
 
