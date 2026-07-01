@@ -53,7 +53,7 @@ class SqlAlchemySampleProcessingJobRepository:
             record = SampleProcessingJobRecord(id=job.id, request_payload={})
             self.session.add(record)
         record.status = job.status
-        record.source_voice_id = _source_voice_id(job)
+        record.source_voice_id = job.source_voice_id
         record.created_at = _datetime_from_iso(job.created_at)
         record.updated_at = _datetime_from_iso(job.updated_at)
         record.request_payload = _sample_processing_request_payload(job)
@@ -147,6 +147,7 @@ def _sample_processing_request_payload(job: SampleProcessingJob) -> dict[str, An
         "processingPresetId": job.processing_preset_id,
         "sourcePreference": job.source_preference,
         "sourceSha256": job.source_sha256,
+        "sourceVoiceId": job.source_voice_id,
         "workflowMode": job.workflow_mode,
     }
 
@@ -160,12 +161,6 @@ def _speech_generation_request_payload(job: SpeechJob) -> dict[str, Any]:
         "text": job.text,
         "voiceSettings": job.voice_settings,
     }
-
-
-def _source_voice_id(job: SampleProcessingJob) -> str | None:
-    if job.source_preference == "active":
-        return None
-    return None
 
 
 def _json_payload(job: SampleProcessingJob | SpeechJob) -> dict[str, Any]:
@@ -209,6 +204,7 @@ def _sample_processing_job_from_payload(payload: Mapping[str, Any]) -> SamplePro
         source_preference=cast(SampleProcessingSourcePreference, payload["source_preference"]),
         created_at=str(payload["created_at"]),
         updated_at=str(payload["updated_at"]),
+        source_voice_id=_optional_str(payload.get("source_voice_id")),
         error=_optional_str(payload.get("error")),
         result=_sample_processing_result_from_payload(payload.get("result")),
         engine=_optional_str(payload.get("engine")),

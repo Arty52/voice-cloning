@@ -318,6 +318,7 @@ class SampleProcessingJob:
     source_preference: SampleProcessingSourcePreference
     created_at: str
     updated_at: str
+    source_voice_id: str | None = None
     error: str | None = None
     result: SampleProcessingJobResult | None = None
     engine: str | None = None

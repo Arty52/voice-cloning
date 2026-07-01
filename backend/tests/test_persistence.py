@@ -170,6 +170,7 @@ def test_job_repositories_persist_snapshots_and_mark_interrupted() -> None:
         source_preference="active",
         created_at="2026-07-01T12:00:00+00:00",
         updated_at="2026-07-01T12:00:00+00:00",
+        source_voice_id="voice-clone-01",
         steps=(
             SampleProcessingJobStep(
                 id="sample-job",
@@ -210,6 +211,8 @@ def test_job_repositories_persist_snapshots_and_mark_interrupted() -> None:
         assert SqlAlchemySampleProcessingJobRepository(session).get_job("sample-job") == sample_job
         assert SqlAlchemySpeechGenerationJobRepository(session).get_job("speech-job") == speech_job
         assert session.get(SampleProcessingJobRecord, "sample-job").request_payload["operationId"] == "trimSilence"
+        assert session.get(SampleProcessingJobRecord, "sample-job").request_payload["sourceVoiceId"] == "voice-clone-01"
+        assert session.get(SampleProcessingJobRecord, "sample-job").source_voice_id == "voice-clone-01"
         assert session.get(SpeechGenerationJobRecord, "speech-job").request_payload["modelId"] == "eleven_multilingual_v2"
         assert SqlAlchemySampleProcessingJobRepository(session).mark_active_jobs_interrupted() == 1
         assert SqlAlchemySpeechGenerationJobRepository(session).mark_active_jobs_interrupted() == 1

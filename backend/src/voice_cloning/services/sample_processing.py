@@ -451,6 +451,7 @@ class SampleProcessingService:
                 source_preference=resolved_source_preference,
                 created_at=now,
                 updated_at=now,
+                source_voice_id=_normalized_source_voice_id(source_voice_id),
                 engine=self.processor.engine_name_for_operation(first_step.operation.id),
                 processing_preset_id=first_step.processing_preset_id,
                 processing_preset_label=first_step.processing_preset_label,
@@ -544,6 +545,7 @@ class SampleProcessingService:
                 source_preference=source_preference,
                 created_at=now,
                 updated_at=now,
+                source_voice_id=_normalized_source_voice_id(source_voice_id),
                 engine=step.engine,
                 workflow_mode="single",
                 steps=(step,),
@@ -2289,6 +2291,10 @@ def _normalize_source_preference(value: str | None) -> SampleProcessingSourcePre
     if normalized in {"original", "active"}:
         return "active" if normalized == "active" else "original"
     raise SampleProcessingServiceError("Source preference must be original or active.", 422)
+
+
+def _normalized_source_voice_id(value: str | None) -> str | None:
+    return (value or "").strip() or None
 
 
 def _normalize_processing_preset(
