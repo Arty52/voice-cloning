@@ -2,6 +2,7 @@ import {
   GeneratedAudioStorageQuotaError,
   type StoredGeneratedAudio,
 } from "@/lib/generated-audio-storage"
+import type { ArchivedGeneratedAudio } from "@/lib/generated-audio-archive-api"
 import { formatCompactBytes, formatExactBytes, formatGeneratedAudioTime } from "@/lib/formatters"
 import type { GeneratedResult } from "@/types"
 
@@ -33,9 +34,32 @@ export function storedAudioToResult(record: StoredGeneratedAudio): GeneratedResu
   }
 }
 
+export function archivedAudioToResult(record: ArchivedGeneratedAudio): GeneratedResult {
+  return {
+    appVoiceId: record.appVoiceId,
+    cacheState: record.cacheState,
+    characterCount: record.characterCount,
+    contentType: record.contentType,
+    createdAt: record.createdAt,
+    generatedAt: formatGeneratedAudioTime(record.createdAt),
+    generationElapsedMs: record.generationElapsedMs ?? null,
+    id: record.id,
+    modelId: record.modelId,
+    multiVoiceMetadata: record.multiVoiceMetadata ?? null,
+    requestId: record.requestId,
+    sizeBytes: record.sizeBytes,
+    tuningMetadata: record.tuningMetadata ?? null,
+    url: record.audioUrl,
+    voiceId: record.voiceId,
+    voiceName: record.voiceName,
+  }
+}
+
 export function revokeGeneratedAudioUrls(items: GeneratedResult[]) {
   for (const item of items) {
-    URL.revokeObjectURL(item.url)
+    if (item.url.startsWith("blob:")) {
+      URL.revokeObjectURL(item.url)
+    }
   }
 }
 
@@ -62,12 +86,12 @@ export function buildGeneratedAudioSizeDisplay(sizeBytes: number): GeneratedAudi
   }
 }
 
-export function formatGeneratedAudioStorageError(value: unknown) {
+export function formatGeneratedAudioStorageError(value: unknown, storageLabel = "browser storage") {
   if (value instanceof GeneratedAudioStorageQuotaError) {
-    return "Generated audio is playable now, but it is larger than the active browser storage cap and was not saved."
+    return "Generated audio is playable now, but it is larger than the active storage cap and was not saved."
   }
   if (value instanceof Error) {
-    return `Generated audio is playable now, but browser storage could not save it: ${value.message}`
+    return `Generated audio is playable now, but ${storageLabel} could not save it: ${value.message}`
   }
-  return "Generated audio is playable now, but browser storage could not save it."
+  return `Generated audio is playable now, but ${storageLabel} could not save it.`
 }
