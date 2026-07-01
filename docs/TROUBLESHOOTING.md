@@ -44,6 +44,8 @@ make test-postgres-migrations
 
 If port `5432` is already in use, set `POSTGRES_PORT` in `.env` before running compose.
 
+When `DATABASE_URL` is set, the backend uses Postgres for voice library metadata. Existing `assets/voices/voices.json` entries are imported on startup, but sample files still need to exist under `VOICE_ASSETS_DIR`. If imported voices are missing, check the backend logs for skipped manifest entries and verify the referenced files are present.
+
 ## ElevenLabs Quota Or Billing Errors
 
 Check your ElevenLabs account subscription and usage. Shorter text and lower-cost models can reduce credit usage. The app links to ElevenLabs API request analytics from the Cost & Quota panel for quick inspection.

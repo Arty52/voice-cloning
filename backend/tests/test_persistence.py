@@ -1,15 +1,17 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import inspect, text
+from fastapi.testclient import TestClient
+from sqlalchemy import event, inspect, text
 from sqlalchemy.engine import URL, make_url
 
-from voice_cloning.api.app import create_app
 from voice_cloning.config import Settings
+from voice_cloning.models import VoiceAsset, VoiceProcessingStep, VoiceSample
 from voice_cloning.persistence.database import (
     Base,
     create_database_engine,
@@ -21,6 +23,11 @@ from voice_cloning.persistence.file_store import (
     create_generated_audio_file_store,
 )
 from voice_cloning.persistence.models import AppSettingRecord
+from voice_cloning.persistence.postgres_voice_library import PostgresVoiceLibrary
+from voice_cloning.persistence.voices import SqlAlchemyVoiceRepository
+from voice_cloning.samples import sample_hash
+from voice_cloning.voice_library import VoiceLibrary
+from voice_cloning.voice_library_factory import create_voice_library
 
 
 def make_settings(tmp_path: Path) -> Settings:
@@ -86,6 +93,8 @@ def test_settings_resolves_relative_storage_env_paths_from_app_root(
 
 
 def test_create_app_creates_runtime_storage_roots(tmp_path: Path) -> None:
+    from voice_cloning.api.app import create_app
+
     settings = make_settings(tmp_path)
 
     create_app(settings=settings)
@@ -128,6 +137,329 @@ def test_unit_of_work_commits_and_rolls_back() -> None:
 
     with session_factory() as session:
         assert session.get(AppSettingRecord, "failed") is None
+
+
+def test_sqlalchemy_voice_repository_roundtrips_voice_asset() -> None:
+    engine = create_database_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session_factory = create_session_factory(engine)
+    step = VoiceProcessingStep(
+        id="step-one",
+        label="Prepare Voice",
+        operation_id="prepareVoice",
+        created_at="2026-07-01T12:00:00+00:00",
+        source_sha256="source",
+        result_sha256="result",
+        engine="ffmpeg",
+        processing_preset_id="trimBalanced",
+        processing_preset_label="Balanced",
+    )
+    asset = VoiceAsset(
+        id="narrator",
+        name="Narrator",
+        file_path="narrator.wav",
+        content_type="audio/wav",
+        sha256="abc123",
+        source="upload",
+        created_at="2026-07-01T12:00:00+00:00",
+        voice_preset_id="animatedDialogue",
+        voice_settings_by_provider={"elevenlabs": {"speed": 1.05}},
+        processing_steps=(step,),
+    )
+
+    with unit_of_work(session_factory) as session:
+        repository = SqlAlchemyVoiceRepository(session)
+        repository.save_asset(asset)
+        repository.set_default_voice_id(asset.id)
+
+    with unit_of_work(session_factory) as session:
+        repository = SqlAlchemyVoiceRepository(session)
+        stored = repository.get_asset("narrator")
+
+    assert stored == asset
+
+
+def test_create_voice_library_uses_manifest_when_database_url_is_blank(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+
+    voice_library = create_voice_library(settings)
+
+    assert type(voice_library) is VoiceLibrary
+
+
+def test_postgres_voice_library_imports_manifest_idempotently(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    library = make_postgres_voice_library(settings)
+    write_manifest_voice(settings, "narrator", b"voice-one")
+
+    first_report = library.import_manifest()
+    second_report = library.import_manifest()
+
+    assert first_report.imported == 1
+    assert first_report.default_voice_id == "narrator"
+    assert second_report.already_imported == 1
+    assert library.list_payload()["defaultVoiceId"] == "narrator"
+    assert [voice["id"] for voice in library.list_payload()["voices"]] == ["narrator"]
+
+
+def test_postgres_voice_library_import_renames_hash_conflict(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    library = make_postgres_voice_library(settings)
+    write_manifest_voice(settings, "narrator", b"voice-one")
+    existing = VoiceAsset(
+        id="narrator",
+        name="Existing Narrator",
+        file_path="existing.wav",
+        content_type="audio/wav",
+        sha256="different",
+        source="upload",
+        created_at="2026-07-01T12:00:00+00:00",
+    )
+    (settings.voice_assets_dir / "existing.wav").write_bytes(b"old")
+    with unit_of_work(library.session_factory) as session:
+        SqlAlchemyVoiceRepository(session).save_asset(existing)
+
+    report = library.import_manifest()
+
+    renamed_id = f"narrator-import-{sample_hash(b'voice-one')[:8]}"
+    assert report.renamed_conflicts == 1
+    assert report.default_voice_id == renamed_id
+    assert sorted(asset.id for asset in library.list_assets()) == ["narrator", renamed_id]
+    assert (settings.voice_assets_dir / f"{renamed_id}.mp3").read_bytes() == b"voice-one"
+
+    library.update_asset(renamed_id, name="Edited Import")
+    second_report = library.import_manifest()
+
+    assert second_report.already_imported == 1
+    assert library.get_asset(renamed_id).name == "Edited Import"
+
+
+def test_postgres_voice_library_import_drops_conflict_source_path_outside_assets(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    library = make_postgres_voice_library(settings)
+    secret_path = tmp_path / "secret.wav"
+    secret_path.write_bytes(b"secret")
+    write_manifest_voice(
+        settings,
+        "narrator",
+        b"voice-one",
+        extra_voice_fields={
+            "sourceFilePath": "../../secret.wav",
+            "sourceContentType": "audio/wav",
+            "sourceSha256": sample_hash(b"secret"),
+        },
+    )
+    existing = VoiceAsset(
+        id="narrator",
+        name="Existing Narrator",
+        file_path="existing.wav",
+        content_type="audio/wav",
+        sha256="different",
+        source="upload",
+        created_at="2026-07-01T12:00:00+00:00",
+    )
+    (settings.voice_assets_dir / "existing.wav").write_bytes(b"old")
+    with unit_of_work(library.session_factory) as session:
+        SqlAlchemyVoiceRepository(session).save_asset(existing)
+
+    library.import_manifest()
+
+    renamed_id = f"narrator-import-{sample_hash(b'voice-one')[:8]}"
+    imported = library.get_asset(renamed_id)
+    assert imported.source_file_path is None
+    assert imported.source_content_type is None
+    assert imported.source_sha256 is None
+    assert secret_path.read_bytes() == b"secret"
+
+
+def test_postgres_voice_library_import_preserves_database_default(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    library = make_postgres_voice_library(settings)
+    write_manifest_voice(settings, "narrator", b"voice-one")
+    library.import_manifest()
+    other = library.add_processed_sample(
+        "Other Voice",
+        VoiceSample(content=b"voice-two", filename="other.wav", content_type="audio/wav", sha256=sample_hash(b"voice-two")),
+        (),
+    )
+    library.set_default(other.id)
+
+    report = library.import_manifest()
+
+    assert report.already_imported == 1
+    assert report.default_voice_id == other.id
+    assert library.list_payload()["defaultVoiceId"] == other.id
+
+
+def test_postgres_voice_library_removes_staged_file_when_create_move_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import voice_cloning.persistence.postgres_voice_library as postgres_voice_library
+
+    settings = make_settings(tmp_path)
+    library = make_postgres_voice_library(settings)
+
+    def fail_move(_source: str, _destination: str) -> None:
+        raise RuntimeError("move failed")
+
+    monkeypatch.setattr(postgres_voice_library.shutil, "move", fail_move)
+
+    with pytest.raises(RuntimeError, match="move failed"):
+        library.add_processed_sample(
+            "Narrator",
+            VoiceSample(
+                content=b"voice-one",
+                filename="narrator.wav",
+                content_type="audio/wav",
+                sha256=sample_hash(b"voice-one"),
+            ),
+            (),
+        )
+
+    assert [path for path in (settings.voice_assets_dir / ".staged").glob("**/*") if path.is_file()] == []
+
+
+def test_sqlalchemy_voice_repository_lists_processing_steps_without_n_plus_one_queries() -> None:
+    engine = create_database_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session_factory = create_session_factory(engine)
+    step = VoiceProcessingStep(
+        id="trim",
+        label="Trim Silence",
+        operation_id="trimSilence",
+        created_at="2026-07-01T12:00:00+00:00",
+        source_sha256="source",
+        result_sha256="result",
+        engine="ffmpeg",
+    )
+    with unit_of_work(session_factory) as session:
+        repository = SqlAlchemyVoiceRepository(session)
+        repository.save_asset(
+            VoiceAsset(
+                id="first",
+                name="First",
+                file_path="first.wav",
+                content_type="audio/wav",
+                sha256="first",
+                source="upload",
+                created_at="2026-07-01T12:00:00+00:00",
+                processing_steps=(step,),
+            )
+        )
+        repository.save_asset(
+            VoiceAsset(
+                id="second",
+                name="Second",
+                file_path="second.wav",
+                content_type="audio/wav",
+                sha256="second",
+                source="upload",
+                created_at="2026-07-01T12:00:01+00:00",
+                processing_steps=(step,),
+            )
+        )
+
+    select_count = 0
+
+    def count_selects(_connection: object, _cursor: object, statement: str, *_args: object) -> None:
+        nonlocal select_count
+        if statement.lstrip().lower().startswith("select"):
+            select_count += 1
+
+    event.listen(engine, "before_cursor_execute", count_selects)
+    try:
+        with unit_of_work(session_factory) as session:
+            assets = SqlAlchemyVoiceRepository(session).list_assets()
+    finally:
+        event.remove(engine, "before_cursor_execute", count_selects)
+
+    assert [asset.id for asset in assets] == ["first", "second"]
+    assert [len(asset.processing_steps) for asset in assets] == [1, 1]
+    assert select_count == 2
+
+
+def test_postgres_voice_library_restores_file_when_delete_rolls_back(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = make_settings(tmp_path)
+    library = make_postgres_voice_library(settings)
+    asset = library.add_processed_sample(
+        "Narrator",
+        VoiceSample(content=b"voice-one", filename="narrator.wav", content_type="audio/wav", sha256=sample_hash(b"voice-one")),
+        (),
+    )
+    asset_path = library.resolve_asset_path(asset)
+    original_delete = SqlAlchemyVoiceRepository.delete_asset
+
+    def fail_delete(self: SqlAlchemyVoiceRepository, voice_id: str) -> None:
+        original_delete(self, voice_id)
+        raise RuntimeError("database failure")
+
+    monkeypatch.setattr(SqlAlchemyVoiceRepository, "delete_asset", fail_delete)
+
+    with pytest.raises(RuntimeError):
+        library.delete_asset(asset.id)
+
+    assert asset_path.exists()
+    assert library.get_asset(asset.id).id == asset.id
+
+
+def test_voice_routes_use_postgres_voice_library(tmp_path: Path) -> None:
+    from voice_cloning.api.app import create_app
+
+    settings = make_settings(tmp_path)
+    library = make_postgres_voice_library(settings)
+    library.add_processed_sample(
+        "Narrator",
+        VoiceSample(content=b"voice-one", filename="narrator.wav", content_type="audio/wav", sha256=sample_hash(b"voice-one")),
+        (),
+    )
+    client = TestClient(create_app(settings=settings, voice_library=library))
+
+    response = client.get("/api/voices")
+
+    assert response.status_code == 200
+    assert response.json()["defaultVoiceId"] == "narrator"
+    assert response.json()["voices"][0]["id"] == "narrator"
+
+
+def make_postgres_voice_library(settings: Settings) -> PostgresVoiceLibrary:
+    database_path = settings.app_root / f"test-{uuid4().hex}.db"
+    engine = create_database_engine(f"sqlite+pysqlite:///{database_path}")
+    Base.metadata.create_all(engine)
+    return PostgresVoiceLibrary(settings, create_session_factory(engine))
+
+
+def write_manifest_voice(
+    settings: Settings,
+    voice_id: str,
+    content: bytes,
+    *,
+    extra_voice_fields: dict[str, object] | None = None,
+) -> None:
+    settings.voice_assets_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"{voice_id}.mp3"
+    (settings.voice_assets_dir / filename).write_bytes(content)
+    payload = {
+        "version": 1,
+        "defaultVoiceId": voice_id,
+        "voices": [
+            {
+                "id": voice_id,
+                "name": "Narrator",
+                "filePath": filename,
+                "contentType": "audio/mpeg",
+                "sha256": sample_hash(content),
+                "source": "upload",
+                "createdAt": "2026-07-01T12:00:00+00:00",
+                **(extra_voice_fields or {}),
+            }
+        ],
+    }
+    settings.voice_manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    settings.voice_manifest_path.write_text(json.dumps(payload), encoding="utf-8")
 
 
 @pytest.mark.postgres
