@@ -149,6 +149,8 @@ When `DATABASE_URL` is configured, the backend archive API stores metadata in Po
 
 Optional server-side generated-audio export uses `GENERATED_AUDIO_EXPORT_DIR`. When it is unset, export status is unavailable and export actions return `503`; this is expected. When it is set, the backend writes mirror files under `GENERATED_AUDIO_EXPORT_DIR/Voice Clone Lab Archive/` and records durable export status in Postgres. The browser never sends local filesystem paths to these export routes.
 
+Browser folder export on `#archive` is a separate optional mirror target. It uses `showDirectoryPicker({ mode: "readwrite" })`, so unsupported browsers, insecure contexts, missing user activation, or denied permission can prevent selection or writing. The selected `FileSystemDirectoryHandle` and browser export ledger stay in IndexedDB. If permission is lost after reload, choose Refresh or retry the export action so the browser can ask for write access again.
+
 User Tuning Presets also require backend persistence for server-backed durability. If `/api/voice-tuning-presets` returns `503`, the UI keeps presets in browser-local storage for the current no-DB workflow. For a compose smoke check, create a preset in `#voices`, restart the API container, reload the browser, confirm the preset still appears, apply it, generate audio, and confirm the Generated Audio metadata shows the user preset snapshot.
 
 Remove containers and volumes:

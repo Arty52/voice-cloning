@@ -53,8 +53,17 @@ export function buildGeneratedAudioExportDescriptor(item: GeneratedAudioExportab
 }
 
 export function buildGeneratedAudioExportFilename(item: GeneratedAudioExportable): string {
+  return buildGeneratedAudioExportFilenameCandidates(item)[0]
+}
+
+export function buildGeneratedAudioExportFilenameCandidates(item: GeneratedAudioExportable): string[] {
   const descriptor = buildGeneratedAudioExportDescriptor(item)
-  return `${descriptor.compactCreatedAt}--${descriptor.voiceSlug}--${descriptor.modelSlug}--${descriptor.sha8}${descriptor.extension}`
+  const base = `${descriptor.compactCreatedAt}--${descriptor.voiceSlug}--${descriptor.modelSlug}--${descriptor.sha8}`
+  return [
+    `${base}${descriptor.extension}`,
+    `${base}--${descriptor.idSlug}${descriptor.extension}`,
+    ...Array.from({ length: 998 }, (_, index) => `${base}--${descriptor.idSlug}-${index + 2}${descriptor.extension}`),
+  ]
 }
 
 export function buildGeneratedAudioExportRelativePath(item: GeneratedAudioExportable): string {

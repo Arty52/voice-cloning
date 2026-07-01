@@ -71,6 +71,7 @@ http://localhost:6420
 - Server-side generated-audio archive files are stored under `GENERATED_AUDIO_STORAGE_DIR`, which defaults to ignored `storage/generated-audio/`.
 - When backend persistence is configured, generated-audio archive metadata is stored in Postgres and files stream from `GENERATED_AUDIO_STORAGE_DIR`. Browser IndexedDB remains the transition cache/draft store.
 - Optional server-side generated-audio export is enabled only by setting `GENERATED_AUDIO_EXPORT_DIR`; export actions mirror canonical archive files into that backend-owned root and never accept browser-submitted filesystem paths.
+- Optional browser folder export is a separate mirror target from `#archive`. It uses the browser File System Access API, stores only the selected directory handle in IndexedDB, and may require a supported secure-context browser to re-grant write permission.
 - Non-secret app preferences such as selected model, Natural Handoffs, and generated-audio storage limit can persist through the backend settings API when `DATABASE_URL` is configured. Provider API keys are not persisted in Postgres.
 - Speech job output, optional sample-processing output, separated stems, and downloaded model data are runtime-only and must stay out of git.
 - The optional live smoke test calls ElevenLabs, may consume credits, and may create or reuse a cloned voice.
@@ -82,7 +83,7 @@ The Voice Studio opens on `Overview`. Use the sidebar to move between stable wor
 1. `Prepare Audio` (`#prepare`, optional step 0): choose Add Voice for ready samples or Process Source Media for cleanup, trimming, and speaker extraction before saving.
 2. `Voices` (`#voices`, step 1): select, preview, rename, and manage local voice samples, then save default voice tuning for future generations.
 3. `Generate Speech` (`#generate`, step 2): enter text, optionally assign selected text spans to saved voices, generate speech with saved voice defaults, play combined and segment results, and regenerate individual multi-voice segments with contextual overrides.
-4. `Generated Audio` (`#archive`, optional): review, download, remove, or clear saved generated audio, including Multi-Voice metadata for combined speech jobs. With backend persistence configured, the archive streams from the server; otherwise it falls back to browser IndexedDB.
+4. `Generated Audio` (`#archive`, optional): review, download, remove, clear, server-export, or browser-mirror saved generated audio, including Multi-Voice metadata for combined speech jobs. With backend persistence configured, the archive streams from the server; otherwise it falls back to browser IndexedDB.
 5. `Provider & Usage` (`#provider`): add browser-local provider keys, confirm `.env` fallback, choose models, and review quota/cost metadata.
 
 ## Optional Sample Processing

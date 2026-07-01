@@ -290,14 +290,14 @@ async function clearGeneratedAudioRecords(): Promise<void> {
   }
 }
 
-function idbRequest<T>(request: IDBRequest<T>): Promise<T> {
+export function idbRequest<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     request.onerror = () => reject(request.error ?? new Error("Generated audio storage request failed."))
     request.onsuccess = () => resolve(request.result)
   })
 }
 
-function idbTransaction(transaction: IDBTransaction): Promise<void> {
+export function idbTransaction(transaction: IDBTransaction): Promise<void> {
   return new Promise((resolve, reject) => {
     transaction.onabort = () => reject(transaction.error ?? new Error("Generated audio storage transaction aborted."))
     transaction.onerror = () => reject(transaction.error ?? new Error("Generated audio storage transaction failed."))

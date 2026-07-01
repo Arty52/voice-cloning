@@ -36,6 +36,7 @@ import {
   loadGeneratedAudioServerExportStatus,
   type GeneratedAudioServerExportStatus,
 } from "@/lib/generated-audio-export-api"
+import { useArchiveExportDirectory } from "@/hooks/use-archive-export-directory"
 import {
   archivedAudioToResult,
   createTemporaryGeneratedAudioId,
@@ -81,6 +82,7 @@ export function useGeneratedAudioLibrary() {
   const generatedAudioMutationIdRef = useRef(0)
   const serverExportMutationIdRef = useRef(0)
   const persistenceModeRef = useRef<GeneratedAudioPersistenceMode>("browser")
+  const browserExport = useArchiveExportDirectory(generatedAudioItems)
 
   useEffect(() => {
     let isMounted = true
@@ -435,6 +437,7 @@ export function useGeneratedAudioLibrary() {
     serverExportMutation,
     serverExportStatus,
     storageLimitBytes,
+    ...browserExport,
   }
 }
 

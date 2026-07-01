@@ -47,7 +47,7 @@ describe("GeneratedAudioPanel pending mutations", () => {
     expect(screen.queryByLabelText(/path/i)).not.toBeInTheDocument()
 
     await user.click(screen.getByRole("button", { name: "Export All" }))
-    await user.click(screen.getByRole("button", { name: "Refresh" }))
+    await user.click(screen.getAllByRole("button", { name: "Refresh" })[0])
 
     expect(onServerExportAll).toHaveBeenCalledTimes(1)
     expect(onServerExportStatusRefresh).toHaveBeenCalledTimes(1)
@@ -120,6 +120,68 @@ describe("GeneratedAudioPanel pending mutations", () => {
     await user.click(screen.getByRole("button", { name: /retry export generated audio for default voice/i }))
     expect(onServerExport).toHaveBeenCalledWith("generated-audio")
   })
+
+  it("renders browser export folder controls without backend path input", async () => {
+    const user = userEvent.setup()
+    const onBrowserExport = vi.fn()
+    const onBrowserExportAll = vi.fn()
+    const onBrowserExportFolderSelect = vi.fn()
+
+    renderGeneratedAudioPanel({
+      allItems: [generatedAudioItem],
+      browserExportPermission: "granted",
+      browserExportSupported: true,
+      browserExportTarget: browserTarget,
+      items: [generatedAudioItem],
+      onBrowserExport,
+      onBrowserExportAll,
+      onBrowserExportFolderSelect,
+    })
+
+    expect(screen.getByText("Ready")).toBeInTheDocument()
+    expect(screen.getByText(/Exports: 0 mirrored/i)).toBeInTheDocument()
+    expect(screen.getByText(/New generated audio is not written here automatically/i)).toBeInTheDocument()
+    expect(screen.getByText(/use Mirror All or Browser Export to copy it/i)).toBeInTheDocument()
+    expect(screen.queryByLabelText(/path/i)).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: "Mirror All" }))
+    await user.click(screen.getByRole("button", { name: /browser export generated audio for default voice/i }))
+
+    expect(onBrowserExportAll).toHaveBeenCalledTimes(1)
+    expect(onBrowserExport).toHaveBeenCalledWith(generatedAudioItem)
+    expect(onBrowserExportFolderSelect).not.toHaveBeenCalled()
+  })
+
+  it("shows browser export retry state from the local ledger", async () => {
+    const user = userEvent.setup()
+    const onBrowserExport = vi.fn()
+
+    renderGeneratedAudioPanel({
+      allItems: [generatedAudioItem],
+      browserExportLedger: [
+        {
+          audioId: "generated-audio",
+          exportedAt: null,
+          filename: "generated-audio/2026/07/generated-audio.mp3",
+          key: "handle-1:generated-audio:sha-123",
+          lastError: "Permission denied.",
+          sha256: "sha-123",
+          status: "failed",
+          targetHandleId: "handle-1",
+          updatedAt: "2026-07-01T18:45:22.000Z",
+        },
+      ],
+      browserExportPermission: "granted",
+      browserExportSupported: true,
+      browserExportTarget: browserTarget,
+      items: [generatedAudioItem],
+      onBrowserExport,
+    })
+
+    expect(screen.getByText("Browser Export Failed")).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: /retry browser export generated audio for default voice/i }))
+    expect(onBrowserExport).toHaveBeenCalledWith(generatedAudioItem)
+  })
 })
 
 const generatedAudioItem: GeneratedResult = {
@@ -142,14 +204,34 @@ const generatedAudioItem: GeneratedResult = {
   voiceName: "Default Voice",
 }
 
+const browserTarget = {
+  handle: {} as never,
+  handleId: "handle-1",
+  id: "selected-browser-directory",
+  name: "Exports",
+  selectedAt: "2026-07-01T18:45:22.000Z",
+  updatedAt: "2026-07-01T18:45:22.000Z",
+}
+
 type RenderGeneratedAudioPanelProps = Partial<ComponentProps<typeof GeneratedAudioPanel>>
 
 function renderGeneratedAudioPanel(overrides: RenderGeneratedAudioPanelProps = {}) {
   const props: ComponentProps<typeof GeneratedAudioPanel> = {
     allItems: [],
+    browserExportError: null,
+    browserExportLedger: [],
+    browserExportMutation: null,
+    browserExportPermission: null,
+    browserExportSupported: false,
+    browserExportTarget: null,
     items: [],
     libraryStatus: "success",
     mutationStatus: null,
+    onBrowserExport: vi.fn(),
+    onBrowserExportAll: vi.fn(),
+    onBrowserExportFolderForget: vi.fn(),
+    onBrowserExportFolderRefresh: vi.fn(),
+    onBrowserExportFolderSelect: vi.fn(),
     onClear: vi.fn(),
     onDelete: vi.fn(),
     onServerExport: vi.fn(),

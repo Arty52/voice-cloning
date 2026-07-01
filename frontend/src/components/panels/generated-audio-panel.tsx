@@ -1,4 +1,4 @@
-import { CircleHelp, HardDrive, RefreshCw, Trash2, Upload } from "lucide-react"
+import { CircleHelp, FolderUp, HardDrive, RefreshCw, Trash2, Upload } from "lucide-react"
 
 import { GeneratedAudioItem } from "@/components/generated-audio-item"
 import { Badge } from "@/components/ui/badge"
@@ -13,8 +13,14 @@ import {
   type GeneratedAudioUsage,
 } from "@/lib/generated-audio-storage"
 import type { GeneratedAudioServerExportItem, GeneratedAudioServerExportStatus } from "@/lib/generated-audio-export-api"
+import type { BrowserArchiveExportLedgerEntry } from "@/lib/generated-audio-export-ledger"
+import type {
+  BrowserArchiveExportPermissionState,
+  BrowserArchiveExportTargetRecord,
+} from "@/lib/generated-audio-export-target"
 import { isTemporaryGeneratedAudioId } from "@/lib/generated-audio-view-model"
 import { formatBytes, formatGeneratedAudioCountBadge } from "@/lib/formatters"
+import type { BrowserArchiveExportMutation } from "@/hooks/use-archive-export-directory"
 import type {
   GeneratedAudioMutation,
   GeneratedAudioPersistenceMode,
@@ -27,6 +33,17 @@ type GeneratedAudioPanelProps = {
   items: GeneratedResult[]
   libraryStatus: AsyncStatus
   mutationStatus: GeneratedAudioMutation | null
+  browserExportError: string | null
+  browserExportLedger: BrowserArchiveExportLedgerEntry[]
+  browserExportMutation: BrowserArchiveExportMutation | null
+  browserExportPermission: BrowserArchiveExportPermissionState | null
+  browserExportSupported: boolean
+  browserExportTarget: BrowserArchiveExportTargetRecord | null
+  onBrowserExport: (item: GeneratedResult) => void
+  onBrowserExportAll: () => void
+  onBrowserExportFolderForget: () => void
+  onBrowserExportFolderRefresh: () => void
+  onBrowserExportFolderSelect: () => void
   onClear: () => void
   onDelete: (id: string) => void
   onServerExport: (id: string) => void
@@ -47,6 +64,17 @@ export function GeneratedAudioPanel({
   items,
   libraryStatus,
   mutationStatus,
+  browserExportError,
+  browserExportLedger,
+  browserExportMutation,
+  browserExportPermission,
+  browserExportSupported,
+  browserExportTarget,
+  onBrowserExport,
+  onBrowserExportAll,
+  onBrowserExportFolderForget,
+  onBrowserExportFolderRefresh,
+  onBrowserExportFolderSelect,
   onClear,
   onDelete,
   onServerExport,
@@ -81,6 +109,10 @@ export function GeneratedAudioPanel({
   const serverExportAvailable = serverArchiveMode && serverExportStatus?.available === true
   const isServerExportBusy = serverExportMutation !== null
   const isServerExportDisabled = !serverExportAvailable || isServerExportBusy || isBusy
+  const isBrowserExportBusy = browserExportMutation !== null
+  const isBrowserExportReady = browserExportSupported && browserExportTarget !== null
+  const isBrowserExportWritable = isBrowserExportReady && browserExportPermission !== "denied"
+  const isBrowserExportDisabled = !isBrowserExportReady || isBrowserExportBusy || isBusy
 
   return (
     <section aria-busy={isBusy} className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5">
@@ -186,6 +218,72 @@ export function GeneratedAudioPanel({
         ) : null}
       </div>
 
+      <div className="mb-4 rounded-md border border-border bg-background/60 p-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <FolderUp aria-hidden="true" className="size-4 text-primary" />
+              Browser Export Folder
+              <Badge variant={isBrowserExportWritable ? "accent" : "secondary"}>
+                {browserExportBadgeLabel(browserExportSupported, browserExportTarget, browserExportPermission)}
+              </Badge>
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {browserExportSummary(browserExportSupported, browserExportTarget, browserExportPermission, browserExportLedger)}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {browserExportWriteTiming(browserExportSupported, browserExportTarget)}
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              disabled={!browserExportSupported || isBrowserExportBusy || isLibraryLoading}
+              onClick={onBrowserExportFolderSelect}
+              size="sm"
+              type="button"
+              variant="secondary"
+            >
+              <FolderUp aria-hidden="true" className="size-4" />
+              Select Folder
+            </Button>
+            <Button
+              disabled={!browserExportTarget || isBrowserExportBusy || isLibraryLoading}
+              onClick={onBrowserExportFolderRefresh}
+              size="sm"
+              type="button"
+              variant="secondary"
+            >
+              <RefreshCw aria-hidden="true" className="size-4" />
+              Refresh
+            </Button>
+            <Button
+              disabled={!browserExportTarget || isBrowserExportBusy || isLibraryLoading}
+              onClick={onBrowserExportFolderForget}
+              size="sm"
+              type="button"
+              variant="secondary"
+            >
+              Forget
+            </Button>
+            <Button
+              disabled={isBrowserExportDisabled || !hasGeneratedAudio}
+              onClick={onBrowserExportAll}
+              size="sm"
+              type="button"
+              variant="secondary"
+            >
+              <FolderUp aria-hidden="true" className="size-4" />
+              {browserExportMutation === "export-all" ? "Mirroring" : "Mirror All"}
+            </Button>
+          </div>
+        </div>
+        {browserExportError ? (
+          <div className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm" role="alert">
+            {browserExportError}
+          </div>
+        ) : null}
+      </div>
+
       {isLibraryLoading ? (
         <GeneratedAudioSkeletonList />
       ) : (
@@ -201,11 +299,15 @@ export function GeneratedAudioPanel({
           {items.length > 0 ? (
             items.map((item) => (
               <GeneratedAudioItem
+                browserExportStatus={findBrowserExportStatus(item, browserExportLedger, browserExportTarget)}
+                isBrowserExportDisabled={isBrowserExportDisabled}
+                isBrowserExportPending={browserExportMutation === "export"}
                 isDeleteDisabled={mutationStatus === "delete"}
                 isServerExportDisabled={isServerExportDisabled || isTemporaryGeneratedAudioId(item.id)}
                 isServerExportPending={serverExportMutation === "export"}
                 item={item}
                 key={item.id}
+                onBrowserExport={isBrowserExportReady ? () => onBrowserExport(item) : undefined}
                 onDelete={onDelete}
                 onServerExport={serverArchiveMode ? onServerExport : undefined}
                 serverExportStatus={findServerExportStatus(item, serverExportStatus)}
@@ -238,6 +340,23 @@ function findServerExportStatus(
     }
   }
   return null
+}
+
+function findBrowserExportStatus(
+  item: GeneratedResult,
+  browserExportLedger: BrowserArchiveExportLedgerEntry[],
+  target: BrowserArchiveExportTargetRecord | null
+): BrowserArchiveExportLedgerEntry | null {
+  if (!target) {
+    return null
+  }
+  const itemStatuses = browserExportLedger.filter(
+    (status) => status.targetHandleId === target.handleId && status.audioId === item.id
+  )
+  if (item.sha256) {
+    return itemStatuses.find((status) => status.sha256 === item.sha256) ?? null
+  }
+  return itemStatuses[0] ?? null
 }
 
 function serverExportBadgeLabel(
@@ -306,6 +425,57 @@ function ExportTimingTooltip({ label, text }: { label: string; text: string }) {
       </TooltipContent>
     </Tooltip>
   )
+}
+
+function browserExportBadgeLabel(
+  supported: boolean,
+  target: BrowserArchiveExportTargetRecord | null,
+  permission: BrowserArchiveExportPermissionState | null
+) {
+  if (!supported) {
+    return "Unsupported"
+  }
+  if (!target) {
+    return "Not Selected"
+  }
+  if (permission === "denied") {
+    return "Permission Needed"
+  }
+  return "Ready"
+}
+
+function browserExportSummary(
+  supported: boolean,
+  target: BrowserArchiveExportTargetRecord | null,
+  permission: BrowserArchiveExportPermissionState | null,
+  ledger: BrowserArchiveExportLedgerEntry[]
+) {
+  if (!supported) {
+    return "Browser folder export requires File System Access support."
+  }
+  if (!target) {
+    return "No browser export folder selected."
+  }
+  if (permission === "denied") {
+    return "Permission is needed before mirroring generated audio."
+  }
+  const exportedCount = ledger.filter((item) => item.targetHandleId === target.handleId && item.status === "exported").length
+  const failedCount = ledger.filter((item) => item.targetHandleId === target.handleId && item.status === "failed").length
+  const targetLabel = target.name || "Selected Folder"
+  if (failedCount > 0) {
+    return `${targetLabel}: ${exportedCount} mirrored, ${failedCount} failed.`
+  }
+  return `${targetLabel}: ${exportedCount} mirrored.`
+}
+
+function browserExportWriteTiming(supported: boolean, target: BrowserArchiveExportTargetRecord | null) {
+  if (!supported) {
+    return "Browser folder mirroring is unavailable in this browser."
+  }
+  if (!target) {
+    return "Selecting a folder only sets the mirror target; it will not write future generated audio automatically."
+  }
+  return "New generated audio is not written here automatically; use Mirror All or Browser Export to copy it."
 }
 
 function GeneratedAudioSkeletonList() {
