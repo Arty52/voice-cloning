@@ -41,6 +41,8 @@ from .models import SampleProcessingJobRecord, SpeechGenerationJobRecord
 ACTIVE_JOB_STATUSES = {"pending", "running"}
 INTERRUPTED_STATUS = "interrupted"
 INTERRUPTED_MESSAGE = "Job was interrupted by application restart."
+NESTED_INTERRUPTED_STATUS = "error"
+_UNSET_RESULT_AUDIO_ID = object()
 
 
 class SqlAlchemySampleProcessingJobRepository:
@@ -94,14 +96,15 @@ class SqlAlchemySpeechGenerationJobRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
-    def save_job(self, job: SpeechJob, *, result_audio_id: str | None = None) -> None:
+    def save_job(self, job: SpeechJob, *, result_audio_id: str | None | object = _UNSET_RESULT_AUDIO_ID) -> None:
         record = self.session.get(SpeechGenerationJobRecord, job.id)
         if record is None:
             record = SpeechGenerationJobRecord(id=job.id, request_payload={})
             self.session.add(record)
         record.status = job.status
         record.provider_id = job.provider_id
-        record.result_audio_id = result_audio_id
+        if result_audio_id is not _UNSET_RESULT_AUDIO_ID:
+            record.result_audio_id = cast(str | None, result_audio_id)
         record.created_at = _datetime_from_iso(job.created_at)
         record.updated_at = _datetime_from_iso(job.updated_at)
         record.request_payload = _speech_generation_request_payload(job)
@@ -185,10 +188,32 @@ def _interrupted_result_payload(value: Any, updated_at: datetime, *, active_fiel
         next_job_payload["updated_at"] = _isoformat(updated_at)
         next_job_payload["error"] = INTERRUPTED_MESSAGE
         next_job_payload[active_field] = None
+        _mark_nested_items_interrupted(next_job_payload, "steps", updated_at)
+        _mark_nested_items_interrupted(next_job_payload, "segments", updated_at)
+        _mark_nested_items_interrupted(next_job_payload, "progress_phases", updated_at)
         result_payload["job"] = next_job_payload
     result_payload["interrupted"] = True
     result_payload["interruptedReason"] = INTERRUPTED_MESSAGE
     return result_payload
+
+
+def _mark_nested_items_interrupted(job_payload: dict[str, Any], field_name: str, updated_at: datetime) -> None:
+    items = job_payload.get(field_name)
+    if not isinstance(items, list | tuple):
+        return
+    interrupted_items: list[Any] = []
+    for item in items:
+        if not isinstance(item, Mapping):
+            interrupted_items.append(item)
+            continue
+        next_item = dict(item)
+        if next_item.get("status") in ACTIVE_JOB_STATUSES:
+            next_item["status"] = NESTED_INTERRUPTED_STATUS
+            next_item["error"] = next_item.get("error") or INTERRUPTED_MESSAGE
+            if "completed_at" in next_item and next_item.get("completed_at") is None:
+                next_item["completed_at"] = _isoformat(updated_at)
+        interrupted_items.append(next_item)
+    job_payload[field_name] = interrupted_items
 
 
 def _sample_processing_job_from_payload(payload: Mapping[str, Any]) -> SampleProcessingJob:

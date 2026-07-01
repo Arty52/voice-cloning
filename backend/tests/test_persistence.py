@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import importlib
 import json
 import os
 from pathlib import Path
@@ -15,6 +16,7 @@ from voice_cloning.config import Settings
 from voice_cloning.models import (
     SampleProcessingJob,
     SampleProcessingJobStep,
+    SampleProcessingProgressPhase,
     SampleProcessingResult,
     SpeechJob,
     SpeechJobSegment,
@@ -176,10 +178,19 @@ def test_job_repositories_persist_snapshots_and_mark_interrupted() -> None:
                 id="sample-job",
                 operation_id="trimSilence",
                 operation_label="Trim Silence",
-                status="pending",
+                status="running",
                 engine="ffmpeg",
             ),
         ),
+        active_step_id="sample-job",
+        progress_phases=(
+            SampleProcessingProgressPhase(
+                id="phase-one",
+                label="Preparing",
+                status="running",
+            ),
+        ),
+        active_progress_phase_id="phase-one",
     )
     speech_job = SpeechJob(
         id="speech-job",
@@ -197,22 +208,33 @@ def test_job_repositories_persist_snapshots_and_mark_interrupted() -> None:
                 voice_id="default",
                 voice_name="Default Voice",
                 assignment_kind="default",
+                status="running",
             ),
         ),
+        active_segment_id="segment-one",
         created_at="2026-07-01T12:00:00+00:00",
         updated_at="2026-07-01T12:00:00+00:00",
     )
 
     with unit_of_work(session_factory) as session:
         SqlAlchemySampleProcessingJobRepository(session).save_job(sample_job)
-        SqlAlchemySpeechGenerationJobRepository(session).save_job(speech_job)
+        SqlAlchemySpeechGenerationJobRepository(session).save_job(speech_job, result_audio_id="audio-one")
+
+    with unit_of_work(session_factory) as session:
+        SqlAlchemySpeechGenerationJobRepository(session).save_job(
+            replace(speech_job, updated_at="2026-07-01T12:00:01+00:00")
+        )
 
     with unit_of_work(session_factory) as session:
         assert SqlAlchemySampleProcessingJobRepository(session).get_job("sample-job") == sample_job
-        assert SqlAlchemySpeechGenerationJobRepository(session).get_job("speech-job") == speech_job
+        assert SqlAlchemySpeechGenerationJobRepository(session).get_job("speech-job") == replace(
+            speech_job,
+            updated_at="2026-07-01T12:00:01+00:00",
+        )
         assert session.get(SampleProcessingJobRecord, "sample-job").request_payload["operationId"] == "trimSilence"
         assert session.get(SampleProcessingJobRecord, "sample-job").request_payload["sourceVoiceId"] == "voice-clone-01"
         assert session.get(SampleProcessingJobRecord, "sample-job").source_voice_id == "voice-clone-01"
+        assert session.get(SpeechGenerationJobRecord, "speech-job").result_audio_id == "audio-one"
         assert session.get(SpeechGenerationJobRecord, "speech-job").request_payload["modelId"] == "eleven_multilingual_v2"
         assert SqlAlchemySampleProcessingJobRepository(session).mark_active_jobs_interrupted() == 1
         assert SqlAlchemySpeechGenerationJobRepository(session).mark_active_jobs_interrupted() == 1
@@ -233,9 +255,18 @@ def test_job_repositories_persist_snapshots_and_mark_interrupted() -> None:
         assert restored_sample_job is not None
         assert restored_sample_job.status == "interrupted"
         assert restored_sample_job.error == INTERRUPTED_MESSAGE
+        assert restored_sample_job.active_step_id is None
+        assert restored_sample_job.active_progress_phase_id is None
+        assert restored_sample_job.steps[0].status == "error"
+        assert restored_sample_job.steps[0].error == INTERRUPTED_MESSAGE
+        assert restored_sample_job.progress_phases[0].status == "error"
+        assert restored_sample_job.progress_phases[0].error == INTERRUPTED_MESSAGE
         assert restored_speech_job is not None
         assert restored_speech_job.status == "interrupted"
         assert restored_speech_job.error == INTERRUPTED_MESSAGE
+        assert restored_speech_job.active_segment_id is None
+        assert restored_speech_job.segments[0].status == "error"
+        assert restored_speech_job.segments[0].error == INTERRUPTED_MESSAGE
 
 
 def test_job_routes_read_persisted_snapshots_after_app_recreation(tmp_path: Path) -> None:
@@ -315,6 +346,29 @@ def test_job_routes_read_persisted_snapshots_after_app_recreation(tmp_path: Path
     assert speech_response.status_code == 200
     assert speech_response.json()["job"]["status"] == "success"
     assert speech_response.json()["job"]["resultSha256"] == "speech-result-hash"
+
+
+def test_create_app_reuses_database_session_factory_for_persistent_services(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app_module = importlib.import_module("voice_cloning.api.app")
+
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'app.sqlite'}"
+    settings = replace(make_settings(tmp_path), database_url=database_url)
+    engine = create_database_engine(database_url)
+    Base.metadata.create_all(engine)
+    created_engines: list[str] = []
+
+    def create_engine_once(url: str):
+        created_engines.append(url)
+        return engine
+
+    monkeypatch.setattr(app_module, "create_database_engine", create_engine_once)
+
+    app_module.create_app(settings=settings, voice_library=VoiceLibrary(settings))
+
+    assert created_engines == [database_url]
 
 
 def test_sqlalchemy_voice_repository_roundtrips_voice_asset() -> None:
