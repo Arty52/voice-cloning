@@ -220,7 +220,7 @@ function normalizeUsage(usage: GeneratedAudioUsage): GeneratedAudioUsage {
 
 async function readError(response: Response) {
   const fallback = `Request failed with status ${response.status}.`
-  let body = ""
+  let body: string
   try {
     body = await response.text()
   } catch {
