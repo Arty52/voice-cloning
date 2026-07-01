@@ -171,6 +171,35 @@ def test_voice_tuning_preset_routes_reject_conflicts_and_invalid_payloads(tmp_pa
     assert voice_preset_response.status_code == 422
 
 
+def test_voice_tuning_preset_routes_reject_update_id_mismatch(tmp_path: Path) -> None:
+    client = make_client(tmp_path)
+    assert (
+        client.post(
+            "/api/voice-tuning-presets",
+            json={
+                "id": "warm-narration",
+                "name": "Warm Narration",
+                "providerId": "elevenlabs",
+                "settings": {"stability": 0.5},
+            },
+        ).status_code
+        == 201
+    )
+
+    response = client.put(
+        "/api/voice-tuning-presets/warm-narration",
+        json={
+            "id": "other-preset",
+            "name": "Other Preset",
+            "providerId": "elevenlabs",
+            "settings": {"stability": 0.45},
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Voice tuning preset id must match the path id."
+
+
 def test_voice_tuning_preset_routes_return_unavailable_without_database(tmp_path: Path) -> None:
     client = TestClient(create_app(settings=make_settings(tmp_path)))
 

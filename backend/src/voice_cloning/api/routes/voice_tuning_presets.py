@@ -43,6 +43,8 @@ def create_voice_tuning_presets_router(service: UserTuningPresetService | None) 
     @router.put("/api/voice-tuning-presets/{preset_id}")
     def update_voice_tuning_preset(preset_id: str, request: VoiceTuningPresetRequest) -> dict[str, object]:
         preset_service = _require_service(service)
+        if request.id is not None and request.id != preset_id:
+            raise HTTPException(status_code=422, detail="Voice tuning preset id must match the path id.")
         try:
             preset = preset_service.update_preset(
                 preset_id,

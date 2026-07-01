@@ -303,7 +303,10 @@ User tuning preset routes require backend persistence. When `DATABASE_URL` is bl
       "voicePresetId": "standardNarration",
       "settings": {
         "stability": 0.42,
-        "speed": 0.95
+        "similarityBoost": 0.75,
+        "style": 0,
+        "speed": 0.95,
+        "useSpeakerBoost": true
       },
       "createdAt": "2026-07-01T12:00:00+00:00",
       "updatedAt": "2026-07-01T12:00:00+00:00"
@@ -312,7 +315,7 @@ User tuning preset routes require backend persistence. When `DATABASE_URL` is bl
 }
 ```
 
-`POST /api/voice-tuning-presets` creates a user-managed preset. `id` is optional; when supplied it must be a safe stable id and conflicts return `409`. `PUT /api/voice-tuning-presets/{presetId}` replaces the editable preset fields. `providerId` must be registered, `voicePresetId` must be `standardNarration`, `animatedDialogue`, or `null`, and `settings` must contain only controls supported by that provider:
+`POST /api/voice-tuning-presets` creates a user-managed preset. `id` is optional; when supplied it must be a safe stable id and conflicts return `409`. `PUT /api/voice-tuning-presets/{presetId}` replaces the editable preset fields; if the request body includes `id`, it must match `{presetId}`. `providerId` must be registered, `voicePresetId` must be `standardNarration`, `animatedDialogue`, or `null`, and `settings` must contain only controls supported by that provider. The backend persists normalized settings, so omitted supported controls are filled with provider defaults and unknown controls are rejected:
 
 ```json
 {
