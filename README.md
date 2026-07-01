@@ -47,6 +47,8 @@ Start the app:
 make up
 ```
 
+Docker Compose starts the frontend, backend, and a required local PostgreSQL 18.4 service. The database uses a named volume mounted at `/var/lib/postgresql` with `PGDATA=/var/lib/postgresql/18/docker`, matching the PostgreSQL 18 image layout. Host-only development can leave `DATABASE_URL` blank during the transition; compose injects the backend database URL automatically.
+
 Open the Voice Studio:
 
 ```text
@@ -65,6 +67,7 @@ http://localhost:6420
 - Real voice samples under `assets/voices/` are ignored by git.
 - Local voice preset assignments are saved with the ignored voice manifest under `assets/voices/`.
 - Generated audio and provider cache data under `storage/` are ignored by git.
+- Server-side generated-audio archive files are stored under `GENERATED_AUDIO_STORAGE_DIR`, which defaults to ignored `storage/generated-audio/`.
 - Browser-generated audio is stored in browser IndexedDB by default, not committed to the repository.
 - Speech job output, optional sample-processing output, separated stems, and downloaded model data are runtime-only and must stay out of git.
 - The optional live smoke test calls ElevenLabs, may consume credits, and may create or reuse a cloned voice.
@@ -122,6 +125,7 @@ The Docker build uses CPU-only PyTorch, Torchaudio, and TorchCodec wheels when `
 - [Public Media Guidelines](docs/PUBLIC_MEDIA.md): public-safe screenshot and documentation media rules.
 - [Architecture Standards](docs/ARCHITECTURE.md): backend/frontend boundaries for implementation work.
 - [How To Add A Provider](docs/ADDING_PROVIDER.md): provider adapter responsibilities and validation.
+- [Persistence Rollout](docs/PERSISTENCE_ROLLOUT.md): PostgreSQL, storage roots, consistency rules, and PR validation gates.
 - [Video Source Media Rollout Notes](docs/VIDEO_SOURCE_MEDIA_ROLLOUT.md): draft PR stack, validation evidence, and Ready gates for local video source media.
 
 ## Local Development
@@ -136,6 +140,12 @@ Run all checks:
 
 ```sh
 make check
+```
+
+Run Postgres-backed migration checks after starting Docker:
+
+```sh
+make test-postgres
 ```
 
 Useful Docker commands:
@@ -158,6 +168,7 @@ make smoke-live
 ```text
 .
 ├── assets/voices/        # local voice assets; real samples ignored by git
+├── backend/alembic/      # database migrations
 ├── backend/              # FastAPI service and tests
 ├── docs/                 # architecture, usage, API, troubleshooting, and media docs
 ├── frontend/             # Vite React app and tests
