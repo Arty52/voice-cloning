@@ -6,6 +6,7 @@ import { useDialogueScript } from "@/hooks/use-dialogue-script"
 import { useGeneratedAudioLibrary } from "@/hooks/use-generated-audio-library"
 import { useProviderKeys } from "@/hooks/use-provider-keys"
 import { useSampleProcessing } from "@/hooks/use-sample-processing"
+import { useUserTuningPresets } from "@/hooks/use-user-tuning-presets"
 import {
   useMultiVoiceSpeechGeneration,
   type MultiVoiceGenerationStatus,
@@ -25,7 +26,7 @@ import {
   saveNaturalHandoffsPreference,
 } from "@/lib/natural-handoffs-preference"
 import { readTextareaSelection } from "@/lib/text-selection"
-import { resolveSavedVoiceTuning } from "@/lib/voice-tuning"
+import { CUSTOM_TUNING_PRESET_ID, resolveSavedVoiceTuning } from "@/lib/voice-tuning"
 import {
   buildSpeechJobSegments,
   compareAssignments,
@@ -43,6 +44,7 @@ import type {
   ProviderTuningMetadata,
   RequestStatus,
   SpeechJob,
+  UserTuningPreset,
   VoiceAsset,
   VoiceTuningSaveRequest,
   VoiceTuningValues,
@@ -69,6 +71,7 @@ export function useVoiceStudioController() {
     loadNaturalHandoffsPreference()
   )
   const [naturalHandoffsSaveError, setNaturalHandoffsSaveError] = useState<string | null>(null)
+  const [selectedUserTuningPresetId, setSelectedUserTuningPresetId] = useState<string | null>(null)
   const [textSelection, setTextSelection] = useState({ end: 0, start: 0, text: "" })
   const [voiceAssignments, setVoiceAssignments] = useState<VoiceTextAssignment[]>([])
   const naturalHandoffsTouchedRef = useRef(false)
@@ -83,6 +86,7 @@ export function useVoiceStudioController() {
     providerStatus: providerKeys.providerStatus,
   })
   const generatedAudio = useGeneratedAudioLibrary()
+  const userTuningPresets = useUserTuningPresets()
   const speech = useSpeechGeneration({
     persistGeneratedAudio: generatedAudio.persistGeneratedAudio,
   })
@@ -119,8 +123,17 @@ export function useVoiceStudioController() {
     providerTuning,
     selectedVoice: voiceLibrary.selectedVoice,
   })
-  const tuning = voiceTuning.tuning
-  const selectedTuningPresetId = voiceTuning.selectedTuningPresetId
+  const selectedUserTuningPreset = useMemo(
+    () =>
+      userTuningPresets.presets.find(
+        (preset) => preset.id === selectedUserTuningPresetId && preset.providerId === activeProviderId
+      ) ?? null,
+    [activeProviderId, selectedUserTuningPresetId, userTuningPresets.presets]
+  )
+  const tuning = selectedUserTuningPreset?.settings ?? voiceTuning.tuning
+  const selectedTuningPresetId = selectedUserTuningPreset
+    ? CUSTOM_TUNING_PRESET_ID
+    : voiceTuning.selectedTuningPresetId
   const latestGeneratedAudioItem = useMemo(() => {
     if (!latestGeneratedAudioId) {
       return null
@@ -334,6 +347,7 @@ export function useVoiceStudioController() {
         segments: dialogue.segmentBuild.segments,
         selectedModelId: metadata.selectedModelId,
         selectedTuningPresetId,
+        selectedUserTuningPreset,
         storageLimitBytes: generatedAudio.storageLimitBytes,
         text: dialogue.segmentBuild.text,
         tuning,
@@ -358,6 +372,7 @@ export function useVoiceStudioController() {
         segments: assignmentSegments.segments,
         selectedModelId: metadata.selectedModelId,
         selectedTuningPresetId,
+        selectedUserTuningPreset,
         storageLimitBytes: generatedAudio.storageLimitBytes,
         text,
         tuning,
@@ -378,6 +393,7 @@ export function useVoiceStudioController() {
       providerKey: providerKeys.activeProviderKey,
       selectedModelId: metadata.selectedModelId,
       selectedTuningPresetId,
+      selectedUserTuningPreset,
       selectedVoice: voiceLibrary.selectedVoice,
       storageLimitBytes: generatedAudio.storageLimitBytes,
       text,
@@ -461,6 +477,14 @@ export function useVoiceStudioController() {
       onConfirm: () => saveVoiceTuningDraft(request),
       title: "Save Voice Tuning?",
     })
+  }
+
+  function applyUserTuningPreset(preset: UserTuningPreset) {
+    setSelectedUserTuningPresetId(preset.id)
+  }
+
+  function clearUserTuningPresetSelection() {
+    setSelectedUserTuningPresetId(null)
   }
 
   function cancelGeneration() {
@@ -557,6 +581,7 @@ export function useVoiceStudioController() {
 
   return {
     activeSectionId: workflowNavigation.activeSectionId,
+    applyUserTuningPreset,
     archiveStorageError,
     canGenerate,
     cancelGeneration,
@@ -596,6 +621,7 @@ export function useVoiceStudioController() {
     sectionStatuses,
     selectedModel,
     selectedTuningPresetId,
+    selectedUserTuningPreset,
     setIsCostQuotaExpanded,
     setIsSampleProcessingExpanded,
     setNaturalHandoffsEnabled: handleNaturalHandoffsEnabledChange,
@@ -607,6 +633,7 @@ export function useVoiceStudioController() {
     textRef,
     textSelection,
     tuning,
+    userTuningPresets,
     voiceInput,
     voiceAssignmentError,
     voiceAssignments,
@@ -615,6 +642,7 @@ export function useVoiceStudioController() {
     voiceAssignmentSegments: assignmentSegments.segments,
     assignVoiceToSelection,
     clearVoiceAssignments,
+    clearUserTuningPresetSelection,
     isSpeechGenerating,
     multiVoiceSpeech,
     multiVoiceSegmentResultUrls: multiVoiceSpeech.segmentResultUrls,

@@ -18,7 +18,11 @@ export function GeneratedAudioMetadata({ generationElapsedMs, tuningMetadata }: 
       {tuningMetadata ? (
         <>
           <Badge>{tuningMetadata.providerLabel}</Badge>
-          {tuningMetadata.presetLabel ? <Badge>Preset: {tuningMetadata.presetLabel}</Badge> : null}
+          {tuningMetadata.mode === "userPreset" && tuningMetadata.userPreset ? (
+            <Badge>User Preset: {tuningMetadata.userPreset.name}</Badge>
+          ) : tuningMetadata.presetLabel ? (
+            <Badge>Preset: {tuningMetadata.presetLabel}</Badge>
+          ) : null}
           {tuningMetadata.mode === "custom" ? <Badge>Custom Settings</Badge> : null}
           {tuningMetadata.adjustedSettings.length === 0 ? <Badge>Default Settings</Badge> : null}
           {tuningMetadata.adjustedSettings.map((setting) => (

@@ -5,6 +5,7 @@ import type {
   ProviderTuningControl,
   ProviderTuningValue,
   SpeechJob,
+  UserTuningPreset,
   VoiceProvider,
   VoiceTuningValues,
 } from "@/types"
@@ -13,6 +14,7 @@ type BuildGeneratedAudioTuningMetadataInput = {
   provider: VoiceProvider | null | undefined
   selectedPresetId: string
   tuning: VoiceTuningValues
+  userPreset?: UserTuningPreset | null
 }
 
 const NUMBER_FORMATTER = new Intl.NumberFormat(undefined, {
@@ -23,6 +25,7 @@ export function buildGeneratedAudioTuningMetadata({
   provider,
   selectedPresetId,
   tuning,
+  userPreset,
 }: BuildGeneratedAudioTuningMetadataInput): GeneratedAudioTuningMetadata | null {
   if (!provider) {
     return null
@@ -38,11 +41,20 @@ export function buildGeneratedAudioTuningMetadata({
 
   return {
     adjustedSettings,
-    mode: preset ? "preset" : adjustedSettings.length > 0 ? "custom" : "default",
-    presetId: preset?.id ?? null,
-    presetLabel: preset?.label ?? null,
+    mode: userPreset ? "userPreset" : preset ? "preset" : adjustedSettings.length > 0 ? "custom" : "default",
+    presetId: userPreset?.id ?? preset?.id ?? null,
+    presetLabel: userPreset?.name ?? preset?.label ?? null,
     providerId: provider.id,
     providerLabel: provider.label,
+    userPreset: userPreset
+      ? {
+          id: userPreset.id,
+          name: userPreset.name,
+          providerId: userPreset.providerId,
+          settings: { ...userPreset.settings },
+          voicePresetId: userPreset.voicePresetId,
+        }
+      : null,
   }
 }
 

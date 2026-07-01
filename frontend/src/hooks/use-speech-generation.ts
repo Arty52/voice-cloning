@@ -8,7 +8,15 @@ import {
 import { createSpeech, hasModel } from "@/lib/api"
 import { buildGeneratedAudioTuningMetadata } from "@/lib/generated-audio-metadata"
 import type { SaveGeneratedAudioInput } from "@/lib/generated-audio-storage"
-import type { GeneratedResult, ModelOption, RequestStatus, VoiceAsset, VoiceProvider, VoiceTuningValues } from "@/types"
+import type {
+  GeneratedResult,
+  ModelOption,
+  RequestStatus,
+  UserTuningPreset,
+  VoiceAsset,
+  VoiceProvider,
+  VoiceTuningValues,
+} from "@/types"
 
 type GenerateSpeechInput = {
   backendDefaultModelId: string | null
@@ -19,6 +27,7 @@ type GenerateSpeechInput = {
   providerKey: string | null
   selectedModelId: string
   selectedTuningPresetId: string
+  selectedUserTuningPreset?: UserTuningPreset | null
   selectedVoice: VoiceAsset | null
   storageLimitBytes: number
   text: string
@@ -68,6 +77,7 @@ export function useSpeechGeneration({ persistGeneratedAudio }: UseSpeechGenerati
     providerKey,
     selectedModelId,
     selectedTuningPresetId,
+    selectedUserTuningPreset = null,
     selectedVoice,
     storageLimitBytes,
     text,
@@ -124,6 +134,7 @@ export function useSpeechGeneration({ persistGeneratedAudio }: UseSpeechGenerati
           provider,
           selectedPresetId: selectedTuningPresetId,
           tuning,
+          userPreset: selectedUserTuningPreset,
         }),
         voiceId: response.voiceId || "unknown",
         voiceName: selectedVoice.name,

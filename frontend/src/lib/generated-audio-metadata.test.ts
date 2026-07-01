@@ -108,6 +108,7 @@ describe("buildGeneratedAudioTuningMetadata", () => {
       presetLabel: null,
       providerId: "plain-provider",
       providerLabel: "Plain Provider",
+      userPreset: null,
     })
   })
 
@@ -210,6 +211,48 @@ describe("buildGeneratedAudioTuningMetadata", () => {
       mode: "default",
       presetId: null,
       presetLabel: null,
+    })
+  })
+
+  it("captures a selected user tuning preset as generation provenance", () => {
+    expect(
+      buildGeneratedAudioTuningMetadata({
+        provider,
+        selectedPresetId: "custom",
+        tuning: {
+          enhanced: false,
+          mode: "expressive",
+          stability: 0.42,
+        },
+        userPreset: {
+          createdAt: "2026-07-01T12:00:00.000Z",
+          id: "warm-read",
+          name: "Warm Read",
+          providerId: "test-provider",
+          settings: {
+            enhanced: false,
+            mode: "expressive",
+            stability: 0.42,
+          },
+          updatedAt: "2026-07-01T12:00:00.000Z",
+          voicePresetId: "animatedDialogue",
+        },
+      })
+    ).toMatchObject({
+      mode: "userPreset",
+      presetId: "warm-read",
+      presetLabel: "Warm Read",
+      userPreset: {
+        id: "warm-read",
+        name: "Warm Read",
+        providerId: "test-provider",
+        settings: {
+          enhanced: false,
+          mode: "expressive",
+          stability: 0.42,
+        },
+        voicePresetId: "animatedDialogue",
+      },
     })
   })
 
