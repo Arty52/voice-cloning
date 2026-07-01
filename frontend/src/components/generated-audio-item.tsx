@@ -1,10 +1,11 @@
-import { Download, Trash2 } from "lucide-react"
+import { Download, Trash2, Upload } from "lucide-react"
 
 import { AudioPlayer } from "@/components/audio-player"
 import { GeneratedAudioMetadata } from "@/components/generated-audio-metadata"
 import { GeneratedAudioSizeBadge } from "@/components/generated-audio-size-badge"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import type { GeneratedAudioServerExportItem } from "@/lib/generated-audio-export-api"
 import { formatNumber } from "@/lib/formatters"
 import { cn } from "@/lib/utils"
 import type { GeneratedResult } from "@/types"
@@ -13,17 +14,26 @@ type GeneratedAudioItemProps = {
   badge?: string
   className?: string
   isDeleteDisabled?: boolean
+  isServerExportDisabled?: boolean
+  isServerExportPending?: boolean
   item: GeneratedResult
   onDelete: (id: string) => void
+  onServerExport?: (id: string) => void
+  serverExportStatus?: GeneratedAudioServerExportItem | null
 }
 
 export function GeneratedAudioItem({
   badge,
   className,
   isDeleteDisabled = false,
+  isServerExportDisabled = false,
+  isServerExportPending = false,
   item,
   onDelete,
+  onServerExport,
+  serverExportStatus = null,
 }: GeneratedAudioItemProps) {
+  const serverExportLabel = serverExportActionLabel(serverExportStatus)
   return (
     <div className={cn("rounded-md border border-border bg-background/60 p-3", className)}>
       <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -33,6 +43,7 @@ export function GeneratedAudioItem({
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
           {badge ? <Badge>{badge}</Badge> : null}
+          {serverExportStatus ? <Badge variant={serverExportStatus.status === "exported" ? "accent" : "secondary"}>{serverExportBadgeLabel(serverExportStatus)}</Badge> : null}
           {item.multiVoiceMetadata ? <Badge variant="accent">Multi-Voice</Badge> : null}
           <Badge>{cacheBadgeLabel(item)}</Badge>
         </div>
@@ -60,6 +71,19 @@ export function GeneratedAudioItem({
           <Download aria-hidden="true" className="size-4" />
           Download
         </a>
+        {onServerExport ? (
+          <Button
+            aria-label={`${serverExportLabel} generated audio for ${item.voiceName}`}
+            disabled={isServerExportDisabled || isServerExportPending}
+            onClick={() => onServerExport(item.id)}
+            size="sm"
+            type="button"
+            variant="secondary"
+          >
+            <Upload aria-hidden="true" className="size-4" />
+            {isServerExportPending ? "Exporting" : serverExportLabel}
+          </Button>
+        ) : null}
         <Button
           aria-label={`Remove generated audio for ${item.voiceName}`}
           disabled={isDeleteDisabled}
@@ -74,6 +98,17 @@ export function GeneratedAudioItem({
       </div>
     </div>
   )
+}
+
+function serverExportBadgeLabel(status: GeneratedAudioServerExportItem) {
+  return status.status === "exported" ? "Server Exported" : "Export Failed"
+}
+
+function serverExportActionLabel(status: GeneratedAudioServerExportItem | null) {
+  if (!status) {
+    return "Export"
+  }
+  return status.status === "failed" ? "Retry Export" : "Export Again"
 }
 
 function GeneratedAudioMultiVoiceSummary({ item }: { item: GeneratedResult }) {

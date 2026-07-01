@@ -282,7 +282,14 @@ function App() {
             mutationStatus={generatedAudio.generatedAudioMutation}
             onClear={requestClearGeneratedAudio}
             onDelete={(id) => void generatedAudio.handleDeleteGeneratedAudio(id)}
+            onServerExport={(id) => void generatedAudio.handleExportGeneratedAudioToServer(id)}
+            onServerExportAll={() => void generatedAudio.handleExportAllGeneratedAudioToServer()}
+            onServerExportStatusRefresh={() => void generatedAudio.refreshServerExportStatus()}
             onStorageLimitChange={handleStorageLimitChange}
+            persistenceMode={generatedAudio.generatedAudioPersistenceMode}
+            serverExportError={generatedAudio.serverExportError}
+            serverExportMutation={generatedAudio.serverExportMutation}
+            serverExportStatus={generatedAudio.serverExportStatus}
             storageError={archiveStorageError}
             storageLimitBytes={generatedAudio.storageLimitBytes}
             usage={generatedAudio.generatedAudioUsage}

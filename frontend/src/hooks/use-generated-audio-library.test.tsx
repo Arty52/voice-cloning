@@ -2,7 +2,11 @@ import { act, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { useGeneratedAudioLibrary, type GeneratedAudioMutation } from "./use-generated-audio-library"
+import {
+  useGeneratedAudioLibrary,
+  type GeneratedAudioMutation,
+  type GeneratedAudioPersistenceMode,
+} from "./use-generated-audio-library"
 import {
   BYTES_PER_MEBIBYTE,
   GENERATED_AUDIO_DB_NAME,
@@ -17,6 +21,7 @@ import type { AsyncStatus } from "@/types"
 type Snapshot = {
   itemCount: number
   mutation: GeneratedAudioMutation | null
+  persistenceMode: GeneratedAudioPersistenceMode
   status: AsyncStatus
 }
 
@@ -38,6 +43,17 @@ type ArchiveItem = {
   tuningMetadata: null
   voiceId: string
   voiceName: string
+}
+
+type ExportEntry = {
+  audioId: string
+  exportedAt: string | null
+  filename: string
+  lastError: string | null
+  sha256: string
+  status: "exported" | "failed"
+  targetId: string
+  updatedAt: string | null
 }
 
 function deleteDatabase(name: string) {
@@ -94,6 +110,7 @@ function GeneratedAudioHarness({ onSnapshot }: { onSnapshot: (snapshot: Snapshot
   onSnapshot({
     itemCount: library.generatedAudioItems.length,
     mutation: library.generatedAudioMutation,
+    persistenceMode: library.generatedAudioPersistenceMode,
     status: library.generatedAudioStatus,
   })
 
@@ -102,11 +119,25 @@ function GeneratedAudioHarness({ onSnapshot }: { onSnapshot: (snapshot: Snapshot
       <div data-testid="status">{library.generatedAudioStatus}</div>
       <div data-testid="mutation">{library.generatedAudioMutation ?? "none"}</div>
       <div data-testid="error">{library.generatedAudioStorageError ?? ""}</div>
+      <div data-testid="persistence-mode">{library.generatedAudioPersistenceMode}</div>
+      <div data-testid="server-export-available">{String(library.serverExportStatus?.available ?? false)}</div>
+      <div data-testid="server-export-count">{library.serverExportStatus?.items.length ?? 0}</div>
+      <div data-testid="server-export-error">{library.serverExportError ?? ""}</div>
+      <div data-testid="server-export-mutation">{library.serverExportMutation ?? "none"}</div>
       <div data-testid="first-url">{library.generatedAudioItems[0]?.url ?? ""}</div>
       <div data-testid="item-count">{library.generatedAudioItems.length}</div>
       <button disabled={!firstItemId} onClick={() => firstItemId && void library.handleDeleteGeneratedAudio(firstItemId)}>
         Delete First
       </button>
+      <button
+        disabled={!firstItemId}
+        onClick={() => firstItemId && void library.handleExportGeneratedAudioToServer(firstItemId)}
+      >
+        Export First
+      </button>
+      <button onClick={() => void library.handleExportAllGeneratedAudioToServer()}>Export All</button>
+      <button onClick={() => void library.handleExportGeneratedAudioToServer("missing-audio")}>Export Missing</button>
+      <button onClick={() => void library.refreshServerExportStatus()}>Refresh Export Status</button>
       <button onClick={() => void library.clearAllGeneratedAudio()}>Clear All</button>
       <button onClick={() => void library.applyGeneratedAudioStorageLimit(4)}>Lower Limit</button>
       <button onClick={() => void library.persistGeneratedAudio(audioInput({ id: "new-server-audio" }), 20 * BYTES_PER_MEBIBYTE)}>
@@ -133,11 +164,46 @@ function mockArchiveUnavailable() {
   )
 }
 
-function mockArchive(initialItems: ArchiveItem[] = [], options: { conflictIds?: string[] } = {}) {
+function mockArchive(
+  initialItems: ArchiveItem[] = [],
+  options: { conflictIds?: string[]; exportAvailable?: boolean; exportStatus?: ExportEntry[] } = {}
+) {
   const items = new Map(initialItems.map((item) => [item.id, item]))
   const conflictIds = new Set(options.conflictIds ?? [])
+  const exportAvailable = options.exportAvailable ?? true
+  const exportEntries = new Map((options.exportStatus ?? []).map((entry) => [exportEntryKey(entry), entry]))
   const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const path = String(input).split("?")[0]
+    if (path === "/api/generated-audio/export-status" && !init) {
+      return okJson({
+        available: exportAvailable,
+        items: [...exportEntries.values()],
+        targetId: exportAvailable ? "local-filesystem" : null,
+      })
+    }
+    if (path === "/api/generated-audio/export-all" && init?.method === "POST") {
+      if (!exportAvailable) {
+        return jsonResponse({ detail: "Generated audio export directory is not configured." }, 503)
+      }
+      const exportedItems = sortedArchiveItems(items).map((item) => exportEntry(item))
+      exportedItems.forEach((entry) => exportEntries.set(exportEntryKey(entry), entry))
+      return okJson({ exportedCount: exportedItems.length, failedCount: 0, items: exportedItems })
+    }
+    if (path.startsWith("/api/generated-audio/") && path.endsWith("/export") && init?.method === "POST") {
+      if (!exportAvailable) {
+        return jsonResponse({ detail: "Generated audio export directory is not configured." }, 503)
+      }
+      const id = decodeURIComponent(path.replace("/api/generated-audio/", "").replace("/export", ""))
+      const item = items.get(id)
+      if (!item) {
+        return jsonResponse({ detail: "Generated audio item was not found." }, 404)
+      }
+      const entry = exportEntry(item)
+      const key = exportEntryKey(entry)
+      const alreadyExported = exportEntries.has(key)
+      exportEntries.set(key, entry)
+      return okJson({ alreadyExported, item: entry })
+    }
     if (path === "/api/generated-audio" && !init) {
       return okJson({ items: sortedArchiveItems(items), usage: archiveUsage(items) })
     }
@@ -201,6 +267,23 @@ function jsonResponse(payload: unknown, status: number) {
 
 function sortedArchiveItems(items: Map<string, ArchiveItem>) {
   return [...items.values()].sort((first, second) => second.createdAt.localeCompare(first.createdAt))
+}
+
+function exportEntry(item: ArchiveItem): ExportEntry {
+  return {
+    audioId: item.id,
+    exportedAt: "2026-07-01T18:45:22.000Z",
+    filename: `generated-audio/2026/07/${item.id}.mp3`,
+    lastError: null,
+    sha256: item.sha256,
+    status: "exported",
+    targetId: "local-filesystem",
+    updatedAt: "2026-07-01T18:45:22.000Z",
+  }
+}
+
+function exportEntryKey(entry: ExportEntry) {
+  return `${entry.targetId}:${entry.audioId}:${entry.sha256}`
 }
 
 function archiveUsage(items: Map<string, ArchiveItem>, limitBytes = 100 * BYTES_PER_MEBIBYTE) {
@@ -274,6 +357,76 @@ describe("useGeneratedAudioLibrary", () => {
     expect(screen.getByTestId("first-url")).toHaveTextContent("/api/generated-audio/server-audio/audio")
     expect(URL.createObjectURL).not.toHaveBeenCalled()
     expect(snapshots.map((snapshot) => snapshot.status)).toContain("loading")
+    expect(snapshots.map((snapshot) => snapshot.persistenceMode)).toContain("server")
+  })
+
+  it("loads server export status in server archive mode", async () => {
+    const item = archiveItem({ id: "server-audio" })
+    mockArchive([item], { exportStatus: [exportEntry(item)] })
+
+    render(<GeneratedAudioHarness onSnapshot={() => undefined} />)
+
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("success"))
+    expect(screen.getByTestId("persistence-mode")).toHaveTextContent("server")
+    expect(screen.getByTestId("server-export-available")).toHaveTextContent("true")
+    expect(screen.getByTestId("server-export-count")).toHaveTextContent("1")
+  })
+
+  it("keeps generated audio loaded when server export status is unavailable", async () => {
+    mockArchive([archiveItem({ id: "server-audio" })], { exportAvailable: false })
+
+    render(<GeneratedAudioHarness onSnapshot={() => undefined} />)
+
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("success"))
+    expect(screen.getByTestId("item-count")).toHaveTextContent("1")
+    expect(screen.getByTestId("server-export-available")).toHaveTextContent("false")
+    expect(screen.getByTestId("server-export-error")).toHaveTextContent("")
+  })
+
+  it("exports one generated audio item through the server export API", async () => {
+    const user = userEvent.setup()
+    const fetchMock = mockArchive([archiveItem({ id: "server-audio" })])
+
+    render(<GeneratedAudioHarness onSnapshot={() => undefined} />)
+
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("success"))
+    await user.click(screen.getByRole("button", { name: /export first/i }))
+    await waitFor(() => expect(screen.getByTestId("server-export-count")).toHaveTextContent("1"))
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) => String(input) === "/api/generated-audio/server-audio/export" && init?.method === "POST"
+      )
+    ).toBe(true)
+  })
+
+  it("exports all generated audio items through the server export API", async () => {
+    const user = userEvent.setup()
+    const fetchMock = mockArchive([archiveItem({ id: "server-audio" })])
+
+    render(<GeneratedAudioHarness onSnapshot={() => undefined} />)
+
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("success"))
+    await user.click(screen.getByRole("button", { name: /export all/i }))
+    await waitFor(() => expect(screen.getByTestId("server-export-count")).toHaveTextContent("1"))
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) => String(input) === "/api/generated-audio/export-all" && init?.method === "POST"
+      )
+    ).toBe(true)
+  })
+
+  it("surfaces server export route errors without losing archive state", async () => {
+    const user = userEvent.setup()
+    mockArchive([archiveItem({ id: "server-audio" })])
+
+    render(<GeneratedAudioHarness onSnapshot={() => undefined} />)
+
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("success"))
+    await user.click(screen.getByRole("button", { name: /export missing/i }))
+    await waitFor(() =>
+      expect(screen.getByTestId("server-export-error")).toHaveTextContent("Generated audio item was not found.")
+    )
+    expect(screen.getByTestId("item-count")).toHaveTextContent("1")
   })
 
   it("keeps the server archive available when IndexedDB migration cannot be read", async () => {
