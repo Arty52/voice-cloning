@@ -45,3 +45,11 @@ All PRs start as Draft and move to Open only after their validation gates pass.
    - Persist sanitized job snapshots and status/error columns while keeping active worker tasks in-process.
    - On service startup, mark stale persisted `pending`/`running` rows as `interrupted` rather than pretending work resumed.
    - Validation: repository snapshot tests, interrupted-state tests, `make check`, `make test-postgres`.
+7. User Tuning Preset Backend
+   - Add editable user preset repositories, service validation, serializers, and CRUD routes backed by the existing `voice_tuning_presets` table.
+   - Runtime behavior: provider presets stay read-only `/api/providers` metadata; user presets require `DATABASE_URL` and return `503` when persistence is unavailable.
+   - Validation: CRUD route tests, repository tests, provider validation tests, secret rejection tests, no-DB `503` tests, `make check`, `make test-postgres`.
+8. Frontend User Tuning Presets And Provenance
+   - Add the frontend preset client/hook, browser-local fallback for no-DB mode, compact Voice Tuning controls, and generated-audio user preset snapshots.
+   - Runtime behavior: applying a user preset selects its settings separately from provider presets; manual tuning edits clear the selected user preset until Save As Preset or Update Preset is used.
+   - Validation: client/hook/component tests, generated-audio provenance tests, browser smoke creating/applying a preset and confirming archive metadata, `make check`.

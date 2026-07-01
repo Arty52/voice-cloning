@@ -27,11 +27,13 @@ function App() {
   const hasEnteredProcessAudioWorkflowRef = useRef(false)
   const {
     activeSectionId,
+    applyUserTuningPreset,
     archiveStorageError,
     assignVoiceToSelection,
     canGenerate,
     cancelGeneration,
     characterCount,
+    clearUserTuningPresetSelection,
     clearVoiceAssignments,
     confirmation,
     dialogue,
@@ -66,6 +68,7 @@ function App() {
     saveGeneratedSegmentTuningToVoice,
     sectionStatuses,
     selectedModel,
+    selectedUserTuningPreset,
     setNaturalHandoffsEnabled,
     setText,
     speech,
@@ -75,6 +78,7 @@ function App() {
     textRef,
     textSelection,
     tuning,
+    userTuningPresets,
     voiceInput,
     voiceAssignmentError,
     voiceAssignments,
@@ -196,8 +200,12 @@ function App() {
             onSaveVoiceTuningRequest={requestSaveVoiceTuningDraft}
             onSelectVoice={voiceLibrary.setSelectedVoiceId}
             onSetDefault={(voice) => void voiceLibrary.setDefault(voice.id)}
+            onUserTuningPresetApply={applyUserTuningPreset}
+            onUserTuningPresetClear={clearUserTuningPresetSelection}
             providerTuning={providerTuning}
             selectedVoiceId={voiceLibrary.selectedVoiceId}
+            selectedUserTuningPreset={selectedUserTuningPreset}
+            userTuningPresets={userTuningPresets}
             voiceError={voiceLibrary.voiceError}
             voicePresets={providerKeys.voicePresets}
             voices={voiceLibrary.voices}

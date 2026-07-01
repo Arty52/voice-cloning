@@ -1,11 +1,37 @@
 import { describe, expect, it } from "vitest"
 
-import type { ProviderTuningMetadata, VoiceAsset } from "@/types"
+import type { ProviderTuningMetadata, UserTuningPreset, VoiceAsset } from "@/types"
 
-import { CUSTOM_TUNING_PRESET_ID, resolveSavedVoiceTuning, resolveVoiceTuningState } from "./voice-tuning"
+import {
+  CUSTOM_TUNING_PRESET_ID,
+  resolveSavedVoiceTuning,
+  resolveVoiceTuningState,
+  userPresetValues,
+} from "./voice-tuning"
 
 const providerTuning: ProviderTuningMetadata = {
-  controls: [],
+  controls: [
+    {
+      defaultValue: 0.5,
+      description: "Controls stability.",
+      id: "stability",
+      label: "Stability",
+      max: 1,
+      min: 0,
+      step: 0.01,
+      type: "slider",
+    },
+    {
+      defaultValue: 1,
+      description: "Controls speed.",
+      id: "speed",
+      label: "Speed",
+      max: 2,
+      min: 0.5,
+      step: 0.01,
+      type: "slider",
+    },
+  ],
   defaultValues: { speed: 1, stability: 0.5 },
   presets: [
     {
@@ -64,7 +90,34 @@ describe("voice tuning resolution", () => {
     expect(resolveSavedVoiceTuning(null, voice)).toBeNull()
     expect(resolveSavedVoiceTuning("elevenlabs", voice)).toEqual({ speed: 0.92 })
   })
+
+  it("filters user presets to provider controls while preserving provider defaults", () => {
+    const preset = userPreset({
+      settings: {
+        stability: 0.8,
+        unsupported: "ignored",
+      },
+    })
+
+    expect(userPresetValues(providerTuning, preset)).toEqual({
+      speed: 1,
+      stability: 0.8,
+    })
+  })
 })
+
+function userPreset(overrides: Partial<UserTuningPreset> = {}): UserTuningPreset {
+  return {
+    createdAt: "2026-07-01T12:00:00.000Z",
+    id: "warm-read",
+    name: "Warm Read",
+    providerId: "elevenlabs",
+    settings: { stability: 0.8 },
+    updatedAt: "2026-07-01T12:00:00.000Z",
+    voicePresetId: "standardNarration",
+    ...overrides,
+  }
+}
 
 function voiceAsset(overrides: Partial<VoiceAsset> = {}): VoiceAsset {
   return {

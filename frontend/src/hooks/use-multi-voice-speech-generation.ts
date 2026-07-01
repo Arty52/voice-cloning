@@ -12,6 +12,7 @@ import type {
   GeneratedResult,
   ModelOption,
   SpeechJob,
+  UserTuningPreset,
   VoiceAsset,
   VoiceProvider,
   VoiceTuningValues,
@@ -31,6 +32,7 @@ type GenerateMultiVoiceSpeechInput = {
   segments: SpeechJobSegmentDraft[]
   selectedModelId: string
   selectedTuningPresetId: string
+  selectedUserTuningPreset?: UserTuningPreset | null
   storageLimitBytes: number
   text: string
   tuning: VoiceTuningValues
@@ -57,6 +59,7 @@ type PersistContext = {
   modelId: string | null
   provider: VoiceProvider | null
   selectedTuningPresetId: string
+  selectedUserTuningPreset: UserTuningPreset | null
   storageLimitBytes: number
   tuning: VoiceTuningValues
 }
@@ -144,6 +147,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
       modelId: submittedModelId,
       provider: input.provider,
       selectedTuningPresetId: input.selectedTuningPresetId,
+      selectedUserTuningPreset: input.selectedUserTuningPreset ?? null,
       storageLimitBytes: input.storageLimitBytes,
       tuning: input.tuning,
     }
@@ -384,6 +388,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
           provider: persistContext.provider,
           selectedPresetId: persistContext.selectedTuningPresetId,
           tuning: persistContext.tuning,
+          userPreset: persistContext.selectedUserTuningPreset,
         }),
         voiceId: persistContext.defaultVoice.id,
         voiceName: MULTI_VOICE_LABEL,

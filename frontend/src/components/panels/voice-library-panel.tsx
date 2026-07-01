@@ -19,6 +19,7 @@ import { ActionMenu } from "@/components/ui/action-menu"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Input } from "@/components/ui/input"
 import { PendingWorkStatus } from "@/components/ui/pending-work-status"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -30,16 +31,19 @@ import {
   resolvePresetVoiceTuningState,
   resolveSavedVoiceTuning,
   resolveVoiceTuningState,
+  userPresetValues,
   voiceTuningValuesEqual,
 } from "@/lib/voice-tuning"
 import { cn } from "@/lib/utils"
 import { voicePresetLabel } from "@/lib/voice-presets"
+import type { UserTuningPresetInput } from "@/lib/user-tuning-presets-api"
 import type {
   AsyncStatus,
   ProviderTuningControl,
   ProviderTuningMetadata,
   ProviderTuningPreset,
   ProviderTuningValue,
+  UserTuningPreset,
   VoiceAsset,
   VoicePreset,
   VoicePresetId,
@@ -60,8 +64,19 @@ type VoiceLibraryPanelProps = {
   onSaveVoiceTuningRequest: (request: VoiceTuningSaveRequest) => void
   onSelectVoice: (voiceId: string) => void
   onSetDefault: (voice: VoiceAsset) => void
+  onUserTuningPresetApply: (preset: UserTuningPreset) => void
+  onUserTuningPresetClear: () => void
   providerTuning: ProviderTuningMetadata
   selectedVoiceId: string
+  selectedUserTuningPreset: UserTuningPreset | null
+  userTuningPresets: {
+    createPreset: (input: UserTuningPresetInput) => Promise<UserTuningPreset | null>
+    deletePreset: (id: string) => Promise<void>
+    error: string | null
+    presets: UserTuningPreset[]
+    status: AsyncStatus
+    updatePreset: (id: string, input: UserTuningPresetInput) => Promise<UserTuningPreset | null>
+  }
   voiceError: string | null
   voicePresets: VoicePreset[]
   voices: VoiceAsset[]
@@ -81,8 +96,12 @@ export function VoiceLibraryPanel({
   onSaveVoiceTuningRequest,
   onSelectVoice,
   onSetDefault,
+  onUserTuningPresetApply,
+  onUserTuningPresetClear,
   providerTuning,
   selectedVoiceId,
+  selectedUserTuningPreset,
+  userTuningPresets,
   voiceError,
   voicePresets,
   voices,
@@ -208,7 +227,11 @@ export function VoiceLibraryPanel({
                     isSaving={isUpdatingVoice}
                     key={`${voice.id}:${activeProviderId ?? "none"}`}
                     onSaveVoiceTuningRequest={onSaveVoiceTuningRequest}
+                    onUserTuningPresetApply={onUserTuningPresetApply}
+                    onUserTuningPresetClear={onUserTuningPresetClear}
                     providerTuning={providerTuning}
+                    selectedUserTuningPreset={selectedUserTuningPreset}
+                    userTuningPresets={userTuningPresets}
                     voice={voice}
                     voicePresets={voicePresets}
                   />
@@ -232,6 +255,7 @@ type TuningDraft = {
   providerSettingsTouched: boolean
   scopeKey: string
   selectedTuningPresetId: string
+  selectedUserPresetId: string | null
   values: VoiceTuningValues
   voicePresetId: VoicePresetId
 }
@@ -242,7 +266,18 @@ type SelectedVoiceTuningProps = {
   isLoading: boolean
   isSaving: boolean
   onSaveVoiceTuningRequest: (request: VoiceTuningSaveRequest) => void
+  onUserTuningPresetApply: (preset: UserTuningPreset) => void
+  onUserTuningPresetClear: () => void
   providerTuning: ProviderTuningMetadata
+  selectedUserTuningPreset: UserTuningPreset | null
+  userTuningPresets: {
+    createPreset: (input: UserTuningPresetInput) => Promise<UserTuningPreset | null>
+    deletePreset: (id: string) => Promise<void>
+    error: string | null
+    presets: UserTuningPreset[]
+    status: AsyncStatus
+    updatePreset: (id: string, input: UserTuningPresetInput) => Promise<UserTuningPreset | null>
+  }
   voice: VoiceAsset
   voicePresets: VoicePreset[]
 }
@@ -253,13 +288,21 @@ function SelectedVoiceTuning({
   isLoading,
   isSaving,
   onSaveVoiceTuningRequest,
+  onUserTuningPresetApply,
+  onUserTuningPresetClear,
   providerTuning,
+  selectedUserTuningPreset,
+  userTuningPresets,
   voice,
   voicePresets,
 }: SelectedVoiceTuningProps) {
   const [draft, setDraft] = useState<TuningDraft | null>(null)
   const [isOpen, setIsOpen] = useState(false)
+  const [newUserPresetName, setNewUserPresetName] = useState("")
+  const [isUserPresetMutating, setIsUserPresetMutating] = useState(false)
   const savedProviderTuning = resolveSavedVoiceTuning(activeProviderId, voice)
+  const activeUserTuningPreset =
+    selectedUserTuningPreset?.providerId === activeProviderId ? selectedUserTuningPreset : null
   const resolvedTuning = useMemo(
     () =>
       resolveVoiceTuningState({
@@ -274,17 +317,29 @@ function SelectedVoiceTuning({
     draft?.scopeKey === scopeKey
       ? draft
       : {
-          providerSettingsTouched: false,
+          providerSettingsTouched: Boolean(activeUserTuningPreset),
           scopeKey,
-          selectedTuningPresetId: resolvedTuning.selectedPresetId,
-          values: resolvedTuning.values,
-          voicePresetId: voice.voicePresetId,
+          selectedTuningPresetId: activeUserTuningPreset ? CUSTOM_TUNING_PRESET_ID : resolvedTuning.selectedPresetId,
+          selectedUserPresetId: activeUserTuningPreset?.id ?? null,
+          values: activeUserTuningPreset ? userPresetValues(providerTuning, activeUserTuningPreset) : resolvedTuning.values,
+          voicePresetId: activeUserTuningPreset?.voicePresetId ?? voice.voicePresetId,
         }
   const presetChanged = activeDraft.voicePresetId !== voice.voicePresetId
   const providerSettingsChanged = !voiceTuningValuesEqual(activeDraft.values, resolvedTuning.values)
   const shouldSaveVoiceSettings = activeDraft.providerSettingsTouched && providerSettingsChanged
   const hasChanges = presetChanged || providerSettingsChanged
   const saveDisabled = disabled || isLoading || !hasChanges || (shouldSaveVoiceSettings && !activeProviderId)
+  const userPresetCandidates = activeProviderId
+    ? userTuningPresets.presets.filter((preset) => preset.providerId === activeProviderId)
+    : []
+  const selectedUserPreset = userPresetCandidates.find((preset) => preset.id === activeDraft.selectedUserPresetId) ?? null
+  const userPresetControlsDisabled =
+    disabled ||
+    isLoading ||
+    isUserPresetMutating ||
+    userTuningPresets.status === "loading" ||
+    !activeProviderId ||
+    providerTuning.controls.length === 0
 
   function handleVoicePresetChange(voicePresetId: VoicePresetId) {
     setDraft((current) => {
@@ -300,10 +355,12 @@ function SelectedVoiceTuning({
       return {
         ...currentDraft,
         selectedTuningPresetId: presetTuning.selectedPresetId,
+        selectedUserPresetId: null,
         values: presetTuning.values,
         voicePresetId,
       }
     })
+    onUserTuningPresetClear()
   }
 
   function handleProviderPresetApply(preset: ProviderTuningPreset) {
@@ -313,9 +370,26 @@ function SelectedVoiceTuning({
         ...currentDraft,
         providerSettingsTouched: true,
         selectedTuningPresetId: preset.id,
+        selectedUserPresetId: null,
         values: presetValues(providerTuning, preset),
       }
     })
+    onUserTuningPresetClear()
+  }
+
+  function handleUserPresetApply(preset: UserTuningPreset) {
+    setDraft((current) => {
+      const currentDraft = current?.scopeKey === scopeKey ? current : activeDraft
+      return {
+        ...currentDraft,
+        providerSettingsTouched: true,
+        selectedTuningPresetId: CUSTOM_TUNING_PRESET_ID,
+        selectedUserPresetId: preset.id,
+        values: userPresetValues(providerTuning, preset),
+        voicePresetId: preset.voicePresetId ?? currentDraft.voicePresetId,
+      }
+    })
+    onUserTuningPresetApply(preset)
   }
 
   function handleTuningValueChange(control: ProviderTuningControl, value: ProviderTuningValue) {
@@ -331,10 +405,12 @@ function SelectedVoiceTuning({
         },
       }
     })
+    onUserTuningPresetClear()
   }
 
   function handleResetChanges() {
     setDraft(null)
+    onUserTuningPresetClear()
   }
 
   function handleSave() {
@@ -350,6 +426,64 @@ function SelectedVoiceTuning({
       voicePresetId: activeDraft.voicePresetId,
       voiceSettings: activeDraft.values,
     })
+  }
+
+  async function handleSaveAsUserPreset() {
+    if (userPresetControlsDisabled || !activeProviderId || !newUserPresetName.trim()) {
+      return
+    }
+    setIsUserPresetMutating(true)
+    try {
+      const preset = await userTuningPresets.createPreset({
+        name: newUserPresetName,
+        providerId: activeProviderId,
+        settings: activeDraft.values,
+        voicePresetId: activeDraft.voicePresetId,
+      })
+      if (preset) {
+        setNewUserPresetName("")
+        handleUserPresetApply(preset)
+      }
+    } finally {
+      setIsUserPresetMutating(false)
+    }
+  }
+
+  async function handleUpdateUserPreset() {
+    if (userPresetControlsDisabled || !activeProviderId || !selectedUserPreset) {
+      return
+    }
+    setIsUserPresetMutating(true)
+    try {
+      const preset = await userTuningPresets.updatePreset(selectedUserPreset.id, {
+        name: selectedUserPreset.name,
+        providerId: activeProviderId,
+        settings: activeDraft.values,
+        voicePresetId: activeDraft.voicePresetId,
+      })
+      if (preset) {
+        handleUserPresetApply(preset)
+      }
+    } finally {
+      setIsUserPresetMutating(false)
+    }
+  }
+
+  async function handleDeleteUserPreset() {
+    if (userPresetControlsDisabled || !selectedUserPreset) {
+      return
+    }
+    setIsUserPresetMutating(true)
+    try {
+      await userTuningPresets.deletePreset(selectedUserPreset.id)
+      setDraft((current) => {
+        const currentDraft = current?.scopeKey === scopeKey ? current : activeDraft
+        return { ...currentDraft, selectedUserPresetId: null }
+      })
+      onUserTuningPresetClear()
+    } finally {
+      setIsUserPresetMutating(false)
+    }
   }
 
   return (
@@ -411,6 +545,20 @@ function SelectedVoiceTuning({
                       />
                     </div>
                   ) : null}
+                  <UserTuningPresetManager
+                    disabled={userPresetControlsDisabled}
+                    error={userTuningPresets.error}
+                    isMutating={isUserPresetMutating}
+                    newPresetName={newUserPresetName}
+                    onDelete={handleDeleteUserPreset}
+                    onNameChange={setNewUserPresetName}
+                    onPresetApply={handleUserPresetApply}
+                    onSaveAs={handleSaveAsUserPreset}
+                    onUpdate={handleUpdateUserPreset}
+                    presets={userPresetCandidates}
+                    selectedPresetId={activeDraft.selectedUserPresetId}
+                    status={userTuningPresets.status}
+                  />
                   <VoiceTuningControls
                     controls={providerTuning.controls}
                     disabled={disabled}
@@ -490,6 +638,111 @@ function ProviderTuningPresetButtons({
           </button>
         )
       })}
+    </div>
+  )
+}
+
+function UserTuningPresetManager({
+  disabled,
+  error,
+  isMutating,
+  newPresetName,
+  onDelete,
+  onNameChange,
+  onPresetApply,
+  onSaveAs,
+  onUpdate,
+  presets,
+  selectedPresetId,
+  status,
+}: {
+  disabled: boolean
+  error: string | null
+  isMutating: boolean
+  newPresetName: string
+  onDelete: () => void
+  onNameChange: (value: string) => void
+  onPresetApply: (preset: UserTuningPreset) => void
+  onSaveAs: () => void
+  onUpdate: () => void
+  presets: UserTuningPreset[]
+  selectedPresetId: string | null
+  status: AsyncStatus
+}) {
+  const selectedPreset = presets.find((preset) => preset.id === selectedPresetId) ?? null
+  return (
+    <div className="flex flex-col gap-2 rounded-md border border-border bg-background/60 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="text-sm font-medium">User Tuning Presets</div>
+        {status === "loading" ? <Badge>Loading</Badge> : null}
+      </div>
+
+      {presets.length > 0 ? (
+        <div aria-label="User tuning presets" className="grid gap-2" role="group">
+          {presets.map((preset) => {
+            const isSelected = preset.id === selectedPresetId
+            return (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-border bg-card/70 p-2" key={preset.id}>
+                <span className="min-w-0 truncate text-sm font-medium">{preset.name}</span>
+                <Button
+                  aria-pressed={isSelected}
+                  disabled={disabled}
+                  onClick={() => onPresetApply(preset)}
+                  size="sm"
+                  type="button"
+                  variant={isSelected ? "primary" : "secondary"}
+                >
+                  <Check aria-hidden="true" data-icon="inline-start" />
+                  Apply Preset
+                </Button>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <div className="text-sm text-muted-foreground">No user presets saved for this provider.</div>
+      )}
+
+      <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+        <Input
+          aria-label="New user tuning preset name"
+          disabled={disabled}
+          onChange={(event) => onNameChange(event.target.value)}
+          placeholder="Preset name"
+          value={newPresetName}
+        />
+        <Button disabled={disabled || !newPresetName.trim()} onClick={onSaveAs} type="button" variant="secondary">
+          {isMutating && !selectedPreset ? (
+            <Loader2 aria-hidden="true" className="size-4 animate-spin" />
+          ) : (
+            <Save aria-hidden="true" data-icon="inline-start" />
+          )}
+          Save As Preset
+        </Button>
+      </div>
+
+      {selectedPreset ? (
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Button disabled={disabled} onClick={onUpdate} type="button" variant="secondary">
+            {isMutating ? (
+              <Loader2 aria-hidden="true" className="size-4 animate-spin" />
+            ) : (
+              <Save aria-hidden="true" data-icon="inline-start" />
+            )}
+            Update Preset
+          </Button>
+          <Button disabled={disabled} onClick={onDelete} type="button" variant="secondary">
+            <Trash2 aria-hidden="true" data-icon="inline-start" />
+            Delete Preset
+          </Button>
+        </div>
+      ) : null}
+
+      {error ? (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-sm" role="alert">
+          {error}
+        </div>
+      ) : null}
     </div>
   )
 }

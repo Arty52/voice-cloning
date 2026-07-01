@@ -78,6 +78,18 @@ export type ProviderTuningPreset = {
   values: VoiceTuningValues
 }
 
+export type UserTuningPreset = {
+  id: string
+  name: string
+  providerId: string
+  voicePresetId: VoicePresetId | null
+  settings: VoiceTuningValues
+  createdAt: string
+  updatedAt: string
+}
+
+export type UserTuningPresetSnapshot = Pick<UserTuningPreset, "id" | "name" | "providerId" | "voicePresetId" | "settings">
+
 export type ProviderTuningMetadata = {
   controls: ProviderTuningControl[]
   presets: ProviderTuningPreset[]
@@ -436,7 +448,7 @@ export type GeneratedResult = {
   tuningMetadata: GeneratedAudioTuningMetadata | null
 }
 
-export type GeneratedAudioTuningMode = "custom" | "default" | "preset"
+export type GeneratedAudioTuningMode = "custom" | "default" | "preset" | "userPreset"
 
 export type GeneratedAudioAdjustedSetting = {
   id: string
@@ -454,6 +466,7 @@ export type GeneratedAudioTuningMetadata = {
   presetLabel: string | null
   providerId: string
   providerLabel: string
+  userPreset?: UserTuningPresetSnapshot | null
 }
 
 export type GeneratedAudioMultiVoiceSegmentMetadata = {
