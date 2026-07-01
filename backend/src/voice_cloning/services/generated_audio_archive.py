@@ -64,6 +64,7 @@ class GeneratedAudioMutationResult:
 @dataclass(frozen=True)
 class StagedAudioUpload:
     path: Path
+    upload_id: str
     content_type: str
     size_bytes: int
     sha256: str
@@ -123,7 +124,7 @@ class GeneratedAudioArchiveService:
         _validate_audio_id(audio_id)
         limit_bytes = self.get_storage_limit()
         staged_upload = await self._stage_upload(upload, limit_bytes)
-        final_path: Path | None = None
+        moved_final_path: Path | None = None
         pruned_tombstones: list[tuple[Path, Path]] = []
         try:
             with unit_of_work(self.session_factory) as session:
@@ -166,6 +167,7 @@ class GeneratedAudioArchiveService:
                 audio_repository.save(metadata)
                 session.flush()
                 shutil.move(str(staged_upload.path), str(final_path))
+                moved_final_path = final_path
                 pruned_ids, pruned_tombstones = self._prune_to_limit(
                     audio_repository,
                     limit_bytes,
@@ -175,8 +177,8 @@ class GeneratedAudioArchiveService:
                 result = GeneratedAudioSaveResult(item=metadata, usage=_usage(items, limit_bytes), pruned_ids=pruned_ids)
         except Exception:
             staged_upload.path.unlink(missing_ok=True)
-            if final_path is not None:
-                final_path.unlink(missing_ok=True)
+            if moved_final_path is not None:
+                moved_final_path.unlink(missing_ok=True)
             self._restore_tombstone_paths(pruned_tombstones)
             raise
         self._remove_tombstones(pruned_tombstones)
@@ -256,7 +258,8 @@ class GeneratedAudioArchiveService:
 
     async def _stage_upload(self, upload: UploadFile, limit_bytes: int) -> StagedAudioUpload:
         content_type = upload.content_type or "audio/mpeg"
-        staged_path = self.file_store.root / ".staged" / uuid4().hex / f"upload{_extension(upload.filename, content_type)}"
+        upload_id = uuid4().hex
+        staged_path = self.file_store.root / ".staged" / upload_id / f"upload{_extension(upload.filename, content_type)}"
         staged_path.parent.mkdir(parents=True, exist_ok=True)
         digest = hashlib.sha256()
         size_bytes = 0
@@ -281,6 +284,7 @@ class GeneratedAudioArchiveService:
             raise
         return StagedAudioUpload(
             path=staged_path,
+            upload_id=upload_id,
             content_type=content_type,
             size_bytes=size_bytes,
             sha256=digest.hexdigest(),
@@ -288,12 +292,12 @@ class GeneratedAudioArchiveService:
 
     def _relative_audio_path(self, audio_id: str, staged_upload: StagedAudioUpload) -> str:
         extension = staged_upload.path.suffix or ".mp3"
-        relative_path = f"{staged_upload.sha256[:2]}/{audio_id}{extension}"
+        relative_path = f"{staged_upload.sha256[:2]}/{audio_id}-{staged_upload.upload_id[:12]}{extension}"
         candidate = self.file_store.resolve_path(relative_path)
         if not candidate.exists():
             return relative_path
         for index in range(2, 1000):
-            relative_path = f"{staged_upload.sha256[:2]}/{audio_id}-{index}{extension}"
+            relative_path = f"{staged_upload.sha256[:2]}/{audio_id}-{staged_upload.upload_id[:12]}-{index}{extension}"
             if not self.file_store.resolve_path(relative_path).exists():
                 return relative_path
         raise GeneratedAudioArchiveError("Unable to allocate a generated audio file path.", 500)

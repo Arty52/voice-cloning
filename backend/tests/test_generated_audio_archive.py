@@ -109,6 +109,35 @@ def test_generated_audio_archive_save_is_idempotent_by_id_and_hash(tmp_path: Pat
     assert len(client.get("/api/generated-audio").json()["items"]) == 1
 
 
+def test_generated_audio_archive_save_failure_does_not_delete_existing_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from voice_cloning.api.app import create_app
+
+    service = make_archive_service(tmp_path)
+    client = TestClient(create_app(settings=make_settings(tmp_path), generated_audio_archive_service=service))
+    first_response = client.post("/api/generated-audio", data={"id": "audio-one"}, files=audio_files(b"fake-mp3"))
+    assert first_response.status_code == 200
+    item = service.get_item("audio-one")
+    path = service.resolve_audio_path(item)
+
+    def collide_with_existing_path(*_args: object) -> str:
+        return item.file_path
+
+    def fail_save(self: SqlAlchemyGeneratedAudioRepository, _metadata: object) -> None:
+        raise RuntimeError("database failure")
+
+    monkeypatch.setattr(service, "_relative_audio_path", collide_with_existing_path)
+    monkeypatch.setattr(SqlAlchemyGeneratedAudioRepository, "save", fail_save)
+
+    with pytest.raises(RuntimeError, match="database failure"):
+        client.post("/api/generated-audio", data={"id": "audio-two"}, files=audio_files(b"new-mp3"))
+
+    assert path.read_bytes() == b"fake-mp3"
+    assert service.get_item("audio-one").id == "audio-one"
+
+
 def test_generated_audio_archive_storage_limit_prunes_oldest(tmp_path: Path) -> None:
     client = make_client(tmp_path)
     limit_response = client.put("/api/generated-audio/storage-limit", json={"limitBytes": 6, "prune": True})
