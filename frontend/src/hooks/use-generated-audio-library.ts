@@ -333,13 +333,13 @@ async function loadBrowserGeneratedAudioLibrary() {
 async function importBrowserGeneratedAudioToArchive(
   limitBytes: number
 ): Promise<GeneratedAudioArchiveMigrationResult> {
-  const records = await listGeneratedAudio()
+  const records = await safeListStoredGeneratedAudio()
   const migrationState = readGeneratedAudioArchiveMigrationState()
   const importedIds: string[] = []
   const conflictIds: string[] = []
   let failedCount = 0
 
-  for (const record of records) {
+  for (const record of [...records].reverse()) {
     if (
       migrationState.clearedIds.has(record.id) ||
       migrationState.conflictIds.has(record.id) ||

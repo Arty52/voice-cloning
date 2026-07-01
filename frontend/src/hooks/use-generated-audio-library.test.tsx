@@ -276,6 +276,50 @@ describe("useGeneratedAudioLibrary", () => {
     expect(snapshots.map((snapshot) => snapshot.status)).toContain("loading")
   })
 
+  it("keeps the server archive available when IndexedDB migration cannot be read", async () => {
+    const openSpy = vi.spyOn(indexedDB, "open").mockImplementation(() => {
+      throw new Error("IndexedDB blocked")
+    })
+    try {
+      mockArchive([archiveItem({ id: "server-audio" })])
+
+      render(<GeneratedAudioHarness onSnapshot={() => undefined} />)
+
+      await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("success"))
+      expect(screen.getByTestId("item-count")).toHaveTextContent("1")
+      expect(screen.getByTestId("first-url")).toHaveTextContent("/api/generated-audio/server-audio/audio")
+      expect(screen.getByTestId("error")).toHaveTextContent("")
+    } finally {
+      openSpy.mockRestore()
+    }
+  })
+
+  it("imports browser generated audio oldest first in server mode", async () => {
+    await saveGeneratedAudio(
+      audioInput({
+        createdAt: "2026-05-28T10:00:00.000Z",
+        id: "old-audio",
+      }),
+      20
+    )
+    await saveGeneratedAudio(
+      audioInput({
+        createdAt: "2026-05-28T10:01:00.000Z",
+        id: "new-audio",
+      }),
+      20
+    )
+    const fetchMock = mockArchive()
+
+    render(<GeneratedAudioHarness onSnapshot={() => undefined} />)
+
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("success"))
+    const postedIds = fetchMock.mock.calls
+      .filter(([input, init]) => String(input) === "/api/generated-audio" && init?.method === "POST")
+      .map(([, init]) => String((init?.body as FormData).get("id")))
+    expect(postedIds).toEqual(["old-audio", "new-audio"])
+  })
+
   it("saves new generated audio to the server archive in server mode", async () => {
     const user = userEvent.setup()
     const fetchMock = mockArchive()
