@@ -3,7 +3,18 @@
 PYTHON ?= python3
 VENV_DIR := .venv
 VENV_PYTHON := $(VENV_DIR)/bin/python
-DATABASE_URL ?= postgresql+psycopg://voice_cloning:voice_cloning@localhost:5432/voice_cloning
+DATABASE_URL_OVERRIDE := $(DATABASE_URL)
+POSTGRES_DB_OVERRIDE := $(POSTGRES_DB)
+POSTGRES_USER_OVERRIDE := $(POSTGRES_USER)
+POSTGRES_PASSWORD_OVERRIDE := $(POSTGRES_PASSWORD)
+POSTGRES_PORT_OVERRIDE := $(POSTGRES_PORT)
+-include .env
+POSTGRES_DB := $(or $(POSTGRES_DB_OVERRIDE),$(POSTGRES_DB),voice_cloning)
+POSTGRES_USER := $(or $(POSTGRES_USER_OVERRIDE),$(POSTGRES_USER),voice_cloning)
+POSTGRES_PASSWORD := $(or $(POSTGRES_PASSWORD_OVERRIDE),$(POSTGRES_PASSWORD),voice_cloning)
+POSTGRES_PORT := $(or $(POSTGRES_PORT_OVERRIDE),$(POSTGRES_PORT),5432)
+DEFAULT_DATABASE_URL := postgresql+psycopg://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@localhost:$(POSTGRES_PORT)/$(POSTGRES_DB)
+DATABASE_URL := $(or $(DATABASE_URL_OVERRIDE),$(DATABASE_URL),$(DEFAULT_DATABASE_URL))
 
 .PHONY: \
 	setup install-backend install-backend-processing install-frontend \
@@ -50,12 +61,12 @@ migrate:
 	cd backend && DATABASE_URL="$(DATABASE_URL)" ../$(VENV_PYTHON) -m alembic -c alembic.ini upgrade head
 
 test-postgres:
-	docker compose up -d db
+	docker compose up --wait db
 	cd backend && DATABASE_URL="$(DATABASE_URL)" ../$(VENV_PYTHON) -m pytest -m postgres tests/test_persistence.py
 	cd backend && DATABASE_URL="$(DATABASE_URL)" ../$(VENV_PYTHON) -m alembic -c alembic.ini check
 
 test-postgres-migrations:
-	docker compose up -d db
+	docker compose up --wait db
 	cd backend && DATABASE_URL="$(DATABASE_URL)" ../$(VENV_PYTHON) -m pytest -m postgres tests/test_persistence.py -k migrations_roundtrip
 
 test-backend:
