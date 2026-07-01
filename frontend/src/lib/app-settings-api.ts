@@ -123,12 +123,27 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 async function readError(response: Response) {
+  const fallback = `Request failed with status ${response.status}.`
+  let body = ""
+  try {
+    body = await response.text()
+  } catch {
+    return fallback
+  }
   const contentType = response.headers.get("content-type") || ""
-  if (contentType.includes("application/json")) {
-    const payload = (await response.json()) as { detail?: unknown }
-    if (typeof payload.detail === "string") {
-      return payload.detail
+  if (contentType.includes("application/json") && body) {
+    let payload: unknown
+    try {
+      payload = JSON.parse(body) as unknown
+    } catch {
+      return body || fallback
+    }
+    if (isRecord(payload) && payload.detail !== undefined) {
+      if (typeof payload.detail === "string") {
+        return payload.detail
+      }
+      return JSON.stringify(payload.detail)
     }
   }
-  return (await response.text()) || `Request failed with status ${response.status}.`
+  return body || fallback
 }

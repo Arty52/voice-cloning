@@ -71,4 +71,41 @@ describe("app settings API", () => {
 
     await expect(loadAppSettings()).rejects.toBeInstanceOf(AppSettingsUnavailableError)
   })
+
+  it("reports malformed unavailable JSON without breaking fallback detection", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response("{", {
+            status: 503,
+            headers: { "Content-Type": "application/json" },
+          })
+        )
+      )
+    )
+
+    await expect(loadAppSettings()).rejects.toMatchObject({
+      message: "{",
+      name: "AppSettingsUnavailableError",
+    } satisfies Partial<AppSettingsUnavailableError>)
+  })
+
+  it("reports non-string JSON detail without reading the body twice", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ detail: [{ msg: "Invalid setting." }] }), {
+            status: 422,
+            headers: { "Content-Type": "application/json" },
+          })
+        )
+      )
+    )
+
+    await expect(saveAppSettings({ naturalHandoffs: { enabled: true } })).rejects.toThrow(
+      '[{"msg":"Invalid setting."}]'
+    )
+  })
 })

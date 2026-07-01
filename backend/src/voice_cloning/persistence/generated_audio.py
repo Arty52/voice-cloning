@@ -8,7 +8,6 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from .models import GeneratedAudioRecord
-from .settings import GENERATED_AUDIO_STORAGE_LIMIT_KEY, SqlAlchemyAppSettingsRepository
 
 
 @dataclass(frozen=True)
