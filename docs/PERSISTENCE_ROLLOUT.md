@@ -27,7 +27,9 @@ All PRs start as Draft and move to Open only after their validation gates pass.
    - Validation: focused repository/import tests; API voice route regression tests; DB/file consistency tests; `make check`; `make test-postgres`.
 3. Server-Backed Generated Audio Archive
    - Add archive metadata repositories, local generated-audio file storage, download/delete routes, and idempotent save semantics.
-   - Validation: file/database consistency tests, orphan cleanup tests, archive API route tests, `make check`, `make test-postgres`.
+   - API routes: `GET /api/generated-audio`, `POST /api/generated-audio`, `GET /api/generated-audio/usage`, `PUT /api/generated-audio/storage-limit`, `GET /api/generated-audio/{audioId}/audio`, `DELETE /api/generated-audio/{audioId}`, and `DELETE /api/generated-audio`.
+   - Save behavior: stable `id` plus same hash is idempotent; stable `id` plus different hash returns `409`; files are staged under `GENERATED_AUDIO_STORAGE_DIR` before metadata is committed.
+   - Validation: file/database consistency tests, archive API route tests, idempotency/conflict tests, `make check`, `make test-postgres`.
 4. Frontend Archive And Migration UI
    - Migrate generated-audio archive calls from IndexedDB source-of-truth to server APIs while retaining IndexedDB as cache/draft buffer.
    - Validation: hook/component tests, migration conflict tests, browser smoke, `make check`.

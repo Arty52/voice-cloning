@@ -35,6 +35,13 @@ The FastAPI service is available at `http://localhost:6420` when the Docker stac
 - `GET /api/speech/jobs/{jobId}/result`
 - `GET /api/speech/jobs/{jobId}/segments/{segmentId}/result`
 - `POST /api/speech/jobs/{jobId}/segments/{segmentId}/regenerate`
+- `GET /api/generated-audio`
+- `POST /api/generated-audio`
+- `GET /api/generated-audio/usage`
+- `PUT /api/generated-audio/storage-limit`
+- `GET /api/generated-audio/{audioId}/audio`
+- `DELETE /api/generated-audio/{audioId}`
+- `DELETE /api/generated-audio`
 
 Provider-backed routes accept an optional `providerId` request value and an optional `X-Voice-Provider-Key` header. When `providerId` is omitted, the backend uses `defaultProviderId`. When the header is present and non-empty, the browser-provided key overrides the selected provider's backend fallback key; otherwise the backend falls back to `.env`. The API never returns either key.
 
@@ -188,6 +195,61 @@ All fields are optional, but at least one of `name`, `voicePresetId`, or `voiceS
 
 ```json
 { "voiceId": "voice-clone-01" }
+```
+
+## Generated Audio Archive
+
+Generated-audio archive routes require backend persistence. When `DATABASE_URL` is blank, these routes return `503` and the frontend can continue using IndexedDB as a local draft/cache store. Archive files are stored under `GENERATED_AUDIO_STORAGE_DIR`; clients never send file paths.
+
+`GET /api/generated-audio` returns saved metadata and current usage:
+
+```json
+{
+  "items": [
+    {
+      "id": "audio-123",
+      "audioUrl": "/api/generated-audio/audio-123/audio",
+      "contentType": "audio/mpeg",
+      "sizeBytes": 898656,
+      "sha256": "abc123...",
+      "createdAt": "2026-07-01T12:00:00+00:00",
+      "cacheState": "miss",
+      "providerId": "elevenlabs",
+      "voiceId": "provider-voice-id",
+      "appVoiceId": "local-voice-id",
+      "voiceName": "Narrator",
+      "modelId": "eleven_multilingual_v2",
+      "characterCount": 120,
+      "requestId": "req_123",
+      "generationElapsedMs": 1234,
+      "multiVoiceMetadata": null,
+      "tuningMetadata": null
+    }
+  ],
+  "usage": {
+    "itemCount": 1,
+    "limitBytes": 104857600,
+    "remainingBytes": 103958944,
+    "usedBytes": 898656
+  }
+}
+```
+
+`POST /api/generated-audio` accepts multipart form data:
+
+- `id`: stable client/generated id or idempotency key
+- `audioFile`: generated audio file
+- `createdAt`, `cacheState`, `providerId`, `voiceId`, `appVoiceId`, `voiceName`, `modelId`, `characterCount`, `requestId`, `generationElapsedMs`: optional metadata
+- `multiVoiceMetadata`, `tuningMetadata`: optional JSON objects
+
+The save response includes `item`, `usage`, `prunedIds`, and `alreadyExisted`. Retrying with the same `id` and same audio hash returns the existing item. Retrying with the same `id` and different audio hash returns `409`.
+
+`GET /api/generated-audio/{audioId}/audio` streams the archived audio file. `DELETE /api/generated-audio/{audioId}` removes one archive item and file. `DELETE /api/generated-audio` clears the archive. `GET /api/generated-audio/usage` returns only usage.
+
+`PUT /api/generated-audio/storage-limit` accepts JSON and prunes oldest items by default:
+
+```json
+{ "limitBytes": 104857600, "prune": true }
 ```
 
 ## Sample Processing
