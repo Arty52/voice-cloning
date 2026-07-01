@@ -39,6 +39,12 @@ from ..providers import (
     ProviderTuningMetadata,
     ProviderTuningPreset,
 )
+from ..services.generated_audio_archive import (
+    GeneratedAudioMutationResult,
+    GeneratedAudioSaveResult,
+    GeneratedAudioUsage,
+)
+from ..persistence.generated_audio import GeneratedAudioMetadata
 
 
 def audio_response(
@@ -68,6 +74,63 @@ def audio_response(
         media_type="audio/mpeg",
         headers=headers,
     )
+
+
+def generated_audio_item_payload(item: GeneratedAudioMetadata) -> dict[str, object]:
+    return {
+        "id": item.id,
+        "audioUrl": f"/api/generated-audio/{item.id}/audio",
+        "contentType": item.content_type,
+        "sizeBytes": item.size_bytes,
+        "sha256": item.sha256,
+        "createdAt": item.created_at,
+        "cacheState": item.cache_state,
+        "providerId": item.provider_id,
+        "voiceId": item.provider_voice_id,
+        "appVoiceId": item.app_voice_id,
+        "voiceName": item.voice_name,
+        "modelId": item.model_id,
+        "characterCount": item.character_count,
+        "requestId": item.request_id,
+        "generationElapsedMs": item.generation_elapsed_ms,
+        "multiVoiceMetadata": item.multi_voice_metadata,
+        "tuningMetadata": item.tuning_metadata,
+    }
+
+
+def generated_audio_usage_payload(usage: GeneratedAudioUsage) -> dict[str, object]:
+    return {
+        "itemCount": usage.item_count,
+        "limitBytes": usage.limit_bytes,
+        "remainingBytes": usage.remaining_bytes,
+        "usedBytes": usage.used_bytes,
+    }
+
+
+def generated_audio_list_payload(
+    items: list[GeneratedAudioMetadata],
+    usage: GeneratedAudioUsage,
+) -> dict[str, object]:
+    return {
+        "items": [generated_audio_item_payload(item) for item in items],
+        "usage": generated_audio_usage_payload(usage),
+    }
+
+
+def generated_audio_save_payload(result: GeneratedAudioSaveResult) -> dict[str, object]:
+    return {
+        "alreadyExisted": result.already_existed,
+        "item": generated_audio_item_payload(result.item),
+        "prunedIds": result.pruned_ids,
+        "usage": generated_audio_usage_payload(result.usage),
+    }
+
+
+def generated_audio_mutation_payload(result: GeneratedAudioMutationResult) -> dict[str, object]:
+    return {
+        "prunedIds": result.pruned_ids,
+        "usage": generated_audio_usage_payload(result.usage),
+    }
 
 
 def subscription_payload(summary: SubscriptionSummary) -> dict[str, object]:

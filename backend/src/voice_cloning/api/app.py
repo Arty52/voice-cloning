@@ -6,8 +6,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from ..cache import VoiceCache
 from ..config import Settings
 from ..elevenlabs_client import ElevenLabsProvider
+from ..persistence.database import create_database_engine, create_session_factory
+from ..persistence.file_store import create_generated_audio_file_store
 from ..providers import ProviderRegistry
 from ..sample_processors import create_sample_processor
+from ..services.generated_audio_archive import GeneratedAudioArchiveService
 from ..services.media_sources import SampleProcessingMediaSourceService
 from ..services.sample_processing import SampleProcessingService, SampleProcessor
 from ..services.speech_jobs import SpeechJobService
@@ -15,6 +18,7 @@ from ..services.voice_ingestion import VoiceIngestionService
 from ..voice_library import VoiceLibraryProtocol
 from ..voice_library_factory import create_voice_library
 from .routes.health import create_health_router
+from .routes.generated_audio import create_generated_audio_router
 from .routes.metadata import create_metadata_router
 from .routes.sample_processing import create_sample_processing_router
 from .routes.sample_processing_sources import create_sample_processing_sources_router
@@ -33,6 +37,7 @@ def create_app(
     sample_processing_media_source_service: SampleProcessingMediaSourceService | None = None,
     sample_processing_service: SampleProcessingService | None = None,
     speech_job_service: SpeechJobService | None = None,
+    generated_audio_archive_service: GeneratedAudioArchiveService | None = None,
 ) -> FastAPI:
     resolved_settings = settings or Settings.from_env()
     resolved_settings.ensure_runtime_directories()
@@ -53,6 +58,9 @@ def create_app(
         resolved_settings,
         resolved_cache,
         resolved_library,
+    )
+    resolved_generated_audio_archive = generated_audio_archive_service or _create_generated_audio_archive_service(
+        resolved_settings
     )
 
     app = FastAPI(title="Local Voice Cloning API", version="0.1.0")
@@ -81,7 +89,17 @@ def create_app(
     app.include_router(create_metadata_router(resolved_settings, resolved_provider_registry))
     app.include_router(create_speech_jobs_router(resolved_provider_registry, resolved_speech_jobs))
     app.include_router(create_speech_router(resolved_settings, resolved_provider_registry, resolved_cache, resolved_library))
+    app.include_router(create_generated_audio_router(resolved_generated_audio_archive))
     return app
+
+
+def _create_generated_audio_archive_service(settings: Settings) -> GeneratedAudioArchiveService | None:
+    if not settings.database_url:
+        return None
+    engine = create_database_engine(settings.database_url)
+    session_factory = create_session_factory(engine)
+    file_store = create_generated_audio_file_store(settings.generated_audio_storage_dir)
+    return GeneratedAudioArchiveService(session_factory, file_store)
 
 
 app = create_app()

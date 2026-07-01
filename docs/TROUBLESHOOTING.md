@@ -145,6 +145,7 @@ Sample-processing jobs, staged media sources, preview clips, diarization transcr
 Generated audio saved in the browser can be removed from `Generated Audio` with Remove or Clear All. The section also lets you choose a browser storage cap of 25 MB, 50 MB, 100 MB, or 250 MB. Lowering the cap prompts before pruning older saved audio. Saved generated audio metadata includes model, provider request metadata when returned, tuning snapshot metadata when available, and browser-measured generation elapsed time for new generations.
 
 Future server-backed generated-audio archives store files under `GENERATED_AUDIO_STORAGE_DIR`, which defaults to ignored `storage/generated-audio/`. The backend creates this root on startup and resolves archive entries relative to it.
+When `DATABASE_URL` is configured, the backend archive API stores metadata in Postgres and streams files from that directory. If archive routes return `503`, backend persistence is not configured and the browser should keep using IndexedDB as the local draft/cache store.
 
 Remove containers and volumes:
 

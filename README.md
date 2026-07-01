@@ -69,7 +69,7 @@ http://localhost:6420
 - When `DATABASE_URL` is configured, voice library metadata is stored in Postgres and existing `assets/voices/voices.json` entries are imported idempotently. When it is blank, the ignored voice manifest remains the local source of truth.
 - Generated audio and provider cache data under `storage/` are ignored by git.
 - Server-side generated-audio archive files are stored under `GENERATED_AUDIO_STORAGE_DIR`, which defaults to ignored `storage/generated-audio/`.
-- Browser-generated audio is stored in browser IndexedDB by default, not committed to the repository.
+- When backend persistence is configured, generated-audio archive metadata is stored in Postgres and files stream from `GENERATED_AUDIO_STORAGE_DIR`. Browser IndexedDB remains the transition cache/draft store.
 - Speech job output, optional sample-processing output, separated stems, and downloaded model data are runtime-only and must stay out of git.
 - The optional live smoke test calls ElevenLabs, may consume credits, and may create or reuse a cloned voice.
 
