@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 import json
 from pathlib import Path
 import shutil
-from typing import Any, Mapping, get_args
+from typing import Any, Mapping, Protocol, get_args
 
 from fastapi import HTTPException, UploadFile
 
@@ -44,6 +44,81 @@ class PreparedUploadPlan:
     resolved_window_duration: float | None
     resolved_voice_preset_id: VoicePresetId
     source_destination: Path | None
+
+
+class VoiceLibraryProtocol(Protocol):
+    assets_dir: Path
+
+    def list_payload(self) -> dict[str, object]: ...
+
+    def list_assets(self) -> list[VoiceAsset]: ...
+
+    def default_voice_id(self) -> str: ...
+
+    def get_asset(self, voice_id: str) -> VoiceAsset: ...
+
+    def get_sample(self, voice_id: str) -> VoiceSample: ...
+
+    def resolve_asset_path(self, asset: VoiceAsset) -> Path: ...
+
+    async def add_upload(
+        self,
+        name: str,
+        upload: UploadFile,
+        sample_mode: str | None = None,
+        source_upload: UploadFile | None = None,
+        window_start_seconds: float | None = None,
+        window_duration_seconds: float | None = None,
+        voice_preset_id: str | None = None,
+    ) -> VoiceAsset: ...
+
+    def add_prepared_upload(
+        self,
+        name: str,
+        sample: VoiceSample,
+        sample_mode: str | None = None,
+        source_file: StoredSampleFile | None = None,
+        window_start_seconds: float | None = None,
+        window_duration_seconds: float | None = None,
+        voice_preset_id: str | None = None,
+    ) -> VoiceAsset: ...
+
+    def validate_prepared_upload(
+        self,
+        name: str,
+        sample_filename: str | None,
+        *,
+        sample_mode: str | None = None,
+        source_filename: str | None = None,
+        source_file_available: bool = False,
+        window_start_seconds: float | None = None,
+        window_duration_seconds: float | None = None,
+        voice_preset_id: str | None = None,
+    ) -> PreparedUploadPlan: ...
+
+    def add_processed_sample(
+        self,
+        name: str,
+        sample: VoiceSample,
+        processing_steps: tuple[VoiceProcessingStep, ...],
+        voice_preset_id: str | None = None,
+    ) -> VoiceAsset: ...
+
+    def rename_asset(self, voice_id: str, name: str) -> dict[str, object]: ...
+
+    def update_asset(
+        self,
+        voice_id: str,
+        *,
+        name: str | None = None,
+        provider_id: str | None = None,
+        voice_preset_id: str | None = None,
+        voice_settings: Mapping[str, object] | None = None,
+    ) -> dict[str, object]: ...
+
+    def delete_asset(self, voice_id: str) -> dict[str, object]: ...
+
+    def set_default(self, voice_id: str) -> dict[str, object]: ...
 
 
 class VoiceLibrary:
