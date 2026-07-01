@@ -38,4 +38,5 @@ All PRs start as Draft and move to Open only after their validation gates pass.
    - Validation: hook/component tests, migration conflict tests, browser smoke, `make check`.
 5. Preference And Settings Persistence
    - Move durable app/provider preferences behind backend settings APIs and add any needed settings placement in `#provider` or a dedicated `#settings` section.
+   - Implemented settings are allowlisted, non-secret values only: generated-audio storage limit, Natural Handoffs default, and selected model id by provider. Provider API keys remain in browser-local storage or `.env`.
    - Validation: settings API tests, frontend settings tests, `make check`, `make test-postgres`.

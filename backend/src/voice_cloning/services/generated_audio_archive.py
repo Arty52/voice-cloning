@@ -16,9 +16,9 @@ from ..persistence.database import SessionFactory, unit_of_work
 from ..persistence.file_store import FileStoreError, LocalFileStore
 from ..persistence.generated_audio import (
     GeneratedAudioMetadata,
-    SqlAlchemyAppSettingsRepository,
     SqlAlchemyGeneratedAudioRepository,
 )
+from ..persistence.settings import SqlAlchemyAppSettingsRepository
 
 
 BYTES_PER_MEBIBYTE = 1024 * 1024

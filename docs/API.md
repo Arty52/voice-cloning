@@ -42,6 +42,8 @@ The FastAPI service is available at `http://localhost:6420` when the Docker stac
 - `GET /api/generated-audio/{audioId}/audio`
 - `DELETE /api/generated-audio/{audioId}`
 - `DELETE /api/generated-audio`
+- `GET /api/settings`
+- `PUT /api/settings`
 
 Provider-backed routes accept an optional `providerId` request value and an optional `X-Voice-Provider-Key` header. When `providerId` is omitted, the backend uses `defaultProviderId`. When the header is present and non-empty, the browser-provided key overrides the selected provider's backend fallback key; otherwise the backend falls back to `.env`. The API never returns either key.
 
@@ -250,6 +252,34 @@ The save response includes `item`, `usage`, `prunedIds`, and `alreadyExisted`. R
 
 ```json
 { "limitBytes": 104857600, "prune": true }
+```
+
+## App Settings
+
+App settings routes require backend persistence. When `DATABASE_URL` is blank, these routes return `503` and the frontend keeps using browser-local fallbacks. These routes are allowlisted for non-secret preferences only; provider API keys are never accepted.
+
+`GET /api/settings` returns:
+
+```json
+{
+  "available": true,
+  "settings": {
+    "generatedAudioStorageLimit": { "limitBytes": 104857600 },
+    "naturalHandoffs": { "enabled": true },
+    "selectedModelByProvider": { "elevenlabs": "eleven_multilingual_v2" }
+  }
+}
+```
+
+`PUT /api/settings` accepts the same allowlisted setting keys under `settings`. Unknown keys, malformed values, and secret-like settings are rejected:
+
+```json
+{
+  "settings": {
+    "naturalHandoffs": { "enabled": false },
+    "selectedModelByProvider": { "elevenlabs": "eleven_flash_v2_5" }
+  }
+}
 ```
 
 ## Sample Processing

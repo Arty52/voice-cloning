@@ -7,10 +7,7 @@ from typing import Any
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from .models import AppSettingRecord, GeneratedAudioRecord
-
-
-GENERATED_AUDIO_STORAGE_LIMIT_KEY = "generatedAudioStorageLimit"
+from .models import GeneratedAudioRecord
 
 
 @dataclass(frozen=True)
@@ -85,29 +82,6 @@ class SqlAlchemyGeneratedAudioRepository:
 
     def clear(self) -> None:
         self.session.execute(delete(GeneratedAudioRecord))
-
-
-class SqlAlchemyAppSettingsRepository:
-    def __init__(self, session: Session) -> None:
-        self.session = session
-
-    def get_generated_audio_storage_limit(self) -> int | None:
-        record = self.session.get(AppSettingRecord, GENERATED_AUDIO_STORAGE_LIMIT_KEY)
-        if record is None:
-            return None
-        value = record.value
-        limit_bytes = value.get("limitBytes") if isinstance(value, dict) else None
-        if isinstance(limit_bytes, int) and limit_bytes > 0:
-            return limit_bytes
-        return None
-
-    def set_generated_audio_storage_limit(self, limit_bytes: int) -> None:
-        record = self.session.get(AppSettingRecord, GENERATED_AUDIO_STORAGE_LIMIT_KEY)
-        if record is None:
-            record = AppSettingRecord(key=GENERATED_AUDIO_STORAGE_LIMIT_KEY, value={})
-            self.session.add(record)
-        record.value = {"limitBytes": limit_bytes}
-        record.updated_at = datetime.now(UTC)
 
 
 def _metadata_from_record(record: GeneratedAudioRecord) -> GeneratedAudioMetadata:
