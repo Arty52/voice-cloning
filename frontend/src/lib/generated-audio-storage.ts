@@ -1,7 +1,11 @@
 import type { GeneratedAudioMultiVoiceMetadata, GeneratedAudioTuningMetadata } from "@/types"
+import { sha256Blob } from "@/lib/generated-audio-hash"
 
 export const GENERATED_AUDIO_DB_NAME = "voice-clone-generated-audio"
 export const GENERATED_AUDIO_STORE_NAME = "generated-audio"
+export const GENERATED_AUDIO_ARCHIVE_STATE_STORE_NAME = "archive-migration-state"
+export const GENERATED_AUDIO_EXPORT_TARGET_STORE_NAME = "archive-export-targets"
+export const GENERATED_AUDIO_EXPORT_LEDGER_STORE_NAME = "archive-export-ledger"
 export const GENERATED_AUDIO_STORAGE_LIMIT_KEY = "voice-clone-generated-audio-limit-bytes"
 export const BYTES_PER_MEBIBYTE = 1024 * 1024
 export const DEFAULT_GENERATED_AUDIO_STORAGE_LIMIT_BYTES = 100 * BYTES_PER_MEBIBYTE
@@ -9,7 +13,7 @@ export const GENERATED_AUDIO_STORAGE_LIMIT_PRESETS_BYTES = [25, 50, 100, 250].ma
   (value) => value * BYTES_PER_MEBIBYTE
 )
 
-const DATABASE_VERSION = 1
+export const GENERATED_AUDIO_DATABASE_VERSION = 2
 
 export type StoredGeneratedAudio = {
   id: string
@@ -25,6 +29,7 @@ export type StoredGeneratedAudio = {
   characterCount: number | null
   requestId: string | null
   generationElapsedMs: number | null
+  sha256: string | null
   multiVoiceMetadata?: GeneratedAudioMultiVoiceMetadata | null
   tuningMetadata?: GeneratedAudioTuningMetadata | null
 }
@@ -42,6 +47,7 @@ export type SaveGeneratedAudioInput = {
   characterCount: number | null
   requestId: string | null
   generationElapsedMs?: number | null
+  sha256?: string | null
   multiVoiceMetadata?: GeneratedAudioMultiVoiceMetadata | null
   tuningMetadata?: GeneratedAudioTuningMetadata | null
 }
@@ -86,6 +92,7 @@ export async function saveGeneratedAudio(
     createdAt: input.createdAt ?? new Date().toISOString(),
     generationElapsedMs: normalizeGenerationElapsedMs(input.generationElapsedMs),
     multiVoiceMetadata: input.multiVoiceMetadata ?? null,
+    sha256: input.sha256 ?? (await sha256Blob(input.blob)),
     sizeBytes: input.blob.size,
     tuningMetadata: input.tuningMetadata ?? null,
   }
@@ -190,13 +197,24 @@ export function normalizeGeneratedAudioStorageLimitBytes(limitBytes: number): nu
 
 function openGeneratedAudioDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = window.indexedDB.open(GENERATED_AUDIO_DB_NAME, DATABASE_VERSION)
+    const request = window.indexedDB.open(GENERATED_AUDIO_DB_NAME, GENERATED_AUDIO_DATABASE_VERSION)
 
     request.onupgradeneeded = () => {
       const database = request.result
       if (!database.objectStoreNames.contains(GENERATED_AUDIO_STORE_NAME)) {
         const store = database.createObjectStore(GENERATED_AUDIO_STORE_NAME, { keyPath: "id" })
         store.createIndex("createdAt", "createdAt")
+      }
+      if (!database.objectStoreNames.contains(GENERATED_AUDIO_ARCHIVE_STATE_STORE_NAME)) {
+        database.createObjectStore(GENERATED_AUDIO_ARCHIVE_STATE_STORE_NAME, { keyPath: "key" })
+      }
+      if (!database.objectStoreNames.contains(GENERATED_AUDIO_EXPORT_TARGET_STORE_NAME)) {
+        database.createObjectStore(GENERATED_AUDIO_EXPORT_TARGET_STORE_NAME, { keyPath: "id" })
+      }
+      if (!database.objectStoreNames.contains(GENERATED_AUDIO_EXPORT_LEDGER_STORE_NAME)) {
+        const store = database.createObjectStore(GENERATED_AUDIO_EXPORT_LEDGER_STORE_NAME, { keyPath: "key" })
+        store.createIndex("targetHandleId", "targetHandleId")
+        store.createIndex("audioId", "audioId")
       }
     }
     request.onerror = () => reject(request.error ?? new Error("Unable to open generated audio storage."))
@@ -219,6 +237,7 @@ async function getAllGeneratedAudioRecords(): Promise<StoredGeneratedAudio[]> {
 type LegacyStoredGeneratedAudio = Omit<StoredGeneratedAudio, "generationElapsedMs"> & {
   generationElapsedMs?: number | null
   multiVoiceMetadata?: GeneratedAudioMultiVoiceMetadata | null
+  sha256?: string | null
 }
 
 function normalizeStoredGeneratedAudio(record: StoredGeneratedAudio | LegacyStoredGeneratedAudio): StoredGeneratedAudio {
@@ -226,6 +245,7 @@ function normalizeStoredGeneratedAudio(record: StoredGeneratedAudio | LegacyStor
     ...record,
     generationElapsedMs: normalizeGenerationElapsedMs(record.generationElapsedMs),
     multiVoiceMetadata: record.multiVoiceMetadata ?? null,
+    sha256: record.sha256 ?? null,
     tuningMetadata: record.tuningMetadata ?? null,
   }
 }

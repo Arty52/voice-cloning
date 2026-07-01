@@ -164,8 +164,8 @@ export function useGeneratedAudioLibrary() {
     if (persistenceModeRef.current === "server") {
       try {
         const saved = await saveGeneratedAudioArchive(input, limitBytes)
-        markGeneratedAudioArchiveImported([saved.item.id])
-        markGeneratedAudioArchiveCleared(saved.prunedIds)
+        await markGeneratedAudioArchiveImported([saved.item.id])
+        await markGeneratedAudioArchiveCleared(saved.prunedIds)
         const archive = await listGeneratedAudioArchive()
         const nextItems = replaceArchivedGeneratedAudioItems(archive.items)
         setStorageLimitBytes(archive.usage.limitBytes)
@@ -201,6 +201,7 @@ export function useGeneratedAudioLibrary() {
         createdAt: input.createdAt ?? new Date().toISOString(),
         generationElapsedMs: input.generationElapsedMs ?? null,
         id: createTemporaryGeneratedAudioId(),
+        sha256: input.sha256 ?? null,
         sizeBytes: input.blob.size,
       })
       setGeneratedAudioStorageError(formatGeneratedAudioStorageError(storageError))
@@ -222,7 +223,7 @@ export function useGeneratedAudioLibrary() {
           ? await deleteGeneratedAudioArchive(id)
           : await deleteGeneratedAudio(id)
       if (persistenceModeRef.current === "server") {
-        markGeneratedAudioArchiveCleared([id])
+        await markGeneratedAudioArchiveCleared([id])
       }
       removeGeneratedAudioItemFromState(id)
       setGeneratedAudioUsage(usage)
@@ -257,7 +258,7 @@ export function useGeneratedAudioLibrary() {
           : await clearGeneratedAudio()
       if (persistenceModeRef.current === "server") {
         const browserRecords = await safeListStoredGeneratedAudio()
-        markGeneratedAudioArchiveCleared([
+        await markGeneratedAudioArchiveCleared([
           ...generatedAudioItemsRef.current.map((item) => item.id),
           ...browserRecords.map((record) => record.id),
         ])
@@ -282,7 +283,7 @@ export function useGeneratedAudioLibrary() {
         persistenceModeRef.current === "server"
           ? await updateGeneratedAudioArchiveStorageLimitBytes(nextLimitBytes)
           : await updateGeneratedAudioStorageLimitBytes(nextLimitBytes)
-      markGeneratedAudioArchiveCleared(result.prunedIds)
+      await markGeneratedAudioArchiveCleared(result.prunedIds)
       if (persistenceModeRef.current === "server") {
         const archive = await listGeneratedAudioArchive()
         replaceArchivedGeneratedAudioItems(archive.items)
@@ -334,7 +335,14 @@ async function importBrowserGeneratedAudioToArchive(
   limitBytes: number
 ): Promise<GeneratedAudioArchiveMigrationResult> {
   const records = await safeListStoredGeneratedAudio()
-  const migrationState = readGeneratedAudioArchiveMigrationState()
+  if (records.length === 0) {
+    return {
+      conflictIds: [],
+      failedCount: 0,
+      importedCount: 0,
+    }
+  }
+  const migrationState = await readGeneratedAudioArchiveMigrationState()
   const importedIds: string[] = []
   const conflictIds: string[] = []
   let failedCount = 0
@@ -362,8 +370,8 @@ async function importBrowserGeneratedAudioToArchive(
     }
   }
 
-  markGeneratedAudioArchiveImported(importedIds)
-  markGeneratedAudioArchiveConflicted(conflictIds)
+  await markGeneratedAudioArchiveImported(importedIds)
+  await markGeneratedAudioArchiveConflicted(conflictIds)
 
   return {
     conflictIds,
@@ -388,6 +396,7 @@ function storedGeneratedAudioFromInput(input: SaveGeneratedAudioInput): StoredGe
     generationElapsedMs: input.generationElapsedMs ?? null,
     id: createTemporaryGeneratedAudioId(),
     multiVoiceMetadata: input.multiVoiceMetadata ?? null,
+    sha256: input.sha256 ?? null,
     sizeBytes: input.blob.size,
     tuningMetadata: input.tuningMetadata ?? null,
   }

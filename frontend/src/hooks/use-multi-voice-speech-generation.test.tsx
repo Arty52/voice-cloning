@@ -182,6 +182,7 @@ const generatedResult: GeneratedResult = {
   modelId: "eleven_flash_v2_5",
   multiVoiceMetadata: null,
   requestId: null,
+  sha256: "generated-1-hash",
   sizeBytes: 12,
   tuningMetadata: null,
   url: "blob:generated-1",

@@ -167,6 +167,7 @@ describe("generated audio storage", () => {
       generationElapsedMs: 1234,
       modelId: "eleven_multilingual_v2",
       requestId: "req_test_123",
+      sha256: expect.any(String),
       sizeBytes: 4,
       multiVoiceMetadata,
       tuningMetadata,
@@ -207,6 +208,7 @@ describe("generated audio storage", () => {
       generationElapsedMs: null,
       id: "legacy",
       multiVoiceMetadata: null,
+      sha256: null,
     })
   })
 
