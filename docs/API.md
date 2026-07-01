@@ -780,9 +780,11 @@ The response is `202` with `{ "job": { ... } }`:
 
 `POST /api/speech/jobs/{jobId}/cancel` cancels a pending or running job and returns the updated job. Cancel is idempotent for terminal jobs.
 
-`GET /api/speech/jobs/{jobId}/result` streams the combined `audio/mpeg` result after success. The Generate Speech UI saves this combined audio in browser IndexedDB and records Multi-Voice metadata such as the job id, segment count, voice summary, and result hashes.
+`GET /api/speech/jobs/{jobId}/result` streams the combined `audio/mpeg` result after success. The Generate Speech UI saves this combined audio in the generated-audio archive, falling back to browser IndexedDB when the server archive is unavailable, and records Multi-Voice metadata such as the job id, segment count, voice summary, and result hashes.
 
 `GET /api/speech/jobs/{jobId}/segments/{segmentId}/result` streams an individual generated segment after that segment succeeds. Segment result URLs are intended for the latest active job's per-segment playback controls; they are runtime job artifacts, not durable archive URLs. Combined and segment result endpoints return `409` until their audio is ready.
+
+When `DATABASE_URL` is configured, sample-processing and speech-generation services also persist sanitized job metadata snapshots in Postgres. Active worker tasks still live only in the current API process; stale persisted `pending` or `running` rows are marked `interrupted` on service startup.
 
 `POST /api/speech/jobs/{jobId}/segments/{segmentId}/regenerate` starts regeneration for a successful job segment and rebuilds the combined result. The optional JSON body can change that segment's voice and replace that segment's stored tuning before regenerating. Omit `voiceSettings` or send `null` to preserve the segment's current tuning snapshot.
 

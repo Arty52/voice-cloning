@@ -40,3 +40,8 @@ All PRs start as Draft and move to Open only after their validation gates pass.
    - Move durable app/provider preferences behind backend settings APIs and add any needed settings placement in `#provider` or a dedicated `#settings` section.
    - Implemented settings are allowlisted, non-secret values only: generated-audio storage limit, Natural Handoffs default, and selected model id by provider. Provider API keys remain in browser-local storage or `.env`.
    - Validation: settings API tests, frontend settings tests, `make check`, `make test-postgres`.
+6. Durable Job Metadata
+   - Add concrete repositories for sample-processing and speech-generation job tables.
+   - Persist sanitized job snapshots and status/error columns while keeping active worker tasks in-process.
+   - On service startup, mark stale persisted `pending`/`running` rows as `interrupted` rather than pretending work resumed.
+   - Validation: repository snapshot tests, interrupted-state tests, `make check`, `make test-postgres`.
