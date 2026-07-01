@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { buildGeneratedAudioSizeDisplay, storedAudioToResult } from "./generated-audio-view-model"
+import { archivedAudioToResult, buildGeneratedAudioSizeDisplay, revokeGeneratedAudioUrls, storedAudioToResult } from "./generated-audio-view-model"
 import type { StoredGeneratedAudio } from "./generated-audio-storage"
 
 const formatTestNumber = (value: number) => new Intl.NumberFormat().format(value)
@@ -93,6 +93,73 @@ describe("storedAudioToResult", () => {
     expect(result.tuningMetadata).toBeNull()
   })
 })
+
+describe("archivedAudioToResult", () => {
+  it("uses the server stream URL without creating an object URL", () => {
+    const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:generated-audio")
+
+    const result = archivedAudioToResult({
+      appVoiceId: "default",
+      audioUrl: "/api/generated-audio/generated-audio/audio",
+      cacheState: "hit",
+      characterCount: 54,
+      contentType: "audio/mpeg",
+      createdAt: "2026-05-28T10:01:00.000Z",
+      generationElapsedMs: 1234,
+      id: "generated-audio",
+      modelId: "eleven_multilingual_v2",
+      multiVoiceMetadata: null,
+      providerId: "elevenlabs",
+      requestId: "req_test_123",
+      sha256: "audio-hash",
+      sizeBytes: 6,
+      tuningMetadata: null,
+      voiceId: "voice-123",
+      voiceName: "Default Voice",
+    })
+
+    expect(result.url).toBe("/api/generated-audio/generated-audio/audio")
+    expect(result.cacheState).toBe("hit")
+    expect(createObjectUrl).not.toHaveBeenCalled()
+    createObjectUrl.mockRestore()
+  })
+})
+
+describe("revokeGeneratedAudioUrls", () => {
+  it("only revokes browser object URLs", () => {
+    const revokeObjectUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined)
+
+    revokeGeneratedAudioUrls([
+      generatedResult("blob:generated-audio"),
+      generatedResult("/api/generated-audio/server-audio/audio"),
+    ])
+
+    expect(revokeObjectUrl).toHaveBeenCalledOnce()
+    expect(revokeObjectUrl).toHaveBeenCalledWith("blob:generated-audio")
+    revokeObjectUrl.mockRestore()
+  })
+})
+
+function generatedResult(url: string) {
+  return {
+    appVoiceId: "default",
+    cacheState: "miss",
+    characterCount: 54,
+    contentType: "audio/mpeg",
+    createdAt: "2026-05-28T10:01:00.000Z",
+    generatedAt: "May 28, 2026, 10:01 AM",
+    generationElapsedMs: 1234,
+    id: url.startsWith("blob:") ? "blob-audio" : "server-audio",
+    modelId: "eleven_multilingual_v2",
+    multiVoiceMetadata: null,
+    requestId: "req_test_123",
+    sizeBytes: 6,
+    tuningMetadata: null,
+    url,
+    voiceId: "voice-123",
+    voiceName: "Default Voice",
+  }
+}
 
 describe("buildGeneratedAudioSizeDisplay", () => {
   it("builds generated audio size labels from byte counts", () => {
