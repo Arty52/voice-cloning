@@ -35,11 +35,20 @@ function appendIds(key: string, ids: Iterable<string>) {
       nextIds.add(id)
     }
   }
-  window.localStorage.setItem(key, JSON.stringify([...nextIds].sort()))
+  try {
+    window.localStorage.setItem(key, JSON.stringify([...nextIds].sort()))
+  } catch {
+    // Migration bookkeeping is best-effort; server archive state remains canonical.
+  }
 }
 
 function readIdSet(key: string) {
-  const rawValue = window.localStorage.getItem(key)
+  let rawValue: string | null
+  try {
+    rawValue = window.localStorage.getItem(key)
+  } catch {
+    return new Set<string>()
+  }
   if (!rawValue) {
     return new Set<string>()
   }

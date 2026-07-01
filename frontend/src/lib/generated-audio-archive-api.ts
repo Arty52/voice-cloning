@@ -219,14 +219,29 @@ function normalizeUsage(usage: GeneratedAudioUsage): GeneratedAudioUsage {
 }
 
 async function readError(response: Response) {
+  const fallback = `Request failed with status ${response.status}.`
+  let body = ""
+  try {
+    body = await response.text()
+  } catch {
+    return fallback
+  }
   const contentType = response.headers.get("content-type") || ""
-  if (contentType.includes("application/json")) {
-    const payload = (await response.json()) as { detail?: unknown }
-    if (typeof payload.detail === "string") {
-      return payload.detail
+  if (contentType.includes("application/json") && body) {
+    let payload: unknown
+    try {
+      payload = JSON.parse(body) as unknown
+    } catch {
+      return body || fallback
+    }
+    if (isRecord(payload) && payload.detail !== undefined) {
+      if (typeof payload.detail === "string") {
+        return payload.detail
+      }
+      return JSON.stringify(payload.detail)
     }
   }
-  return (await response.text()) || `Request failed with status ${response.status}.`
+  return body || fallback
 }
 
 function appendOptional(formData: FormData, key: string, value: string | number | null | undefined) {
@@ -243,14 +258,15 @@ function appendOptionalJson(formData: FormData, key: string, value: object | nul
 
 async function multipartBlobFrom(blob: Blob, contentType: string) {
   const BlobConstructor = typeof window !== "undefined" && window.Blob ? window.Blob : Blob
-  if (blob instanceof BlobConstructor) {
+  const resolvedContentType = contentType || blob.type || "audio/mpeg"
+  if (blob instanceof BlobConstructor && blob.type === resolvedContentType) {
     return blob
   }
   const blobLike = blob as { arrayBuffer?: () => Promise<ArrayBuffer> }
   if (typeof blobLike.arrayBuffer === "function") {
-    return new BlobConstructor([await blobLike.arrayBuffer()], { type: contentType })
+    return new BlobConstructor([await blobLike.arrayBuffer()], { type: resolvedContentType })
   }
-  return new BlobConstructor([blob as unknown as BlobPart], { type: contentType })
+  return new BlobConstructor([blob as unknown as BlobPart], { type: resolvedContentType })
 }
 
 function normalizeNullableNumber(value: number | null | undefined) {
@@ -258,10 +274,15 @@ function normalizeNullableNumber(value: number | null | undefined) {
 }
 
 function extensionForContentType(contentType: string | undefined) {
-  if (contentType === "audio/wav" || contentType === "audio/wave" || contentType === "audio/x-wav") {
+  const normalizedContentType = (contentType || "").split(";", 1)[0].trim().toLowerCase()
+  if (
+    normalizedContentType === "audio/wav" ||
+    normalizedContentType === "audio/wave" ||
+    normalizedContentType === "audio/x-wav"
+  ) {
     return ".wav"
   }
-  if (contentType === "audio/mp4" || contentType === "audio/m4a") {
+  if (normalizedContentType === "audio/mp4" || normalizedContentType === "audio/m4a") {
     return ".m4a"
   }
   return ".mp3"
