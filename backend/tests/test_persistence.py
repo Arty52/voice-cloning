@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
+from sqlalchemy import inspect, text
+from sqlalchemy.engine import make_url
 
 from voice_cloning.api.app import create_app
 from voice_cloning.config import Settings
@@ -109,3 +112,38 @@ def test_unit_of_work_commits_and_rolls_back() -> None:
 
     with session_factory() as session:
         assert session.get(AppSettingRecord, "failed") is None
+
+
+@pytest.mark.postgres
+def test_postgres_migrations_upgrade_to_head() -> None:
+    from alembic import command
+    from alembic.config import Config
+
+    database_url = os.environ.get("DATABASE_URL", "").strip()
+    if not database_url:
+        pytest.skip("DATABASE_URL is required for Postgres migration tests.")
+
+    url = make_url(database_url)
+    if url.get_backend_name() != "postgresql":
+        pytest.skip("Postgres migration tests require a postgresql DATABASE_URL.")
+
+    alembic_config = Config("alembic.ini")
+    alembic_config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
+    command.upgrade(alembic_config, "head")
+
+    engine = create_database_engine(database_url)
+    with engine.connect() as connection:
+        table_names = set(inspect(connection).get_table_names())
+        version = connection.execute(text("select version_num from alembic_version")).scalar_one()
+
+    assert version == "202607010001"
+    assert {
+        "voices",
+        "voice_processing_steps",
+        "voice_library_state",
+        "voice_tuning_presets",
+        "generated_audio",
+        "app_settings",
+        "sample_processing_jobs",
+        "speech_generation_jobs",
+    }.issubset(table_names)
