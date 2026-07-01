@@ -12,6 +12,10 @@ from ..providers import ProviderRegistry
 from ..sample_processors import create_sample_processor
 from ..services.app_settings import AppSettingsService
 from ..services.generated_audio_archive import GeneratedAudioArchiveService
+from ..services.generated_audio_export import (
+    GeneratedAudioExportService,
+    create_local_archive_export_target,
+)
 from ..services.media_sources import SampleProcessingMediaSourceService
 from ..services.sample_processing import SampleProcessingService, SampleProcessor
 from ..services.speech_jobs import SpeechJobService
@@ -42,6 +46,7 @@ def create_app(
     sample_processing_service: SampleProcessingService | None = None,
     speech_job_service: SpeechJobService | None = None,
     generated_audio_archive_service: GeneratedAudioArchiveService | None = None,
+    generated_audio_export_service: GeneratedAudioExportService | None = None,
     app_settings_service: AppSettingsService | None = None,
     user_tuning_preset_service: UserTuningPresetService | None = None,
 ) -> FastAPI:
@@ -75,6 +80,11 @@ def create_app(
         resolved_settings,
         database_session_factory,
     )
+    resolved_generated_audio_export = generated_audio_export_service or _create_generated_audio_export_service(
+        resolved_settings,
+        database_session_factory,
+        resolved_generated_audio_archive,
+    )
     resolved_app_settings = app_settings_service or _create_app_settings_service(database_session_factory)
     resolved_user_tuning_presets = user_tuning_preset_service or _create_user_tuning_preset_service(
         database_session_factory,
@@ -107,7 +117,7 @@ def create_app(
     app.include_router(create_metadata_router(resolved_settings, resolved_provider_registry))
     app.include_router(create_speech_jobs_router(resolved_provider_registry, resolved_speech_jobs))
     app.include_router(create_speech_router(resolved_settings, resolved_provider_registry, resolved_cache, resolved_library))
-    app.include_router(create_generated_audio_router(resolved_generated_audio_archive))
+    app.include_router(create_generated_audio_router(resolved_generated_audio_archive, resolved_generated_audio_export))
     app.include_router(create_settings_router(resolved_app_settings))
     app.include_router(create_voice_tuning_presets_router(resolved_user_tuning_presets))
     return app
@@ -121,6 +131,20 @@ def _create_generated_audio_archive_service(
         return None
     file_store = create_generated_audio_file_store(settings.generated_audio_storage_dir)
     return GeneratedAudioArchiveService(session_factory, file_store)
+
+
+def _create_generated_audio_export_service(
+    settings: Settings,
+    session_factory: SessionFactory | None,
+    archive_service: GeneratedAudioArchiveService | None,
+) -> GeneratedAudioExportService | None:
+    if session_factory is None or archive_service is None:
+        return None
+    return GeneratedAudioExportService(
+        session_factory,
+        archive_service,
+        create_local_archive_export_target(settings.generated_audio_export_dir),
+    )
 
 
 def _create_app_settings_service(session_factory: SessionFactory | None) -> AppSettingsService | None:

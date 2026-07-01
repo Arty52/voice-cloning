@@ -147,6 +147,8 @@ Generated audio can be removed from `Generated Audio` with Remove or Clear All. 
 Server-backed generated-audio archives store files under `GENERATED_AUDIO_STORAGE_DIR`, which defaults to ignored `storage/generated-audio/`. The backend creates this root on startup and resolves archive entries relative to it.
 When `DATABASE_URL` is configured, the backend archive API stores metadata in Postgres and streams files from that directory. If archive routes return `503`, backend persistence is not configured and the browser keeps using IndexedDB as the local draft/cache store. The frontend imports existing IndexedDB records by stable id when the server archive is available; conflicts are reported, and browser data is not deleted automatically.
 
+Optional server-side generated-audio export uses `GENERATED_AUDIO_EXPORT_DIR`. When it is unset, export status is unavailable and export actions return `503`; this is expected. When it is set, the backend writes mirror files under `GENERATED_AUDIO_EXPORT_DIR/Voice Clone Lab Archive/` and records durable export status in Postgres. The browser never sends local filesystem paths to these export routes.
+
 User Tuning Presets also require backend persistence for server-backed durability. If `/api/voice-tuning-presets` returns `503`, the UI keeps presets in browser-local storage for the current no-DB workflow. For a compose smoke check, create a preset in `#voices`, restart the API container, reload the browser, confirm the preset still appears, apply it, generate audio, and confirm the Generated Audio metadata shows the user preset snapshot.
 
 Remove containers and volumes:
