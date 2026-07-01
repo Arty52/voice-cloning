@@ -39,6 +39,8 @@ from ..models import (
     VoiceProcessingStep,
     VoiceSample,
 )
+from ..persistence.database import SessionFactory, unit_of_work
+from ..persistence.jobs import SqlAlchemySampleProcessingJobRepository
 from ..samples import load_sample_file, sample_hash, save_sample_file, save_uploaded_sample_stream, slugify_voice_name
 from .cancellation import cancel_and_drain_task
 from .media_commands import (
@@ -320,6 +322,7 @@ class SampleProcessingService:
         voice_library: VoiceLibrary,
         processor: SampleProcessor | None = None,
         media_source_service: SampleProcessingMediaSourceService | None = None,
+        job_session_factory: SessionFactory | None = None,
     ) -> None:
         self.settings = settings
         self.voice_library = voice_library
@@ -327,11 +330,13 @@ class SampleProcessingService:
         self.media_source_service = media_source_service or SampleProcessingMediaSourceService(settings)
         self.processing_dir = settings.sample_processing_dir
         self.processing_dir.mkdir(parents=True, exist_ok=True)
+        self.job_session_factory = job_session_factory
         self._jobs: dict[str, SampleProcessingJob] = {}
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._source_paths: dict[str, Path] = {}
         self._speaker_processing_steps: dict[str, dict[str, tuple[VoiceProcessingStep, ...]]] = {}
         self._prepared_candidate_processing_steps: dict[str, dict[str, tuple[VoiceProcessingStep, ...]]] = {}
+        self._mark_interrupted_jobs()
 
     def operations(self) -> tuple[SampleProcessingOperation, ...]:
         processor_operations = {operation.id: operation for operation in self.processor.operations()}
@@ -454,6 +459,7 @@ class SampleProcessingService:
                 source_selection=source_selection,
             )
             self._jobs[job_id] = job
+            self._persist_job(job)
             self._source_paths[job_id] = source_path
             request = SampleProcessingRequest(
                 job_id=job_id,
@@ -546,6 +552,7 @@ class SampleProcessingService:
                 source_selection=source_selection,
             )
             self._jobs[job_id] = job
+            self._persist_job(job)
             self._source_paths[job_id] = source_path
             self._tasks[job_id] = asyncio.create_task(
                 self._run_prepare_voice_job(
@@ -1344,7 +1351,21 @@ class SampleProcessingService:
 
     def _update_job(self, job_id: str, **changes: object) -> None:
         job = self.get_job(job_id)
-        self._jobs[job_id] = replace(job, updated_at=_utc_now(), **changes)
+        updated_job = replace(job, updated_at=_utc_now(), **changes)
+        self._jobs[job_id] = updated_job
+        self._persist_job(updated_job)
+
+    def _persist_job(self, job: SampleProcessingJob) -> None:
+        if self.job_session_factory is None:
+            return
+        with unit_of_work(self.job_session_factory) as session:
+            SqlAlchemySampleProcessingJobRepository(session).save_job(job)
+
+    def _mark_interrupted_jobs(self) -> None:
+        if self.job_session_factory is None:
+            return
+        with unit_of_work(self.job_session_factory) as session:
+            SqlAlchemySampleProcessingJobRepository(session).mark_active_jobs_interrupted()
 
     def _start_step(self, job_id: str, step_id: str, *, source_sha256: str | None) -> None:
         self._update_step(

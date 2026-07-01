@@ -12,6 +12,8 @@ from uuid import uuid4
 from ..cache import VoiceCache
 from ..config import Settings
 from ..models import SpeechJob, SpeechJobSegment, SpeechSegmentAssignmentKind
+from ..persistence.database import SessionFactory, unit_of_work
+from ..persistence.jobs import SqlAlchemySpeechGenerationJobRepository
 from ..providers import VoiceProvider
 from ..samples import sample_hash
 from ..voice_library import VoiceLibrary
@@ -42,6 +44,7 @@ class SpeechJobService:
         voice_cache: VoiceCache,
         voice_library: VoiceLibrary,
         audio_processor: SpeechAudioProcessor | None = None,
+        job_session_factory: SessionFactory | None = None,
     ) -> None:
         self.settings = settings
         self.voice_cache = voice_cache
@@ -49,8 +52,10 @@ class SpeechJobService:
         self.audio_processor = audio_processor or SpeechAudioProcessor(settings)
         self.jobs_dir = settings.speech_jobs_dir
         self.jobs_dir.mkdir(parents=True, exist_ok=True)
+        self.job_session_factory = job_session_factory
         self._jobs: dict[str, SpeechJob] = {}
         self._tasks: dict[str, asyncio.Task[None]] = {}
+        self._mark_interrupted_jobs()
 
     async def create_job(
         self,
@@ -93,6 +98,7 @@ class SpeechJobService:
             (job_dir / SEGMENTS_DIR_NAME).mkdir(parents=True, exist_ok=True)
             job_dir_created = True
             self._jobs[job_id] = job
+            self._persist_job(job)
             self._tasks[job_id] = asyncio.create_task(
                 self._run_job(
                     job_id,
@@ -467,7 +473,9 @@ class SpeechJobService:
 
     def _update_job(self, job_id: str, **changes: object) -> None:
         job = self.get_job(job_id)
-        self._jobs[job_id] = replace(job, updated_at=_utc_now(), **changes)
+        updated_job = replace(job, updated_at=_utc_now(), **changes)
+        self._jobs[job_id] = updated_job
+        self._persist_job(updated_job)
 
     def _replace_segment(self, job_id: str, segment: SpeechJobSegment) -> None:
         job = self.get_job(job_id)
@@ -485,6 +493,18 @@ class SpeechJobService:
 
     def _segment_path(self, job_id: str, segment_id: str) -> Path:
         return self._job_dir(job_id) / SEGMENTS_DIR_NAME / f"{segment_id}.mp3"
+
+    def _persist_job(self, job: SpeechJob) -> None:
+        if self.job_session_factory is None:
+            return
+        with unit_of_work(self.job_session_factory) as session:
+            SqlAlchemySpeechGenerationJobRepository(session).save_job(job)
+
+    def _mark_interrupted_jobs(self) -> None:
+        if self.job_session_factory is None:
+            return
+        with unit_of_work(self.job_session_factory) as session:
+            SqlAlchemySpeechGenerationJobRepository(session).mark_active_jobs_interrupted()
 
 
 class SpeechJobSegmentInput:

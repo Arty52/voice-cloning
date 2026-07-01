@@ -11,7 +11,15 @@ from sqlalchemy import event, inspect, text
 from sqlalchemy.engine import URL, make_url
 
 from voice_cloning.config import Settings
-from voice_cloning.models import VoiceAsset, VoiceProcessingStep, VoiceSample
+from voice_cloning.models import (
+    SampleProcessingJob,
+    SampleProcessingJobStep,
+    SpeechJob,
+    SpeechJobSegment,
+    VoiceAsset,
+    VoiceProcessingStep,
+    VoiceSample,
+)
 from voice_cloning.persistence.database import (
     Base,
     create_database_engine,
@@ -22,7 +30,12 @@ from voice_cloning.persistence.file_store import (
     FileStoreError,
     create_generated_audio_file_store,
 )
-from voice_cloning.persistence.models import AppSettingRecord
+from voice_cloning.persistence.jobs import (
+    INTERRUPTED_MESSAGE,
+    SqlAlchemySampleProcessingJobRepository,
+    SqlAlchemySpeechGenerationJobRepository,
+)
+from voice_cloning.persistence.models import AppSettingRecord, SampleProcessingJobRecord, SpeechGenerationJobRecord
 from voice_cloning.persistence.postgres_voice_library import PostgresVoiceLibrary
 from voice_cloning.persistence.voices import SqlAlchemyVoiceRepository
 from voice_cloning.samples import sample_hash
@@ -137,6 +150,76 @@ def test_unit_of_work_commits_and_rolls_back() -> None:
 
     with session_factory() as session:
         assert session.get(AppSettingRecord, "failed") is None
+
+
+def test_job_repositories_persist_snapshots_and_mark_interrupted() -> None:
+    engine = create_database_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session_factory = create_session_factory(engine)
+    sample_job = SampleProcessingJob(
+        id="sample-job",
+        operation_id="trimSilence",
+        status="pending",
+        source_name="Narrator",
+        source_filename="source.wav",
+        source_content_type="audio/wav",
+        source_sha256="source-hash",
+        source_size_bytes=128,
+        source_preference="active",
+        created_at="2026-07-01T12:00:00+00:00",
+        updated_at="2026-07-01T12:00:00+00:00",
+        steps=(
+            SampleProcessingJobStep(
+                id="sample-job",
+                operation_id="trimSilence",
+                operation_label="Trim Silence",
+                status="pending",
+                engine="ffmpeg",
+            ),
+        ),
+    )
+    speech_job = SpeechJob(
+        id="speech-job",
+        status="running",
+        text="Hello.",
+        default_voice_id="default",
+        segment_gap_ms=250,
+        provider_id="elevenlabs",
+        model_id="eleven_multilingual_v2",
+        segments=(
+            SpeechJobSegment(
+                id="segment-one",
+                index=0,
+                text="Hello.",
+                voice_id="default",
+                voice_name="Default Voice",
+                assignment_kind="default",
+            ),
+        ),
+        created_at="2026-07-01T12:00:00+00:00",
+        updated_at="2026-07-01T12:00:00+00:00",
+    )
+
+    with unit_of_work(session_factory) as session:
+        SqlAlchemySampleProcessingJobRepository(session).save_job(sample_job)
+        SqlAlchemySpeechGenerationJobRepository(session).save_job(speech_job)
+
+    with unit_of_work(session_factory) as session:
+        assert session.get(SampleProcessingJobRecord, "sample-job").request_payload["operationId"] == "trimSilence"
+        assert session.get(SpeechGenerationJobRecord, "speech-job").request_payload["modelId"] == "eleven_multilingual_v2"
+        assert SqlAlchemySampleProcessingJobRepository(session).mark_active_jobs_interrupted() == 1
+        assert SqlAlchemySpeechGenerationJobRepository(session).mark_active_jobs_interrupted() == 1
+
+    with unit_of_work(session_factory) as session:
+        sample_record = session.get(SampleProcessingJobRecord, "sample-job")
+        speech_record = session.get(SpeechGenerationJobRecord, "speech-job")
+
+        assert sample_record is not None
+        assert sample_record.status == "interrupted"
+        assert sample_record.error_message == INTERRUPTED_MESSAGE
+        assert speech_record is not None
+        assert speech_record.status == "interrupted"
+        assert speech_record.error_message == INTERRUPTED_MESSAGE
 
 
 def test_sqlalchemy_voice_repository_roundtrips_voice_asset() -> None:
