@@ -12,6 +12,7 @@ type UseVoiceMetadataOptions = {
   providerStatus: AsyncStatus
 }
 
+const BROWSER_SELECTED_MODEL_BY_PROVIDER_KEY = "voice-clone-selected-model-by-provider"
 const MISSING_PROVIDER_KEY_MESSAGE = "Add a provider API key to load this data."
 
 export function useVoiceMetadata({ canUseProvider, providerId, providerKey, providerStatus }: UseVoiceMetadataOptions) {
@@ -82,7 +83,10 @@ export function useVoiceMetadata({ canUseProvider, providerId, providerKey, prov
       const loadedModels = Array.isArray(payload.models) ? payload.models : []
       setBackendDefaultModelId(payload.defaultModelId || null)
       setModels(payload.available ? loadedModels : [])
-      const preferredModelId = providerId ? appSettings?.settings.selectedModelByProvider[providerId] : null
+      const preferredModelId =
+        providerId && appSettings
+          ? appSettings.settings.selectedModelByProvider[providerId]
+          : readBrowserSelectedModelId(providerId)
       setSelectedModelIdState((current) => {
         if (preferredModelId && loadedModels.some((model) => model.modelId === preferredModelId)) {
           return preferredModelId
@@ -116,9 +120,11 @@ export function useVoiceMetadata({ canUseProvider, providerId, providerKey, prov
       return
     }
     void saveAppSettings({ selectedModelByProvider: { [providerId]: modelId } }).catch((caught) => {
-      if (!isAppSettingsUnavailableError(caught)) {
-        setModelError(caught instanceof Error ? caught.message : "Unable to save selected model.")
+      if (isAppSettingsUnavailableError(caught)) {
+        writeBrowserSelectedModelId(providerId, modelId)
+        return
       }
+      setModelError(caught instanceof Error ? caught.message : "Unable to save selected model.")
     })
   }
 
@@ -157,4 +163,52 @@ async function loadAppSettingsOrNull() {
     }
     throw caught
   }
+}
+
+function readBrowserSelectedModelId(providerId: string | null) {
+  if (!providerId) {
+    return null
+  }
+  return readBrowserSelectedModelByProvider()[providerId] ?? null
+}
+
+function writeBrowserSelectedModelId(providerId: string, modelId: string) {
+  const trimmedModelId = modelId.trim()
+  if (!trimmedModelId) {
+    return
+  }
+  try {
+    window.localStorage.setItem(
+      BROWSER_SELECTED_MODEL_BY_PROVIDER_KEY,
+      JSON.stringify({
+        ...readBrowserSelectedModelByProvider(),
+        [providerId]: trimmedModelId,
+      })
+    )
+  } catch {
+    // Browser storage is a transition fallback only; server settings remain canonical when available.
+  }
+}
+
+function readBrowserSelectedModelByProvider() {
+  try {
+    const value = window.localStorage.getItem(BROWSER_SELECTED_MODEL_BY_PROVIDER_KEY)
+    const parsed = value ? (JSON.parse(value) as unknown) : null
+    if (!isRecord(parsed)) {
+      return {}
+    }
+    const selectedModelByProvider: Record<string, string> = {}
+    for (const [providerId, modelId] of Object.entries(parsed)) {
+      if (providerId && typeof modelId === "string" && modelId.trim()) {
+        selectedModelByProvider[providerId] = modelId.trim()
+      }
+    }
+    return selectedModelByProvider
+  } catch {
+    return {}
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null
 }
