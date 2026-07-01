@@ -1,4 +1,4 @@
-import { type FormEvent, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { type FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 
 import { DEFAULT_TEXT, MAX_SPEECH_TEXT_LENGTH } from "@/constants"
 import { useConfirmation } from "@/hooks/use-confirmation"
@@ -17,6 +17,7 @@ import { useVoiceSampleInput } from "@/hooks/use-voice-sample-input"
 import { useVoiceTuning } from "@/hooks/use-voice-tuning"
 import { useWorkflowNavigation } from "@/hooks/use-workflow-navigation"
 import { isTemporaryGeneratedAudioId } from "@/lib/generated-audio-view-model"
+import { isAppSettingsUnavailableError, loadAppSettings, saveAppSettings } from "@/lib/app-settings-api"
 import { formatBytes, formatNumber } from "@/lib/formatters"
 import type { VoiceUpdate } from "@/lib/api"
 import {
@@ -70,6 +71,7 @@ export function useVoiceStudioController() {
   const [naturalHandoffsSaveError, setNaturalHandoffsSaveError] = useState<string | null>(null)
   const [textSelection, setTextSelection] = useState({ end: 0, start: 0, text: "" })
   const [voiceAssignments, setVoiceAssignments] = useState<VoiceTextAssignment[]>([])
+  const naturalHandoffsTouchedRef = useRef(false)
   const textRef = useRef<HTMLTextAreaElement | null>(null)
   const confirmation = useConfirmation()
   const providerKeys = useProviderKeys()
@@ -242,6 +244,33 @@ export function useVoiceStudioController() {
     textarea.style.height = `${textarea.scrollHeight}px`
   }, [text])
 
+  useEffect(() => {
+    let isMounted = true
+
+    async function loadSavedAppSettings() {
+      try {
+        const response = await loadAppSettings()
+        if (!isMounted) {
+          return
+        }
+        const enabled = response.settings.naturalHandoffs.enabled
+        setSavedNaturalHandoffsEnabled(enabled)
+        if (!naturalHandoffsTouchedRef.current) {
+          setNaturalHandoffsEnabled(enabled)
+        }
+      } catch (caught) {
+        if (!isAppSettingsUnavailableError(caught) && isMounted) {
+          setNaturalHandoffsSaveError(caught instanceof Error ? caught.message : "Unable to load app settings.")
+        }
+      }
+    }
+
+    void loadSavedAppSettings()
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
   function navigateToSection(sectionId: WorkflowSectionId) {
     workflowNavigation.navigateToSection(sectionId)
   }
@@ -266,12 +295,20 @@ export function useVoiceStudioController() {
   }
 
   function handleNaturalHandoffsEnabledChange(enabled: boolean) {
+    naturalHandoffsTouchedRef.current = true
     setNaturalHandoffsEnabled(enabled)
     setNaturalHandoffsSaveError(null)
   }
 
-  function saveNaturalHandoffsDefault() {
+  async function saveNaturalHandoffsDefault() {
     try {
+      try {
+        await saveAppSettings({ naturalHandoffs: { enabled: naturalHandoffsEnabled } })
+      } catch (caught) {
+        if (!isAppSettingsUnavailableError(caught)) {
+          throw caught
+        }
+      }
       const saved = saveNaturalHandoffsPreference(naturalHandoffsEnabled)
       setSavedNaturalHandoffsEnabled(saved)
       setNaturalHandoffsSaveError(null)
