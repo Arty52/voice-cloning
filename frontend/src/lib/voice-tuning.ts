@@ -2,6 +2,7 @@ import { DEFAULT_VOICE_PRESET_ID } from "@/lib/voice-presets"
 import type {
   ProviderTuningMetadata,
   ProviderTuningPreset,
+  UserTuningPreset,
   VoiceAsset,
   VoicePresetId,
   VoiceTuningValues,
@@ -71,6 +72,17 @@ export function presetValues(providerTuning: ProviderTuningMetadata, preset: Pro
     ...(providerTuning.defaultValues ?? {}),
     ...preset.values,
   }
+}
+
+export function userPresetValues(providerTuning: ProviderTuningMetadata, preset: UserTuningPreset): VoiceTuningValues {
+  const values: VoiceTuningValues = { ...providerTuning.defaultValues }
+  for (const control of providerTuning.controls) {
+    const value = preset.settings[control.id]
+    if (value !== undefined) {
+      values[control.id] = value
+    }
+  }
+  return values
 }
 
 export function voiceTuningValuesEqual(

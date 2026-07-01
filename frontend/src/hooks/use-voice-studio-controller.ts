@@ -26,7 +26,7 @@ import {
   saveNaturalHandoffsPreference,
 } from "@/lib/natural-handoffs-preference"
 import { readTextareaSelection } from "@/lib/text-selection"
-import { CUSTOM_TUNING_PRESET_ID, resolveSavedVoiceTuning } from "@/lib/voice-tuning"
+import { CUSTOM_TUNING_PRESET_ID, resolveSavedVoiceTuning, userPresetValues } from "@/lib/voice-tuning"
 import {
   buildSpeechJobSegments,
   compareAssignments,
@@ -130,7 +130,10 @@ export function useVoiceStudioController() {
       ) ?? null,
     [activeProviderId, selectedUserTuningPresetId, userTuningPresets.presets]
   )
-  const tuning = selectedUserTuningPreset?.settings ?? voiceTuning.tuning
+  const tuning = useMemo(
+    () => (selectedUserTuningPreset ? userPresetValues(providerTuning, selectedUserTuningPreset) : voiceTuning.tuning),
+    [providerTuning, selectedUserTuningPreset, voiceTuning.tuning]
+  )
   const selectedTuningPresetId = selectedUserTuningPreset
     ? CUSTOM_TUNING_PRESET_ID
     : voiceTuning.selectedTuningPresetId

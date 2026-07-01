@@ -31,6 +31,7 @@ import {
   resolvePresetVoiceTuningState,
   resolveSavedVoiceTuning,
   resolveVoiceTuningState,
+  userPresetValues,
   voiceTuningValuesEqual,
 } from "@/lib/voice-tuning"
 import { cn } from "@/lib/utils"
@@ -760,17 +761,6 @@ function selectedVoiceTuningScopeKey(
     providerTuning.controls.map((control) => control.id).join(","),
     providerTuning.presets.map((preset) => `${preset.id}:${preset.voicePresetId ?? ""}`).join(","),
   ].join(":")
-}
-
-function userPresetValues(providerTuning: ProviderTuningMetadata, preset: UserTuningPreset): VoiceTuningValues {
-  const values: VoiceTuningValues = { ...providerTuning.defaultValues }
-  for (const control of providerTuning.controls) {
-    const value = preset.settings[control.id]
-    if (value !== undefined) {
-      values[control.id] = value
-    }
-  }
-  return values
 }
 
 function VoiceLibrarySkeletonRows() {
