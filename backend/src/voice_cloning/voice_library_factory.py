@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 
 from .config import Settings
-from .persistence.database import create_database_engine, create_session_factory
+from .persistence.database import SessionFactory, create_database_engine, create_session_factory
 from .persistence.postgres_voice_library import PostgresVoiceLibrary
 from .voice_library import VoiceLibrary, VoiceLibraryProtocol
 
@@ -11,13 +11,15 @@ from .voice_library import VoiceLibrary, VoiceLibraryProtocol
 logger = logging.getLogger(__name__)
 
 
-def create_voice_library(settings: Settings) -> VoiceLibraryProtocol:
+def create_voice_library(settings: Settings, *, session_factory: SessionFactory | None = None) -> VoiceLibraryProtocol:
     if not settings.database_url:
         return VoiceLibrary(settings)
 
-    engine = create_database_engine(settings.database_url)
-    session_factory = create_session_factory(engine)
-    library = PostgresVoiceLibrary(settings, session_factory)
+    resolved_session_factory = session_factory
+    if resolved_session_factory is None:
+        engine = create_database_engine(settings.database_url)
+        resolved_session_factory = create_session_factory(engine)
+    library = PostgresVoiceLibrary(settings, resolved_session_factory)
     report = library.import_manifest()
     if report.total:
         logger.info(

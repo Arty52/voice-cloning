@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from ..cache import VoiceCache
 from ..config import Settings
 from ..elevenlabs_client import ElevenLabsProvider
-from ..persistence.database import create_database_engine, create_session_factory
+from ..persistence.database import SessionFactory, create_database_engine, create_session_factory
 from ..persistence.file_store import create_generated_audio_file_store
 from ..providers import ProviderRegistry
 from ..sample_processors import create_sample_processor
@@ -45,8 +45,12 @@ def create_app(
     resolved_settings = settings or Settings.from_env()
     resolved_settings.ensure_runtime_directories()
     resolved_cache = voice_cache or VoiceCache(resolved_settings.storage_dir / "voice-cache.json")
+    database_session_factory = _create_database_session_factory(resolved_settings)
     resolved_provider_registry = provider_registry or ProviderRegistry([ElevenLabsProvider(resolved_settings)])
-    resolved_library = voice_library or create_voice_library(resolved_settings)
+    resolved_library = voice_library or create_voice_library(
+        resolved_settings,
+        session_factory=database_session_factory,
+    )
     resolved_voice_ingestion = voice_ingestion_service or VoiceIngestionService(resolved_settings, resolved_library)
     resolved_sample_processing_media_sources = (
         sample_processing_media_source_service or SampleProcessingMediaSourceService(resolved_settings)
@@ -56,16 +60,19 @@ def create_app(
         resolved_library,
         sample_processor or create_sample_processor(resolved_settings),
         media_source_service=resolved_sample_processing_media_sources,
+        job_session_factory=database_session_factory,
     )
     resolved_speech_jobs = speech_job_service or SpeechJobService(
         resolved_settings,
         resolved_cache,
         resolved_library,
+        job_session_factory=database_session_factory,
     )
     resolved_generated_audio_archive = generated_audio_archive_service or _create_generated_audio_archive_service(
-        resolved_settings
+        resolved_settings,
+        database_session_factory,
     )
-    resolved_app_settings = app_settings_service or _create_app_settings_service(resolved_settings)
+    resolved_app_settings = app_settings_service or _create_app_settings_service(database_session_factory)
 
     app = FastAPI(title="Local Voice Cloning API", version="0.1.0")
     app.add_middleware(
@@ -98,21 +105,27 @@ def create_app(
     return app
 
 
-def _create_generated_audio_archive_service(settings: Settings) -> GeneratedAudioArchiveService | None:
-    if not settings.database_url:
+def _create_generated_audio_archive_service(
+    settings: Settings,
+    session_factory: SessionFactory | None,
+) -> GeneratedAudioArchiveService | None:
+    if session_factory is None:
         return None
-    engine = create_database_engine(settings.database_url)
-    session_factory = create_session_factory(engine)
     file_store = create_generated_audio_file_store(settings.generated_audio_storage_dir)
     return GeneratedAudioArchiveService(session_factory, file_store)
 
 
-def _create_app_settings_service(settings: Settings) -> AppSettingsService | None:
+def _create_app_settings_service(session_factory: SessionFactory | None) -> AppSettingsService | None:
+    if session_factory is None:
+        return None
+    return AppSettingsService(session_factory)
+
+
+def _create_database_session_factory(settings: Settings) -> SessionFactory | None:
     if not settings.database_url:
         return None
     engine = create_database_engine(settings.database_url)
-    session_factory = create_session_factory(engine)
-    return AppSettingsService(session_factory)
+    return create_session_factory(engine)
 
 
 app = create_app()

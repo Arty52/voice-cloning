@@ -273,7 +273,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
       setError(CANCELED_GENERATION_MESSAGE)
       return null
     }
-    if (jobUpdate.status === "error") {
+    if (jobUpdate.status === "error" || jobUpdate.status === "interrupted") {
       finishGenerationTimer()
       setStatus("error")
       setError(jobUpdate.error || "Multi-voice generation failed.")
@@ -303,7 +303,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
           setError(CANCELED_GENERATION_MESSAGE)
           return null
         }
-        if (payload.job.status === "error") {
+        if (payload.job.status === "error" || payload.job.status === "interrupted") {
           finishGenerationTimer()
           setStatus("error")
           setError(payload.job.error || "Multi-voice generation failed.")

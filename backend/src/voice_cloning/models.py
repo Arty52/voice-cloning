@@ -11,10 +11,10 @@ SampleProcessingOperationId = Literal["prepareVoice", "isolateVoice", "trimSilen
 SampleProcessingPresetId = Literal["fast", "balanced", "clean", "maxIsolation", "trimLight", "trimBalanced", "trimAggressive"]
 SampleProcessingSourcePreference = Literal["original", "active"]
 SampleProcessingMediaKind = Literal["audio", "video"]
-SampleProcessingJobStatus = Literal["pending", "running", "success", "error", "canceled"]
+SampleProcessingJobStatus = Literal["pending", "running", "success", "error", "canceled", "interrupted"]
 SampleProcessingStepStatus = Literal["pending", "running", "success", "error", "canceled"]
 SampleProcessingWorkflowMode = Literal["single", "stack"]
-SpeechJobStatus = Literal["pending", "running", "success", "error", "canceled"]
+SpeechJobStatus = Literal["pending", "running", "success", "error", "canceled", "interrupted"]
 SpeechSegmentStatus = Literal["pending", "running", "success", "error", "canceled"]
 SpeechSegmentAssignmentKind = Literal["assigned", "default"]
 
@@ -318,6 +318,7 @@ class SampleProcessingJob:
     source_preference: SampleProcessingSourcePreference
     created_at: str
     updated_at: str
+    source_voice_id: str | None = None
     error: str | None = None
     result: SampleProcessingJobResult | None = None
     engine: str | None = None

@@ -597,7 +597,7 @@ While a `prepareVoice` job is running, `activeProgressPhaseId` points at the cur
 
 The response is `201` with `{ "voices": [{ ... }] }`. Saved candidate voices include `processingSteps` metadata with `operationId: "prepareVoice"`, source/result hashes, engine, and speaker id/label.
 
-`POST /api/sample-processing/jobs/{jobId}/cancel` cancels a pending or running job and returns `{ "job": { ... } }`. Cancel is idempotent for `success`, `error`, and `canceled` jobs. FFmpeg and Demucs subprocesses are killed on cancellation. Pyannote and faster-whisper model calls are marked canceled immediately and later pipeline steps are skipped; already-running thread-backed model inference may finish in the background.
+`POST /api/sample-processing/jobs/{jobId}/cancel` cancels a pending or running job and returns `{ "job": { ... } }`. Cancel is idempotent for `success`, `error`, `canceled`, and `interrupted` jobs. FFmpeg and Demucs subprocesses are killed on cancellation. Pyannote and faster-whisper model calls are marked canceled immediately and later pipeline steps are skipped; already-running thread-backed model inference may finish in the background.
 
 For `trimSilence`, the job `engine` is `ffmpeg`, and the saved `processingSteps` metadata records the selected trim preset. For `isolateVoice`, the job `engine` remains `demucs`.
 
@@ -778,11 +778,13 @@ The response is `202` with `{ "job": { ... } }`:
 
 `GET /api/speech/jobs/{jobId}` returns the current job state. A successful job has `status: "success"`, every segment has `status: "success"`, and `resultSha256` is populated for both the final audio and each generated segment.
 
-`POST /api/speech/jobs/{jobId}/cancel` cancels a pending or running job and returns the updated job. Cancel is idempotent for terminal jobs.
+`POST /api/speech/jobs/{jobId}/cancel` cancels a pending or running job and returns the updated job. Cancel is idempotent for terminal jobs, including jobs marked `interrupted` after an API restart.
 
-`GET /api/speech/jobs/{jobId}/result` streams the combined `audio/mpeg` result after success. The Generate Speech UI saves this combined audio in browser IndexedDB and records Multi-Voice metadata such as the job id, segment count, voice summary, and result hashes.
+`GET /api/speech/jobs/{jobId}/result` streams the combined `audio/mpeg` result after success. The Generate Speech UI saves this combined audio in the generated-audio archive, falling back to browser IndexedDB when the server archive is unavailable, and records Multi-Voice metadata such as the job id, segment count, voice summary, and result hashes.
 
 `GET /api/speech/jobs/{jobId}/segments/{segmentId}/result` streams an individual generated segment after that segment succeeds. Segment result URLs are intended for the latest active job's per-segment playback controls; they are runtime job artifacts, not durable archive URLs. Combined and segment result endpoints return `409` until their audio is ready.
+
+When `DATABASE_URL` is configured, sample-processing and speech-generation services also persist sanitized job metadata snapshots in Postgres. `GET` job routes can read those persisted snapshots after app recreation. Active worker tasks still live only in the current API process; stale persisted `pending` or `running` rows are marked `interrupted` on service startup.
 
 `POST /api/speech/jobs/{jobId}/segments/{segmentId}/regenerate` starts regeneration for a successful job segment and rebuilds the combined result. The optional JSON body can change that segment's voice and replace that segment's stored tuning before regenerating. Omit `voiceSettings` or send `null` to preserve the segment's current tuning snapshot.
 
