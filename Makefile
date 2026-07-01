@@ -52,6 +52,7 @@ migrate:
 test-postgres:
 	docker compose up -d db
 	cd backend && DATABASE_URL="$(DATABASE_URL)" ../$(VENV_PYTHON) -m pytest -m postgres tests/test_persistence.py
+	cd backend && DATABASE_URL="$(DATABASE_URL)" ../$(VENV_PYTHON) -m alembic -c alembic.ini check
 
 test-backend:
 	cd backend && ../$(VENV_PYTHON) -m pytest

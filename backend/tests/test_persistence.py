@@ -69,6 +69,21 @@ def test_settings_uses_configured_generated_audio_storage_dir(
     assert settings.database_url == "postgresql+psycopg://user:pass@localhost:5432/app"
 
 
+def test_settings_resolves_relative_storage_env_paths_from_app_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workdir = tmp_path / "backend"
+    workdir.mkdir()
+    monkeypatch.chdir(workdir)
+    monkeypatch.setenv("APP_ROOT", str(tmp_path))
+    monkeypatch.setenv("GENERATED_AUDIO_STORAGE_DIR", "storage/generated-audio")
+
+    settings = Settings.from_env()
+
+    assert settings.generated_audio_storage_dir == tmp_path / "storage" / "generated-audio"
+
+
 def test_create_app_creates_runtime_storage_roots(tmp_path: Path) -> None:
     settings = make_settings(tmp_path)
 
@@ -130,6 +145,7 @@ def test_postgres_migrations_upgrade_to_head() -> None:
     alembic_config = Config("alembic.ini")
     alembic_config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
     command.upgrade(alembic_config, "head")
+    command.check(alembic_config)
 
     engine = create_database_engine(database_url)
     with engine.connect() as connection:

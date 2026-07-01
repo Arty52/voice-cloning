@@ -4,14 +4,19 @@ from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import BigInteger, DateTime, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy.types import JSON
+from sqlalchemy.types import JSON, TypeEngine
 
 from .database import Base
 
 
 def _utcnow() -> datetime:
     return datetime.now(UTC)
+
+
+def _json_document() -> TypeEngine[Any]:
+    return JSON().with_variant(postgresql.JSONB(astext_type=Text()), "postgresql")
 
 
 class VoiceRecord(Base):
@@ -31,7 +36,7 @@ class VoiceRecord(Base):
     source_content_type: Mapped[str | None] = mapped_column(String(255))
     source_sha256: Mapped[str | None] = mapped_column(String(64))
     voice_preset_id: Mapped[str] = mapped_column(String(64), default="standardNarration", nullable=False)
-    voice_settings_by_provider: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    voice_settings_by_provider: Mapped[dict[str, Any]] = mapped_column(_json_document(), default=dict, nullable=False)
 
 
 class VoiceProcessingStepRecord(Base):
@@ -71,7 +76,7 @@ class VoiceTuningPresetRecord(Base):
     provider_id: Mapped[str] = mapped_column(String(64), nullable=False)
     label: Mapped[str] = mapped_column(String(255), nullable=False)
     voice_preset_id: Mapped[str | None] = mapped_column(String(64))
-    settings: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    settings: Mapped[dict[str, Any]] = mapped_column(_json_document(), default=dict, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
@@ -94,15 +99,15 @@ class GeneratedAudioRecord(Base):
     character_count: Mapped[int | None] = mapped_column(Integer)
     request_id: Mapped[str | None] = mapped_column(String(255))
     generation_elapsed_ms: Mapped[int | None] = mapped_column(Integer)
-    multi_voice_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSON)
-    tuning_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    multi_voice_metadata: Mapped[dict[str, Any] | None] = mapped_column(_json_document())
+    tuning_metadata: Mapped[dict[str, Any] | None] = mapped_column(_json_document())
 
 
 class AppSettingRecord(Base):
     __tablename__ = "app_settings"
 
     key: Mapped[str] = mapped_column(String(128), primary_key=True)
-    value: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    value: Mapped[dict[str, Any]] = mapped_column(_json_document(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
 
@@ -114,8 +119,8 @@ class SampleProcessingJobRecord(Base):
     source_voice_id: Mapped[str | None] = mapped_column(String(128), ForeignKey("voices.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
-    request_payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
-    result_payload: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    request_payload: Mapped[dict[str, Any]] = mapped_column(_json_document(), default=dict, nullable=False)
+    result_payload: Mapped[dict[str, Any] | None] = mapped_column(_json_document())
     error_message: Mapped[str | None] = mapped_column(Text)
 
 
@@ -128,11 +133,18 @@ class SpeechGenerationJobRecord(Base):
     result_audio_id: Mapped[str | None] = mapped_column(String(128), ForeignKey("generated_audio.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
-    request_payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
-    result_payload: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    request_payload: Mapped[dict[str, Any]] = mapped_column(_json_document(), default=dict, nullable=False)
+    result_payload: Mapped[dict[str, Any] | None] = mapped_column(_json_document())
     error_message: Mapped[str | None] = mapped_column(Text)
 
 
+Index("ix_voices_created_at", VoiceRecord.created_at)
+Index("ix_voices_sha256", VoiceRecord.sha256)
+Index("ix_voice_processing_steps_voice_position", VoiceProcessingStepRecord.voice_id, VoiceProcessingStepRecord.position)
+Index("ix_voice_tuning_presets_provider", VoiceTuningPresetRecord.provider_id)
 Index("ix_generated_audio_created_at", GeneratedAudioRecord.created_at)
+Index("ix_generated_audio_sha256", GeneratedAudioRecord.sha256)
+Index("ix_sample_processing_jobs_created_at", SampleProcessingJobRecord.created_at)
 Index("ix_sample_processing_jobs_status", SampleProcessingJobRecord.status)
+Index("ix_speech_generation_jobs_created_at", SpeechGenerationJobRecord.created_at)
 Index("ix_speech_generation_jobs_status", SpeechGenerationJobRecord.status)
