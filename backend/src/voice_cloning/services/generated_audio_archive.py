@@ -257,9 +257,9 @@ class GeneratedAudioArchiveService:
         return GeneratedAudioMutationResult(usage=usage, pruned_ids=pruned_ids)
 
     async def _stage_upload(self, upload: UploadFile, limit_bytes: int) -> StagedAudioUpload:
-        content_type = upload.content_type or "audio/mpeg"
+        content_type = _audio_content_type(upload.content_type)
         upload_id = uuid4().hex
-        staged_path = self.file_store.root / ".staged" / upload_id / f"upload{_extension(upload.filename, content_type)}"
+        staged_path = self.file_store.root / ".staged" / upload_id / f"upload{_extension_for_content_type(content_type)}"
         staged_path.parent.mkdir(parents=True, exist_ok=True)
         digest = hashlib.sha256()
         size_bytes = 0
@@ -350,10 +350,18 @@ class GeneratedAudioArchiveService:
             if tombstone_path.exists():
                 original_path.parent.mkdir(parents=True, exist_ok=True)
                 shutil.move(str(tombstone_path), str(original_path))
+        self._remove_tombstone_dirs(moved_paths)
 
     def _remove_tombstones(self, moved_paths: list[tuple[Path, Path]]) -> None:
         for tombstone_path, _ in moved_paths:
             tombstone_path.unlink(missing_ok=True)
+        self._remove_tombstone_dirs(moved_paths)
+
+    def _remove_tombstone_dirs(self, moved_paths: list[tuple[Path, Path]]) -> None:
+        for tombstone_path, _ in moved_paths:
+            operation_root = _tombstone_operation_root(tombstone_path)
+            if operation_root is not None:
+                shutil.rmtree(operation_root, ignore_errors=True)
 
 
 def _usage(items: list[GeneratedAudioMetadata], limit_bytes: int) -> GeneratedAudioUsage:
@@ -384,11 +392,22 @@ def _created_at(value: str | None) -> str:
         raise GeneratedAudioArchiveError("createdAt must be an ISO datetime.", 422) from exc
 
 
-def _extension(filename: str | None, content_type: str) -> str:
-    suffix = Path(filename or "").suffix.lower()
-    if suffix:
-        return suffix
-    return CONTENT_TYPE_EXTENSION_BY_PREFIX.get(content_type.lower(), ".mp3")
+def _audio_content_type(value: str | None) -> str:
+    content_type = (value or "").split(";", 1)[0].strip().lower()
+    if content_type not in CONTENT_TYPE_EXTENSION_BY_PREFIX:
+        raise GeneratedAudioArchiveError("Generated audio content type is not supported.", 422)
+    return content_type
+
+
+def _extension_for_content_type(content_type: str) -> str:
+    return CONTENT_TYPE_EXTENSION_BY_PREFIX[content_type]
+
+
+def _tombstone_operation_root(tombstone_path: Path) -> Path | None:
+    for parent in tombstone_path.parents:
+        if parent.parent.name == ".deleted":
+            return parent
+    return None
 
 
 def _optional_str(value: str | None) -> str | None:

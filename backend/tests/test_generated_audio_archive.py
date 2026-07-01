@@ -48,8 +48,13 @@ def make_client(tmp_path: Path) -> TestClient:
     return TestClient(create_app(settings=settings, generated_audio_archive_service=service))
 
 
-def audio_files(content: bytes = b"fake-mp3") -> dict[str, tuple[str, bytes, str]]:
-    return {"audioFile": ("voice.mp3", content, "audio/mpeg")}
+def audio_files(
+    content: bytes = b"fake-mp3",
+    *,
+    content_type: str = "audio/mpeg",
+    filename: str = "voice.mp3",
+) -> dict[str, tuple[str, bytes, str]]:
+    return {"audioFile": (filename, content, content_type)}
 
 
 def test_generated_audio_archive_routes_save_stream_and_delete(tmp_path: Path) -> None:
@@ -107,6 +112,37 @@ def test_generated_audio_archive_save_is_idempotent_by_id_and_hash(tmp_path: Pat
     assert retry_response.json()["alreadyExisted"] is True
     assert conflict_response.status_code == 409
     assert len(client.get("/api/generated-audio").json()["items"]) == 1
+
+
+def test_generated_audio_archive_rejects_non_audio_upload(tmp_path: Path) -> None:
+    client = make_client(tmp_path)
+
+    response = client.post(
+        "/api/generated-audio",
+        data={"id": "html-audio"},
+        files=audio_files(b"<html></html>", content_type="text/html", filename="audio.html"),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Generated audio content type is not supported."
+    assert client.get("/api/generated-audio").json()["items"] == []
+
+
+def test_generated_audio_archive_derives_extension_from_audio_content_type(tmp_path: Path) -> None:
+    from voice_cloning.api.app import create_app
+
+    service = make_archive_service(tmp_path)
+    client = TestClient(create_app(settings=make_settings(tmp_path), generated_audio_archive_service=service))
+
+    response = client.post(
+        "/api/generated-audio",
+        data={"id": "audio-one"},
+        files=audio_files(b"fake-mp3", content_type="audio/mpeg", filename="audio.html"),
+    )
+
+    assert response.status_code == 200
+    assert service.get_item("audio-one").content_type == "audio/mpeg"
+    assert service.get_item("audio-one").file_path.endswith(".mp3")
 
 
 def test_generated_audio_archive_save_failure_does_not_delete_existing_file(
@@ -184,6 +220,19 @@ def test_generated_audio_archive_delete_restores_file_when_database_rolls_back(
 
     assert path.exists()
     assert service.get_item("audio-one").id == "audio-one"
+
+
+def test_generated_audio_archive_delete_removes_tombstone_directories(tmp_path: Path) -> None:
+    from voice_cloning.api.app import create_app
+
+    service = make_archive_service(tmp_path)
+    client = TestClient(create_app(settings=make_settings(tmp_path), generated_audio_archive_service=service))
+    assert client.post("/api/generated-audio", data={"id": "audio-one"}, files=audio_files(b"fake-mp3")).status_code == 200
+
+    response = client.delete("/api/generated-audio/audio-one")
+
+    assert response.status_code == 200
+    assert not any((service.file_store.root / ".deleted").glob("*"))
 
 
 def test_generated_audio_archive_routes_return_503_without_database(tmp_path: Path) -> None:
