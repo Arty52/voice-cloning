@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import inspect, text
-from sqlalchemy.engine import make_url
+from sqlalchemy.engine import URL, make_url
 
 from voice_cloning.api.app import create_app
 from voice_cloning.config import Settings
@@ -163,3 +164,52 @@ def test_postgres_migrations_upgrade_to_head() -> None:
         "sample_processing_jobs",
         "speech_generation_jobs",
     }.issubset(table_names)
+
+
+@pytest.mark.postgres
+def test_postgres_migrations_roundtrip_on_disposable_database() -> None:
+    from alembic import command
+    from alembic.config import Config
+
+    database_url = os.environ.get("DATABASE_URL", "").strip()
+    if not database_url:
+        pytest.skip("DATABASE_URL is required for Postgres migration tests.")
+
+    url = make_url(database_url)
+    if url.get_backend_name() != "postgresql":
+        pytest.skip("Postgres migration tests require a postgresql DATABASE_URL.")
+
+    admin_url = url.set(database="postgres")
+    roundtrip_database = f"voice_cloning_migration_test_{uuid4().hex[:16]}"
+    roundtrip_url = url.set(database=roundtrip_database)
+    admin_engine = create_database_engine(_url_string(admin_url))
+    roundtrip_engine = None
+
+    try:
+        with admin_engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+            connection.execute(text(f'CREATE DATABASE "{roundtrip_database}"'))
+
+        alembic_config = Config("alembic.ini")
+        alembic_config.set_main_option("sqlalchemy.url", _url_string(roundtrip_url).replace("%", "%%"))
+        command.upgrade(alembic_config, "head")
+        command.downgrade(alembic_config, "base")
+        command.upgrade(alembic_config, "head")
+
+        roundtrip_engine = create_database_engine(_url_string(roundtrip_url))
+        with roundtrip_engine.connect() as connection:
+            table_names = set(inspect(connection).get_table_names())
+            version = connection.execute(text("select version_num from alembic_version")).scalar_one()
+
+        assert version == "202607010001"
+        assert "voices" in table_names
+        assert "generated_audio" in table_names
+    finally:
+        if roundtrip_engine is not None:
+            roundtrip_engine.dispose()
+        with admin_engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+            connection.execute(text(f'DROP DATABASE IF EXISTS "{roundtrip_database}" WITH (FORCE)'))
+        admin_engine.dispose()
+
+
+def _url_string(url: URL) -> str:
+    return url.render_as_string(hide_password=False)

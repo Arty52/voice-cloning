@@ -36,6 +36,12 @@ For host backend development, leave `DATABASE_URL` blank until you need migratio
 make test-postgres
 ```
 
+To validate only the destructive migration roundtrip, use the disposable database target:
+
+```sh
+make test-postgres-migrations
+```
+
 If port `5432` is already in use, set `POSTGRES_PORT` in `.env` before running compose.
 
 ## ElevenLabs Quota Or Billing Errors

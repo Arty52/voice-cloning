@@ -148,6 +148,12 @@ Run Postgres-backed migration checks after starting Docker:
 make test-postgres
 ```
 
+Run only the disposable Alembic migration roundtrip check:
+
+```sh
+make test-postgres-migrations
+```
+
 Useful Docker commands:
 
 ```sh

@@ -19,7 +19,7 @@ All PRs start as Draft and move to Open only after their validation gates pass.
 1. Persistence Foundation And Compose
    - Add SQLAlchemy, Alembic, repository Protocols, unit-of-work helpers, file-store Protocols, configurable storage roots, and compose Postgres.
    - Atomic commits: settings/file-store foundation; Alembic schema; compose and validation targets; docs.
-   - Validation: `make check`; `make test-postgres`.
+   - Validation: `make check`; `make test-postgres`; `make test-postgres-migrations` for disposable `upgrade head` → `downgrade base` → `upgrade head` validation.
 2. Server-Backed Voice Library
    - Add a PostgreSQL implementation behind the existing voice library contract and idempotent `voices.json` import.
    - Validation: focused repository/import tests; API voice route regression tests; `make check`; `make test-postgres`.
