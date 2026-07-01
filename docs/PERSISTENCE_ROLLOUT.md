@@ -22,7 +22,9 @@ All PRs start as Draft and move to Open only after their validation gates pass.
    - Validation: `make check`; `make test-postgres`; `make test-postgres-migrations` for disposable `upgrade head` → `downgrade base` → `upgrade head` validation.
 2. Server-Backed Voice Library
    - Add a PostgreSQL implementation behind the existing voice library contract and idempotent `voices.json` import.
-   - Validation: focused repository/import tests; API voice route regression tests; `make check`; `make test-postgres`.
+   - Runtime selection: `DATABASE_URL` uses the PostgreSQL-backed library; blank `DATABASE_URL` keeps the manifest-backed library.
+   - Import behavior: same id plus same hash is already imported; same id plus different hash is copied to `{id}-import-{sha8}`; missing files are skipped with a report; the default voice is preserved when importable; `voices.json` is never deleted automatically.
+   - Validation: focused repository/import tests; API voice route regression tests; DB/file consistency tests; `make check`; `make test-postgres`.
 3. Server-Backed Generated Audio Archive
    - Add archive metadata repositories, local generated-audio file storage, download/delete routes, and idempotent save semantics.
    - Validation: file/database consistency tests, orphan cleanup tests, archive API route tests, `make check`, `make test-postgres`.

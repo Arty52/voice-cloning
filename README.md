@@ -47,7 +47,7 @@ Start the app:
 make up
 ```
 
-Docker Compose starts the frontend, backend, and a required local PostgreSQL 18.4 service. The database uses a named volume mounted at `/var/lib/postgresql` with `PGDATA=/var/lib/postgresql/18/docker`, matching the PostgreSQL 18 image layout. Host-only development can leave `DATABASE_URL` blank during the transition; compose injects the backend database URL automatically.
+Docker Compose starts the frontend, backend, and a required local PostgreSQL 18.4 service. The database uses a named volume mounted at `/var/lib/postgresql` with `PGDATA=/var/lib/postgresql/18/docker`, matching the PostgreSQL 18 image layout. The API container applies Alembic migrations before Uvicorn starts. Host-only development can leave `DATABASE_URL` blank during the transition; compose injects the backend database URL automatically.
 
 Open the Voice Studio:
 
@@ -65,7 +65,8 @@ http://localhost:6420
 
 - API keys stay local to `.env` or browser-local storage and are never returned by the API.
 - Real voice samples under `assets/voices/` are ignored by git.
-- Local voice preset assignments are saved with the ignored voice manifest under `assets/voices/`.
+- Local voice sample files stay under `VOICE_ASSETS_DIR`, which defaults to ignored `assets/voices/`.
+- When `DATABASE_URL` is configured, voice library metadata is stored in Postgres and existing `assets/voices/voices.json` entries are imported idempotently. When it is blank, the ignored voice manifest remains the local source of truth.
 - Generated audio and provider cache data under `storage/` are ignored by git.
 - Server-side generated-audio archive files are stored under `GENERATED_AUDIO_STORAGE_DIR`, which defaults to ignored `storage/generated-audio/`.
 - Browser-generated audio is stored in browser IndexedDB by default, not committed to the repository.
