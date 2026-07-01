@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from typing import Any, Protocol
 
 from ..models import VoiceAsset
+from .generated_audio import GeneratedAudioMetadata
 
 
 class VoiceRepository(Protocol):
@@ -27,10 +28,22 @@ class VoiceRepository(Protocol):
 
 
 class GeneratedAudioRepository(Protocol):
-    def exists(self, audio_id: str) -> bool:
+    def list_items(self) -> list[GeneratedAudioMetadata]:
+        ...
+
+    def list_oldest_first(self) -> list[GeneratedAudioMetadata]:
+        ...
+
+    def get(self, audio_id: str) -> GeneratedAudioMetadata | None:
+        ...
+
+    def save(self, metadata: GeneratedAudioMetadata) -> None:
         ...
 
     def delete(self, audio_id: str) -> None:
+        ...
+
+    def clear(self) -> None:
         ...
 
 
