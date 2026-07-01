@@ -570,7 +570,7 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
         setStatus("canceled")
         return
       }
-      if (payload.job.status === "error") {
+      if (payload.job.status === "error" || payload.job.status === "interrupted") {
         finishProcessingTimer()
         setStatus("error")
         setError(payload.job.error || "Sample processing failed.")
@@ -606,7 +606,7 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
           setStatus("canceled")
           return
         }
-        if (payload.job.status === "error") {
+        if (payload.job.status === "error" || payload.job.status === "interrupted") {
           finishProcessingTimer()
           setStatus("error")
           setError(payload.job.error || "Sample processing failed.")

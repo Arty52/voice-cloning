@@ -576,13 +576,16 @@ class SampleProcessingService:
 
     def get_job(self, job_id: str) -> SampleProcessingJob:
         job = self._jobs.get(job_id)
-        if job is None:
-            raise SampleProcessingServiceError("Sample processing job was not found.", 404)
-        return job
+        if job is not None:
+            return job
+        persisted_job = self._get_persisted_job(job_id)
+        if persisted_job is not None:
+            return persisted_job
+        raise SampleProcessingServiceError("Sample processing job was not found.", 404)
 
     async def cancel_job(self, job_id: str) -> SampleProcessingJob:
         job = self.get_job(job_id)
-        if job.status in {"success", "error", "canceled"}:
+        if job.status in {"success", "error", "canceled", "interrupted"}:
             return job
         task = self._tasks.get(job_id)
         if task is None:
@@ -590,7 +593,7 @@ class SampleProcessingService:
             return self.get_job(job_id)
         task.cancel()
         await cancel_and_drain_task(task)  # type: ignore[arg-type]
-        if self.get_job(job_id).status not in {"success", "error", "canceled"}:
+        if self.get_job(job_id).status not in {"success", "error", "canceled", "interrupted"}:
             self._cancel_job_state(job_id)
         return self.get_job(job_id)
 
@@ -1360,6 +1363,12 @@ class SampleProcessingService:
             return
         with unit_of_work(self.job_session_factory) as session:
             SqlAlchemySampleProcessingJobRepository(session).save_job(job)
+
+    def _get_persisted_job(self, job_id: str) -> SampleProcessingJob | None:
+        if self.job_session_factory is None:
+            return None
+        with unit_of_work(self.job_session_factory) as session:
+            return SqlAlchemySampleProcessingJobRepository(session).get_job(job_id)
 
     def _mark_interrupted_jobs(self) -> None:
         if self.job_session_factory is None:

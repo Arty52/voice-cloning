@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 import os
 from pathlib import Path
@@ -14,6 +15,7 @@ from voice_cloning.config import Settings
 from voice_cloning.models import (
     SampleProcessingJob,
     SampleProcessingJobStep,
+    SampleProcessingResult,
     SpeechJob,
     SpeechJobSegment,
     VoiceAsset,
@@ -205,6 +207,8 @@ def test_job_repositories_persist_snapshots_and_mark_interrupted() -> None:
         SqlAlchemySpeechGenerationJobRepository(session).save_job(speech_job)
 
     with unit_of_work(session_factory) as session:
+        assert SqlAlchemySampleProcessingJobRepository(session).get_job("sample-job") == sample_job
+        assert SqlAlchemySpeechGenerationJobRepository(session).get_job("speech-job") == speech_job
         assert session.get(SampleProcessingJobRecord, "sample-job").request_payload["operationId"] == "trimSilence"
         assert session.get(SpeechGenerationJobRecord, "speech-job").request_payload["modelId"] == "eleven_multilingual_v2"
         assert SqlAlchemySampleProcessingJobRepository(session).mark_active_jobs_interrupted() == 1
@@ -220,6 +224,94 @@ def test_job_repositories_persist_snapshots_and_mark_interrupted() -> None:
         assert speech_record is not None
         assert speech_record.status == "interrupted"
         assert speech_record.error_message == INTERRUPTED_MESSAGE
+        restored_sample_job = SqlAlchemySampleProcessingJobRepository(session).get_job("sample-job")
+        restored_speech_job = SqlAlchemySpeechGenerationJobRepository(session).get_job("speech-job")
+
+        assert restored_sample_job is not None
+        assert restored_sample_job.status == "interrupted"
+        assert restored_sample_job.error == INTERRUPTED_MESSAGE
+        assert restored_speech_job is not None
+        assert restored_speech_job.status == "interrupted"
+        assert restored_speech_job.error == INTERRUPTED_MESSAGE
+
+
+def test_job_routes_read_persisted_snapshots_after_app_recreation(tmp_path: Path) -> None:
+    from voice_cloning.api.app import create_app
+
+    database_path = tmp_path / "jobs.sqlite"
+    database_url = f"sqlite+pysqlite:///{database_path}"
+    settings = replace(make_settings(tmp_path), database_url=database_url)
+    engine = create_database_engine(database_url)
+    Base.metadata.create_all(engine)
+    session_factory = create_session_factory(engine)
+    sample_job = SampleProcessingJob(
+        id="sample-job",
+        operation_id="trimSilence",
+        status="success",
+        source_name="Narrator",
+        source_filename="source.wav",
+        source_content_type="audio/wav",
+        source_sha256="source-hash",
+        source_size_bytes=128,
+        source_preference="active",
+        created_at="2026-07-01T12:00:00+00:00",
+        updated_at="2026-07-01T12:00:01+00:00",
+        result=SampleProcessingResult(
+            path="result.wav",
+            filename="result.wav",
+            content_type="audio/wav",
+            sha256="result-hash",
+        ),
+        steps=(
+            SampleProcessingJobStep(
+                id="sample-job",
+                operation_id="trimSilence",
+                operation_label="Trim Silence",
+                status="success",
+                engine="ffmpeg",
+            ),
+        ),
+    )
+    speech_job = SpeechJob(
+        id="speech-job",
+        status="success",
+        text="Hello.",
+        default_voice_id="default",
+        segment_gap_ms=250,
+        provider_id="elevenlabs",
+        model_id="eleven_multilingual_v2",
+        result_sha256="speech-result-hash",
+        segments=(
+            SpeechJobSegment(
+                id="segment-one",
+                index=0,
+                text="Hello.",
+                voice_id="default",
+                voice_name="Default Voice",
+                assignment_kind="default",
+                status="success",
+                result_sha256="segment-hash",
+            ),
+        ),
+        created_at="2026-07-01T12:00:00+00:00",
+        updated_at="2026-07-01T12:00:01+00:00",
+    )
+
+    with unit_of_work(session_factory) as session:
+        SqlAlchemySampleProcessingJobRepository(session).save_job(sample_job)
+        SqlAlchemySpeechGenerationJobRepository(session).save_job(speech_job)
+
+    client = TestClient(create_app(settings=settings))
+
+    sample_response = client.get("/api/sample-processing/jobs/sample-job")
+    speech_response = client.get("/api/speech/jobs/speech-job")
+
+    assert sample_response.status_code == 200
+    assert sample_response.json()["job"]["status"] == "success"
+    assert sample_response.json()["job"]["result"]["sha256"] == "result-hash"
+    assert speech_response.status_code == 200
+    assert speech_response.json()["job"]["status"] == "success"
+    assert speech_response.json()["job"]["resultSha256"] == "speech-result-hash"
 
 
 def test_sqlalchemy_voice_repository_roundtrips_voice_asset() -> None:

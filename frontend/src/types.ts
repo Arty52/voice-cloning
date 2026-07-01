@@ -17,10 +17,10 @@ export type SampleProcessingPresetId =
   | "trimBalanced"
   | "trimAggressive"
 export type SampleProcessingSourcePreference = "original" | "active"
-export type SampleProcessingJobStatus = "pending" | "running" | "success" | "error" | "canceled"
+export type SampleProcessingJobStatus = "pending" | "running" | "success" | "error" | "canceled" | "interrupted"
 export type SampleProcessingStepStatus = "pending" | "running" | "success" | "error" | "canceled"
 export type SampleProcessingWorkflowMode = "single" | "stack"
-export type SpeechJobStatus = "pending" | "running" | "success" | "error" | "canceled"
+export type SpeechJobStatus = "pending" | "running" | "success" | "error" | "canceled" | "interrupted"
 export type SpeechSegmentStatus = "pending" | "running" | "success" | "error" | "canceled"
 export type SpeechSegmentAssignmentKind = "assigned" | "default"
 
