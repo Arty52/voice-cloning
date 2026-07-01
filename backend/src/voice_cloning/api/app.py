@@ -12,7 +12,8 @@ from ..services.media_sources import SampleProcessingMediaSourceService
 from ..services.sample_processing import SampleProcessingService, SampleProcessor
 from ..services.speech_jobs import SpeechJobService
 from ..services.voice_ingestion import VoiceIngestionService
-from ..voice_library import VoiceLibrary
+from ..voice_library import VoiceLibraryProtocol
+from ..voice_library_factory import create_voice_library
 from .routes.health import create_health_router
 from .routes.metadata import create_metadata_router
 from .routes.sample_processing import create_sample_processing_router
@@ -26,7 +27,7 @@ def create_app(
     settings: Settings | None = None,
     provider_registry: ProviderRegistry | None = None,
     voice_cache: VoiceCache | None = None,
-    voice_library: VoiceLibrary | None = None,
+    voice_library: VoiceLibraryProtocol | None = None,
     voice_ingestion_service: VoiceIngestionService | None = None,
     sample_processor: SampleProcessor | None = None,
     sample_processing_media_source_service: SampleProcessingMediaSourceService | None = None,
@@ -37,7 +38,7 @@ def create_app(
     resolved_settings.ensure_runtime_directories()
     resolved_cache = voice_cache or VoiceCache(resolved_settings.storage_dir / "voice-cache.json")
     resolved_provider_registry = provider_registry or ProviderRegistry([ElevenLabsProvider(resolved_settings)])
-    resolved_library = voice_library or VoiceLibrary(resolved_settings)
+    resolved_library = voice_library or create_voice_library(resolved_settings)
     resolved_voice_ingestion = voice_ingestion_service or VoiceIngestionService(resolved_settings, resolved_library)
     resolved_sample_processing_media_sources = (
         sample_processing_media_source_service or SampleProcessingMediaSourceService(resolved_settings)
