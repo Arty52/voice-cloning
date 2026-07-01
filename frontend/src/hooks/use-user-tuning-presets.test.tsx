@@ -133,6 +133,57 @@ describe("useUserTuningPresets", () => {
       name: "Fallback Preset",
     })
   })
+
+  it("ignores corrupted browser records without dropping valid presets", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => unavailableResponse()))
+    localStorage.setItem(
+      "voice-cloning:user-tuning-presets:v1",
+      JSON.stringify([
+        preset({ id: "browser-valid", name: "Browser Valid" }),
+        { id: "missing-fields", name: "Missing Fields" },
+        {
+          ...preset({ id: "bad-settings", name: "Bad Settings" }),
+          settings: { stability: { nested: true } },
+        },
+        {
+          ...preset({ id: "array-settings", name: "Array Settings" }),
+          settings: [],
+        },
+      ])
+    )
+
+    const { result } = renderHook(() => useUserTuningPresets())
+
+    await waitFor(() => expect(result.current.status).toBe("success"))
+    expect(result.current.presets).toHaveLength(1)
+    expect(result.current.presets[0]).toMatchObject({
+      id: "browser-valid",
+      name: "Browser Valid",
+    })
+  })
+
+  it("does not mutate presets while the initial load is pending", async () => {
+    const fetchMock = vi.fn(() => new Promise<Response>(() => undefined))
+    vi.stubGlobal("fetch", fetchMock)
+
+    const { result } = renderHook(() => useUserTuningPresets())
+
+    await waitFor(() => expect(result.current.status).toBe("loading"))
+
+    let createdPreset: UserTuningPreset | null = null
+    await act(async () => {
+      createdPreset = await result.current.createPreset({
+        id: "pending",
+        name: "Pending Preset",
+        providerId: "elevenlabs",
+        settings: { stability: 0.5 },
+      })
+    })
+
+    expect(createdPreset).toBeNull()
+    expect(result.current.error).toBe("Voice tuning presets are still loading.")
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
 })
 
 function preset(overrides: Partial<UserTuningPreset> = {}): UserTuningPreset {

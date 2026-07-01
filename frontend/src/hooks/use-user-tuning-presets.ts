@@ -8,7 +8,7 @@ import {
   updateUserTuningPreset,
   type UserTuningPresetInput,
 } from "@/lib/user-tuning-presets-api"
-import type { AsyncStatus, UserTuningPreset } from "@/types"
+import type { AsyncStatus, UserTuningPreset, VoiceTuningValues } from "@/types"
 
 type PersistenceMode = "browser" | "server"
 
@@ -65,6 +65,10 @@ export function useUserTuningPresets() {
   }, [])
 
   async function createPreset(input: UserTuningPresetInput) {
+    if (status === "loading") {
+      setError("Voice tuning presets are still loading.")
+      return null
+    }
     try {
       const preset =
         persistenceMode === "server"
@@ -83,6 +87,10 @@ export function useUserTuningPresets() {
   }
 
   async function updatePreset(id: string, input: UserTuningPresetInput) {
+    if (status === "loading") {
+      setError("Voice tuning presets are still loading.")
+      return null
+    }
     try {
       const preset =
         persistenceMode === "server"
@@ -101,6 +109,10 @@ export function useUserTuningPresets() {
   }
 
   async function deletePreset(id: string) {
+    if (status === "loading") {
+      setError("Voice tuning presets are still loading.")
+      return
+    }
     try {
       if (persistenceMode === "server") {
         await deleteUserTuningPreset(id)
@@ -232,13 +244,31 @@ function normalizeStoredPreset(preset: UserTuningPreset): UserTuningPreset {
 
 function isStoredUserTuningPreset(value: unknown): value is UserTuningPreset {
   return (
-    typeof value === "object" &&
-    value !== null &&
-    "id" in value &&
-    "name" in value &&
-    "providerId" in value &&
-    "settings" in value
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    typeof value.providerId === "string" &&
+    isVoiceTuningValues(value.settings) &&
+    typeof value.createdAt === "string" &&
+    typeof value.updatedAt === "string" &&
+    (value.voicePresetId === null ||
+      value.voicePresetId === "standardNarration" ||
+      value.voicePresetId === "animatedDialogue")
   )
+}
+
+function isVoiceTuningValues(value: unknown): value is VoiceTuningValues {
+  return (
+    isRecord(value) &&
+    Object.values(value).every(
+      (candidate) =>
+        typeof candidate === "string" || typeof candidate === "number" || typeof candidate === "boolean"
+    )
+  )
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
 function normalizePresetId(id: string | null | undefined) {

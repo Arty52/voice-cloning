@@ -136,6 +136,66 @@ describe("user tuning presets API", () => {
     await expect(listUserTuningPresets()).rejects.toBeInstanceOf(UserTuningPresetsUnavailableError)
   })
 
+  it("rejects incomplete preset list entries instead of dropping them silently", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        okJson({
+          available: true,
+          presets: [{ id: "partial", name: "Partial Preset" }],
+        })
+      )
+    )
+
+    await expect(listUserTuningPresets()).rejects.toBeInstanceOf(UserTuningPresetsUnavailableError)
+  })
+
+  it("reports mutation 404 responses as API errors", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ detail: "Voice tuning preset was not found." }), {
+            status: 404,
+            headers: { "Content-Type": "application/json" },
+          })
+        )
+      )
+    )
+
+    await expect(
+      updateUserTuningPreset("missing", {
+        name: "Missing Preset",
+        providerId: "elevenlabs",
+        settings: { stability: 0.5 },
+      })
+    ).rejects.toThrow("Voice tuning preset was not found.")
+    await expect(
+      updateUserTuningPreset("missing", {
+        name: "Missing Preset",
+        providerId: "elevenlabs",
+        settings: { stability: 0.5 },
+      })
+    ).rejects.not.toBeInstanceOf(UserTuningPresetsUnavailableError)
+  })
+
+  it("reports delete 404 responses as API errors", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ detail: "Voice tuning preset was not found." }), {
+            status: 404,
+            headers: { "Content-Type": "application/json" },
+          })
+        )
+      )
+    )
+
+    await expect(deleteUserTuningPreset("missing")).rejects.toThrow("Voice tuning preset was not found.")
+    await expect(deleteUserTuningPreset("missing")).rejects.not.toBeInstanceOf(UserTuningPresetsUnavailableError)
+  })
+
   it("reports non-string validation detail without reading the body twice", async () => {
     vi.stubGlobal(
       "fetch",

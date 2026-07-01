@@ -311,16 +311,16 @@ function SelectedVoiceTuning({
       }),
     [activeProviderId, providerTuning, voice]
   )
-  const scopeKey = selectedVoiceTuningScopeKey(activeProviderId, providerTuning, voice, activeUserTuningPreset)
+  const scopeKey = selectedVoiceTuningScopeKey(activeProviderId, providerTuning, voice)
   const activeDraft =
     draft?.scopeKey === scopeKey
       ? draft
       : {
-          providerSettingsTouched: false,
+          providerSettingsTouched: Boolean(activeUserTuningPreset),
           scopeKey,
           selectedTuningPresetId: activeUserTuningPreset ? CUSTOM_TUNING_PRESET_ID : resolvedTuning.selectedPresetId,
           selectedUserPresetId: activeUserTuningPreset?.id ?? null,
-          values: activeUserTuningPreset?.settings ?? resolvedTuning.values,
+          values: activeUserTuningPreset ? userPresetValues(providerTuning, activeUserTuningPreset) : resolvedTuning.values,
           voicePresetId: activeUserTuningPreset?.voicePresetId ?? voice.voicePresetId,
         }
   const presetChanged = activeDraft.voicePresetId !== voice.voicePresetId
@@ -333,7 +333,12 @@ function SelectedVoiceTuning({
     : []
   const selectedUserPreset = userPresetCandidates.find((preset) => preset.id === activeDraft.selectedUserPresetId) ?? null
   const userPresetControlsDisabled =
-    disabled || isLoading || isUserPresetMutating || !activeProviderId || providerTuning.controls.length === 0
+    disabled ||
+    isLoading ||
+    isUserPresetMutating ||
+    userTuningPresets.status === "loading" ||
+    !activeProviderId ||
+    providerTuning.controls.length === 0
 
   function handleVoicePresetChange(voicePresetId: VoicePresetId) {
     setDraft((current) => {
@@ -379,7 +384,7 @@ function SelectedVoiceTuning({
         providerSettingsTouched: true,
         selectedTuningPresetId: CUSTOM_TUNING_PRESET_ID,
         selectedUserPresetId: preset.id,
-        values: { ...preset.settings },
+        values: userPresetValues(providerTuning, preset),
         voicePresetId: preset.voicePresetId ?? currentDraft.voicePresetId,
       }
     })
@@ -393,7 +398,6 @@ function SelectedVoiceTuning({
         ...currentDraft,
         providerSettingsTouched: true,
         selectedTuningPresetId: CUSTOM_TUNING_PRESET_ID,
-        selectedUserPresetId: null,
         values: {
           ...currentDraft.values,
           [control.id]: value,
@@ -703,7 +707,7 @@ function UserTuningPresetManager({
           aria-label="New user tuning preset name"
           disabled={disabled}
           onChange={(event) => onNameChange(event.target.value)}
-          placeholder="Preset Name"
+          placeholder="Preset name"
           value={newPresetName}
         />
         <Button disabled={disabled || !newPresetName.trim()} onClick={onSaveAs} type="button" variant="secondary">
@@ -745,20 +749,28 @@ function UserTuningPresetManager({
 function selectedVoiceTuningScopeKey(
   activeProviderId: string | null,
   providerTuning: ProviderTuningMetadata,
-  voice: VoiceAsset,
-  selectedUserTuningPreset: UserTuningPreset | null
+  voice: VoiceAsset
 ) {
   return [
     activeProviderId ?? "none",
     voice.id,
     voice.voicePresetId,
-    selectedUserTuningPreset?.id ?? "none",
-    selectedUserTuningPreset?.updatedAt ?? "",
     JSON.stringify(resolveSavedVoiceTuning(activeProviderId, voice)),
     JSON.stringify(providerTuning.defaultValues),
     providerTuning.controls.map((control) => control.id).join(","),
     providerTuning.presets.map((preset) => `${preset.id}:${preset.voicePresetId ?? ""}`).join(","),
   ].join(":")
+}
+
+function userPresetValues(providerTuning: ProviderTuningMetadata, preset: UserTuningPreset): VoiceTuningValues {
+  const values: VoiceTuningValues = { ...providerTuning.defaultValues }
+  for (const control of providerTuning.controls) {
+    const value = preset.settings[control.id]
+    if (value !== undefined) {
+      values[control.id] = value
+    }
+  }
+  return values
 }
 
 function VoiceLibrarySkeletonRows() {

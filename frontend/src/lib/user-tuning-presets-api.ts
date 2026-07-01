@@ -32,9 +32,12 @@ export async function listUserTuningPresets(): Promise<UserTuningPresetListRespo
   if (!isUserTuningPresetListPayload(payload)) {
     throw new UserTuningPresetsUnavailableError("Voice tuning presets response was incomplete.")
   }
+  if (!payload.presets.every(isUserTuningPresetPayload)) {
+    throw new UserTuningPresetsUnavailableError("Voice tuning presets response was incomplete.")
+  }
   return {
     available: Boolean(payload.available),
-    presets: payload.presets.filter(isUserTuningPresetPayload).map(normalizeUserTuningPreset),
+    presets: payload.presets.map(normalizeUserTuningPreset),
   }
 }
 
@@ -60,7 +63,7 @@ export async function deleteUserTuningPreset(id: string): Promise<boolean> {
   const response = await fetch(`/api/voice-tuning-presets/${encodeURIComponent(id)}`, {
     method: "DELETE",
   })
-  if (response.status === 503 || response.status === 404) {
+  if (response.status === 503) {
     throw new UserTuningPresetsUnavailableError(await readError(response))
   }
   if (!response.ok) {
@@ -78,7 +81,7 @@ export function isUserTuningPresetsUnavailableError(value: unknown) {
 }
 
 async function presetFromMutationResponse(response: Response) {
-  if (response.status === 503 || response.status === 404) {
+  if (response.status === 503) {
     throw new UserTuningPresetsUnavailableError(await readError(response))
   }
   if (!response.ok) {
@@ -96,7 +99,18 @@ function isUserTuningPresetListPayload(value: unknown): value is { available: un
 }
 
 function isUserTuningPresetPayload(value: unknown): value is UserTuningPreset {
-  return isRecord(value) && typeof value.id === "string" && typeof value.name === "string"
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    typeof value.providerId === "string" &&
+    isRecord(value.settings) &&
+    typeof value.createdAt === "string" &&
+    typeof value.updatedAt === "string" &&
+    (value.voicePresetId === null ||
+      value.voicePresetId === "standardNarration" ||
+      value.voicePresetId === "animatedDialogue")
+  )
 }
 
 function normalizeUserTuningPreset(preset: UserTuningPreset): UserTuningPreset {
@@ -115,7 +129,7 @@ function normalizeUserTuningPreset(preset: UserTuningPreset): UserTuningPreset {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null
+  return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
 async function readError(response: Response) {

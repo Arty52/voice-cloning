@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { ComponentProps } from "react"
 import { describe, expect, it, vi } from "vitest"
@@ -137,17 +137,60 @@ describe("VoiceLibraryPanel voice tuning", () => {
     expect(onUserTuningPresetApply).toHaveBeenCalledWith(warmPreset)
     expect(screen.getByLabelText("Stability")).toHaveValue("0.8")
 
+    fireEvent.change(screen.getByLabelText("Stability"), { target: { value: "0.6" } })
+    expect(screen.getByRole("button", { name: "Update Preset" })).toBeInTheDocument()
+    expect(onUserTuningPresetClear).toHaveBeenCalled()
+
     await user.click(screen.getByRole("button", { name: "Update Preset" }))
     expect(updatePreset).toHaveBeenCalledWith("warm-read", {
       name: "Warm Read",
       providerId: "elevenlabs",
-      settings: { stability: 0.8 },
+      settings: { stability: 0.6 },
       voicePresetId: "standardNarration",
     })
 
     await user.click(screen.getByRole("button", { name: "Delete Preset" }))
     expect(deletePreset).toHaveBeenCalledWith("warm-read")
     expect(onUserTuningPresetClear).toHaveBeenCalled()
+  })
+
+  it("saves applied user preset values as voice tuning defaults", async () => {
+    const user = userEvent.setup()
+    const warmPreset = userPreset({ id: "warm-read", name: "Warm Read", settings: { stability: 0.8 } })
+    const onSaveVoiceTuningRequest = vi.fn()
+
+    renderVoiceLibraryPanel({
+      onSaveVoiceTuningRequest,
+      providerTuning,
+      selectedUserTuningPreset: warmPreset,
+      userTuningPresets: userTuningPresetState({ presets: [warmPreset] }),
+    })
+
+    await user.click(screen.getByRole("button", { name: "Show Voice Tuning" }))
+    await user.click(screen.getByRole("button", { name: "Save Voice Tuning" }))
+
+    expect(onSaveVoiceTuningRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerId: "elevenlabs",
+        shouldSaveVoiceSettings: true,
+        voiceSettings: { stability: 0.8 },
+      })
+    )
+  })
+
+  it("disables user preset mutations while presets are loading", async () => {
+    const user = userEvent.setup()
+    const createPreset = vi.fn().mockResolvedValue(null)
+
+    renderVoiceLibraryPanel({
+      providerTuning,
+      userTuningPresets: userTuningPresetState({ createPreset, status: "loading" }),
+    })
+
+    await user.click(screen.getByRole("button", { name: "Show Voice Tuning" }))
+
+    expect(screen.getByPlaceholderText("Preset name")).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Save As Preset" })).toBeDisabled()
   })
 })
 
