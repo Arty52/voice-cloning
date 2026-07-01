@@ -45,6 +45,7 @@ from ..services.generated_audio_archive import (
     GeneratedAudioUsage,
 )
 from ..persistence.generated_audio import GeneratedAudioMetadata
+from ..persistence.tuning_presets import VoiceTuningPreset
 
 
 def audio_response(
@@ -608,3 +609,22 @@ def tuning_preset_payload(preset: ProviderTuningPreset) -> dict[str, object]:
     if preset.voice_preset_id is not None:
         payload["voicePresetId"] = preset.voice_preset_id
     return payload
+
+
+def user_tuning_preset_payload(preset: VoiceTuningPreset) -> dict[str, object]:
+    return {
+        "id": preset.id,
+        "name": preset.name,
+        "providerId": preset.provider_id,
+        "voicePresetId": preset.voice_preset_id,
+        "settings": dict(preset.settings),
+        "createdAt": preset.created_at,
+        "updatedAt": preset.updated_at,
+    }
+
+
+def user_tuning_preset_list_payload(presets: list[VoiceTuningPreset]) -> dict[str, object]:
+    return {
+        "available": True,
+        "presets": [user_tuning_preset_payload(preset) for preset in presets],
+    }

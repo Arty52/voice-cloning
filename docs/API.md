@@ -44,6 +44,10 @@ The FastAPI service is available at `http://localhost:6420` when the Docker stac
 - `DELETE /api/generated-audio`
 - `GET /api/settings`
 - `PUT /api/settings`
+- `GET /api/voice-tuning-presets`
+- `POST /api/voice-tuning-presets`
+- `PUT /api/voice-tuning-presets/{presetId}`
+- `DELETE /api/voice-tuning-presets/{presetId}`
 
 Provider-backed routes accept an optional `providerId` request value and an optional `X-Voice-Provider-Key` header. When `providerId` is omitted, the backend uses `defaultProviderId`. When the header is present and non-empty, the browser-provided key overrides the selected provider's backend fallback key; otherwise the backend falls back to `.env`. The API never returns either key.
 
@@ -281,6 +285,52 @@ App settings routes require backend persistence. When `DATABASE_URL` is blank, t
   }
 }
 ```
+
+## User Tuning Presets
+
+User tuning preset routes require backend persistence. When `DATABASE_URL` is blank, these routes return `503`; browser-local fallback is handled by the frontend. Provider API keys and secret-like setting names are never accepted.
+
+`GET /api/voice-tuning-presets` returns:
+
+```json
+{
+  "available": true,
+  "presets": [
+    {
+      "id": "warm-narration",
+      "name": "Warm Narration",
+      "providerId": "elevenlabs",
+      "voicePresetId": "standardNarration",
+      "settings": {
+        "stability": 0.42,
+        "similarityBoost": 0.75,
+        "style": 0,
+        "speed": 0.95,
+        "useSpeakerBoost": true
+      },
+      "createdAt": "2026-07-01T12:00:00+00:00",
+      "updatedAt": "2026-07-01T12:00:00+00:00"
+    }
+  ]
+}
+```
+
+`POST /api/voice-tuning-presets` creates a user-managed preset. `id` is optional; when supplied it must be a safe stable id and conflicts return `409`. `PUT /api/voice-tuning-presets/{presetId}` replaces the editable preset fields; if the request body includes `id`, it must match `{presetId}`. `providerId` must be registered, `voicePresetId` must be `standardNarration`, `animatedDialogue`, or `null`, and `settings` must contain only controls supported by that provider. The backend persists normalized settings, so omitted supported controls are filled with provider defaults and unknown controls are rejected:
+
+```json
+{
+  "id": "warm-narration",
+  "name": "Warm Narration",
+  "providerId": "elevenlabs",
+  "voicePresetId": "standardNarration",
+  "settings": {
+    "stability": 0.42,
+    "speed": 0.95
+  }
+}
+```
+
+`DELETE /api/voice-tuning-presets/{presetId}` removes the preset and returns `{ "deleted": true }` when a row was deleted.
 
 ## Sample Processing
 
