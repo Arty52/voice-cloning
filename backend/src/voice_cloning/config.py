@@ -77,9 +77,11 @@ class Settings:
     voice_assets_dir: Path
     voice_manifest_path: Path
     storage_dir: Path
+    generated_audio_storage_dir: Path
     sample_processing_dir: Path
     speech_jobs_dir: Path
     cors_allowed_origins: list[str]
+    database_url: str = ""
     speech_job_segment_gap_ms: int = 250
     max_upload_bytes: int = 10 * 1024 * 1024
     max_source_upload_bytes: int = 1024 * 1024 * 1024
@@ -110,6 +112,9 @@ class Settings:
         )
         voice_manifest = Path(os.getenv("VOICE_MANIFEST_PATH", voice_assets_dir / "voices.json"))
         storage_dir = Path(os.getenv("STORAGE_DIR", app_root / "storage"))
+        generated_audio_storage_dir = Path(
+            os.getenv("GENERATED_AUDIO_STORAGE_DIR", storage_dir / "generated-audio")
+        )
         sample_processing_dir = Path(
             os.getenv("SAMPLE_PROCESSING_DIR", storage_dir / "sample-processing")
         )
@@ -131,9 +136,11 @@ class Settings:
             voice_assets_dir=voice_assets_dir.resolve(),
             voice_manifest_path=voice_manifest.resolve(),
             storage_dir=storage_dir.resolve(),
+            generated_audio_storage_dir=generated_audio_storage_dir.resolve(),
             sample_processing_dir=sample_processing_dir.resolve(),
             speech_jobs_dir=speech_jobs_dir.resolve(),
             cors_allowed_origins=_split_csv(origins),
+            database_url=os.getenv("DATABASE_URL", "").strip(),
             speech_job_segment_gap_ms=_non_negative_int_env("SPEECH_JOB_SEGMENT_GAP_MS", 250),
             max_upload_bytes=_positive_int_env("MAX_UPLOAD_BYTES", 10 * 1024 * 1024),
             max_source_upload_bytes=max_source_upload_bytes,
@@ -172,3 +179,8 @@ class Settings:
     def require_api_key(self) -> None:
         if not self.elevenlabs_api_key:
             raise RuntimeError("ELEVENLABS_API_KEY is not configured.")
+
+    def ensure_runtime_directories(self) -> None:
+        self.storage_dir.mkdir(parents=True, exist_ok=True)
+        self.generated_audio_storage_dir.mkdir(parents=True, exist_ok=True)
+        self.voice_assets_dir.mkdir(parents=True, exist_ok=True)
