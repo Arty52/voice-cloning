@@ -62,7 +62,7 @@ describe("generated audio archive API", () => {
   })
 
   it("uses explicit content type for multipart archive uploads", async () => {
-    let uploadedFile: File | null = null
+    let uploadedFile: unknown = null
     vi.stubGlobal(
       "fetch",
       vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
@@ -98,8 +98,10 @@ describe("generated audio archive API", () => {
       1024
     )
 
-    expect(uploadedFile).not.toBeNull()
-    expect(uploadedFile?.type).toBe("audio/wav")
-    expect(uploadedFile?.name).toBe("audio-one.wav")
+    if (!(uploadedFile instanceof File)) {
+      throw new Error("Expected generated audio upload file.")
+    }
+    expect(uploadedFile.type).toBe("audio/wav")
+    expect(uploadedFile.name).toBe("audio-one.wav")
   })
 })
