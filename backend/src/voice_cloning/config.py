@@ -67,6 +67,14 @@ def _bool_env(name: str, default: bool = False) -> bool:
     return normalized_value in {"1", "true", "yes", "on"}
 
 
+def _path_env(name: str, default: Path, base_dir: Path) -> Path:
+    raw_value = os.getenv(name)
+    candidate = Path(raw_value.strip()) if raw_value and raw_value.strip() else default
+    if not candidate.is_absolute():
+        candidate = base_dir / candidate
+    return candidate.resolve()
+
+
 @dataclass(frozen=True)
 class Settings:
     app_root: Path
@@ -77,9 +85,11 @@ class Settings:
     voice_assets_dir: Path
     voice_manifest_path: Path
     storage_dir: Path
+    generated_audio_storage_dir: Path
     sample_processing_dir: Path
     speech_jobs_dir: Path
     cors_allowed_origins: list[str]
+    database_url: str = ""
     speech_job_segment_gap_ms: int = 250
     max_upload_bytes: int = 10 * 1024 * 1024
     max_source_upload_bytes: int = 1024 * 1024 * 1024
@@ -104,16 +114,25 @@ class Settings:
         app_root = Path(os.getenv("APP_ROOT", _default_root_dir())).resolve()
         load_dotenv(app_root / ".env")
 
-        voice_assets_dir = Path(os.getenv("VOICE_ASSETS_DIR", app_root / "assets" / "voices"))
-        default_sample = Path(
-            os.getenv("DEFAULT_SAMPLE_PATH", voice_assets_dir / "default" / "default-voice.mp3")
+        voice_assets_dir = _path_env("VOICE_ASSETS_DIR", app_root / "assets" / "voices", app_root)
+        default_sample = _path_env(
+            "DEFAULT_SAMPLE_PATH",
+            voice_assets_dir / "default" / "default-voice.mp3",
+            app_root,
         )
-        voice_manifest = Path(os.getenv("VOICE_MANIFEST_PATH", voice_assets_dir / "voices.json"))
-        storage_dir = Path(os.getenv("STORAGE_DIR", app_root / "storage"))
-        sample_processing_dir = Path(
-            os.getenv("SAMPLE_PROCESSING_DIR", storage_dir / "sample-processing")
+        voice_manifest = _path_env("VOICE_MANIFEST_PATH", voice_assets_dir / "voices.json", app_root)
+        storage_dir = _path_env("STORAGE_DIR", app_root / "storage", app_root)
+        generated_audio_storage_dir = _path_env(
+            "GENERATED_AUDIO_STORAGE_DIR",
+            storage_dir / "generated-audio",
+            app_root,
         )
-        speech_jobs_dir = Path(os.getenv("SPEECH_JOBS_DIR", storage_dir / "speech-jobs"))
+        sample_processing_dir = _path_env(
+            "SAMPLE_PROCESSING_DIR",
+            storage_dir / "sample-processing",
+            app_root,
+        )
+        speech_jobs_dir = _path_env("SPEECH_JOBS_DIR", storage_dir / "speech-jobs", app_root)
         origins = os.getenv(
             "CORS_ALLOWED_ORIGINS",
             "http://localhost:4340,http://127.0.0.1:4340",
@@ -127,13 +146,15 @@ class Settings:
                 "ELEVENLABS_API_BASE_URL", "https://api.elevenlabs.io/v1"
             ).rstrip("/"),
             elevenlabs_model_id=os.getenv("ELEVENLABS_MODEL_ID", "eleven_multilingual_v2"),
-            default_sample_path=default_sample.resolve(),
-            voice_assets_dir=voice_assets_dir.resolve(),
-            voice_manifest_path=voice_manifest.resolve(),
-            storage_dir=storage_dir.resolve(),
-            sample_processing_dir=sample_processing_dir.resolve(),
-            speech_jobs_dir=speech_jobs_dir.resolve(),
+            default_sample_path=default_sample,
+            voice_assets_dir=voice_assets_dir,
+            voice_manifest_path=voice_manifest,
+            storage_dir=storage_dir,
+            generated_audio_storage_dir=generated_audio_storage_dir,
+            sample_processing_dir=sample_processing_dir,
+            speech_jobs_dir=speech_jobs_dir,
             cors_allowed_origins=_split_csv(origins),
+            database_url=os.getenv("DATABASE_URL", "").strip(),
             speech_job_segment_gap_ms=_non_negative_int_env("SPEECH_JOB_SEGMENT_GAP_MS", 250),
             max_upload_bytes=_positive_int_env("MAX_UPLOAD_BYTES", 10 * 1024 * 1024),
             max_source_upload_bytes=max_source_upload_bytes,
@@ -172,3 +193,8 @@ class Settings:
     def require_api_key(self) -> None:
         if not self.elevenlabs_api_key:
             raise RuntimeError("ELEVENLABS_API_KEY is not configured.")
+
+    def ensure_runtime_directories(self) -> None:
+        self.storage_dir.mkdir(parents=True, exist_ok=True)
+        self.generated_audio_storage_dir.mkdir(parents=True, exist_ok=True)
+        self.voice_assets_dir.mkdir(parents=True, exist_ok=True)

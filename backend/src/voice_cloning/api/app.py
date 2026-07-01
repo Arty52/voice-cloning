@@ -34,6 +34,7 @@ def create_app(
     speech_job_service: SpeechJobService | None = None,
 ) -> FastAPI:
     resolved_settings = settings or Settings.from_env()
+    resolved_settings.ensure_runtime_directories()
     resolved_cache = voice_cache or VoiceCache(resolved_settings.storage_dir / "voice-cache.json")
     resolved_provider_registry = provider_registry or ProviderRegistry([ElevenLabsProvider(resolved_settings)])
     resolved_library = voice_library or VoiceLibrary(resolved_settings)

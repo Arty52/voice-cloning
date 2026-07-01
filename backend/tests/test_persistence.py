@@ -1,0 +1,215 @@
+from __future__ import annotations
+
+import os
+from pathlib import Path
+from uuid import uuid4
+
+import pytest
+from sqlalchemy import inspect, text
+from sqlalchemy.engine import URL, make_url
+
+from voice_cloning.api.app import create_app
+from voice_cloning.config import Settings
+from voice_cloning.persistence.database import (
+    Base,
+    create_database_engine,
+    create_session_factory,
+    unit_of_work,
+)
+from voice_cloning.persistence.file_store import (
+    FileStoreError,
+    create_generated_audio_file_store,
+)
+from voice_cloning.persistence.models import AppSettingRecord
+
+
+def make_settings(tmp_path: Path) -> Settings:
+    voice_assets_dir = tmp_path / "assets" / "voices"
+    return Settings(
+        app_root=tmp_path,
+        elevenlabs_api_key="test-key",
+        elevenlabs_api_base_url="https://api.elevenlabs.test/v1",
+        elevenlabs_model_id="eleven_multilingual_v2",
+        default_sample_path=voice_assets_dir / "default" / "default-voice.mp3",
+        voice_assets_dir=voice_assets_dir,
+        voice_manifest_path=voice_assets_dir / "voices.json",
+        storage_dir=tmp_path / "storage",
+        generated_audio_storage_dir=tmp_path / "runtime" / "generated-audio",
+        sample_processing_dir=tmp_path / "storage" / "sample-processing",
+        speech_jobs_dir=tmp_path / "storage" / "speech-jobs",
+        cors_allowed_origins=["http://localhost:4340"],
+    )
+
+
+def test_settings_resolves_generated_audio_storage_dir_from_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_ROOT", str(tmp_path))
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("GENERATED_AUDIO_STORAGE_DIR", raising=False)
+
+    settings = Settings.from_env()
+
+    assert settings.generated_audio_storage_dir == tmp_path / "storage" / "generated-audio"
+    assert settings.database_url == ""
+
+
+def test_settings_uses_configured_generated_audio_storage_dir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    archive_dir = tmp_path / "archive"
+    monkeypatch.setenv("APP_ROOT", str(tmp_path))
+    monkeypatch.setenv("GENERATED_AUDIO_STORAGE_DIR", str(archive_dir))
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://user:pass@localhost:5432/app")
+
+    settings = Settings.from_env()
+
+    assert settings.generated_audio_storage_dir == archive_dir
+    assert settings.database_url == "postgresql+psycopg://user:pass@localhost:5432/app"
+
+
+def test_settings_resolves_relative_storage_env_paths_from_app_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workdir = tmp_path / "backend"
+    workdir.mkdir()
+    monkeypatch.chdir(workdir)
+    monkeypatch.setenv("APP_ROOT", str(tmp_path))
+    monkeypatch.setenv("GENERATED_AUDIO_STORAGE_DIR", "storage/generated-audio")
+
+    settings = Settings.from_env()
+
+    assert settings.generated_audio_storage_dir == tmp_path / "storage" / "generated-audio"
+
+
+def test_create_app_creates_runtime_storage_roots(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+
+    create_app(settings=settings)
+
+    assert settings.voice_assets_dir.exists()
+    assert settings.storage_dir.exists()
+    assert settings.generated_audio_storage_dir.exists()
+
+
+def test_generated_audio_file_store_resolves_paths_under_root(tmp_path: Path) -> None:
+    store = create_generated_audio_file_store(tmp_path / "generated-audio")
+    store.ensure_ready()
+
+    assert store.resolve_path("2026/07/audio.mp3") == tmp_path / "generated-audio" / "2026" / "07" / "audio.mp3"
+
+
+@pytest.mark.parametrize("relative_path", ["", "../outside.mp3", "/tmp/outside.mp3"])
+def test_generated_audio_file_store_rejects_unsafe_paths(tmp_path: Path, relative_path: str) -> None:
+    store = create_generated_audio_file_store(tmp_path / "generated-audio")
+
+    with pytest.raises(FileStoreError):
+        store.resolve_path(relative_path)
+
+
+def test_unit_of_work_commits_and_rolls_back() -> None:
+    engine = create_database_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session_factory = create_session_factory(engine)
+
+    with unit_of_work(session_factory) as session:
+        session.add(AppSettingRecord(key="theme", value={"mode": "dark"}))
+
+    with session_factory() as session:
+        assert session.get(AppSettingRecord, "theme") is not None
+
+    with pytest.raises(RuntimeError):
+        with unit_of_work(session_factory) as session:
+            session.add(AppSettingRecord(key="failed", value={"mode": "light"}))
+            raise RuntimeError("fail")
+
+    with session_factory() as session:
+        assert session.get(AppSettingRecord, "failed") is None
+
+
+@pytest.mark.postgres
+def test_postgres_migrations_upgrade_to_head() -> None:
+    from alembic import command
+    from alembic.config import Config
+
+    database_url = os.environ.get("DATABASE_URL", "").strip()
+    if not database_url:
+        pytest.skip("DATABASE_URL is required for Postgres migration tests.")
+
+    url = make_url(database_url)
+    if url.get_backend_name() != "postgresql":
+        pytest.skip("Postgres migration tests require a postgresql DATABASE_URL.")
+
+    alembic_config = Config("alembic.ini")
+    alembic_config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
+    command.upgrade(alembic_config, "head")
+    command.check(alembic_config)
+
+    engine = create_database_engine(database_url)
+    with engine.connect() as connection:
+        table_names = set(inspect(connection).get_table_names())
+        version = connection.execute(text("select version_num from alembic_version")).scalar_one()
+
+    assert version == "202607010001"
+    assert {
+        "voices",
+        "voice_processing_steps",
+        "voice_library_state",
+        "voice_tuning_presets",
+        "generated_audio",
+        "app_settings",
+        "sample_processing_jobs",
+        "speech_generation_jobs",
+    }.issubset(table_names)
+
+
+@pytest.mark.postgres
+def test_postgres_migrations_roundtrip_on_disposable_database() -> None:
+    from alembic import command
+    from alembic.config import Config
+
+    database_url = os.environ.get("DATABASE_URL", "").strip()
+    if not database_url:
+        pytest.skip("DATABASE_URL is required for Postgres migration tests.")
+
+    url = make_url(database_url)
+    if url.get_backend_name() != "postgresql":
+        pytest.skip("Postgres migration tests require a postgresql DATABASE_URL.")
+
+    admin_url = url.set(database="postgres")
+    roundtrip_database = f"voice_cloning_migration_test_{uuid4().hex[:16]}"
+    roundtrip_url = url.set(database=roundtrip_database)
+    admin_engine = create_database_engine(_url_string(admin_url))
+    roundtrip_engine = None
+
+    try:
+        with admin_engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+            connection.execute(text(f'CREATE DATABASE "{roundtrip_database}"'))
+
+        alembic_config = Config("alembic.ini")
+        alembic_config.set_main_option("sqlalchemy.url", _url_string(roundtrip_url).replace("%", "%%"))
+        command.upgrade(alembic_config, "head")
+        command.downgrade(alembic_config, "base")
+        command.upgrade(alembic_config, "head")
+
+        roundtrip_engine = create_database_engine(_url_string(roundtrip_url))
+        with roundtrip_engine.connect() as connection:
+            table_names = set(inspect(connection).get_table_names())
+            version = connection.execute(text("select version_num from alembic_version")).scalar_one()
+
+        assert version == "202607010001"
+        assert "voices" in table_names
+        assert "generated_audio" in table_names
+    finally:
+        if roundtrip_engine is not None:
+            roundtrip_engine.dispose()
+        with admin_engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+            connection.execute(text(f'DROP DATABASE IF EXISTS "{roundtrip_database}" WITH (FORCE)'))
+        admin_engine.dispose()
+
+
+def _url_string(url: URL) -> str:
+    return url.render_as_string(hide_password=False)

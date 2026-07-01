@@ -21,6 +21,29 @@ Override with:
 WEB_PORT=4440 API_PORT=6520 make up
 ```
 
+## PostgreSQL Or Persistence Startup Fails
+
+Docker Compose starts PostgreSQL 18.4 as the required local dependency for persistence-backed flows. The `postgres-data` named volume is mounted at `/var/lib/postgresql`, and `PGDATA` points to `/var/lib/postgresql/18/docker`. If Postgres is unhealthy, check:
+
+```sh
+docker compose ps
+docker compose logs db
+```
+
+For host backend development, leave `DATABASE_URL` blank until you need migration or repository tests. To validate the migration against compose Postgres:
+
+```sh
+make test-postgres
+```
+
+To validate only the destructive migration roundtrip, use the disposable database target:
+
+```sh
+make test-postgres-migrations
+```
+
+If port `5432` is already in use, set `POSTGRES_PORT` in `.env` before running compose.
+
 ## ElevenLabs Quota Or Billing Errors
 
 Check your ElevenLabs account subscription and usage. Shorter text and lower-cost models can reduce credit usage. The app links to ElevenLabs API request analytics from the Cost & Quota panel for quick inspection.
@@ -118,6 +141,8 @@ make clean-cache
 Sample-processing jobs, staged media sources, preview clips, diarization transcripts, generated speaker streams, and intermediate stems live under ignored `storage/sample-processing/`. Docker-routed Demucs, pyannote, and faster-whisper model caches live under ignored `storage/model-cache/`. Remove either directory when you want to clear local processing artifacts or force model downloads again.
 
 Generated audio saved in the browser can be removed from `Generated Audio` with Remove or Clear All. The section also lets you choose a browser storage cap of 25 MB, 50 MB, 100 MB, or 250 MB. Lowering the cap prompts before pruning older saved audio. Saved generated audio metadata includes model, provider request metadata when returned, tuning snapshot metadata when available, and browser-measured generation elapsed time for new generations.
+
+Future server-backed generated-audio archives store files under `GENERATED_AUDIO_STORAGE_DIR`, which defaults to ignored `storage/generated-audio/`. The backend creates this root on startup and resolves archive entries relative to it.
 
 Remove containers and volumes:
 

@@ -23,6 +23,7 @@ def make_settings(tmp_path: Path, *, ffmpeg_command: Path, timeout_seconds: floa
         voice_assets_dir=voice_assets_dir,
         voice_manifest_path=voice_assets_dir / "voices.json",
         storage_dir=tmp_path / "storage",
+        generated_audio_storage_dir=tmp_path / "storage" / "generated-audio",
         sample_processing_dir=tmp_path / "storage" / "sample-processing",
         speech_jobs_dir=tmp_path / "storage" / "speech-jobs",
         cors_allowed_origins=["http://localhost:4340"],
