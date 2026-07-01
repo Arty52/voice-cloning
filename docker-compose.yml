@@ -23,7 +23,7 @@ services:
       args:
         INSTALL_SAMPLE_PROCESSING: ${INSTALL_SAMPLE_PROCESSING:-0}
         INSTALL_DIARIZATION: ${INSTALL_DIARIZATION:-0}
-    command: sh -c "cd /app/backend && python -m alembic -c alembic.ini upgrade head && uvicorn voice_cloning.api:app --host 0.0.0.0 --port 6420 --reload"
+    command: sh -c "cd /app/backend && python -m alembic -c alembic.ini upgrade head && exec uvicorn voice_cloning.api:app --host 0.0.0.0 --port 6420 --reload"
     env_file:
       - .env
     environment:

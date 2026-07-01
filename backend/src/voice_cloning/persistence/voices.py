@@ -26,13 +26,14 @@ class SqlAlchemyVoiceRepository:
 
     def list_assets(self) -> list[VoiceAsset]:
         records = self.session.scalars(select(VoiceRecord).order_by(VoiceRecord.created_at, VoiceRecord.id)).all()
-        return [self._asset_from_record(record) for record in records]
+        steps_by_voice_id = self._processing_steps_by_voice_id([record.id for record in records])
+        return [self._asset_from_record(record, steps_by_voice_id.get(record.id, ())) for record in records]
 
     def get_asset(self, voice_id: str) -> VoiceAsset | None:
         record = self.session.get(VoiceRecord, voice_id)
         if record is None:
             return None
-        return self._asset_from_record(record)
+        return self._asset_from_record(record, self._processing_steps_for_voice(record.id))
 
     def save_asset(self, asset: VoiceAsset) -> None:
         record = self.session.get(VoiceRecord, asset.id)
@@ -75,12 +76,32 @@ class SqlAlchemyVoiceRepository:
             self.session.add(state)
         state.default_voice_id = voice_id or None
 
-    def _asset_from_record(self, record: VoiceRecord) -> VoiceAsset:
+    def _processing_steps_for_voice(self, voice_id: str) -> tuple[VoiceProcessingStepRecord, ...]:
         steps = self.session.scalars(
             select(VoiceProcessingStepRecord)
-            .where(VoiceProcessingStepRecord.voice_id == record.id)
+            .where(VoiceProcessingStepRecord.voice_id == voice_id)
             .order_by(VoiceProcessingStepRecord.position, VoiceProcessingStepRecord.step_id)
         ).all()
+        return tuple(steps)
+
+    def _processing_steps_by_voice_id(self, voice_ids: list[str]) -> dict[str, tuple[VoiceProcessingStepRecord, ...]]:
+        if not voice_ids:
+            return {}
+        steps = self.session.scalars(
+            select(VoiceProcessingStepRecord)
+            .where(VoiceProcessingStepRecord.voice_id.in_(voice_ids))
+            .order_by(
+                VoiceProcessingStepRecord.voice_id,
+                VoiceProcessingStepRecord.position,
+                VoiceProcessingStepRecord.step_id,
+            )
+        ).all()
+        grouped_steps: dict[str, list[VoiceProcessingStepRecord]] = {}
+        for step in steps:
+            grouped_steps.setdefault(step.voice_id, []).append(step)
+        return {voice_id: tuple(voice_steps) for voice_id, voice_steps in grouped_steps.items()}
+
+    def _asset_from_record(self, record: VoiceRecord, steps: tuple[VoiceProcessingStepRecord, ...]) -> VoiceAsset:
         return VoiceAsset(
             id=record.id,
             name=record.name,

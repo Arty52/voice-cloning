@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import inspect, text
+from sqlalchemy import event, inspect, text
 from sqlalchemy.engine import URL, make_url
 
 from voice_cloning.config import Settings
@@ -234,6 +234,44 @@ def test_postgres_voice_library_import_renames_hash_conflict(tmp_path: Path) -> 
     assert library.get_asset(renamed_id).name == "Edited Import"
 
 
+def test_postgres_voice_library_import_drops_conflict_source_path_outside_assets(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    library = make_postgres_voice_library(settings)
+    secret_path = tmp_path / "secret.wav"
+    secret_path.write_bytes(b"secret")
+    write_manifest_voice(
+        settings,
+        "narrator",
+        b"voice-one",
+        extra_voice_fields={
+            "sourceFilePath": "../../secret.wav",
+            "sourceContentType": "audio/wav",
+            "sourceSha256": sample_hash(b"secret"),
+        },
+    )
+    existing = VoiceAsset(
+        id="narrator",
+        name="Existing Narrator",
+        file_path="existing.wav",
+        content_type="audio/wav",
+        sha256="different",
+        source="upload",
+        created_at="2026-07-01T12:00:00+00:00",
+    )
+    (settings.voice_assets_dir / "existing.wav").write_bytes(b"old")
+    with unit_of_work(library.session_factory) as session:
+        SqlAlchemyVoiceRepository(session).save_asset(existing)
+
+    library.import_manifest()
+
+    renamed_id = f"narrator-import-{sample_hash(b'voice-one')[:8]}"
+    imported = library.get_asset(renamed_id)
+    assert imported.source_file_path is None
+    assert imported.source_content_type is None
+    assert imported.source_sha256 is None
+    assert secret_path.read_bytes() == b"secret"
+
+
 def test_postgres_voice_library_import_preserves_database_default(tmp_path: Path) -> None:
     settings = make_settings(tmp_path)
     library = make_postgres_voice_library(settings)
@@ -251,6 +289,94 @@ def test_postgres_voice_library_import_preserves_database_default(tmp_path: Path
     assert report.already_imported == 1
     assert report.default_voice_id == other.id
     assert library.list_payload()["defaultVoiceId"] == other.id
+
+
+def test_postgres_voice_library_removes_staged_file_when_create_move_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import voice_cloning.persistence.postgres_voice_library as postgres_voice_library
+
+    settings = make_settings(tmp_path)
+    library = make_postgres_voice_library(settings)
+
+    def fail_move(_source: str, _destination: str) -> None:
+        raise RuntimeError("move failed")
+
+    monkeypatch.setattr(postgres_voice_library.shutil, "move", fail_move)
+
+    with pytest.raises(RuntimeError, match="move failed"):
+        library.add_processed_sample(
+            "Narrator",
+            VoiceSample(
+                content=b"voice-one",
+                filename="narrator.wav",
+                content_type="audio/wav",
+                sha256=sample_hash(b"voice-one"),
+            ),
+            (),
+        )
+
+    assert [path for path in (settings.voice_assets_dir / ".staged").glob("**/*") if path.is_file()] == []
+
+
+def test_sqlalchemy_voice_repository_lists_processing_steps_without_n_plus_one_queries() -> None:
+    engine = create_database_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session_factory = create_session_factory(engine)
+    step = VoiceProcessingStep(
+        id="trim",
+        label="Trim Silence",
+        operation_id="trimSilence",
+        created_at="2026-07-01T12:00:00+00:00",
+        source_sha256="source",
+        result_sha256="result",
+        engine="ffmpeg",
+    )
+    with unit_of_work(session_factory) as session:
+        repository = SqlAlchemyVoiceRepository(session)
+        repository.save_asset(
+            VoiceAsset(
+                id="first",
+                name="First",
+                file_path="first.wav",
+                content_type="audio/wav",
+                sha256="first",
+                source="upload",
+                created_at="2026-07-01T12:00:00+00:00",
+                processing_steps=(step,),
+            )
+        )
+        repository.save_asset(
+            VoiceAsset(
+                id="second",
+                name="Second",
+                file_path="second.wav",
+                content_type="audio/wav",
+                sha256="second",
+                source="upload",
+                created_at="2026-07-01T12:00:01+00:00",
+                processing_steps=(step,),
+            )
+        )
+
+    select_count = 0
+
+    def count_selects(_connection: object, _cursor: object, statement: str, *_args: object) -> None:
+        nonlocal select_count
+        if statement.lstrip().lower().startswith("select"):
+            select_count += 1
+
+    event.listen(engine, "before_cursor_execute", count_selects)
+    try:
+        with unit_of_work(session_factory) as session:
+            assets = SqlAlchemyVoiceRepository(session).list_assets()
+    finally:
+        event.remove(engine, "before_cursor_execute", count_selects)
+
+    assert [asset.id for asset in assets] == ["first", "second"]
+    assert [len(asset.processing_steps) for asset in assets] == [1, 1]
+    assert select_count == 2
 
 
 def test_postgres_voice_library_restores_file_when_delete_rolls_back(
@@ -306,7 +432,13 @@ def make_postgres_voice_library(settings: Settings) -> PostgresVoiceLibrary:
     return PostgresVoiceLibrary(settings, create_session_factory(engine))
 
 
-def write_manifest_voice(settings: Settings, voice_id: str, content: bytes) -> None:
+def write_manifest_voice(
+    settings: Settings,
+    voice_id: str,
+    content: bytes,
+    *,
+    extra_voice_fields: dict[str, object] | None = None,
+) -> None:
     settings.voice_assets_dir.mkdir(parents=True, exist_ok=True)
     filename = f"{voice_id}.mp3"
     (settings.voice_assets_dir / filename).write_bytes(content)
@@ -322,6 +454,7 @@ def write_manifest_voice(settings: Settings, voice_id: str, content: bytes) -> N
                 "sha256": sample_hash(content),
                 "source": "upload",
                 "createdAt": "2026-07-01T12:00:00+00:00",
+                **(extra_voice_fields or {}),
             }
         ],
     }

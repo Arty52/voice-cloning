@@ -121,9 +121,9 @@ class PostgresVoiceLibrary(VoiceLibrary):
             asset = self._asset_from_plan(plan, saved, saved_source)
             return self._save_new_asset(asset, [(staged_sample, plan.destination), *self._source_move(staged_source, plan)])
         except Exception:
-            _unlink_if_exists(staged_sample)
+            _unlink_staged_path(staged_sample)
             if staged_source is not None:
-                _unlink_if_exists(staged_source)
+                _unlink_staged_path(staged_source)
             raise
 
     def add_prepared_upload(
@@ -163,9 +163,9 @@ class PostgresVoiceLibrary(VoiceLibrary):
             asset = self._asset_from_plan(plan, saved, saved_source)
             return self._save_new_asset(asset, [(staged_sample, plan.destination), *self._source_move(staged_source, plan)])
         except Exception:
-            _unlink_if_exists(staged_sample)
+            _unlink_staged_path(staged_sample)
             if staged_source is not None:
-                _unlink_if_exists(staged_source)
+                _unlink_staged_path(staged_source)
             raise
 
     def validate_prepared_upload(
@@ -251,7 +251,7 @@ class PostgresVoiceLibrary(VoiceLibrary):
             )
             return self._save_new_asset(asset, [(staged_sample, destination)])
         except Exception:
-            _unlink_if_exists(staged_sample)
+            _unlink_staged_path(staged_sample)
             raise
 
     def update_asset(
@@ -392,6 +392,7 @@ class PostgresVoiceLibrary(VoiceLibrary):
         return report
 
     def _save_new_asset(self, asset: VoiceAsset, staged_moves: list[tuple[Path, Path]]) -> VoiceAsset:
+        staged_paths = [staged_path for staged_path, _ in staged_moves]
         final_paths = [final_path for _, final_path in staged_moves]
         try:
             with unit_of_work(self.session_factory) as session:
@@ -405,6 +406,8 @@ class PostgresVoiceLibrary(VoiceLibrary):
         except Exception:
             for path in final_paths:
                 _unlink_if_exists(path)
+            for path in staged_paths:
+                _unlink_staged_path(path)
             raise
         return asset
 
@@ -465,7 +468,7 @@ class PostgresVoiceLibrary(VoiceLibrary):
         source_sha256 = asset.source_sha256
         if asset.source_file_path:
             source_path = (self.assets_dir / asset.source_file_path).resolve()
-            if source_path.exists():
+            if self._is_asset_path(source_path) and source_path.exists():
                 source_destination = self.assets_dir / "sources" / f"{new_id}{source_path.suffix.lower() or '.wav'}"
                 staged_source = self._staged_path(source_destination)
                 staged_source.parent.mkdir(parents=True, exist_ok=True)
@@ -517,6 +520,18 @@ class PostgresVoiceLibrary(VoiceLibrary):
             paths.append(source_path)
         return paths
 
+    def _is_asset_path(self, path: Path) -> bool:
+        try:
+            path.relative_to(self.assets_dir.resolve())
+        except ValueError:
+            return False
+        return True
+
 
 def _manifest_conflict_import_id(asset: VoiceAsset) -> str:
     return f"{asset.id}-import-{asset.sha256[:8]}"
+
+
+def _unlink_staged_path(path: Path) -> None:
+    _unlink_if_exists(path)
+    _unlink_if_exists(path.with_suffix(f"{path.suffix}.tmp"))
