@@ -90,8 +90,8 @@ function normalizeExportResult(result: Record<string, unknown>): GeneratedAudioS
 function normalizeExportAllResult(result: Record<string, unknown>): GeneratedAudioServerExportAllResult {
   const items = Array.isArray(result.items) ? result.items.filter(isRecord).map(normalizeExportItem) : []
   return {
-    exportedCount: Math.max(0, Number.isFinite(result.exportedCount) ? Math.floor(result.exportedCount) : 0),
-    failedCount: Math.max(0, Number.isFinite(result.failedCount) ? Math.floor(result.failedCount) : 0),
+    exportedCount: normalizeCount(result.exportedCount),
+    failedCount: normalizeCount(result.failedCount),
     items,
   }
 }
@@ -127,6 +127,13 @@ function optionalString(value: unknown): string | null {
 
 function nullableString(value: unknown): string | null {
   return value === null || value === undefined ? null : optionalString(value)
+}
+
+function normalizeCount(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return 0
+  }
+  return Math.max(0, Math.floor(value))
 }
 
 async function readError(response: Response) {
