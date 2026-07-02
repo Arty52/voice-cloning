@@ -27,9 +27,17 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { VoiceTuningControls } from "@/components/voice-tuning-controls"
 import { MAX_SPEECH_TEXT_LENGTH } from "@/constants"
 import { useIsMobile } from "@/hooks/use-mobile"
@@ -62,6 +70,7 @@ type SpeechInputPanelProps = {
   onNaturalHandoffsEnabledChange: (enabled: boolean) => void
   onSaveNaturalHandoffsDefault?: () => void
   onRemoveAssignment: (assignmentId: string) => void
+  onSourceVoiceChange: (voiceId: string) => void
   onTextChange: (text: string) => void
   onTextSelectionChange: () => void
   providerTuningControls?: ProviderTuningControl[]
@@ -95,6 +104,7 @@ export function SpeechInputPanel({
   onNaturalHandoffsEnabledChange,
   onSaveNaturalHandoffsDefault = noopSaveNaturalHandoffsDefault,
   onRemoveAssignment,
+  onSourceVoiceChange,
   onTextChange,
   onTextSelectionChange,
   providerTuningControls = [],
@@ -123,21 +133,28 @@ export function SpeechInputPanel({
       className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5"
       onSubmit={onGenerate}
     >
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <ToggleGroup
-          aria-label="Generation Input Mode"
-          onValueChange={(value) => {
-            if (value === "range" || value === "dialogue") {
-              dialogue.setMode(value)
-            }
-          }}
-          type="single"
-          value={dialogue.mode}
-          variant="outline"
-        >
-          <ToggleGroupItem value="range">Text Ranges</ToggleGroupItem>
-          <ToggleGroupItem value="dialogue">Dialogue Rows</ToggleGroupItem>
-        </ToggleGroup>
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <Field className="w-full sm:w-56">
+          <FieldLabel htmlFor="generation-input-mode">Input Mode</FieldLabel>
+          <Select
+            onValueChange={(value) => {
+              if (value === "range" || value === "dialogue") {
+                dialogue.setMode(value)
+              }
+            }}
+            value={dialogue.mode}
+          >
+            <SelectTrigger className="w-full" id="generation-input-mode">
+              <SelectValue placeholder="Select Input Mode" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem value="range">Text Ranges</SelectItem>
+                <SelectItem value="dialogue">Dialogue Rows</SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </Field>
         <Button
           disabled={isGenerating || !text.trim()}
           onClick={() => dialogue.importFromText(text)}
@@ -304,15 +321,33 @@ export function SpeechInputPanel({
         />
       ) : null}
 
-      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-          <span>
-            Source: <span className="text-foreground">{selectedVoice?.name || "No voice selected"}</span>
-          </span>
-          <Button asChild size="sm" variant="ghost">
-            <a href="#voices">Change Voice</a>
-          </Button>
-        </div>
+      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <Field className="w-full sm:w-64" data-disabled={isGenerating || voices.length === 0 ? "" : undefined}>
+          <FieldLabel htmlFor="source-voice">Source Voice</FieldLabel>
+          <Select
+            disabled={isGenerating || voices.length === 0}
+            onValueChange={(voiceId) => {
+              if (voices.some((voice) => voice.id === voiceId)) {
+                onSourceVoiceChange(voiceId)
+              }
+            }}
+            value={selectedVoice?.id ?? ""}
+          >
+            <SelectTrigger className="w-full" id="source-voice">
+              <SelectValue placeholder="No Voice Selected" />
+            </SelectTrigger>
+            <SelectContent position="popper">
+              <SelectGroup>
+                <SelectLabel>Voice Library</SelectLabel>
+                {voices.map((voice) => (
+                  <SelectItem key={voice.id} value={voice.id}>
+                    {voice.name}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </Field>
         <div className="flex flex-wrap gap-2">
           <Button disabled={!canGenerate} type="submit">
             {isGenerating ? (
