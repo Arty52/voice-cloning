@@ -89,6 +89,42 @@ def test_export_ledger_repository_round_trips_entries() -> None:
         assert [candidate.audio_id for candidate in repository.list_for_target("local-filesystem")] == ["audio-one"]
 
 
+def test_export_ledger_repository_orders_sha_ties_deterministically() -> None:
+    engine = create_database_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session_factory = create_session_factory(engine)
+
+    with unit_of_work(session_factory) as session:
+        session.add(
+            GeneratedAudioRecord(
+                id="audio-one",
+                file_path="fa/audio-one.mp3",
+                content_type="audio/mpeg",
+                size_bytes=8,
+                sha256="a" * 64,
+            )
+        )
+        repository = SqlAlchemyGeneratedAudioExportLedgerRepository(session)
+        for sha256 in ("b" * 64, "a" * 64):
+            repository.save(
+                GeneratedAudioExportLedgerEntry(
+                    target_id="local-filesystem",
+                    audio_id="audio-one",
+                    sha256=sha256,
+                    filename=f"generated-audio/2026/07/{sha256[:8]}.mp3",
+                    status="exported",
+                    exported_at="2026-07-01T18:45:23+00:00",
+                    updated_at="2026-07-01T18:45:24+00:00",
+                )
+            )
+
+    with unit_of_work(session_factory) as session:
+        repository = SqlAlchemyGeneratedAudioExportLedgerRepository(session)
+
+        assert [entry.sha256 for entry in repository.list_entries()] == ["a" * 64, "b" * 64]
+        assert [entry.sha256 for entry in repository.list_for_target("local-filesystem")] == ["a" * 64, "b" * 64]
+
+
 def test_export_descriptor_uses_path_safe_deterministic_names() -> None:
     item = audio_metadata(
         id="../audio id",
@@ -127,8 +163,11 @@ def test_local_export_target_writes_audio_sidecar_and_index(tmp_path: Path) -> N
     assert sidecar["schemaVersion"] == 1
     assert sidecar["id"] == "audio-one"
     assert sidecar["sha256"] == item.sha256
+    assert sidecar["filename"] == result.filename
     assert "filePath" not in sidecar
-    assert json.loads(index_path.read_text(encoding="utf-8").splitlines()[0])["id"] == "audio-one"
+    index_entry = json.loads(index_path.read_text(encoding="utf-8").splitlines()[0])
+    assert index_entry["id"] == "audio-one"
+    assert index_entry["filename"] == result.filename
 
 
 def test_local_export_target_does_not_rewrite_sidecar_or_index_for_idempotent_retry(tmp_path: Path) -> None:

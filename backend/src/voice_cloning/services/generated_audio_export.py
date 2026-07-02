@@ -80,16 +80,17 @@ class LocalArchiveExportTarget:
         audio_path, already_exported = self._write_audio_file(item, source_path, descriptor)
         sidecar_path = audio_path.with_suffix(".json")
         index_path = self.archive_root / GENERATED_AUDIO_INDEX_DIR / GENERATED_AUDIO_INDEX_FILENAME
+        audio_filename = self._relative_export_path(audio_path)
         if already_exported:
             exported_at = self._sidecar_exported_at(sidecar_path) or exported_at
         else:
-            sidecar_payload = build_generated_audio_export_sidecar(item, audio_path.name, exported_at)
+            sidecar_payload = build_generated_audio_export_sidecar(item, audio_filename, exported_at)
             self._write_json(sidecar_path, sidecar_payload)
             self._append_index_line(index_path, sidecar_payload)
         return ArchiveExportWriteResult(
             already_exported=already_exported,
             exported_at=exported_at,
-            filename=self._relative_export_path(audio_path),
+            filename=audio_filename,
             index_filename=self._relative_export_path(index_path),
             sidecar_filename=self._relative_export_path(sidecar_path),
         )

@@ -31,6 +31,7 @@ class SqlAlchemyGeneratedAudioExportLedgerRepository:
                 GeneratedAudioExportLedgerRecord.updated_at.desc(),
                 GeneratedAudioExportLedgerRecord.target_id,
                 GeneratedAudioExportLedgerRecord.audio_id,
+                GeneratedAudioExportLedgerRecord.sha256,
             )
         ).all()
         return [_entry_from_record(record) for record in records]
@@ -42,6 +43,7 @@ class SqlAlchemyGeneratedAudioExportLedgerRepository:
             .order_by(
                 GeneratedAudioExportLedgerRecord.updated_at.desc(),
                 GeneratedAudioExportLedgerRecord.audio_id,
+                GeneratedAudioExportLedgerRecord.sha256,
             )
         ).all()
         return [_entry_from_record(record) for record in records]
