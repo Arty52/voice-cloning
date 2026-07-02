@@ -79,10 +79,13 @@ class LocalArchiveExportTarget:
         descriptor = build_generated_audio_export_descriptor(item)
         audio_path, already_exported = self._write_audio_file(item, source_path, descriptor)
         sidecar_path = audio_path.with_suffix(".json")
-        sidecar_payload = build_generated_audio_export_sidecar(item, audio_path.name, exported_at)
-        self._write_json(sidecar_path, sidecar_payload)
         index_path = self.archive_root / GENERATED_AUDIO_INDEX_DIR / GENERATED_AUDIO_INDEX_FILENAME
-        self._append_index_line(index_path, sidecar_payload)
+        if already_exported:
+            exported_at = self._sidecar_exported_at(sidecar_path) or exported_at
+        else:
+            sidecar_payload = build_generated_audio_export_sidecar(item, audio_path.name, exported_at)
+            self._write_json(sidecar_path, sidecar_payload)
+            self._append_index_line(index_path, sidecar_payload)
         return ArchiveExportWriteResult(
             already_exported=already_exported,
             exported_at=exported_at,
@@ -100,7 +103,10 @@ class LocalArchiveExportTarget:
         for filename in export_filename_candidates(descriptor):
             destination = self._resolve_export_path(descriptor.year, descriptor.month, filename)
             if destination.exists():
-                if _sha256_file(destination) == item.sha256:
+                if _sha256_file(destination) == item.sha256 and self._sidecar_matches_audio_id(
+                    destination.with_suffix(".json"),
+                    item.id,
+                ):
                     return destination, True
                 continue
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -113,6 +119,22 @@ class LocalArchiveExportTarget:
                 temp_path.unlink(missing_ok=True)
             return destination, False
         raise ArchiveExportTargetError("Unable to allocate a generated audio export filename.")
+
+    def _sidecar_exported_at(self, path: Path) -> str | None:
+        payload = self._read_sidecar(path)
+        exported_at = payload.get("exportedAt")
+        return exported_at if isinstance(exported_at, str) else None
+
+    def _sidecar_matches_audio_id(self, path: Path, audio_id: str) -> bool:
+        return self._read_sidecar(path).get("id") == audio_id
+
+    def _read_sidecar(self, path: Path) -> dict[str, Any]:
+        self._assert_under_archive_root(path)
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        return payload if isinstance(payload, dict) else {}
 
     def _write_json(self, path: Path, payload: dict[str, Any]) -> None:
         self._assert_under_archive_root(path)

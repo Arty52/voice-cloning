@@ -131,6 +131,51 @@ def test_local_export_target_writes_audio_sidecar_and_index(tmp_path: Path) -> N
     assert json.loads(index_path.read_text(encoding="utf-8").splitlines()[0])["id"] == "audio-one"
 
 
+def test_local_export_target_does_not_rewrite_sidecar_or_index_for_idempotent_retry(tmp_path: Path) -> None:
+    content = b"fake-mp3"
+    source = tmp_path / "source.mp3"
+    source.write_bytes(content)
+    target = LocalArchiveExportTarget(tmp_path / "exports")
+    item = audio_metadata(content=content)
+
+    first_result = target.export_item(item, source)
+    archive_root = tmp_path / "exports" / ARCHIVE_ROOT_NAME
+    sidecar_path = archive_root / first_result.sidecar_filename
+    index_path = archive_root / first_result.index_filename
+    first_sidecar = sidecar_path.read_text(encoding="utf-8")
+    first_index = index_path.read_text(encoding="utf-8")
+    second_result = target.export_item(item, source)
+
+    assert second_result.already_exported is True
+    assert second_result.filename == first_result.filename
+    assert second_result.exported_at == first_result.exported_at
+    assert sidecar_path.read_text(encoding="utf-8") == first_sidecar
+    assert index_path.read_text(encoding="utf-8") == first_index
+    assert len(index_path.read_text(encoding="utf-8").splitlines()) == 1
+
+
+def test_local_export_target_keeps_duplicate_hash_sidecars_separate_by_audio_id(tmp_path: Path) -> None:
+    content = b"fake-mp3"
+    source = tmp_path / "source.mp3"
+    source.write_bytes(content)
+    target = LocalArchiveExportTarget(tmp_path / "exports")
+
+    first_result = target.export_item(audio_metadata(content=content, id="audio-one"), source)
+    second_result = target.export_item(audio_metadata(content=content, id="audio-two"), source)
+
+    archive_root = tmp_path / "exports" / ARCHIVE_ROOT_NAME
+    first_sidecar = json.loads((archive_root / first_result.sidecar_filename).read_text(encoding="utf-8"))
+    second_sidecar = json.loads((archive_root / second_result.sidecar_filename).read_text(encoding="utf-8"))
+    index_lines = (archive_root / first_result.index_filename).read_text(encoding="utf-8").splitlines()
+
+    assert first_result.filename != second_result.filename
+    assert first_result.already_exported is False
+    assert second_result.already_exported is False
+    assert first_sidecar["id"] == "audio-one"
+    assert second_sidecar["id"] == "audio-two"
+    assert {json.loads(line)["id"] for line in index_lines} == {"audio-one", "audio-two"}
+
+
 def test_local_export_target_uses_collision_safe_candidate(tmp_path: Path) -> None:
     content = b"fake-mp3"
     source = tmp_path / "source.mp3"
