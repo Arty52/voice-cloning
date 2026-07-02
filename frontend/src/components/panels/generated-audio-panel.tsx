@@ -79,7 +79,7 @@ export function GeneratedAudioPanel({
   const serverArchiveMode = persistenceMode === "server"
   const serverExportAvailable = serverArchiveMode && serverExportStatus?.available === true
   const isServerExportBusy = serverExportMutation !== null
-  const isServerExportDisabled = !serverExportAvailable || isServerExportBusy || isLibraryLoading
+  const isServerExportDisabled = !serverExportAvailable || isServerExportBusy || isBusy
 
   return (
     <section aria-busy={isBusy} className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5">
@@ -156,7 +156,7 @@ export function GeneratedAudioPanel({
           </div>
           <div className="flex flex-wrap gap-2">
             <Button
-              disabled={!serverArchiveMode || isServerExportBusy || isLibraryLoading}
+              disabled={!serverArchiveMode || isServerExportBusy || isBusy}
               onClick={onServerExportStatusRefresh}
               size="sm"
               type="button"

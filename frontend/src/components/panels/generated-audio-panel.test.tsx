@@ -70,6 +70,24 @@ describe("GeneratedAudioPanel pending mutations", () => {
     expect(screen.getByRole("button", { name: /export generated audio for default voice/i })).toBeDisabled()
   })
 
+  it("disables server export controls during archive mutations", () => {
+    renderGeneratedAudioPanel({
+      allItems: [generatedAudioItem],
+      items: [generatedAudioItem],
+      mutationStatus: "clear",
+      persistenceMode: "server",
+      serverExportStatus: {
+        available: true,
+        items: [],
+        targetId: "local-filesystem",
+      },
+    })
+
+    expect(screen.getByRole("button", { name: "Refresh" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Export All" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: /export generated audio for default voice/i })).toBeDisabled()
+  })
+
   it("shows per-item server export status and retry action", async () => {
     const user = userEvent.setup()
     const onServerExport = vi.fn()
