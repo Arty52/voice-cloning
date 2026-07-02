@@ -238,6 +238,24 @@ def test_local_export_target_uses_collision_safe_candidate(tmp_path: Path) -> No
     assert (tmp_path / "exports" / ARCHIVE_ROOT_NAME / result.filename).read_bytes() == content
 
 
+def test_local_export_target_wraps_sidecar_write_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    content = b"fake-mp3"
+    source = tmp_path / "source.mp3"
+    source.write_bytes(content)
+    target = LocalArchiveExportTarget(tmp_path / "exports")
+    item = audio_metadata(content=content)
+
+    def fail_write_json(_self: LocalArchiveExportTarget, _path: Path, _payload: dict[str, object]) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(LocalArchiveExportTarget, "_write_json", fail_write_json)
+
+    with pytest.raises(ArchiveExportTargetError) as exc_info:
+        target.export_item(item, source)
+
+    assert str(exc_info.value) == "Generated audio export could not write to the configured export directory."
+
+
 def test_local_export_target_uses_path_safe_temp_file_for_unsafe_audio_id(tmp_path: Path) -> None:
     content = b"fake-mp3"
     source = tmp_path / "source.mp3"

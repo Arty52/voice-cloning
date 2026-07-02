@@ -72,28 +72,35 @@ class LocalArchiveExportTarget:
         (self.archive_root / EXPORT_TMP_DIR).mkdir(parents=True, exist_ok=True)
 
     def export_item(self, item: GeneratedAudioMetadata, source_path: Path) -> ArchiveExportWriteResult:
-        if not source_path.exists():
-            raise ArchiveExportTargetError("Generated audio source file is missing.")
-        self.ensure_ready()
-        exported_at = datetime.now(UTC).isoformat()
-        descriptor = build_generated_audio_export_descriptor(item)
-        audio_path, already_exported = self._write_audio_file(item, source_path, descriptor)
-        sidecar_path = audio_path.with_suffix(".json")
-        index_path = self.archive_root / GENERATED_AUDIO_INDEX_DIR / GENERATED_AUDIO_INDEX_FILENAME
-        audio_filename = self._relative_export_path(audio_path)
-        if already_exported:
-            exported_at = self._sidecar_exported_at(sidecar_path) or exported_at
-        else:
-            sidecar_payload = build_generated_audio_export_sidecar(item, audio_filename, exported_at)
-            self._write_json(sidecar_path, sidecar_payload)
-            self._append_index_line(index_path, sidecar_payload)
-        return ArchiveExportWriteResult(
-            already_exported=already_exported,
-            exported_at=exported_at,
-            filename=audio_filename,
-            index_filename=self._relative_export_path(index_path),
-            sidecar_filename=self._relative_export_path(sidecar_path),
-        )
+        try:
+            if not source_path.exists():
+                raise ArchiveExportTargetError("Generated audio source file is missing.")
+            self.ensure_ready()
+            exported_at = datetime.now(UTC).isoformat()
+            descriptor = build_generated_audio_export_descriptor(item)
+            audio_path, already_exported = self._write_audio_file(item, source_path, descriptor)
+            sidecar_path = audio_path.with_suffix(".json")
+            index_path = self.archive_root / GENERATED_AUDIO_INDEX_DIR / GENERATED_AUDIO_INDEX_FILENAME
+            audio_filename = self._relative_export_path(audio_path)
+            if already_exported:
+                exported_at = self._sidecar_exported_at(sidecar_path) or exported_at
+            else:
+                sidecar_payload = build_generated_audio_export_sidecar(item, audio_filename, exported_at)
+                self._write_json(sidecar_path, sidecar_payload)
+                self._append_index_line(index_path, sidecar_payload)
+            return ArchiveExportWriteResult(
+                already_exported=already_exported,
+                exported_at=exported_at,
+                filename=audio_filename,
+                index_filename=self._relative_export_path(index_path),
+                sidecar_filename=self._relative_export_path(sidecar_path),
+            )
+        except ArchiveExportTargetError:
+            raise
+        except (OSError, shutil.Error) as exc:
+            raise ArchiveExportTargetError(
+                "Generated audio export could not write to the configured export directory."
+            ) from exc
 
     def _write_audio_file(
         self,
