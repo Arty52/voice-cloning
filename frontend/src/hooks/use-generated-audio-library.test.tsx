@@ -196,7 +196,7 @@ function mockArchive(
       const id = decodeURIComponent(path.replace("/api/generated-audio/", "").replace("/export", ""))
       const item = items.get(id)
       if (!item) {
-        return jsonResponse({ detail: "Generated audio item was not found." }, 404)
+        return jsonResponse({ detail: "Generated audio was not found." }, 404)
       }
       const entry = exportEntry(item)
       const key = exportEntryKey(entry)
@@ -424,7 +424,7 @@ describe("useGeneratedAudioLibrary", () => {
     await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("success"))
     await user.click(screen.getByRole("button", { name: /export missing/i }))
     await waitFor(() =>
-      expect(screen.getByTestId("server-export-error")).toHaveTextContent("Generated audio item was not found.")
+      expect(screen.getByTestId("server-export-error")).toHaveTextContent("Generated audio was not found.")
     )
     expect(screen.getByTestId("item-count")).toHaveTextContent("1")
   })

@@ -43,7 +43,7 @@ export async function loadGeneratedAudioServerExportStatus(): Promise<GeneratedA
   if (!response.ok) {
     throw new Error(await readError(response))
   }
-  return normalizeExportStatus((await response.json()) as GeneratedAudioServerExportStatus)
+  return normalizeExportStatus(await readJsonObject(response, "Unexpected generated audio export status response."))
 }
 
 export async function exportGeneratedAudioToServer(audioId: string): Promise<GeneratedAudioServerExportResult> {
@@ -54,7 +54,7 @@ export async function exportGeneratedAudioToServer(audioId: string): Promise<Gen
   if (!response.ok) {
     throw new Error(await readError(response))
   }
-  return normalizeExportResult((await response.json()) as GeneratedAudioServerExportResult)
+  return normalizeExportResult(await readJsonObject(response, "Unexpected generated audio export response."))
 }
 
 export async function exportAllGeneratedAudioToServer(): Promise<GeneratedAudioServerExportAllResult> {
@@ -65,43 +65,68 @@ export async function exportAllGeneratedAudioToServer(): Promise<GeneratedAudioS
   if (!response.ok) {
     throw new Error(await readError(response))
   }
-  return normalizeExportAllResult((await response.json()) as GeneratedAudioServerExportAllResult)
+  return normalizeExportAllResult(await readJsonObject(response, "Unexpected generated audio export-all response."))
 }
 
-function normalizeExportStatus(status: GeneratedAudioServerExportStatus): GeneratedAudioServerExportStatus {
+function normalizeExportStatus(status: Record<string, unknown>): GeneratedAudioServerExportStatus {
+  const items = Array.isArray(status.items) ? status.items.filter(isRecord).map(normalizeExportItem) : []
   return {
     available: Boolean(status.available),
     targetId: typeof status.targetId === "string" ? status.targetId : null,
-    items: Array.isArray(status.items) ? status.items.map(normalizeExportItem) : [],
+    items,
   }
 }
 
-function normalizeExportResult(result: GeneratedAudioServerExportResult): GeneratedAudioServerExportResult {
+function normalizeExportResult(result: Record<string, unknown>): GeneratedAudioServerExportResult {
+  if (!isRecord(result.item)) {
+    throw new Error("Unexpected generated audio export response.")
+  }
   return {
     alreadyExported: Boolean(result.alreadyExported),
     item: normalizeExportItem(result.item),
   }
 }
 
-function normalizeExportAllResult(result: GeneratedAudioServerExportAllResult): GeneratedAudioServerExportAllResult {
+function normalizeExportAllResult(result: Record<string, unknown>): GeneratedAudioServerExportAllResult {
+  const items = Array.isArray(result.items) ? result.items.filter(isRecord).map(normalizeExportItem) : []
   return {
     exportedCount: Math.max(0, Number.isFinite(result.exportedCount) ? Math.floor(result.exportedCount) : 0),
     failedCount: Math.max(0, Number.isFinite(result.failedCount) ? Math.floor(result.failedCount) : 0),
-    items: Array.isArray(result.items) ? result.items.map(normalizeExportItem) : [],
+    items,
   }
 }
 
-function normalizeExportItem(item: GeneratedAudioServerExportItem): GeneratedAudioServerExportItem {
+function normalizeExportItem(item: Record<string, unknown>): GeneratedAudioServerExportItem {
   return {
-    targetId: item.targetId || "local-filesystem",
-    audioId: item.audioId,
-    sha256: item.sha256,
-    filename: item.filename || "",
+    targetId: optionalString(item.targetId) || "local-filesystem",
+    audioId: optionalString(item.audioId) || "",
+    sha256: optionalString(item.sha256) || "",
+    filename: optionalString(item.filename) || "",
     status: item.status === "exported" ? "exported" : "failed",
-    exportedAt: item.exportedAt ?? null,
-    lastError: item.lastError ?? null,
-    updatedAt: item.updatedAt ?? null,
+    exportedAt: nullableString(item.exportedAt),
+    lastError: nullableString(item.lastError),
+    updatedAt: nullableString(item.updatedAt),
   }
+}
+
+async function readJsonObject(response: Response, errorMessage: string): Promise<Record<string, unknown>> {
+  const payload = (await response.json()) as unknown
+  if (!isRecord(payload)) {
+    throw new Error(errorMessage)
+  }
+  return payload
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function optionalString(value: unknown): string | null {
+  return typeof value === "string" ? value : null
+}
+
+function nullableString(value: unknown): string | null {
+  return value === null || value === undefined ? null : optionalString(value)
 }
 
 async function readError(response: Response) {

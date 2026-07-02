@@ -42,6 +42,14 @@ describe("generated audio server export API", () => {
     })
   })
 
+  it("rejects malformed successful status payloads", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => jsonResponse(null)))
+
+    await expect(loadGeneratedAudioServerExportStatus()).rejects.toThrow(
+      "Unexpected generated audio export status response."
+    )
+  })
+
   it("posts a single export by id without submitting a path", async () => {
     const fetchMock = vi.fn(() => jsonResponse({ alreadyExported: false, item: exportedItem }))
     vi.stubGlobal("fetch", fetchMock)
@@ -52,6 +60,12 @@ describe("generated audio server export API", () => {
     })
 
     expect(fetchMock).toHaveBeenCalledWith("/api/generated-audio/audio%2F1/export", { method: "POST" })
+  })
+
+  it("rejects malformed successful single-export payloads", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => jsonResponse({ alreadyExported: false })))
+
+    await expect(exportGeneratedAudioToServer("audio-1")).rejects.toThrow("Unexpected generated audio export response.")
   })
 
   it("posts export-all and normalizes counts", async () => {
@@ -73,6 +87,14 @@ describe("generated audio server export API", () => {
     })
   })
 
+  it("rejects malformed successful export-all payloads", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => jsonResponse([])))
+
+    await expect(exportAllGeneratedAudioToServer()).rejects.toThrow(
+      "Unexpected generated audio export-all response."
+    )
+  })
+
   it("reports unavailable export configuration from 503 responses", async () => {
     vi.stubGlobal(
       "fetch",
@@ -83,9 +105,9 @@ describe("generated audio server export API", () => {
   })
 
   it("surfaces route errors for missing archive items", async () => {
-    vi.stubGlobal("fetch", vi.fn(() => jsonResponse({ detail: "Generated audio item was not found." }, 404)))
+    vi.stubGlobal("fetch", vi.fn(() => jsonResponse({ detail: "Generated audio was not found." }, 404)))
 
-    await expect(exportGeneratedAudioToServer("missing-audio")).rejects.toThrow("Generated audio item was not found.")
+    await expect(exportGeneratedAudioToServer("missing-audio")).rejects.toThrow("Generated audio was not found.")
   })
 })
 

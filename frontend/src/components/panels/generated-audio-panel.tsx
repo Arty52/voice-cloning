@@ -229,11 +229,15 @@ function findServerExportStatus(
   if (!serverExportStatus) {
     return null
   }
-  const itemStatuses = serverExportStatus.items.filter((status) => status.audioId === item.id)
-  if (item.sha256) {
-    return itemStatuses.find((status) => status.sha256 === item.sha256) ?? null
+  for (const status of serverExportStatus.items) {
+    if (status.audioId !== item.id) {
+      continue
+    }
+    if (!item.sha256 || status.sha256 === item.sha256) {
+      return status
+    }
   }
-  return itemStatuses[0] ?? null
+  return null
 }
 
 function serverExportBadgeLabel(
