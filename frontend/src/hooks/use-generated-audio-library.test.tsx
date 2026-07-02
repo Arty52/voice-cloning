@@ -231,6 +231,10 @@ function mockArchive(
         voiceName: String(formData.get("voiceName") ?? "Default Voice"),
       })
       items.set(id, item)
+      if (exportAvailable) {
+        const entry = exportEntry(item)
+        exportEntries.set(exportEntryKey(entry), entry)
+      }
       return okJson({ alreadyExisted: false, item, prunedIds: [], usage: archiveUsage(items) })
     }
     if (path.startsWith("/api/generated-audio/") && init?.method === "DELETE") {
@@ -488,6 +492,7 @@ describe("useGeneratedAudioLibrary", () => {
     )
     expect(saveCall).toBeDefined()
     expect(screen.getByTestId("first-url")).toHaveTextContent("/api/generated-audio/new-server-audio/audio")
+    expect(screen.getByTestId("server-export-count")).toHaveTextContent("1")
   })
 
   it("keeps successful server archive saves when local migration bookkeeping fails", async () => {
