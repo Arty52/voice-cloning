@@ -50,6 +50,7 @@ const multiVoiceItem: GeneratedResult = {
     ],
   },
   requestId: null,
+  sha256: "combined-hash",
   sizeBytes: 12,
   tuningMetadata: null,
   url: "blob:generated-1",

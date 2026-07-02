@@ -444,6 +444,7 @@ export type GeneratedResult = {
   createdAt: string
   generatedAt: string
   generationElapsedMs: number | null
+  sha256: string | null
   multiVoiceMetadata: GeneratedAudioMultiVoiceMetadata | null
   tuningMetadata: GeneratedAudioTuningMetadata | null
 }

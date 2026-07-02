@@ -11,7 +11,7 @@ import {
   saveGeneratedAudio,
   type SaveGeneratedAudioInput,
 } from "@/lib/generated-audio-storage"
-import { GENERATED_AUDIO_ARCHIVE_CLEARED_IDS_KEY, GENERATED_AUDIO_ARCHIVE_CONFLICT_IDS_KEY } from "@/lib/generated-audio-archive-migration"
+import { readGeneratedAudioArchiveMigrationState } from "@/lib/generated-audio-archive-migration"
 import type { AsyncStatus } from "@/types"
 
 type Snapshot = {
@@ -337,6 +337,31 @@ describe("useGeneratedAudioLibrary", () => {
     expect(screen.getByTestId("first-url")).toHaveTextContent("/api/generated-audio/new-server-audio/audio")
   })
 
+  it("keeps successful server archive saves when local migration bookkeeping fails", async () => {
+    const user = userEvent.setup()
+    const fetchMock = mockArchive()
+
+    render(<GeneratedAudioHarness onSnapshot={() => undefined} />)
+
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("success"))
+    const openSpy = vi.spyOn(indexedDB, "open").mockImplementation(() => {
+      throw new Error("IndexedDB blocked")
+    })
+    try {
+      await user.click(screen.getByRole("button", { name: /save new/i }))
+      await waitFor(() => expect(screen.getByTestId("item-count")).toHaveTextContent("1"))
+
+      const saveCall = fetchMock.mock.calls.find(
+        ([input, init]) => String(input) === "/api/generated-audio" && init?.method === "POST"
+      )
+      expect(saveCall).toBeDefined()
+      expect(screen.getByTestId("first-url")).toHaveTextContent("/api/generated-audio/new-server-audio/audio")
+      expect(screen.getByTestId("error")).toHaveTextContent("")
+    } finally {
+      openSpy.mockRestore()
+    }
+  })
+
   it("reports IndexedDB migration conflicts without deleting browser data", async () => {
     await saveGeneratedAudio(audioInput({ id: "conflicting-audio" }), 20)
     expect((await listGeneratedAudio()).map((record) => record.id)).toContain("conflicting-audio")
@@ -346,7 +371,7 @@ describe("useGeneratedAudioLibrary", () => {
 
     await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("success"))
     expect(screen.getByTestId("error")).toHaveTextContent("1 browser audio item(s) conflicted")
-    expect(JSON.parse(localStorage.getItem(GENERATED_AUDIO_ARCHIVE_CONFLICT_IDS_KEY) ?? "[]")).toContain("conflicting-audio")
+    expect((await readGeneratedAudioArchiveMigrationState()).conflictIds.has("conflicting-audio")).toBe(true)
     expect((await listGeneratedAudio()).map((record) => record.id)).toContain("conflicting-audio")
   })
 
@@ -359,7 +384,7 @@ describe("useGeneratedAudioLibrary", () => {
     await waitFor(() => expect(screen.getByTestId("item-count")).toHaveTextContent("1"))
     await user.click(screen.getByRole("button", { name: /clear all/i }))
     await waitFor(() => expect(screen.getByTestId("item-count")).toHaveTextContent("0"))
-    expect(JSON.parse(localStorage.getItem(GENERATED_AUDIO_ARCHIVE_CLEARED_IDS_KEY) ?? "[]")).toContain("persisted-audio")
+    expect((await readGeneratedAudioArchiveMigrationState()).clearedIds.has("persisted-audio")).toBe(true)
     const postCallCountAfterClear = fetchMock.mock.calls.filter(
       ([input, init]) => String(input) === "/api/generated-audio" && init?.method === "POST"
     ).length

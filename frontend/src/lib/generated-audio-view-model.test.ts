@@ -16,6 +16,7 @@ const baseRecord: StoredGeneratedAudio = {
   id: "generated-audio",
   modelId: "eleven_multilingual_v2",
   requestId: "req_test_123",
+  sha256: "stored-audio-hash",
   sizeBytes: 6,
   voiceId: "voice-123",
   voiceName: "Default Voice",
@@ -81,6 +82,7 @@ describe("storedAudioToResult", () => {
     })
     expect(result.generationElapsedMs).toBe(1234)
     expect(result.multiVoiceMetadata).toEqual(multiVoiceMetadata)
+    expect(result.sha256).toBe("stored-audio-hash")
   })
 
   it("normalizes legacy records without optional metadata", () => {
@@ -120,6 +122,7 @@ describe("archivedAudioToResult", () => {
 
     expect(result.url).toBe("/api/generated-audio/generated-audio/audio")
     expect(result.cacheState).toBe("hit")
+    expect(result.sha256).toBe("audio-hash")
     expect(createObjectUrl).not.toHaveBeenCalled()
     createObjectUrl.mockRestore()
   })
@@ -153,6 +156,7 @@ function generatedResult(url: string) {
     modelId: "eleven_multilingual_v2",
     multiVoiceMetadata: null,
     requestId: "req_test_123",
+    sha256: "audio-hash",
     sizeBytes: 6,
     tuningMetadata: null,
     url,
