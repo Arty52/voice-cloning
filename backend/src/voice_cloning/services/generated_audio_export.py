@@ -10,6 +10,12 @@ import shutil
 from typing import Any, Protocol
 
 from ..persistence.generated_audio import GeneratedAudioMetadata
+from ..persistence.generated_audio_exports import (
+    GeneratedAudioExportLedgerEntry,
+    SqlAlchemyGeneratedAudioExportLedgerRepository,
+)
+from ..persistence.database import SessionFactory, unit_of_work
+from .generated_audio_archive import GeneratedAudioArchiveError, GeneratedAudioArchiveService
 
 
 ARCHIVE_ROOT_NAME = "Voice Clone Lab Archive"
@@ -54,6 +60,139 @@ class ArchiveExportTarget(Protocol):
 
 class ArchiveExportTargetError(Exception):
     pass
+
+
+class GeneratedAudioExportError(Exception):
+    def __init__(self, detail: str, status_code: int) -> None:
+        super().__init__(detail)
+        self.detail = detail
+        self.status_code = status_code
+
+
+@dataclass(frozen=True)
+class GeneratedAudioExportResult:
+    entry: GeneratedAudioExportLedgerEntry
+    already_exported: bool = False
+
+
+@dataclass(frozen=True)
+class GeneratedAudioExportAllResult:
+    items: list[GeneratedAudioExportResult]
+
+    @property
+    def exported_count(self) -> int:
+        return sum(1 for item in self.items if item.entry.status == "exported")
+
+    @property
+    def failed_count(self) -> int:
+        return sum(1 for item in self.items if item.entry.status == "failed")
+
+
+class GeneratedAudioExportService:
+    def __init__(
+        self,
+        session_factory: SessionFactory,
+        archive_service: GeneratedAudioArchiveService,
+        export_target: ArchiveExportTarget | None,
+    ) -> None:
+        self.session_factory = session_factory
+        self.archive_service = archive_service
+        self.export_target = export_target
+
+    def export_item(self, audio_id: str) -> GeneratedAudioExportResult:
+        target = self._require_target()
+        try:
+            item = self.archive_service.get_item(audio_id)
+            source_path = self.archive_service.resolve_audio_path(item)
+        except GeneratedAudioArchiveError as exc:
+            raise GeneratedAudioExportError(exc.detail, exc.status_code) from exc
+        if not source_path.exists():
+            entry = self._save_entry(
+                item,
+                target.target_id,
+                status="failed",
+                filename=default_export_filename(item),
+                last_error="Generated audio file is missing.",
+            )
+            return GeneratedAudioExportResult(entry=entry)
+        try:
+            write_result = target.export_item(item, source_path)
+        except ArchiveExportTargetError as exc:
+            entry = self._save_entry(
+                item,
+                target.target_id,
+                status="failed",
+                filename=default_export_filename(item),
+                last_error=str(exc),
+            )
+            return GeneratedAudioExportResult(entry=entry)
+        entry = self._save_entry(
+            item,
+            target.target_id,
+            status="exported",
+            filename=write_result.filename,
+            exported_at=write_result.exported_at,
+        )
+        return GeneratedAudioExportResult(entry=entry, already_exported=write_result.already_exported)
+
+    def export_all(self) -> GeneratedAudioExportAllResult:
+        target = self._require_target()
+        items, _usage = self.archive_service.list_items()
+        results: list[GeneratedAudioExportResult] = []
+        for item in items:
+            try:
+                results.append(self.export_item(item.id))
+            except GeneratedAudioExportError as exc:
+                entry = self._save_entry(
+                    item,
+                    target.target_id,
+                    status="failed",
+                    filename=default_export_filename(item),
+                    last_error=exc.detail,
+                )
+                results.append(GeneratedAudioExportResult(entry=entry))
+        return GeneratedAudioExportAllResult(items=results)
+
+    def list_status(self) -> tuple[bool, str | None, list[GeneratedAudioExportLedgerEntry]]:
+        if self.export_target is None:
+            return False, None, []
+        with unit_of_work(self.session_factory) as session:
+            entries = SqlAlchemyGeneratedAudioExportLedgerRepository(session).list_for_target(
+                self.export_target.target_id
+            )
+        return True, self.export_target.target_id, entries
+
+    def has_configured_target(self) -> bool:
+        return self.export_target is not None
+
+    def _save_entry(
+        self,
+        item: GeneratedAudioMetadata,
+        target_id: str,
+        *,
+        status: str,
+        filename: str,
+        exported_at: str | None = None,
+        last_error: str | None = None,
+    ) -> GeneratedAudioExportLedgerEntry:
+        entry = GeneratedAudioExportLedgerEntry(
+            target_id=target_id,
+            audio_id=item.id,
+            sha256=item.sha256,
+            filename=filename,
+            status=status,
+            exported_at=exported_at,
+            last_error=last_error,
+            updated_at=datetime.now(UTC).isoformat(),
+        )
+        with unit_of_work(self.session_factory) as session:
+            SqlAlchemyGeneratedAudioExportLedgerRepository(session).save(entry)
+        return entry
+
+    def _require_target(self) -> ArchiveExportTarget:
+        if self.export_target is None:
+            raise GeneratedAudioExportError("Generated audio export directory is not configured.", 503)
+        return self.export_target
 
 
 @dataclass(frozen=True)
@@ -245,6 +384,14 @@ def export_filename_candidates(descriptor: GeneratedAudioExportDescriptor) -> li
         f"{base}--{descriptor.id_slug}{descriptor.extension}",
         *[f"{base}--{descriptor.id_slug}-{index}{descriptor.extension}" for index in range(2, 1000)],
     ]
+
+
+def default_export_filename(item: GeneratedAudioMetadata) -> str:
+    descriptor = build_generated_audio_export_descriptor(item)
+    return (
+        f"{GENERATED_AUDIO_EXPORT_DIR}/{descriptor.year}/{descriptor.month}/"
+        f"{export_filename_candidates(descriptor)[0]}"
+    )
 
 
 def _created_at_datetime(value: str) -> datetime:

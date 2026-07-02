@@ -258,6 +258,35 @@ The save response includes `item`, `usage`, `prunedIds`, and `alreadyExisted`. R
 { "limitBytes": 104857600, "prune": true }
 ```
 
+Generated-audio server export routes require backend persistence. They never accept filesystem paths from the client. When `GENERATED_AUDIO_EXPORT_DIR` is blank, `GET /api/generated-audio/export-status` returns export availability as `false`, while export mutation routes return `503`.
+
+- `POST /api/generated-audio/{audioId}/export`
+- `POST /api/generated-audio/export-all`
+- `GET /api/generated-audio/export-status`
+
+When configured, the backend exports from the canonical archive into `GENERATED_AUDIO_EXPORT_DIR/Voice Clone Lab Archive/`, with audio and sidecar files under `generated-audio/YYYY/MM/` plus `index/generated-audio.jsonl`. The export ledger is keyed by target id, audio id, and sha256 so re-exporting the same archive item is idempotent and a later changed hash records a separate status entry.
+
+Export status returns:
+
+```json
+{
+  "available": true,
+  "targetId": "local-filesystem",
+  "items": [
+    {
+      "targetId": "local-filesystem",
+      "audioId": "audio-123",
+      "sha256": "abc123...",
+      "filename": "generated-audio/2026/07/20260701T184522Z--default-voice--eleven-multilingual-v2--abc12345.mp3",
+      "status": "exported",
+      "exportedAt": "2026-07-01T18:45:23+00:00",
+      "lastError": null,
+      "updatedAt": "2026-07-01T18:45:23+00:00"
+    }
+  ]
+}
+```
+
 ## App Settings
 
 App settings routes require backend persistence. When `DATABASE_URL` is blank, these routes return `503` and the frontend keeps using browser-local fallbacks. These routes are allowlisted for non-secret preferences only; provider API keys are never accepted.

@@ -11,7 +11,11 @@ from ...services.generated_audio_archive import (
     GeneratedAudioArchiveService,
     parse_optional_json_object,
 )
+from ...services.generated_audio_export import GeneratedAudioExportError, GeneratedAudioExportService
 from ..serializers import (
+    generated_audio_export_all_payload,
+    generated_audio_export_payload,
+    generated_audio_export_status_payload,
     generated_audio_list_payload,
     generated_audio_mutation_payload,
     generated_audio_save_payload,
@@ -24,7 +28,10 @@ class GeneratedAudioStorageLimitRequest(BaseModel):
     prune: bool = True
 
 
-def create_generated_audio_router(service: GeneratedAudioArchiveService | None) -> APIRouter:
+def create_generated_audio_router(
+    service: GeneratedAudioArchiveService | None,
+    export_service: GeneratedAudioExportService | None = None,
+) -> APIRouter:
     router = APIRouter()
 
     @router.get("/api/generated-audio")
@@ -70,12 +77,35 @@ def create_generated_audio_router(service: GeneratedAudioArchiveService | None) 
             )
         except GeneratedAudioArchiveError as exc:
             raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+        _export_saved_generated_audio(export_service, result.item.id)
         return generated_audio_save_payload(result)
 
     @router.get("/api/generated-audio/usage")
     def generated_audio_usage() -> dict[str, object]:
         archive = _require_service(service)
         return generated_audio_usage_payload(archive.get_usage())
+
+    @router.get("/api/generated-audio/export-status")
+    def generated_audio_export_status() -> dict[str, object]:
+        export = _require_export_service(service, export_service)
+        available, target_id, entries = export.list_status()
+        return generated_audio_export_status_payload(available, target_id, entries)
+
+    @router.post("/api/generated-audio/export-all")
+    def export_all_generated_audio() -> dict[str, object]:
+        export = _require_export_service(service, export_service)
+        try:
+            return generated_audio_export_all_payload(export.export_all())
+        except GeneratedAudioExportError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+    @router.post("/api/generated-audio/{audio_id}/export")
+    def export_generated_audio(audio_id: str) -> dict[str, object]:
+        export = _require_export_service(service, export_service)
+        try:
+            return generated_audio_export_payload(export.export_item(audio_id))
+        except GeneratedAudioExportError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
     @router.put("/api/generated-audio/storage-limit")
     def update_generated_audio_storage_limit(request: GeneratedAudioStorageLimitRequest) -> dict[str, object]:
@@ -122,3 +152,22 @@ def _require_service(service: GeneratedAudioArchiveService | None) -> GeneratedA
     if service is None:
         raise HTTPException(status_code=503, detail="Generated audio archive persistence is not configured.")
     return service
+
+
+def _require_export_service(
+    archive_service: GeneratedAudioArchiveService | None,
+    export_service: GeneratedAudioExportService | None,
+) -> GeneratedAudioExportService:
+    _require_service(archive_service)
+    if export_service is None:
+        raise HTTPException(status_code=503, detail="Generated audio archive persistence is not configured.")
+    return export_service
+
+
+def _export_saved_generated_audio(export_service: GeneratedAudioExportService | None, audio_id: str) -> None:
+    if export_service is None or not export_service.has_configured_target():
+        return
+    try:
+        export_service.export_item(audio_id)
+    except GeneratedAudioExportError:
+        return

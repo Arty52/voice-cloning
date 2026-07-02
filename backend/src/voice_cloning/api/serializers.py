@@ -44,7 +44,9 @@ from ..services.generated_audio_archive import (
     GeneratedAudioSaveResult,
     GeneratedAudioUsage,
 )
+from ..services.generated_audio_export import GeneratedAudioExportAllResult, GeneratedAudioExportResult
 from ..persistence.generated_audio import GeneratedAudioMetadata
+from ..persistence.generated_audio_exports import GeneratedAudioExportLedgerEntry
 from ..persistence.tuning_presets import VoiceTuningPreset
 
 
@@ -131,6 +133,46 @@ def generated_audio_mutation_payload(result: GeneratedAudioMutationResult) -> di
     return {
         "prunedIds": result.pruned_ids,
         "usage": generated_audio_usage_payload(result.usage),
+    }
+
+
+def generated_audio_export_entry_payload(entry: GeneratedAudioExportLedgerEntry) -> dict[str, object]:
+    return {
+        "targetId": entry.target_id,
+        "audioId": entry.audio_id,
+        "sha256": entry.sha256,
+        "filename": entry.filename,
+        "status": entry.status,
+        "exportedAt": entry.exported_at,
+        "lastError": entry.last_error,
+        "updatedAt": entry.updated_at,
+    }
+
+
+def generated_audio_export_payload(result: GeneratedAudioExportResult) -> dict[str, object]:
+    return {
+        "alreadyExported": result.already_exported,
+        "item": generated_audio_export_entry_payload(result.entry),
+    }
+
+
+def generated_audio_export_all_payload(result: GeneratedAudioExportAllResult) -> dict[str, object]:
+    return {
+        "exportedCount": result.exported_count,
+        "failedCount": result.failed_count,
+        "items": [generated_audio_export_entry_payload(item.entry) for item in result.items],
+    }
+
+
+def generated_audio_export_status_payload(
+    available: bool,
+    target_id: str | None,
+    entries: list[GeneratedAudioExportLedgerEntry],
+) -> dict[str, object]:
+    return {
+        "available": available,
+        "targetId": target_id,
+        "items": [generated_audio_export_entry_payload(entry) for entry in entries],
     }
 
 

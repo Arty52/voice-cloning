@@ -70,6 +70,7 @@ http://localhost:6420
 - Generated audio and provider cache data under `storage/` are ignored by git.
 - Server-side generated-audio archive files are stored under `GENERATED_AUDIO_STORAGE_DIR`, which defaults to ignored `storage/generated-audio/`.
 - When backend persistence is configured, generated-audio archive metadata is stored in Postgres and files stream from `GENERATED_AUDIO_STORAGE_DIR`. Browser IndexedDB remains the transition cache/draft store.
+- Optional server-side generated-audio export is enabled only by setting `GENERATED_AUDIO_EXPORT_DIR`; export actions mirror canonical archive files into that backend-owned root and never accept browser-submitted filesystem paths.
 - Non-secret app preferences such as selected model, Natural Handoffs, and generated-audio storage limit can persist through the backend settings API when `DATABASE_URL` is configured. Provider API keys are not persisted in Postgres.
 - Speech job output, optional sample-processing output, separated stems, and downloaded model data are runtime-only and must stay out of git.
 - The optional live smoke test calls ElevenLabs, may consume credits, and may create or reuse a cloned voice.
