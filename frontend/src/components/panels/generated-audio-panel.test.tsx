@@ -142,8 +142,9 @@ describe("GeneratedAudioPanel pending mutations", () => {
 
     expect(screen.getByText("Ready")).toBeInTheDocument()
     expect(screen.getByText(/Exports: 0 mirrored/i)).toBeInTheDocument()
-    expect(screen.getByText(/New generated audio is not written here automatically/i)).toBeInTheDocument()
-    expect(screen.getByText(/use Mirror All or Browser Export to copy it/i)).toBeInTheDocument()
+    expect(screen.queryByText(/New generated audio is not written here automatically/i)).not.toBeInTheDocument()
+    await user.hover(screen.getByRole("button", { name: "Browser Export Folder Timing" }))
+    expect(await screen.findAllByText(/use Mirror All or Browser Export to copy it/i)).not.toHaveLength(0)
     expect(screen.queryByLabelText(/path/i)).not.toBeInTheDocument()
 
     await user.click(screen.getByRole("button", { name: "Mirror All" }))

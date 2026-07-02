@@ -231,12 +231,13 @@ export function GeneratedAudioPanel({
               <Badge variant={isBrowserExportWritable ? "accent" : "secondary"}>
                 {browserExportBadgeLabel(browserExportSupported, browserExportTarget, browserExportPermission)}
               </Badge>
+              <ExportTimingTooltip
+                label="Browser Export Folder Timing"
+                text={browserExportWriteTiming(browserExportSupported, browserExportTarget)}
+              />
             </div>
             <div className="mt-1 text-xs text-muted-foreground">
               {browserExportSummary(browserExportSupported, browserExportTarget, browserExportPermission, browserExportLedger)}
-            </div>
-            <div className="mt-1 text-xs text-muted-foreground">
-              {browserExportWriteTiming(browserExportSupported, browserExportTarget)}
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
