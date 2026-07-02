@@ -150,6 +150,9 @@ export function GeneratedAudioPanel({
             <div className="mt-1 text-xs text-muted-foreground">
               {serverExportSummary(persistenceMode, serverExportStatus)}
             </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {serverExportWriteTiming(persistenceMode, serverExportStatus)}
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button
@@ -263,6 +266,19 @@ function serverExportSummary(
     return `${exportedCount} exported, ${failedCount} failed.`
   }
   return `${exportedCount} exported.`
+}
+
+function serverExportWriteTiming(
+  persistenceMode: GeneratedAudioPersistenceMode,
+  status: GeneratedAudioServerExportStatus | null
+) {
+  if (persistenceMode !== "server") {
+    return "Generated audio stays in browser storage until the server archive is available."
+  }
+  if (!status?.available) {
+    return "Generated audio saves to the server archive on generation; configure the server export directory to mirror it."
+  }
+  return "Generated audio saves to the server archive on generation; use Export to mirror or retry the server export folder."
 }
 
 function GeneratedAudioSkeletonList() {

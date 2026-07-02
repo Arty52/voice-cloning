@@ -41,6 +41,8 @@ describe("GeneratedAudioPanel pending mutations", () => {
     })
 
     expect(screen.getByText("Configured")).toBeInTheDocument()
+    expect(screen.getByText(/saves to the server archive on generation/i)).toBeInTheDocument()
+    expect(screen.getByText(/use export to mirror or retry the server export folder/i)).toBeInTheDocument()
     expect(screen.queryByLabelText(/path/i)).not.toBeInTheDocument()
 
     await user.click(screen.getByRole("button", { name: "Export All" }))
@@ -63,6 +65,7 @@ describe("GeneratedAudioPanel pending mutations", () => {
     })
 
     expect(screen.getByText("Not Configured")).toBeInTheDocument()
+    expect(screen.getByText(/configure the server export directory to mirror it/i)).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Export All" })).toBeDisabled()
     expect(screen.getByRole("button", { name: /export generated audio for default voice/i })).toBeDisabled()
   })
