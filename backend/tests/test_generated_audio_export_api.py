@@ -167,10 +167,17 @@ def test_generated_audio_export_all_exports_all_items(tmp_path: Path) -> None:
 
 
 def test_generated_audio_export_is_idempotent_for_same_audio_hash(tmp_path: Path) -> None:
-    client, _service = make_client(tmp_path, export_dir=tmp_path / "exports")
+    export_dir = tmp_path / "exports"
+    client, _service = make_client(tmp_path, export_dir=export_dir)
     save_audio(client, "audio-one")
 
     first_response = client.post("/api/generated-audio/audio-one/export")
+    first_payload = first_response.json()
+    archive_root = export_dir / ARCHIVE_ROOT_NAME
+    sidecar_path = (archive_root / str(first_payload["item"]["filename"])).with_suffix(".json")
+    index_path = archive_root / "index" / "generated-audio.jsonl"
+    first_sidecar = sidecar_path.read_text(encoding="utf-8")
+    first_index = index_path.read_text(encoding="utf-8")
     second_response = client.post("/api/generated-audio/audio-one/export")
     status_response = client.get("/api/generated-audio/export-status")
 
@@ -178,6 +185,9 @@ def test_generated_audio_export_is_idempotent_for_same_audio_hash(tmp_path: Path
     assert second_response.status_code == 200
     assert second_response.json()["alreadyExported"] is True
     assert len(status_response.json()["items"]) == 1
+    assert sidecar_path.read_text(encoding="utf-8") == first_sidecar
+    assert index_path.read_text(encoding="utf-8") == first_index
+    assert len(index_path.read_text(encoding="utf-8").splitlines()) == 1
 
 
 def test_generated_audio_export_records_new_ledger_entry_for_changed_hash(tmp_path: Path) -> None:
