@@ -61,6 +61,7 @@ export type BrowserArchiveExportWriteResult = {
   exportedAt: string
   filename: string
   indexFilename: string
+  sha256: string
   sidecarFilename: string
 }
 
@@ -168,18 +169,19 @@ export async function exportGeneratedAudioToBrowserDirectory(
     throw new BrowserArchiveExportPermissionError()
   }
   try {
+    const exportItem = await withExportSha256(item, blob)
     const archiveRoot = await target.handle.getDirectoryHandle(BROWSER_ARCHIVE_ROOT_NAME, { create: true })
     const tmpDirectory = await archiveRoot.getDirectoryHandle(BROWSER_EXPORT_TMP_DIR, { create: true })
-    const descriptor = buildGeneratedAudioExportDescriptor(item)
+    const descriptor = buildGeneratedAudioExportDescriptor(exportItem)
     const audioDirectory = await getOrCreateDirectory(archiveRoot, [
       BROWSER_GENERATED_AUDIO_EXPORT_DIR,
       descriptor.year,
       descriptor.month,
     ])
-    const audioResult = await writeAudioFile(audioDirectory, tmpDirectory, item, blob)
+    const audioResult = await writeAudioFile(audioDirectory, tmpDirectory, exportItem, blob)
     const exportedAt = new Date().toISOString()
     const sidecarFilename = replaceExtension(audioResult.filename, ".json")
-    const sidecarPayload = buildGeneratedAudioExportSidecar(item, audioResult.filename, exportedAt)
+    const sidecarPayload = buildGeneratedAudioExportSidecar(exportItem, audioResult.filename, exportedAt)
     await writeTextFileViaTemp(
       audioDirectory,
       tmpDirectory,
@@ -193,6 +195,7 @@ export async function exportGeneratedAudioToBrowserDirectory(
       exportedAt,
       filename: `${BROWSER_GENERATED_AUDIO_EXPORT_DIR}/${descriptor.year}/${descriptor.month}/${audioResult.filename}`,
       indexFilename: `${BROWSER_GENERATED_AUDIO_INDEX_DIR}/${BROWSER_GENERATED_AUDIO_INDEX_FILENAME}`,
+      sha256: exportItem.sha256,
       sidecarFilename: `${BROWSER_GENERATED_AUDIO_EXPORT_DIR}/${descriptor.year}/${descriptor.month}/${sidecarFilename}`,
     }
   } catch (caught) {
@@ -201,6 +204,16 @@ export async function exportGeneratedAudioToBrowserDirectory(
     }
     throw new BrowserArchiveExportWriteError(caught instanceof Error ? caught.message : undefined)
   }
+}
+
+async function withExportSha256(
+  item: GeneratedAudioExportable,
+  blob: Blob
+): Promise<GeneratedAudioExportable & { sha256: string }> {
+  if (item.sha256) {
+    return { ...item, sha256: item.sha256 }
+  }
+  return { ...item, sha256: await sha256Blob(blob) }
 }
 
 async function saveBrowserArchiveExportTargetRecord(record: BrowserArchiveExportTargetRecord): Promise<void> {

@@ -170,7 +170,7 @@ export function useArchiveExportDirectory(items: GeneratedResult[]) {
         exportedAt: result.exportedAt,
         filename: result.filename,
         lastError: null,
-        sha256: item.sha256,
+        sha256: result.sha256,
         status: "exported",
         targetHandleId: target.handleId,
         updatedAt: new Date().toISOString(),

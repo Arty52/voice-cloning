@@ -40,12 +40,17 @@ describe("browser generated audio export target", () => {
     const target = targetRecord(root)
     const blob = new Blob(["audio"], { type: "audio/mpeg" })
     const item = await exportItem(blob, { sha256: null })
+    const expectedSha256 = await sha256Blob(blob)
 
     const result = await exportGeneratedAudioToBrowserDirectory(target, item, blob)
 
     expect(result).toMatchObject({
       alreadyExported: false,
-      filename: "generated-audio/2026/07/20260701T184522Z--default-voice--eleven-multilingual-v2--audio-id.mp3",
+      filename: `generated-audio/2026/07/20260701T184522Z--default-voice--eleven-multilingual-v2--${expectedSha256.slice(
+        0,
+        8
+      )}.mp3`,
+      sha256: expectedSha256,
     })
     const archiveRoot = root.directory("Voice Clone Lab Archive")
     const audioDirectory = archiveRoot.directory("generated-audio").directory("2026").directory("07")
@@ -53,8 +58,10 @@ describe("browser generated audio export target", () => {
     const sidecar = JSON.parse(await (await audioDirectory.file(result.sidecarFilename.split("/").at(-1) ?? "")).text()) as {
       id: string
       filePath?: string
+      sha256: string
     }
     expect(sidecar.id).toBe("audio-id")
+    expect(sidecar.sha256).toBe(expectedSha256)
     expect(sidecar).not.toHaveProperty("filePath")
     expect(await (await archiveRoot.directory("index").file("generated-audio.jsonl")).text()).toContain('"id":"audio-id"')
   })
@@ -80,6 +87,9 @@ describe("browser generated audio export target", () => {
     const target = targetRecord(root)
     const blob = new Blob(["audio"], { type: "audio/mpeg" })
     const item = await exportItem(blob, { sha256: null })
+    const expectedFilename = `20260701T184522Z--default-voice--eleven-multilingual-v2--${(
+      await sha256Blob(blob)
+    ).slice(0, 8)}.mp3`
 
     await expect(exportGeneratedAudioToBrowserDirectory(target, item, blob)).rejects.toBeInstanceOf(
       BrowserArchiveExportWriteError
@@ -87,10 +97,8 @@ describe("browser generated audio export target", () => {
 
     const archiveRoot = root.directory("Voice Clone Lab Archive")
     const audioDirectory = archiveRoot.directory("generated-audio").directory("2026").directory("07")
-    expect(
-      await (await audioDirectory.file("20260701T184522Z--default-voice--eleven-multilingual-v2--audio-id.mp3")).text()
-    ).toBe("audio")
-    expect(audioDirectory.files.has("20260701T184522Z--default-voice--eleven-multilingual-v2--audio-id.json")).toBe(false)
+    expect(await (await audioDirectory.file(expectedFilename)).text()).toBe("audio")
+    expect(audioDirectory.files.has(expectedFilename.replace(".mp3", ".json"))).toBe(false)
   })
 
   it("uses the next deterministic filename when a different audio file already exists", async () => {
@@ -126,6 +134,25 @@ describe("browser generated audio export target", () => {
 
     expect(result.alreadyExported).toBe(true)
     expect(result.filename).toBe(`generated-audio/2026/07/${expectedFilename}`)
+  })
+
+  it("uses computed hashes to keep legacy hashless exports idempotent", async () => {
+    const root = new MemoryDirectoryHandle("Exports")
+    const target = targetRecord(root)
+    const blob = new Blob(["audio"], { type: "audio/mpeg" })
+    const item = await exportItem(blob, { sha256: null })
+    const expectedSha256 = await sha256Blob(blob)
+
+    const firstResult = await exportGeneratedAudioToBrowserDirectory(target, item, blob)
+    const retryResult = await exportGeneratedAudioToBrowserDirectory(target, item, blob)
+
+    expect(firstResult.sha256).toBe(expectedSha256)
+    expect(retryResult.alreadyExported).toBe(true)
+    expect(retryResult.filename).toBe(firstResult.filename)
+    const archiveRoot = root.directory("Voice Clone Lab Archive")
+    const audioDirectory = archiveRoot.directory("generated-audio").directory("2026").directory("07")
+    const audioFiles = [...audioDirectory.files.keys()].filter((filename) => filename.endsWith(".mp3"))
+    expect(audioFiles).toEqual([firstResult.filename.split("/").at(-1)])
   })
 })
 
