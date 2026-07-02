@@ -848,6 +848,19 @@ async function chooseSampleProcessingPreset(
   await user.click(screen.getByRole("menuitemradio", { name: optionName }))
 }
 
+async function chooseGenerateInputMode(
+  user: ReturnType<typeof userEvent.setup>,
+  optionName: "Text Ranges" | "Dialogue Rows"
+) {
+  await user.click(screen.getByRole("combobox", { name: "Input Mode" }))
+  await user.click(screen.getByRole("option", { name: optionName }))
+}
+
+async function chooseGenerateSourceVoice(user: ReturnType<typeof userEvent.setup>, optionName: string) {
+  await user.click(screen.getByRole("combobox", { name: "Source Voice" }))
+  await user.click(screen.getByRole("option", { name: optionName }))
+}
+
 function expectVoicePresetSelection(control: HTMLElement, selected: boolean) {
   expectSubtleSelectorSelection(control, selected)
 }
@@ -1133,6 +1146,18 @@ describe("App", () => {
       configurable: true,
       value: scrollIntoView,
     })
+    Object.defineProperty(HTMLElement.prototype, "hasPointerCapture", {
+      configurable: true,
+      value: vi.fn(() => false),
+    })
+    Object.defineProperty(HTMLElement.prototype, "releasePointerCapture", {
+      configurable: true,
+      value: vi.fn(),
+    })
+    Object.defineProperty(HTMLElement.prototype, "setPointerCapture", {
+      configurable: true,
+      value: vi.fn(),
+    })
     Object.defineProperty(window, "requestAnimationFrame", {
       configurable: true,
       value: vi.fn((callback: FrameRequestCallback) => {
@@ -1220,24 +1245,44 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "Voices" })).not.toHaveAttribute("aria-current")
   })
 
-  it("links from the generate source row to voice selection", async () => {
+  it("selects the generate source voice in place", async () => {
     window.history.replaceState(null, "", "/#generate")
+    const baseFetch = mockFetch()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).split("?")[0] === "/api/voices" && !init) {
+          return okJson({ defaultVoiceId: "default", voices: [defaultVoice, voiceCloneVoice] })
+        }
+        return baseFetch(input, init)
+      })
+    )
     const user = userEvent.setup()
     renderApp()
 
     const generateSection = document.querySelector('[data-section-id="generate"]')
     expect(generateSection).not.toHaveClass("hidden")
-    expect(await within(generateSection as HTMLElement).findByText("Default voice")).toBeInTheDocument()
+    await waitFor(() =>
+      expect(within(generateSection as HTMLElement).getByRole("combobox", { name: "Source Voice" })).toHaveTextContent(
+        "Default voice"
+      )
+    )
 
-    const changeVoiceLink = await screen.findByRole("link", { name: "Change Voice" })
-    expect(changeVoiceLink).toHaveAttribute("href", "#voices")
+    await chooseGenerateSourceVoice(user, "Voice_Clone_01")
 
-    await user.click(changeVoiceLink)
+    expect(window.location.hash).toBe("#generate")
+    expect(document.querySelector('[data-section-id="voices"]')).toHaveClass("hidden")
+    expect(document.querySelector('[data-section-id="generate"]')).not.toHaveClass("hidden")
+    expect(screen.getByRole("combobox", { name: "Source Voice" })).toHaveTextContent("Voice_Clone_01")
 
-    await waitFor(() => expect(window.location.hash).toBe("#voices"))
-    expect(screen.getByRole("button", { name: "Voices" })).toHaveAttribute("aria-current", "page")
-    expect(document.querySelector('[data-section-id="voices"]')).not.toHaveClass("hidden")
-    expect(document.querySelector('[data-section-id="generate"]')).toHaveClass("hidden")
+    await user.click(screen.getByRole("button", { name: /^Generate$/ }))
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/speech", expect.objectContaining({ method: "POST" })))
+    const speechCall = vi.mocked(fetch).mock.calls.find(
+      ([url, init]) => String(url) === "/api/speech" && init?.method === "POST"
+    )
+    const body = speechCall?.[1]?.body as FormData
+    expect(body.get("voiceId")).toBe("voice-clone-01")
   })
 
   it("keeps voice assignments active after a safe edit inside assigned text", async () => {
@@ -1573,7 +1618,7 @@ describe("App", () => {
 
     await screen.findByText("default/default-voice.mp3")
     fireEvent.change(screen.getByLabelText(/text to speak/i), { target: { value: "Skippy: Hello." } })
-    await user.click(screen.getByRole("radio", { name: "Dialogue Rows" }))
+    await chooseGenerateInputMode(user, "Dialogue Rows")
     await user.click(screen.getByRole("button", { name: "Import Dialogue" }))
     await user.click(screen.getByRole("button", { name: "Map Voice" }))
     await user.click(screen.getByRole("button", { name: "Default voice" }))
@@ -1642,7 +1687,7 @@ describe("App", () => {
     fireEvent.change(screen.getByLabelText(/text to speak/i), {
       target: { value: "Skippy: One.\nSkippy: Two." },
     })
-    await user.click(screen.getByRole("radio", { name: "Dialogue Rows" }))
+    await chooseGenerateInputMode(user, "Dialogue Rows")
     await user.click(screen.getByRole("button", { name: "Import Dialogue" }))
     await user.click(screen.getByRole("button", { name: "Map Voice" }))
     await user.click(screen.getByRole("button", { name: "Default voice" }))
@@ -1721,7 +1766,7 @@ describe("App", () => {
     fireEvent.change(screen.getByLabelText(/text to speak/i), {
       target: { value: "Skippy: One.\nSkippy: Two." },
     })
-    await user.click(screen.getByRole("radio", { name: "Dialogue Rows" }))
+    await chooseGenerateInputMode(user, "Dialogue Rows")
     await user.click(screen.getByRole("button", { name: "Import Dialogue" }))
     await user.click(screen.getByRole("button", { name: "Map Voice" }))
     await user.click(screen.getByRole("button", { name: "Default voice" }))
@@ -1809,7 +1854,7 @@ describe("App", () => {
 
     await screen.findByText("default/default-voice.mp3")
     fireEvent.change(screen.getByLabelText(/text to speak/i), { target: { value: "Skippy: Hello." } })
-    await user.click(screen.getByRole("radio", { name: "Dialogue Rows" }))
+    await chooseGenerateInputMode(user, "Dialogue Rows")
     await user.click(screen.getByRole("button", { name: "Import Dialogue" }))
     await user.click(screen.getByRole("button", { name: "Map Voice" }))
     await user.click(screen.getByRole("button", { name: "Default voice" }))
@@ -1908,7 +1953,7 @@ describe("App", () => {
     fireEvent.change(screen.getByLabelText(/text to speak/i), {
       target: { value: "Skippy: One.\nSkippy: Two." },
     })
-    await user.click(screen.getByRole("radio", { name: "Dialogue Rows" }))
+    await chooseGenerateInputMode(user, "Dialogue Rows")
     await user.click(screen.getByRole("button", { name: "Import Dialogue" }))
     await user.click(screen.getByRole("button", { name: "Map Voice" }))
     await user.click(screen.getByRole("button", { name: "Default voice" }))
@@ -4162,7 +4207,7 @@ describe("App", () => {
 
     expect(AudioMock).toHaveBeenCalledWith("/api/voices/voice-clone-01/sample")
     expect(play).toHaveBeenCalled()
-    expect(screen.getByText((_, element) => element?.textContent === "Source: Voice_Clone_01")).toBeInTheDocument()
+    expect(screen.getByRole("combobox", { name: "Source Voice" })).toHaveTextContent("Voice_Clone_01")
   })
 
   it("renames a voice from the action menu", async () => {
