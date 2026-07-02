@@ -164,8 +164,8 @@ export function useGeneratedAudioLibrary() {
     if (persistenceModeRef.current === "server") {
       try {
         const saved = await saveGeneratedAudioArchive(input, limitBytes)
-        await markGeneratedAudioArchiveImported([saved.item.id])
-        await markGeneratedAudioArchiveCleared(saved.prunedIds)
+        await safeMarkGeneratedAudioArchiveImported([saved.item.id])
+        await safeMarkGeneratedAudioArchiveCleared(saved.prunedIds)
         const archive = await listGeneratedAudioArchive()
         const nextItems = replaceArchivedGeneratedAudioItems(archive.items)
         setStorageLimitBytes(archive.usage.limitBytes)
@@ -223,7 +223,7 @@ export function useGeneratedAudioLibrary() {
           ? await deleteGeneratedAudioArchive(id)
           : await deleteGeneratedAudio(id)
       if (persistenceModeRef.current === "server") {
-        await markGeneratedAudioArchiveCleared([id])
+        await safeMarkGeneratedAudioArchiveCleared([id])
       }
       removeGeneratedAudioItemFromState(id)
       setGeneratedAudioUsage(usage)
@@ -258,7 +258,7 @@ export function useGeneratedAudioLibrary() {
           : await clearGeneratedAudio()
       if (persistenceModeRef.current === "server") {
         const browserRecords = await safeListStoredGeneratedAudio()
-        await markGeneratedAudioArchiveCleared([
+        await safeMarkGeneratedAudioArchiveCleared([
           ...generatedAudioItemsRef.current.map((item) => item.id),
           ...browserRecords.map((record) => record.id),
         ])
@@ -283,7 +283,7 @@ export function useGeneratedAudioLibrary() {
         persistenceModeRef.current === "server"
           ? await updateGeneratedAudioArchiveStorageLimitBytes(nextLimitBytes)
           : await updateGeneratedAudioStorageLimitBytes(nextLimitBytes)
-      await markGeneratedAudioArchiveCleared(result.prunedIds)
+      await safeMarkGeneratedAudioArchiveCleared(result.prunedIds)
       if (persistenceModeRef.current === "server") {
         const archive = await listGeneratedAudioArchive()
         replaceArchivedGeneratedAudioItems(archive.items)
@@ -370,8 +370,8 @@ async function importBrowserGeneratedAudioToArchive(
     }
   }
 
-  await markGeneratedAudioArchiveImported(importedIds)
-  await markGeneratedAudioArchiveConflicted(conflictIds)
+  await safeMarkGeneratedAudioArchiveImported(importedIds)
+  await safeMarkGeneratedAudioArchiveConflicted(conflictIds)
 
   return {
     conflictIds,
@@ -385,6 +385,26 @@ async function safeListStoredGeneratedAudio() {
     return await listGeneratedAudio()
   } catch {
     return []
+  }
+}
+
+async function safeMarkGeneratedAudioArchiveImported(ids: Iterable<string>) {
+  await ignoreGeneratedAudioArchiveBookkeepingError(() => markGeneratedAudioArchiveImported(ids))
+}
+
+async function safeMarkGeneratedAudioArchiveCleared(ids: Iterable<string>) {
+  await ignoreGeneratedAudioArchiveBookkeepingError(() => markGeneratedAudioArchiveCleared(ids))
+}
+
+async function safeMarkGeneratedAudioArchiveConflicted(ids: Iterable<string>) {
+  await ignoreGeneratedAudioArchiveBookkeepingError(() => markGeneratedAudioArchiveConflicted(ids))
+}
+
+async function ignoreGeneratedAudioArchiveBookkeepingError(operation: () => Promise<void>) {
+  try {
+    await operation()
+  } catch {
+    // Local migration bookkeeping is best-effort; the server archive remains canonical.
   }
 }
 

@@ -337,6 +337,31 @@ describe("useGeneratedAudioLibrary", () => {
     expect(screen.getByTestId("first-url")).toHaveTextContent("/api/generated-audio/new-server-audio/audio")
   })
 
+  it("keeps successful server archive saves when local migration bookkeeping fails", async () => {
+    const user = userEvent.setup()
+    const fetchMock = mockArchive()
+
+    render(<GeneratedAudioHarness onSnapshot={() => undefined} />)
+
+    await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("success"))
+    const openSpy = vi.spyOn(indexedDB, "open").mockImplementation(() => {
+      throw new Error("IndexedDB blocked")
+    })
+    try {
+      await user.click(screen.getByRole("button", { name: /save new/i }))
+      await waitFor(() => expect(screen.getByTestId("item-count")).toHaveTextContent("1"))
+
+      const saveCall = fetchMock.mock.calls.find(
+        ([input, init]) => String(input) === "/api/generated-audio" && init?.method === "POST"
+      )
+      expect(saveCall).toBeDefined()
+      expect(screen.getByTestId("first-url")).toHaveTextContent("/api/generated-audio/new-server-audio/audio")
+      expect(screen.getByTestId("error")).toHaveTextContent("")
+    } finally {
+      openSpy.mockRestore()
+    }
+  })
+
   it("reports IndexedDB migration conflicts without deleting browser data", async () => {
     await saveGeneratedAudio(audioInput({ id: "conflicting-audio" }), 20)
     expect((await listGeneratedAudio()).map((record) => record.id)).toContain("conflicting-audio")
