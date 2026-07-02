@@ -5,6 +5,7 @@ import {
   BrowserArchiveExportUnsupportedError,
   exportGeneratedAudioToBrowserDirectory,
   forgetBrowserArchiveExportDirectory,
+  isBrowserArchiveExportSelectionCanceled,
   isBrowserArchiveExportSupported,
   queryBrowserArchiveExportPermission,
   readBrowserArchiveExportDirectory,
@@ -102,6 +103,10 @@ export function useArchiveExportDirectory(items: GeneratedResult[]) {
       setBrowserExportLedger(await listBrowserArchiveExportLedger(target.handleId))
       setBrowserExportError(null)
     } catch (caught) {
+      if (isBrowserArchiveExportSelectionCanceled(caught)) {
+        setBrowserExportError(null)
+        return
+      }
       setBrowserExportError(formatBrowserExportError(caught))
     } finally {
       clearBrowserExportMutation(mutation)

@@ -93,6 +93,10 @@ export function isBrowserArchiveExportSupported() {
   return typeof (window as WindowWithDirectoryPicker).showDirectoryPicker === "function"
 }
 
+export function isBrowserArchiveExportSelectionCanceled(value: unknown) {
+  return isNamedBrowserError(value, "AbortError")
+}
+
 export async function selectBrowserArchiveExportDirectory(): Promise<BrowserArchiveExportTargetRecord> {
   const showDirectoryPicker = (window as WindowWithDirectoryPicker).showDirectoryPicker
   if (typeof showDirectoryPicker !== "function") {
@@ -350,5 +354,13 @@ function createBrowserArchiveExportHandleId() {
 }
 
 function isNotFoundError(value: unknown) {
-  return value instanceof DOMException ? value.name === "NotFoundError" : false
+  return isNamedBrowserError(value, "NotFoundError")
+}
+
+function isNamedBrowserError(value: unknown, name: string) {
+  const DomExceptionCtor = globalThis.DOMException
+  if (typeof DomExceptionCtor === "function" && value instanceof DomExceptionCtor) {
+    return value.name === name
+  }
+  return value instanceof Error && value.name === name
 }
