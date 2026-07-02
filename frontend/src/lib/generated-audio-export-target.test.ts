@@ -66,6 +66,18 @@ describe("browser generated audio export target", () => {
     expect(await (await archiveRoot.directory("index").file("generated-audio.jsonl")).text()).toContain('"id":"audio-id"')
   })
 
+  it("can reuse caller-granted permission without requesting it again", async () => {
+    const root = new MemoryDirectoryHandle("Exports", { permission: "prompt", requestPermission: "denied" })
+    const target = targetRecord(root)
+    const blob = new Blob(["audio"], { type: "audio/mpeg" })
+
+    await expect(
+      exportGeneratedAudioToBrowserDirectory(target, await exportItem(blob), blob, { permissionGranted: true })
+    ).resolves.toMatchObject({ alreadyExported: false })
+
+    expect(root.requestPermissionCalls).toBe(0)
+  })
+
   it("keeps exports retryable when the temp audio write fails", async () => {
     const root = new MemoryDirectoryHandle("Exports", { failWrite: (name) => name.endsWith(".part") })
     const target = targetRecord(root)
@@ -208,6 +220,7 @@ class MemoryDirectoryHandle implements BrowserFileSystemDirectoryHandle {
   readonly files = new Map<string, MemoryFileHandle>()
   readonly kind = "directory"
   readonly name: string
+  requestPermissionCalls = 0
   private permission: BrowserArchiveExportPermissionState
   private readonly requestPermissionResult: BrowserArchiveExportPermissionState
   private readonly failWrite: (name: string) => boolean
@@ -259,6 +272,7 @@ class MemoryDirectoryHandle implements BrowserFileSystemDirectoryHandle {
   }
 
   async requestPermission() {
+    this.requestPermissionCalls += 1
     this.permission = this.requestPermissionResult
     return this.permission
   }

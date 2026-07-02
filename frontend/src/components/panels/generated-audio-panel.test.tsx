@@ -46,8 +46,10 @@ describe("GeneratedAudioPanel pending mutations", () => {
     expect(await screen.findAllByText(/use export to mirror or retry the server export folder/i)).not.toHaveLength(0)
     expect(screen.queryByLabelText(/path/i)).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole("button", { name: "Export All" }))
-    await user.click(screen.getAllByRole("button", { name: "Refresh" })[0])
+    const serverExportControls = within(screen.getByRole("group", { name: "Server Export" }))
+
+    await user.click(serverExportControls.getByRole("button", { name: "Export All" }))
+    await user.click(serverExportControls.getByRole("button", { name: "Refresh" }))
 
     expect(onServerExportAll).toHaveBeenCalledTimes(1)
     expect(onServerExportStatusRefresh).toHaveBeenCalledTimes(1)

@@ -53,17 +53,21 @@ export function buildGeneratedAudioExportDescriptor(item: GeneratedAudioExportab
 }
 
 export function buildGeneratedAudioExportFilename(item: GeneratedAudioExportable): string {
-  return buildGeneratedAudioExportFilenameCandidates(item)[0]
+  const firstCandidate = buildGeneratedAudioExportFilenameCandidates(item)[Symbol.iterator]().next()
+  if (firstCandidate.done) {
+    throw new Error("Unable to allocate a generated audio export filename.")
+  }
+  return firstCandidate.value
 }
 
-export function buildGeneratedAudioExportFilenameCandidates(item: GeneratedAudioExportable): string[] {
+export function* buildGeneratedAudioExportFilenameCandidates(item: GeneratedAudioExportable): Iterable<string> {
   const descriptor = buildGeneratedAudioExportDescriptor(item)
   const base = `${descriptor.compactCreatedAt}--${descriptor.voiceSlug}--${descriptor.modelSlug}--${descriptor.sha8}`
-  return [
-    `${base}${descriptor.extension}`,
-    `${base}--${descriptor.idSlug}${descriptor.extension}`,
-    ...Array.from({ length: 998 }, (_, index) => `${base}--${descriptor.idSlug}-${index + 2}${descriptor.extension}`),
-  ]
+  yield `${base}${descriptor.extension}`
+  yield `${base}--${descriptor.idSlug}${descriptor.extension}`
+  for (let index = 2; index < 1000; index += 1) {
+    yield `${base}--${descriptor.idSlug}-${index}${descriptor.extension}`
+  }
 }
 
 export function buildGeneratedAudioExportRelativePath(item: GeneratedAudioExportable): string {

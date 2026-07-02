@@ -170,7 +170,9 @@ export function useArchiveExportDirectory(items: GeneratedResult[]) {
         throw new BrowserArchiveExportPermissionError()
       }
       const blob = await fetchGeneratedAudioBlob(item)
-      const result = await exportGeneratedAudioToBrowserDirectory(target, exportable, blob)
+      const result = await exportGeneratedAudioToBrowserDirectory(target, exportable, blob, {
+        permissionGranted: true,
+      })
       return saveBrowserArchiveExportLedgerEntry({
         audioId: item.id,
         exportedAt: result.exportedAt,

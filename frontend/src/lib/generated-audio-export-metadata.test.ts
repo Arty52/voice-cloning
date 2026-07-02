@@ -34,7 +34,7 @@ describe("generated audio export metadata", () => {
     expect(buildGeneratedAudioExportRelativePath(item)).toBe(
       "generated-audio/2026/07/20260701T184522Z--default-voice--eleven-multilingual-v2--abcdef12.mp3"
     )
-    expect(buildGeneratedAudioExportFilenameCandidates(item).slice(0, 3)).toEqual([
+    expect(take(buildGeneratedAudioExportFilenameCandidates(item), 3)).toEqual([
       "20260701T184522Z--default-voice--eleven-multilingual-v2--abcdef12.mp3",
       "20260701T184522Z--default-voice--eleven-multilingual-v2--abcdef12--audio-id.mp3",
       "20260701T184522Z--default-voice--eleven-multilingual-v2--abcdef12--audio-id-2.mp3",
@@ -61,3 +61,14 @@ describe("generated audio export metadata", () => {
     expect(sidecar).not.toHaveProperty("filePath")
   })
 })
+
+function take<T>(values: Iterable<T>, count: number): T[] {
+  const result: T[] = []
+  for (const value of values) {
+    result.push(value)
+    if (result.length === count) {
+      break
+    }
+  }
+  return result
+}

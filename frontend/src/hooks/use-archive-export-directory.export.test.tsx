@@ -101,6 +101,12 @@ describe("useArchiveExportDirectory exports", () => {
     })
 
     expect(exportMocks.calls).toEqual(["permission", "fetch", "export"])
+    expect(exportMocks.exportToDirectory).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ id: "audio-id" }),
+      expect.any(Blob),
+      { permissionGranted: true }
+    )
     expect(exportMocks.saveLedger).toHaveBeenCalledWith(expect.objectContaining({ sha256: "computed-sha" }))
   })
 })

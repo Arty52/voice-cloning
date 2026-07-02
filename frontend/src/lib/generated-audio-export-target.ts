@@ -65,6 +65,10 @@ export type BrowserArchiveExportWriteResult = {
   sidecarFilename: string
 }
 
+export type BrowserArchiveExportWriteOptions = {
+  permissionGranted?: boolean
+}
+
 export class BrowserArchiveExportUnsupportedError extends Error {
   constructor(message = "Browser folder export is not supported in this browser.") {
     super(message)
@@ -162,9 +166,10 @@ export async function queryBrowserArchiveExportPermission(
 export async function exportGeneratedAudioToBrowserDirectory(
   target: BrowserArchiveExportTargetRecord,
   item: GeneratedAudioExportable,
-  blob: Blob
+  blob: Blob,
+  options: BrowserArchiveExportWriteOptions = {}
 ): Promise<BrowserArchiveExportWriteResult> {
-  const permission = await ensureBrowserArchiveExportPermission(target)
+  const permission = options.permissionGranted ? "granted" : await ensureBrowserArchiveExportPermission(target)
   if (permission !== "granted") {
     throw new BrowserArchiveExportPermissionError()
   }
