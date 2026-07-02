@@ -39,13 +39,14 @@ export type GeneratedAudioExportDescriptor = {
 export function buildGeneratedAudioExportDescriptor(item: GeneratedAudioExportable): GeneratedAudioExportDescriptor {
   const createdAt = new Date(item.createdAt)
   const resolvedCreatedAt = Number.isNaN(createdAt.valueOf()) ? new Date(0) : createdAt
+  const idSlug = slug(item.id, "audio")
   return {
     compactCreatedAt: compactUtcTimestamp(resolvedCreatedAt),
     extension: extensionForContentType(item.contentType),
-    idSlug: slug(item.id, "audio"),
+    idSlug,
     modelSlug: slug(item.modelId, "model"),
     month: String(resolvedCreatedAt.getUTCMonth() + 1).padStart(2, "0"),
-    sha8: (item.sha256 || item.id).slice(0, 8),
+    sha8: (item.sha256 || idSlug).slice(0, 8),
     voiceSlug: slug(item.voiceName || item.appVoiceId || item.voiceId, "voice"),
     year: String(resolvedCreatedAt.getUTCFullYear()),
   }

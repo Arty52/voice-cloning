@@ -6,7 +6,13 @@ import {
   markGeneratedAudioArchiveImported,
   readGeneratedAudioArchiveMigrationState,
 } from "./generated-audio-archive-migration"
-import { GENERATED_AUDIO_DB_NAME } from "./generated-audio-storage"
+import {
+  GENERATED_AUDIO_ARCHIVE_STATE_STORE_NAME,
+  GENERATED_AUDIO_DB_NAME,
+  GENERATED_AUDIO_EXPORT_LEDGER_STORE_NAME,
+  GENERATED_AUDIO_EXPORT_TARGET_STORE_NAME,
+  GENERATED_AUDIO_STORE_NAME,
+} from "./generated-audio-storage"
 
 function deleteDatabase(name: string) {
   return new Promise<void>((resolve, reject) => {
@@ -14,6 +20,19 @@ function deleteDatabase(name: string) {
     request.onerror = () => reject(request.error)
     request.onsuccess = () => resolve()
     request.onblocked = () => reject(new Error(`Unable to delete ${name}; database is blocked.`))
+  })
+}
+
+function readObjectStoreNames(name: string) {
+  return new Promise<string[]>((resolve, reject) => {
+    const request = indexedDB.open(name)
+    request.onerror = () => reject(request.error)
+    request.onsuccess = () => {
+      const database = request.result
+      const storeNames = Array.from(database.objectStoreNames)
+      database.close()
+      resolve(storeNames)
+    }
   })
 }
 
@@ -50,6 +69,21 @@ describe("generated audio archive migration state", () => {
     expect(state.importedIds.has("audio-one")).toBe(true)
     expect(state.clearedIds.has("audio-two")).toBe(true)
     expect(localStorage.getItem(GENERATED_AUDIO_ARCHIVE_IMPORTED_IDS_KEY)).toBeNull()
+  })
+
+  it("creates the full generated audio schema when migration state opens a fresh database first", async () => {
+    await markGeneratedAudioArchiveImported(["audio-one"])
+
+    const storeNames = await readObjectStoreNames(GENERATED_AUDIO_DB_NAME)
+
+    expect(storeNames).toEqual(
+      expect.arrayContaining([
+        GENERATED_AUDIO_ARCHIVE_STATE_STORE_NAME,
+        GENERATED_AUDIO_EXPORT_LEDGER_STORE_NAME,
+        GENERATED_AUDIO_EXPORT_TARGET_STORE_NAME,
+        GENERATED_AUDIO_STORE_NAME,
+      ])
+    )
   })
 
   it("imports legacy localStorage ids once", async () => {

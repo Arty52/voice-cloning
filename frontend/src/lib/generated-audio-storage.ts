@@ -195,7 +195,7 @@ export function normalizeGeneratedAudioStorageLimitBytes(limitBytes: number): nu
   return normalizedLimitBytes
 }
 
-function openGeneratedAudioDatabase(): Promise<IDBDatabase> {
+export function openGeneratedAudioDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = window.indexedDB.open(GENERATED_AUDIO_DB_NAME, GENERATED_AUDIO_DATABASE_VERSION)
 

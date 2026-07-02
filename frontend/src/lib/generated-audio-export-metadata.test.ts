@@ -35,6 +35,12 @@ describe("generated audio export metadata", () => {
     )
   })
 
+  it("uses a path-safe id fallback when legacy records do not have sha256", () => {
+    expect(buildGeneratedAudioExportFilename({ ...item, id: "../legacy/audio id", sha256: null })).toBe(
+      "20260701T184522Z--default-voice--eleven-multilingual-v2--legacy-a.mp3"
+    )
+  })
+
   it("builds sidecar metadata without filesystem paths", () => {
     const sidecar = buildGeneratedAudioExportSidecar(item, "audio.mp3", "2026-07-01T18:45:23.000Z")
 

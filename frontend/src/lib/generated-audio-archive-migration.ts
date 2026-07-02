@@ -1,7 +1,6 @@
 import {
   GENERATED_AUDIO_ARCHIVE_STATE_STORE_NAME,
-  GENERATED_AUDIO_DATABASE_VERSION,
-  GENERATED_AUDIO_DB_NAME,
+  openGeneratedAudioDatabase,
 } from "@/lib/generated-audio-storage"
 
 export const GENERATED_AUDIO_ARCHIVE_IMPORTED_IDS_KEY = "voice-clone-generated-audio-archive-imported-ids"
@@ -80,7 +79,7 @@ async function appendIds(key: string, ids: Iterable<string>): Promise<void> {
 }
 
 async function readIdSet(key: string): Promise<Set<string>> {
-  const database = await openGeneratedAudioStateDatabase()
+  const database = await openGeneratedAudioDatabase()
   try {
     const transaction = database.transaction(GENERATED_AUDIO_ARCHIVE_STATE_STORE_NAME, "readonly")
     const request = transaction.objectStore(GENERATED_AUDIO_ARCHIVE_STATE_STORE_NAME).get(key)
@@ -92,7 +91,7 @@ async function readIdSet(key: string): Promise<Set<string>> {
 }
 
 async function putIdSet(key: string, ids: Set<string>): Promise<void> {
-  const database = await openGeneratedAudioStateDatabase()
+  const database = await openGeneratedAudioDatabase()
   try {
     const transaction = database.transaction(GENERATED_AUDIO_ARCHIVE_STATE_STORE_NAME, "readwrite")
     transaction.objectStore(GENERATED_AUDIO_ARCHIVE_STATE_STORE_NAME).put({
@@ -124,20 +123,6 @@ function readLegacyIdSet(key: string): Set<string> {
   } catch {
     return new Set<string>()
   }
-}
-
-function openGeneratedAudioStateDatabase(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = window.indexedDB.open(GENERATED_AUDIO_DB_NAME, GENERATED_AUDIO_DATABASE_VERSION)
-    request.onerror = () => reject(request.error ?? new Error("Unable to open generated audio archive state."))
-    request.onsuccess = () => resolve(request.result)
-    request.onupgradeneeded = () => {
-      const database = request.result
-      if (!database.objectStoreNames.contains(GENERATED_AUDIO_ARCHIVE_STATE_STORE_NAME)) {
-        database.createObjectStore(GENERATED_AUDIO_ARCHIVE_STATE_STORE_NAME, { keyPath: "key" })
-      }
-    }
-  })
 }
 
 function idbRequest<T>(request: IDBRequest<T>): Promise<T> {
