@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { ComponentProps } from "react"
 import { describe, expect, it, vi } from "vitest"
@@ -84,8 +84,10 @@ describe("GeneratedAudioPanel pending mutations", () => {
       },
     })
 
-    expect(screen.getByRole("button", { name: "Refresh" })).toBeDisabled()
-    expect(screen.getByRole("button", { name: "Export All" })).toBeDisabled()
+    const serverExportControls = within(screen.getByRole("group", { name: "Server Export" }))
+
+    expect(serverExportControls.getByRole("button", { name: "Refresh" })).toBeDisabled()
+    expect(serverExportControls.getByRole("button", { name: "Export All" })).toBeDisabled()
     expect(screen.getByRole("button", { name: /export generated audio for default voice/i })).toBeDisabled()
   })
 

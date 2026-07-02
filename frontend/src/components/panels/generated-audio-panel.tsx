@@ -170,7 +170,7 @@ export function GeneratedAudioPanel({
         </div>
       </div>
 
-      <div className="mb-4 rounded-md border border-border bg-background/60 p-3">
+      <div aria-label="Server Export" className="mb-4 rounded-md border border-border bg-background/60 p-3" role="group">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-sm font-medium">
@@ -218,7 +218,11 @@ export function GeneratedAudioPanel({
         ) : null}
       </div>
 
-      <div className="mb-4 rounded-md border border-border bg-background/60 p-3">
+      <div
+        aria-label="Browser Export Folder"
+        className="mb-4 rounded-md border border-border bg-background/60 p-3"
+        role="group"
+      >
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-sm font-medium">
