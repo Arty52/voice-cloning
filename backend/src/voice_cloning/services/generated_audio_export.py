@@ -162,6 +162,9 @@ class GeneratedAudioExportService:
             )
         return True, self.export_target.target_id, entries
 
+    def has_configured_target(self) -> bool:
+        return self.export_target is not None
+
     def _save_entry(
         self,
         item: GeneratedAudioMetadata,

@@ -77,6 +77,7 @@ def create_generated_audio_router(
             )
         except GeneratedAudioArchiveError as exc:
             raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+        _export_saved_generated_audio(export_service, result.item.id)
         return generated_audio_save_payload(result)
 
     @router.get("/api/generated-audio/usage")
@@ -161,3 +162,12 @@ def _require_export_service(
     if export_service is None:
         raise HTTPException(status_code=503, detail="Generated audio archive persistence is not configured.")
     return export_service
+
+
+def _export_saved_generated_audio(export_service: GeneratedAudioExportService | None, audio_id: str) -> None:
+    if export_service is None or not export_service.has_configured_target():
+        return
+    try:
+        export_service.export_item(audio_id)
+    except GeneratedAudioExportError:
+        return

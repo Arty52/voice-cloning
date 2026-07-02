@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import cast
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 from voice_cloning.api.app import create_app
@@ -18,6 +19,7 @@ from voice_cloning.services.generated_audio_archive import GeneratedAudioArchive
 from voice_cloning.services.generated_audio_export import (
     ARCHIVE_ROOT_NAME,
     GeneratedAudioExportService,
+    LocalArchiveExportTarget,
     create_local_archive_export_target,
 )
 
@@ -149,6 +151,47 @@ def test_generated_audio_export_missing_audio_returns_404(tmp_path: Path) -> Non
     assert response.json()["detail"] == "Generated audio was not found."
 
 
+def test_generated_audio_save_auto_exports_when_export_dir_is_configured(tmp_path: Path) -> None:
+    export_dir = tmp_path / "exports"
+    client, _service = make_client(tmp_path, export_dir=export_dir)
+
+    save_audio(client, "audio-one")
+    status_response = client.get("/api/generated-audio/export-status")
+
+    assert status_response.status_code == 200
+    payload = status_response.json()
+    assert payload["available"] is True
+    assert len(payload["items"]) == 1
+    exported_item = payload["items"][0]
+    assert exported_item["audioId"] == "audio-one"
+    assert exported_item["status"] == "exported"
+    assert exported_item["lastError"] is None
+    assert (export_dir / ARCHIVE_ROOT_NAME / exported_item["filename"]).read_bytes() == b"fake-mp3"
+
+
+def test_generated_audio_save_records_failed_auto_export_without_failing_save(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_write_json(_self: LocalArchiveExportTarget, _path: Path, _payload: dict[str, object]) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(LocalArchiveExportTarget, "_write_json", fail_write_json)
+    client, _service = make_client(tmp_path, export_dir=tmp_path / "exports")
+
+    save_audio(client, "audio-one")
+    status_response = client.get("/api/generated-audio/export-status")
+
+    assert status_response.status_code == 200
+    exported_item = status_response.json()["items"][0]
+    assert exported_item["audioId"] == "audio-one"
+    assert exported_item["status"] == "failed"
+    assert (
+        exported_item["lastError"]
+        == "Generated audio export could not write to the configured export directory."
+    )
+
+
 def test_generated_audio_export_route_writes_audio_sidecar_index_and_status(tmp_path: Path) -> None:
     export_dir = tmp_path / "exports"
     client, _service = make_client(tmp_path, export_dir=export_dir)
@@ -159,7 +202,7 @@ def test_generated_audio_export_route_writes_audio_sidecar_index_and_status(tmp_
 
     assert export_response.status_code == 200
     payload = export_response.json()
-    assert payload["alreadyExported"] is False
+    assert payload["alreadyExported"] is True
     assert payload["item"]["status"] == "exported"
     assert payload["item"]["filename"].startswith("generated-audio/2026/07/")
     assert "/Users/" not in payload["item"]["filename"]
