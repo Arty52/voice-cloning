@@ -136,9 +136,22 @@ class GeneratedAudioExportService:
         return GeneratedAudioExportResult(entry=entry, already_exported=write_result.already_exported)
 
     def export_all(self) -> GeneratedAudioExportAllResult:
-        self._require_target()
+        target = self._require_target()
         items, _usage = self.archive_service.list_items()
-        return GeneratedAudioExportAllResult(items=[self.export_item(item.id) for item in items])
+        results: list[GeneratedAudioExportResult] = []
+        for item in items:
+            try:
+                results.append(self.export_item(item.id))
+            except GeneratedAudioExportError as exc:
+                entry = self._save_entry(
+                    item,
+                    target.target_id,
+                    status="failed",
+                    filename=default_export_filename(item),
+                    last_error=exc.detail,
+                )
+                results.append(GeneratedAudioExportResult(entry=entry))
+        return GeneratedAudioExportAllResult(items=results)
 
     def list_status(self) -> tuple[bool, str | None, list[GeneratedAudioExportLedgerEntry]]:
         if self.export_target is None:

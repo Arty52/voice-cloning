@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+from typing import cast
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -11,8 +12,9 @@ from voice_cloning.api.app import create_app
 from voice_cloning.config import Settings
 from voice_cloning.persistence.database import Base, create_database_engine, create_session_factory, unit_of_work
 from voice_cloning.persistence.file_store import create_generated_audio_file_store
+from voice_cloning.persistence.generated_audio import GeneratedAudioMetadata
 from voice_cloning.persistence.models import GeneratedAudioRecord
-from voice_cloning.services.generated_audio_archive import GeneratedAudioArchiveService
+from voice_cloning.services.generated_audio_archive import GeneratedAudioArchiveError, GeneratedAudioArchiveService
 from voice_cloning.services.generated_audio_export import (
     ARCHIVE_ROOT_NAME,
     GeneratedAudioExportService,
@@ -92,6 +94,28 @@ def save_audio(client: TestClient, audio_id: str, content: bytes = b"fake-mp3") 
     assert response.status_code == 200
 
 
+def export_metadata(audio_id: str, content: bytes) -> GeneratedAudioMetadata:
+    return GeneratedAudioMetadata(
+        id=audio_id,
+        file_path=f"generated/{audio_id}.mp3",
+        content_type="audio/mpeg",
+        size_bytes=len(content),
+        sha256=hashlib.sha256(content).hexdigest(),
+        created_at="2026-07-01T18:45:22+00:00",
+        cache_state="miss",
+        provider_id="elevenlabs",
+        provider_voice_id="provider-voice",
+        app_voice_id="default",
+        voice_name="Default Voice",
+        model_id="eleven_multilingual_v2",
+        character_count=12,
+        request_id="req_123",
+        generation_elapsed_ms=1234,
+        multi_voice_metadata=None,
+        tuning_metadata={"mode": "default"},
+    )
+
+
 def test_generated_audio_export_routes_return_503_without_archive(tmp_path: Path) -> None:
     client = TestClient(create_app(settings=make_settings(tmp_path, export_dir=tmp_path / "exports")))
 
@@ -164,6 +188,48 @@ def test_generated_audio_export_all_exports_all_items(tmp_path: Path) -> None:
     assert response.json()["exportedCount"] == 2
     assert response.json()["failedCount"] == 0
     assert {item["audioId"] for item in response.json()["items"]} == {"audio-one", "audio-two"}
+
+
+def test_generated_audio_export_all_records_per_item_failures_when_item_disappears(tmp_path: Path) -> None:
+    engine = create_database_engine(f"sqlite+pysqlite:///{tmp_path / 'export.db'}")
+    Base.metadata.create_all(engine)
+    session_factory = create_session_factory(engine)
+    content = b"fake-mp3"
+    source = tmp_path / "source.mp3"
+    source.write_bytes(content)
+    exported_item = export_metadata("audio-one", content)
+    missing_item = export_metadata("audio-two", b"other-mp3")
+
+    class ArchiveWithDisappearingItem:
+        def list_items(self) -> tuple[list[GeneratedAudioMetadata], object]:
+            return [exported_item, missing_item], object()
+
+        def get_item(self, audio_id: str) -> GeneratedAudioMetadata:
+            if audio_id == missing_item.id:
+                raise GeneratedAudioArchiveError("Generated audio was not found.", 404)
+            return exported_item
+
+        def resolve_audio_path(self, item: GeneratedAudioMetadata) -> Path:
+            return source
+
+    service = GeneratedAudioExportService(
+        session_factory,
+        cast(GeneratedAudioArchiveService, ArchiveWithDisappearingItem()),
+        create_local_archive_export_target(tmp_path / "exports"),
+    )
+
+    result = service.export_all()
+    _available, _target_id, status_entries = service.list_status()
+    result_entries = {item.entry.audio_id: item.entry for item in result.items}
+    status_by_id = {entry.audio_id: entry for entry in status_entries}
+
+    assert result.exported_count == 1
+    assert result.failed_count == 1
+    assert result_entries["audio-one"].status == "exported"
+    assert result_entries["audio-two"].status == "failed"
+    assert result_entries["audio-two"].last_error == "Generated audio was not found."
+    assert status_by_id["audio-two"].status == "failed"
+    assert status_by_id["audio-two"].last_error == "Generated audio was not found."
 
 
 def test_generated_audio_export_is_idempotent_for_same_audio_hash(tmp_path: Path) -> None:
