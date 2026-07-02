@@ -103,6 +103,23 @@ class GeneratedAudioRecord(Base):
     tuning_metadata: Mapped[dict[str, Any] | None] = mapped_column(_json_document())
 
 
+class GeneratedAudioExportLedgerRecord(Base):
+    __tablename__ = "generated_audio_export_ledger"
+
+    target_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    audio_id: Mapped[str] = mapped_column(
+        String(128),
+        ForeignKey("generated_audio.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    sha256: Mapped[str] = mapped_column(String(64), primary_key=True)
+    filename: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    exported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+
 class AppSettingRecord(Base):
     __tablename__ = "app_settings"
 
@@ -144,6 +161,8 @@ Index("ix_voice_processing_steps_voice_position", VoiceProcessingStepRecord.voic
 Index("ix_voice_tuning_presets_provider", VoiceTuningPresetRecord.provider_id)
 Index("ix_generated_audio_created_at", GeneratedAudioRecord.created_at)
 Index("ix_generated_audio_sha256", GeneratedAudioRecord.sha256)
+Index("ix_generated_audio_export_ledger_audio", GeneratedAudioExportLedgerRecord.audio_id)
+Index("ix_generated_audio_export_ledger_status", GeneratedAudioExportLedgerRecord.status)
 Index("ix_sample_processing_jobs_created_at", SampleProcessingJobRecord.created_at)
 Index("ix_sample_processing_jobs_status", SampleProcessingJobRecord.status)
 Index("ix_speech_generation_jobs_created_at", SpeechGenerationJobRecord.created_at)

@@ -5,6 +5,7 @@ from typing import Any, Protocol
 
 from ..models import VoiceAsset
 from .generated_audio import GeneratedAudioMetadata
+from .generated_audio_exports import GeneratedAudioExportLedgerEntry
 
 
 class VoiceRepository(Protocol):
@@ -44,6 +45,20 @@ class GeneratedAudioRepository(Protocol):
         ...
 
     def clear(self) -> None:
+        ...
+
+
+class ArchiveExportLedger(Protocol):
+    def list_entries(self) -> list[GeneratedAudioExportLedgerEntry]:
+        ...
+
+    def list_for_target(self, target_id: str) -> list[GeneratedAudioExportLedgerEntry]:
+        ...
+
+    def get(self, target_id: str, audio_id: str, sha256: str) -> GeneratedAudioExportLedgerEntry | None:
+        ...
+
+    def save(self, entry: GeneratedAudioExportLedgerEntry) -> None:
         ...
 
 

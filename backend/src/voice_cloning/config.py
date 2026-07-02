@@ -75,6 +75,16 @@ def _path_env(name: str, default: Path, base_dir: Path) -> Path:
     return candidate.resolve()
 
 
+def _optional_path_env(name: str, base_dir: Path) -> Path | None:
+    raw_value = os.getenv(name)
+    if raw_value is None or not raw_value.strip():
+        return None
+    candidate = Path(raw_value.strip())
+    if not candidate.is_absolute():
+        candidate = base_dir / candidate
+    return candidate.resolve()
+
+
 @dataclass(frozen=True)
 class Settings:
     app_root: Path
@@ -89,6 +99,7 @@ class Settings:
     sample_processing_dir: Path
     speech_jobs_dir: Path
     cors_allowed_origins: list[str]
+    generated_audio_export_dir: Path | None = None
     database_url: str = ""
     speech_job_segment_gap_ms: int = 250
     max_upload_bytes: int = 10 * 1024 * 1024
@@ -127,6 +138,7 @@ class Settings:
             storage_dir / "generated-audio",
             app_root,
         )
+        generated_audio_export_dir = _optional_path_env("GENERATED_AUDIO_EXPORT_DIR", app_root)
         sample_processing_dir = _path_env(
             "SAMPLE_PROCESSING_DIR",
             storage_dir / "sample-processing",
@@ -151,6 +163,7 @@ class Settings:
             voice_manifest_path=voice_manifest,
             storage_dir=storage_dir,
             generated_audio_storage_dir=generated_audio_storage_dir,
+            generated_audio_export_dir=generated_audio_export_dir,
             sample_processing_dir=sample_processing_dir,
             speech_jobs_dir=speech_jobs_dir,
             cors_allowed_origins=_split_csv(origins),
@@ -197,4 +210,6 @@ class Settings:
     def ensure_runtime_directories(self) -> None:
         self.storage_dir.mkdir(parents=True, exist_ok=True)
         self.generated_audio_storage_dir.mkdir(parents=True, exist_ok=True)
+        if self.generated_audio_export_dir is not None:
+            self.generated_audio_export_dir.mkdir(parents=True, exist_ok=True)
         self.voice_assets_dir.mkdir(parents=True, exist_ok=True)
