@@ -1,4 +1,4 @@
-import { HardDrive, RefreshCw, Trash2, Upload } from "lucide-react"
+import { CircleHelp, HardDrive, RefreshCw, Trash2, Upload } from "lucide-react"
 
 import { GeneratedAudioItem } from "@/components/generated-audio-item"
 import { Badge } from "@/components/ui/badge"
@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { MenuSelect } from "@/components/ui/menu-select"
 import { PendingWorkStatus } from "@/components/ui/pending-work-status"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   DEFAULT_GENERATED_AUDIO_STORAGE_LIMIT_BYTES,
   GENERATED_AUDIO_STORAGE_LIMIT_PRESETS_BYTES,
@@ -146,12 +147,13 @@ export function GeneratedAudioPanel({
               <Badge variant={serverExportAvailable ? "accent" : "secondary"}>
                 {serverExportBadgeLabel(persistenceMode, serverExportStatus)}
               </Badge>
+              <ExportTimingTooltip
+                label="Server Export Timing"
+                text={serverExportWriteTiming(persistenceMode, serverExportStatus)}
+              />
             </div>
             <div className="mt-1 text-xs text-muted-foreground">
               {serverExportSummary(persistenceMode, serverExportStatus)}
-            </div>
-            <div className="mt-1 text-xs text-muted-foreground">
-              {serverExportWriteTiming(persistenceMode, serverExportStatus)}
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -279,6 +281,27 @@ function serverExportWriteTiming(
     return "Generated audio saves to the server archive on generation; configure the server export directory to mirror it."
   }
   return "Generated audio saves to the server archive on generation; use Export to mirror or retry the server export folder."
+}
+
+function ExportTimingTooltip({ label, text }: { label: string; text: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          aria-label={label}
+          className="size-7 shrink-0 text-muted-foreground"
+          size="icon"
+          type="button"
+          variant="ghost"
+        >
+          <CircleHelp aria-hidden="true" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-72" side="top" sideOffset={6}>
+        {text}
+      </TooltipContent>
+    </Tooltip>
+  )
 }
 
 function GeneratedAudioSkeletonList() {
