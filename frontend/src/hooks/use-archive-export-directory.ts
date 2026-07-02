@@ -3,6 +3,7 @@ import { useEffect, useState } from "react"
 import {
   BrowserArchiveExportPermissionError,
   BrowserArchiveExportUnsupportedError,
+  ensureBrowserArchiveExportPermission,
   exportGeneratedAudioToBrowserDirectory,
   forgetBrowserArchiveExportDirectory,
   isBrowserArchiveExportSelectionCanceled,
@@ -163,6 +164,11 @@ export function useArchiveExportDirectory(items: GeneratedResult[]) {
   async function exportOne(target: BrowserArchiveExportTargetRecord, item: GeneratedResult) {
     const exportable = generatedResultToExportable(item)
     try {
+      const permission = await ensureBrowserArchiveExportPermission(target)
+      setBrowserExportPermission(permission)
+      if (permission !== "granted") {
+        throw new BrowserArchiveExportPermissionError()
+      }
       const blob = await fetchGeneratedAudioBlob(item)
       const result = await exportGeneratedAudioToBrowserDirectory(target, exportable, blob)
       return saveBrowserArchiveExportLedgerEntry({
