@@ -104,7 +104,8 @@ class LocalArchiveExportTarget:
                     return destination, True
                 continue
             destination.parent.mkdir(parents=True, exist_ok=True)
-            temp_path = self.archive_root / EXPORT_TMP_DIR / f"{item.id}-{item.sha256[:8]}.part"
+            temp_path = self.archive_root / EXPORT_TMP_DIR / f"{descriptor.id_slug}-{descriptor.sha8}.part"
+            self._assert_under_archive_root(temp_path)
             try:
                 shutil.copyfile(source_path, temp_path)
                 shutil.move(str(temp_path), str(destination))

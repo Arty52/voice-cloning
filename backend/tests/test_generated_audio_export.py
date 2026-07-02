@@ -154,6 +154,21 @@ def test_local_export_target_uses_collision_safe_candidate(tmp_path: Path) -> No
     assert (tmp_path / "exports" / ARCHIVE_ROOT_NAME / result.filename).read_bytes() == content
 
 
+def test_local_export_target_uses_path_safe_temp_file_for_unsafe_audio_id(tmp_path: Path) -> None:
+    content = b"fake-mp3"
+    source = tmp_path / "source.mp3"
+    source.write_bytes(content)
+    target = LocalArchiveExportTarget(tmp_path / "exports")
+    item = audio_metadata(content=content, id="../unsafe/audio id")
+
+    result = target.export_item(item, source)
+
+    assert result.filename.endswith("--ff1841db.mp3")
+    assert (tmp_path / "exports" / ARCHIVE_ROOT_NAME / result.filename).read_bytes() == content
+    assert not (tmp_path / "exports" / "unsafe").exists()
+    assert list((tmp_path / "exports" / ARCHIVE_ROOT_NAME / ".tmp").iterdir()) == []
+
+
 def test_local_export_target_rejects_paths_outside_archive_root(tmp_path: Path) -> None:
     target = LocalArchiveExportTarget(tmp_path / "exports")
 
