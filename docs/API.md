@@ -39,6 +39,9 @@ The FastAPI service is available at `http://localhost:6420` when the Docker stac
 - `POST /api/generated-audio`
 - `GET /api/generated-audio/usage`
 - `PUT /api/generated-audio/storage-limit`
+- `GET /api/generated-audio/export-status`
+- `POST /api/generated-audio/export-all`
+- `POST /api/generated-audio/{audioId}/export`
 - `GET /api/generated-audio/{audioId}/audio`
 - `DELETE /api/generated-audio/{audioId}`
 - `DELETE /api/generated-audio`
@@ -265,6 +268,8 @@ Generated-audio server export routes require backend persistence. They never acc
 - `GET /api/generated-audio/export-status`
 
 When configured, the backend exports from the canonical archive into `GENERATED_AUDIO_EXPORT_DIR/Voice Clone Lab Archive/`, with audio and sidecar files under `generated-audio/YYYY/MM/` plus `index/generated-audio.jsonl`. The export ledger is keyed by target id, audio id, and sha256 so re-exporting the same archive item is idempotent and a later changed hash records a separate status entry.
+
+Browser folder export in `#archive` is not a backend API. The frontend uses the File System Access API, stores only the selected directory handle and local export ledger in IndexedDB, and mirrors archive blobs without sending local filesystem paths to the server.
 
 Export status returns:
 

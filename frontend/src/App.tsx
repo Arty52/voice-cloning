@@ -277,9 +277,20 @@ function App() {
         <WorkflowSectionPanel activeSectionId={activeSectionId} id="archive">
           <GeneratedAudioPanel
             allItems={generatedAudio.generatedAudioItems}
+            browserExportError={generatedAudio.browserExportError}
+            browserExportLedger={generatedAudio.browserExportLedger}
+            browserExportMutation={generatedAudio.browserExportMutation}
+            browserExportPermission={generatedAudio.browserExportPermission}
+            browserExportSupported={generatedAudio.browserExportSupported}
+            browserExportTarget={generatedAudio.browserExportTarget}
             items={generatedAudio.generatedAudioItems}
             libraryStatus={generatedAudio.generatedAudioStatus}
             mutationStatus={generatedAudio.generatedAudioMutation}
+            onBrowserExport={(item) => void generatedAudio.exportGeneratedAudioItemToBrowserDirectory(item)}
+            onBrowserExportAll={() => void generatedAudio.exportAllGeneratedAudioToBrowserDirectory()}
+            onBrowserExportFolderForget={() => void generatedAudio.forgetBrowserExportDirectory()}
+            onBrowserExportFolderRefresh={() => void generatedAudio.refreshBrowserExportDirectory()}
+            onBrowserExportFolderSelect={() => void generatedAudio.selectBrowserExportDirectory()}
             onClear={requestClearGeneratedAudio}
             onDelete={(id) => void generatedAudio.handleDeleteGeneratedAudio(id)}
             onServerExport={(id) => void generatedAudio.handleExportGeneratedAudioToServer(id)}
