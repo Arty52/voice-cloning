@@ -1,4 +1,4 @@
-import { HardDrive, Trash2 } from "lucide-react"
+import { CircleHelp, HardDrive, RefreshCw, Trash2, Upload } from "lucide-react"
 
 import { GeneratedAudioItem } from "@/components/generated-audio-item"
 import { Badge } from "@/components/ui/badge"
@@ -6,14 +6,20 @@ import { Button } from "@/components/ui/button"
 import { MenuSelect } from "@/components/ui/menu-select"
 import { PendingWorkStatus } from "@/components/ui/pending-work-status"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   DEFAULT_GENERATED_AUDIO_STORAGE_LIMIT_BYTES,
   GENERATED_AUDIO_STORAGE_LIMIT_PRESETS_BYTES,
   type GeneratedAudioUsage,
 } from "@/lib/generated-audio-storage"
+import type { GeneratedAudioServerExportItem, GeneratedAudioServerExportStatus } from "@/lib/generated-audio-export-api"
 import { isTemporaryGeneratedAudioId } from "@/lib/generated-audio-view-model"
 import { formatBytes, formatGeneratedAudioCountBadge } from "@/lib/formatters"
-import type { GeneratedAudioMutation } from "@/hooks/use-generated-audio-library"
+import type {
+  GeneratedAudioMutation,
+  GeneratedAudioPersistenceMode,
+  GeneratedAudioServerExportMutation,
+} from "@/hooks/use-generated-audio-library"
 import type { AsyncStatus, GeneratedResult } from "@/types"
 
 type GeneratedAudioPanelProps = {
@@ -23,7 +29,14 @@ type GeneratedAudioPanelProps = {
   mutationStatus: GeneratedAudioMutation | null
   onClear: () => void
   onDelete: (id: string) => void
+  onServerExport: (id: string) => void
+  onServerExportAll: () => void
+  onServerExportStatusRefresh: () => void
   onStorageLimitChange: (limitBytes: number) => void
+  persistenceMode: GeneratedAudioPersistenceMode
+  serverExportError: string | null
+  serverExportMutation: GeneratedAudioServerExportMutation | null
+  serverExportStatus: GeneratedAudioServerExportStatus | null
   storageError: string | null
   storageLimitBytes: number
   usage: GeneratedAudioUsage | null
@@ -36,7 +49,14 @@ export function GeneratedAudioPanel({
   mutationStatus,
   onClear,
   onDelete,
+  onServerExport,
+  onServerExportAll,
+  onServerExportStatusRefresh,
   onStorageLimitChange,
+  persistenceMode,
+  serverExportError,
+  serverExportMutation,
+  serverExportStatus,
   storageError,
   storageLimitBytes,
   usage,
@@ -57,6 +77,10 @@ export function GeneratedAudioPanel({
   const isBusy = isLibraryLoading || mutationStatus !== null
   const mutationLabel = mutationStatus ? generatedAudioMutationLabel(mutationStatus) : null
   const hasGeneratedAudio = allItems.length > 0
+  const serverArchiveMode = persistenceMode === "server"
+  const serverExportAvailable = serverArchiveMode && serverExportStatus?.available === true
+  const isServerExportBusy = serverExportMutation !== null
+  const isServerExportDisabled = !serverExportAvailable || isServerExportBusy || isBusy
 
   return (
     <section aria-busy={isBusy} className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5">
@@ -114,6 +138,54 @@ export function GeneratedAudioPanel({
         </div>
       </div>
 
+      <div className="mb-4 rounded-md border border-border bg-background/60 p-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Upload aria-hidden="true" className="size-4 text-primary" />
+              Server Export
+              <Badge variant={serverExportAvailable ? "accent" : "secondary"}>
+                {serverExportBadgeLabel(persistenceMode, serverExportStatus)}
+              </Badge>
+              <ExportTimingTooltip
+                label="Server Export Timing"
+                text={serverExportWriteTiming(persistenceMode, serverExportStatus)}
+              />
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {serverExportSummary(persistenceMode, serverExportStatus)}
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              disabled={!serverArchiveMode || isServerExportBusy || isBusy}
+              onClick={onServerExportStatusRefresh}
+              size="sm"
+              type="button"
+              variant="secondary"
+            >
+              <RefreshCw aria-hidden="true" className="size-4" />
+              Refresh
+            </Button>
+            <Button
+              disabled={isServerExportDisabled || !hasGeneratedAudio}
+              onClick={onServerExportAll}
+              size="sm"
+              type="button"
+              variant="secondary"
+            >
+              <Upload aria-hidden="true" className="size-4" />
+              {serverExportMutation === "export-all" ? "Exporting" : "Export All"}
+            </Button>
+          </div>
+        </div>
+        {serverExportError ? (
+          <div className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm" role="alert">
+            {serverExportError}
+          </div>
+        ) : null}
+      </div>
+
       {isLibraryLoading ? (
         <GeneratedAudioSkeletonList />
       ) : (
@@ -130,9 +202,13 @@ export function GeneratedAudioPanel({
             items.map((item) => (
               <GeneratedAudioItem
                 isDeleteDisabled={mutationStatus === "delete"}
+                isServerExportDisabled={isServerExportDisabled || isTemporaryGeneratedAudioId(item.id)}
+                isServerExportPending={serverExportMutation === "export"}
                 item={item}
                 key={item.id}
                 onDelete={onDelete}
+                onServerExport={serverArchiveMode ? onServerExport : undefined}
+                serverExportStatus={findServerExportStatus(item, serverExportStatus)}
               />
             ))
           ) : (
@@ -143,6 +219,92 @@ export function GeneratedAudioPanel({
         </div>
       )}
     </section>
+  )
+}
+
+function findServerExportStatus(
+  item: GeneratedResult,
+  serverExportStatus: GeneratedAudioServerExportStatus | null
+): GeneratedAudioServerExportItem | null {
+  if (!serverExportStatus) {
+    return null
+  }
+  for (const status of serverExportStatus.items) {
+    if (status.audioId !== item.id) {
+      continue
+    }
+    if (!item.sha256 || status.sha256 === item.sha256) {
+      return status
+    }
+  }
+  return null
+}
+
+function serverExportBadgeLabel(
+  persistenceMode: GeneratedAudioPersistenceMode,
+  status: GeneratedAudioServerExportStatus | null
+) {
+  if (persistenceMode !== "server") {
+    return "Server Archive Off"
+  }
+  if (!status) {
+    return "Unknown"
+  }
+  return status.available ? "Configured" : "Not Configured"
+}
+
+function serverExportSummary(
+  persistenceMode: GeneratedAudioPersistenceMode,
+  status: GeneratedAudioServerExportStatus | null
+) {
+  if (persistenceMode !== "server") {
+    return "Server export requires the server archive."
+  }
+  if (!status) {
+    return "Server export status has not loaded."
+  }
+  if (!status.available) {
+    return "Set GENERATED_AUDIO_EXPORT_DIR to enable server exports."
+  }
+  const exportedCount = status.items.filter((item) => item.status === "exported").length
+  const failedCount = status.items.filter((item) => item.status === "failed").length
+  if (failedCount > 0) {
+    return `${exportedCount} exported, ${failedCount} failed.`
+  }
+  return `${exportedCount} exported.`
+}
+
+function serverExportWriteTiming(
+  persistenceMode: GeneratedAudioPersistenceMode,
+  status: GeneratedAudioServerExportStatus | null
+) {
+  if (persistenceMode !== "server") {
+    return "Generated audio stays in browser storage until the server archive is available."
+  }
+  if (!status?.available) {
+    return "Generated audio saves to the server archive on generation; configure the server export directory to mirror it."
+  }
+  return "Generated audio saves to the server archive on generation; use Export to mirror or retry the server export folder."
+}
+
+function ExportTimingTooltip({ label, text }: { label: string; text: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          aria-label={label}
+          className="size-7 shrink-0 text-muted-foreground"
+          size="icon"
+          type="button"
+          variant="ghost"
+        >
+          <CircleHelp aria-hidden="true" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-72" side="top" sideOffset={6}>
+        {text}
+      </TooltipContent>
+    </Tooltip>
   )
 }
 

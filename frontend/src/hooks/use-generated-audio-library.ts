@@ -30,6 +30,13 @@ import {
   readGeneratedAudioArchiveMigrationState,
 } from "@/lib/generated-audio-archive-migration"
 import {
+  GeneratedAudioServerExportUnavailableError,
+  exportAllGeneratedAudioToServer,
+  exportGeneratedAudioToServer,
+  loadGeneratedAudioServerExportStatus,
+  type GeneratedAudioServerExportStatus,
+} from "@/lib/generated-audio-export-api"
+import {
   archivedAudioToResult,
   createTemporaryGeneratedAudioId,
   formatGeneratedAudioStorageError,
@@ -40,7 +47,8 @@ import {
 import type { AsyncStatus, GeneratedResult } from "@/types"
 
 export type GeneratedAudioMutation = "clear" | "delete" | "storage-limit"
-type GeneratedAudioPersistenceMode = "browser" | "server"
+export type GeneratedAudioPersistenceMode = "browser" | "server"
+export type GeneratedAudioServerExportMutation = "export" | "export-all" | "refresh"
 
 type GeneratedAudioMutationState = {
   id: number
@@ -53,15 +61,25 @@ type GeneratedAudioArchiveMigrationResult = {
   importedCount: number
 }
 
+type ServerExportStatusLoadResult = {
+  error: string | null
+  status: GeneratedAudioServerExportStatus | null
+}
+
 export function useGeneratedAudioLibrary() {
   const [generatedAudioItems, setGeneratedAudioItems] = useState<GeneratedResult[]>([])
   const [generatedAudioUsage, setGeneratedAudioUsage] = useState<GeneratedAudioUsage | null>(null)
   const [generatedAudioStorageError, setGeneratedAudioStorageError] = useState<string | null>(null)
   const [generatedAudioStatus, setGeneratedAudioStatus] = useState<AsyncStatus>("idle")
   const [generatedAudioMutationState, setGeneratedAudioMutationState] = useState<GeneratedAudioMutationState | null>(null)
+  const [generatedAudioPersistenceMode, setGeneratedAudioPersistenceMode] = useState<GeneratedAudioPersistenceMode>("browser")
+  const [serverExportStatus, setServerExportStatus] = useState<GeneratedAudioServerExportStatus | null>(null)
+  const [serverExportError, setServerExportError] = useState<string | null>(null)
+  const [serverExportMutation, setServerExportMutation] = useState<GeneratedAudioServerExportMutation | null>(null)
   const [storageLimitBytes, setStorageLimitBytes] = useState(() => getGeneratedAudioStorageLimitBytes())
   const generatedAudioItemsRef = useRef<GeneratedResult[]>([])
   const generatedAudioMutationIdRef = useRef(0)
+  const serverExportMutationIdRef = useRef(0)
   const persistenceModeRef = useRef<GeneratedAudioPersistenceMode>("browser")
 
   useEffect(() => {
@@ -77,11 +95,17 @@ export function useGeneratedAudioLibrary() {
           if (!isMounted) {
             return
           }
-          persistenceModeRef.current = "server"
+          const exportStatus = await resolveServerExportStatus()
+          if (!isMounted) {
+            return
+          }
+          setPersistenceMode("server")
           replaceArchivedGeneratedAudioItems(resolvedArchive.items)
           setGeneratedAudioUsage(resolvedArchive.usage)
           setStorageLimitBytes(resolvedArchive.usage.limitBytes)
           setGeneratedAudioStorageError(formatGeneratedAudioArchiveMigrationMessage(migration))
+          setServerExportStatus(exportStatus.status)
+          setServerExportError(exportStatus.error)
           setGeneratedAudioStatus("success")
           return
         } catch (caught) {
@@ -94,7 +118,7 @@ export function useGeneratedAudioLibrary() {
         if (!isMounted) {
           return
         }
-        persistenceModeRef.current = "browser"
+        setPersistenceMode("browser")
         setStorageLimitBytes(limitBytes)
         replaceStoredGeneratedAudioItems(records)
         setGeneratedAudioUsage(usage)
@@ -160,6 +184,84 @@ export function useGeneratedAudioLibrary() {
     setGeneratedAudioMutationState((current) => (current?.id === id ? null : current))
   }
 
+  function setPersistenceMode(mode: GeneratedAudioPersistenceMode) {
+    persistenceModeRef.current = mode
+    setGeneratedAudioPersistenceMode(mode)
+    if (mode === "browser") {
+      setServerExportStatus(null)
+      setServerExportError(null)
+      setServerExportMutation(null)
+    }
+  }
+
+  function startServerExportMutation(type: GeneratedAudioServerExportMutation) {
+    const id = serverExportMutationIdRef.current + 1
+    serverExportMutationIdRef.current = id
+    setServerExportMutation(type)
+    return id
+  }
+
+  function clearServerExportMutation(id: number) {
+    setServerExportMutation((current) => (serverExportMutationIdRef.current === id ? null : current))
+  }
+
+  async function refreshServerExportStatus(options: { silent?: boolean } = {}) {
+    if (persistenceModeRef.current !== "server") {
+      setServerExportStatus(null)
+      setServerExportError("Server export requires the server archive.")
+      return null
+    }
+    const mutationId = options.silent ? null : startServerExportMutation("refresh")
+    try {
+      const result = await resolveServerExportStatus()
+      setServerExportStatus(result.status)
+      setServerExportError(result.error)
+      return result.status
+    } finally {
+      if (mutationId !== null) {
+        clearServerExportMutation(mutationId)
+      }
+    }
+  }
+
+  async function handleExportGeneratedAudioToServer(id: string) {
+    if (persistenceModeRef.current !== "server") {
+      setServerExportError("Server export requires the server archive.")
+      return
+    }
+    const mutationId = startServerExportMutation("export")
+    try {
+      await exportGeneratedAudioToServer(id)
+      await refreshServerExportStatus({ silent: true })
+    } catch (caught) {
+      const exportError = formatServerExportError(caught)
+      const result = await resolveServerExportStatus()
+      setServerExportStatus(result.status)
+      setServerExportError(result.error ?? exportError)
+    } finally {
+      clearServerExportMutation(mutationId)
+    }
+  }
+
+  async function handleExportAllGeneratedAudioToServer() {
+    if (persistenceModeRef.current !== "server") {
+      setServerExportError("Server export requires the server archive.")
+      return
+    }
+    const mutationId = startServerExportMutation("export-all")
+    try {
+      await exportAllGeneratedAudioToServer()
+      await refreshServerExportStatus({ silent: true })
+    } catch (caught) {
+      const exportError = formatServerExportError(caught)
+      const result = await resolveServerExportStatus()
+      setServerExportStatus(result.status)
+      setServerExportError(result.error ?? exportError)
+    } finally {
+      clearServerExportMutation(mutationId)
+    }
+  }
+
   async function persistGeneratedAudio(input: SaveGeneratedAudioInput, limitBytes: number) {
     if (persistenceModeRef.current === "server") {
       try {
@@ -171,10 +273,11 @@ export function useGeneratedAudioLibrary() {
         setStorageLimitBytes(archive.usage.limitBytes)
         setGeneratedAudioUsage(archive.usage)
         setGeneratedAudioStorageError(null)
+        await refreshServerExportStatus({ silent: true })
         return nextItems.find((item) => item.id === saved.item.id) ?? archivedAudioToResult(saved.item)
       } catch (archiveError) {
         if (shouldFallBackToBrowserGeneratedAudio(archiveError)) {
-          persistenceModeRef.current = "browser"
+          setPersistenceMode("browser")
           return persistGeneratedAudioInBrowser(input, limitBytes)
         }
         const temporaryItem = showTemporaryGeneratedAudio(storedGeneratedAudioFromInput(input))
@@ -224,6 +327,7 @@ export function useGeneratedAudioLibrary() {
           : await deleteGeneratedAudio(id)
       if (persistenceModeRef.current === "server") {
         await safeMarkGeneratedAudioArchiveCleared([id])
+        await refreshServerExportStatus({ silent: true })
       }
       removeGeneratedAudioItemFromState(id)
       setGeneratedAudioUsage(usage)
@@ -262,6 +366,7 @@ export function useGeneratedAudioLibrary() {
           ...generatedAudioItemsRef.current.map((item) => item.id),
           ...browserRecords.map((record) => record.id),
         ])
+        await refreshServerExportStatus({ silent: true })
       }
       setGeneratedAudioItems((previous) => {
         revokeGeneratedAudioUrls(previous)
@@ -289,6 +394,7 @@ export function useGeneratedAudioLibrary() {
         replaceArchivedGeneratedAudioItems(archive.items)
         setStorageLimitBytes(archive.usage.limitBytes)
         setGeneratedAudioUsage(archive.usage)
+        await refreshServerExportStatus({ silent: true })
       } else {
         const records = await listGeneratedAudio()
         replaceStoredGeneratedAudioItems(records)
@@ -315,13 +421,44 @@ export function useGeneratedAudioLibrary() {
     clearAllGeneratedAudio,
     generatedAudioItems,
     generatedAudioMutation: generatedAudioMutationState?.type ?? null,
+    generatedAudioPersistenceMode,
     generatedAudioStorageError,
     generatedAudioStatus,
     generatedAudioUsage,
     handleDeleteGeneratedAudio,
+    handleExportAllGeneratedAudioToServer,
+    handleExportGeneratedAudioToServer,
     persistGeneratedAudio,
+    refreshServerExportStatus,
     resolvedUsage,
+    serverExportError,
+    serverExportMutation,
+    serverExportStatus,
     storageLimitBytes,
+  }
+}
+
+async function resolveServerExportStatus(): Promise<ServerExportStatusLoadResult> {
+  try {
+    return {
+      error: null,
+      status: await loadGeneratedAudioServerExportStatus(),
+    }
+  } catch (caught) {
+    if (caught instanceof GeneratedAudioServerExportUnavailableError) {
+      return {
+        error: null,
+        status: {
+          available: false,
+          items: [],
+          targetId: null,
+        },
+      }
+    }
+    return {
+      error: formatServerExportError(caught),
+      status: null,
+    }
   }
 }
 
@@ -435,6 +572,13 @@ function isGeneratedAudioArchiveConflict(value: unknown) {
     value instanceof GeneratedAudioArchiveConflictError ||
     (value instanceof Error && value.name === "GeneratedAudioArchiveConflictError")
   )
+}
+
+function formatServerExportError(value: unknown) {
+  if (value instanceof Error) {
+    return value.message
+  }
+  return "Unable to export generated audio."
 }
 
 function formatGeneratedAudioArchiveMigrationMessage(result: GeneratedAudioArchiveMigrationResult) {
