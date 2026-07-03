@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { createRef } from "react"
-import { describe, expect, it, vi } from "vitest"
+import { beforeAll, describe, expect, it, vi } from "vitest"
 
 import type { DialogueScriptController } from "@/hooks/use-dialogue-script"
 import { speakerColorClassName, type MultiVoiceScriptBlock } from "@/lib/dialogue-script"
@@ -42,6 +42,13 @@ const dialogueTuningControls: ProviderTuningControl[] = [
     type: "slider",
   },
 ]
+
+beforeAll(() => {
+  HTMLElement.prototype.hasPointerCapture ??= vi.fn(() => false)
+  HTMLElement.prototype.releasePointerCapture ??= vi.fn()
+  HTMLElement.prototype.scrollIntoView ??= vi.fn()
+  HTMLElement.prototype.setPointerCapture ??= vi.fn()
+})
 
 function voice(id: string, name: string): VoiceAsset {
   return {
@@ -84,6 +91,7 @@ function renderPanel(overrides: Partial<Parameters<typeof SpeechInputPanel>[0]> 
     onGenerate: vi.fn(),
     onNaturalHandoffsEnabledChange: vi.fn(),
     onRemoveAssignment: vi.fn(),
+    onSourceVoiceChange: vi.fn(),
     onTextChange: vi.fn(),
     onTextSelectionChange: vi.fn(),
     providerTuningControls: [],
@@ -200,11 +208,22 @@ describe("SpeechInputPanel voice assignments", () => {
     const dialogue = dialogueController()
     renderPanel({ dialogue, text: "Skippy: Hello." })
 
-    await user.click(screen.getByRole("radio", { name: "Dialogue Rows" }))
+    await user.click(screen.getByRole("combobox", { name: "Input Mode" }))
+    await user.click(screen.getByRole("option", { name: "Dialogue Rows" }))
     await user.click(screen.getByRole("button", { name: "Import Dialogue" }))
 
     expect(dialogue.setMode).toHaveBeenCalledWith("dialogue")
     expect(dialogue.importFromText).toHaveBeenCalledWith("Skippy: Hello.")
+  })
+
+  it("changes the source voice without leaving the generate panel", async () => {
+    const user = userEvent.setup()
+    const props = renderPanel()
+
+    await user.click(screen.getByRole("combobox", { name: "Source Voice" }))
+    await user.click(screen.getByRole("option", { name: "Skippy Voice" }))
+
+    expect(props.onSourceVoiceChange).toHaveBeenCalledWith("skippy")
   })
 
   it("renders dialogue rows and mapping warnings", async () => {
