@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest"
 
 import { DEFAULT_GENERATED_AUDIO_STORAGE_LIMIT_BYTES } from "@/lib/generated-audio-storage"
 import { TooltipProvider } from "@/components/ui/tooltip"
-import type { GeneratedResult } from "@/types"
+import type { GeneratedAudioScriptSnapshot, GeneratedResult } from "@/types"
 
 import { GeneratedAudioPanel } from "./generated-audio-panel"
 
@@ -55,7 +55,8 @@ describe("GeneratedAudioPanel pending mutations", () => {
     expect(onServerExportStatusRefresh).toHaveBeenCalledTimes(1)
   })
 
-  it("disables server export controls when the backend target is not configured", () => {
+  it("disables server export controls when the backend target is not configured", async () => {
+    const user = userEvent.setup()
     renderGeneratedAudioPanel({
       allItems: [generatedAudioItem],
       items: [generatedAudioItem],
@@ -70,10 +71,12 @@ describe("GeneratedAudioPanel pending mutations", () => {
     expect(screen.getByText("Not Configured")).toBeInTheDocument()
     expect(screen.queryByText(/configure the server export directory to mirror it/i)).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Export All" })).toBeDisabled()
-    expect(screen.getByRole("button", { name: /export generated audio for default voice/i })).toBeDisabled()
+    await user.click(screen.getByRole("button", { name: /open generated audio actions for default voice/i }))
+    expect(screen.getByRole("menuitem", { name: "Export" })).toHaveAttribute("aria-disabled", "true")
   })
 
-  it("disables server export controls during archive mutations", () => {
+  it("disables server export controls during archive mutations", async () => {
+    const user = userEvent.setup()
     renderGeneratedAudioPanel({
       allItems: [generatedAudioItem],
       items: [generatedAudioItem],
@@ -90,7 +93,8 @@ describe("GeneratedAudioPanel pending mutations", () => {
 
     expect(serverExportControls.getByRole("button", { name: "Refresh" })).toBeDisabled()
     expect(serverExportControls.getByRole("button", { name: "Export All" })).toBeDisabled()
-    expect(screen.getByRole("button", { name: /export generated audio for default voice/i })).toBeDisabled()
+    await user.click(screen.getByRole("button", { name: /open generated audio actions for default voice/i }))
+    expect(screen.getByRole("menuitem", { name: "Export" })).toHaveAttribute("aria-disabled", "true")
   })
 
   it("shows per-item server export status and retry action", async () => {
@@ -121,7 +125,8 @@ describe("GeneratedAudioPanel pending mutations", () => {
     })
 
     expect(screen.getByText("Export Failed")).toBeInTheDocument()
-    await user.click(screen.getByRole("button", { name: /retry export generated audio for default voice/i }))
+    await user.click(screen.getByRole("button", { name: /open generated audio actions for default voice/i }))
+    await user.click(screen.getByRole("menuitem", { name: "Retry Export" }))
     expect(onServerExport).toHaveBeenCalledWith("generated-audio")
   })
 
@@ -150,7 +155,8 @@ describe("GeneratedAudioPanel pending mutations", () => {
     expect(screen.queryByLabelText(/path/i)).not.toBeInTheDocument()
 
     await user.click(screen.getByRole("button", { name: "Mirror All" }))
-    await user.click(screen.getByRole("button", { name: /browser export generated audio for default voice/i }))
+    await user.click(screen.getByRole("button", { name: /open generated audio actions for default voice/i }))
+    await user.click(screen.getByRole("menuitem", { name: "Browser Export" }))
 
     expect(onBrowserExportAll).toHaveBeenCalledTimes(1)
     expect(onBrowserExport).toHaveBeenCalledWith(generatedAudioItem)
@@ -184,8 +190,31 @@ describe("GeneratedAudioPanel pending mutations", () => {
     })
 
     expect(screen.getByText("Browser Export Failed")).toBeInTheDocument()
-    await user.click(screen.getByRole("button", { name: /retry browser export generated audio for default voice/i }))
+    await user.click(screen.getByRole("button", { name: /open generated audio actions for default voice/i }))
+    await user.click(screen.getByRole("menuitem", { name: "Retry Browser Export" }))
     expect(onBrowserExport).toHaveBeenCalledWith(generatedAudioItem)
+  })
+
+  it("threads script snapshot view and restore actions for archive items", async () => {
+    const user = userEvent.setup()
+    const onViewScriptSnapshot = vi.fn()
+    const onRestoreScriptSnapshot = vi.fn()
+    const itemWithSnapshot = { ...generatedAudioItem, scriptSnapshot: rangeSnapshot }
+
+    renderGeneratedAudioPanel({
+      allItems: [itemWithSnapshot],
+      items: [itemWithSnapshot],
+      onRestoreScriptSnapshot,
+      onViewScriptSnapshot,
+    })
+
+    await user.click(screen.getByRole("button", { name: /open generated audio actions for default voice/i }))
+    await user.click(screen.getByRole("menuitem", { name: "View Text" }))
+    await user.click(screen.getByRole("button", { name: /open generated audio actions for default voice/i }))
+    await user.click(screen.getByRole("menuitem", { name: "Use Text" }))
+
+    expect(onViewScriptSnapshot).toHaveBeenCalledWith(itemWithSnapshot)
+    expect(onRestoreScriptSnapshot).toHaveBeenCalledWith(itemWithSnapshot)
   })
 })
 
@@ -208,6 +237,17 @@ const generatedAudioItem: GeneratedResult = {
   url: "blob:generated-audio",
   voiceId: "voice-123",
   voiceName: "Default Voice",
+}
+
+const rangeSnapshot: GeneratedAudioScriptSnapshot = {
+  version: 1,
+  mode: "range",
+  text: "Narrator starts. Villain replies.",
+  sourceVoiceId: "default",
+  assignments: [],
+  dialogueBlocks: [],
+  speakerMappings: [],
+  segmentGapMs: null,
 }
 
 const browserTarget = {

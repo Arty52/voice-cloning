@@ -46,7 +46,9 @@ type LatestGeneratedAudioPanelProps = {
   onDelete: (id: string) => void
   onRegenerateSegment: (segmentId: string, voiceId?: string | null, voiceSettings?: VoiceTuningValues | null) => void
   onRegenerateVoiceSegments?: (voiceId: string, voiceSettings: VoiceTuningValues) => void
+  onRestoreScriptSnapshot?: (item: GeneratedResult) => void
   onSaveVoiceTuning?: (voiceId: string, voiceSettings: VoiceTuningValues) => void
+  onViewScriptSnapshot?: (item: GeneratedResult) => void
   providerTuningControls?: ProviderTuningControl[]
   segmentResultUrls: Record<string, string>
   status: RequestStatus
@@ -66,7 +68,9 @@ export function LatestGeneratedAudioPanel({
   onDelete,
   onRegenerateSegment,
   onRegenerateVoiceSegments = noopRegenerateVoiceSegments,
+  onRestoreScriptSnapshot,
   onSaveVoiceTuning = noopSaveVoiceTuning,
+  onViewScriptSnapshot,
   providerTuningControls = [],
   segmentResultUrls,
   status,
@@ -125,6 +129,8 @@ export function LatestGeneratedAudioPanel({
             isDeleteDisabled={isDeleteDisabled}
             item={item}
             onDelete={onDelete}
+            onRestoreScriptSnapshot={onRestoreScriptSnapshot}
+            onViewScriptSnapshot={onViewScriptSnapshot}
           />
           {item.multiVoiceMetadata ? (
             <MultiVoiceSegmentResults
