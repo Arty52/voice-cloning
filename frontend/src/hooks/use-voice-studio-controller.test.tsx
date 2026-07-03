@@ -212,6 +212,31 @@ describe("useVoiceStudioController script snapshot restore", () => {
     expect(result.current.dialogue.speakerMappings).toEqual(dialogueSnapshot().speakerMappings)
     expect(result.current.scriptRestoreWarning).toBeNull()
   })
+
+  it("confirms before replacing dirty draft script state", () => {
+    const { result } = renderHook(() => useVoiceStudioController())
+
+    act(() => {
+      result.current.setText("Unsaved draft.")
+    })
+    act(() => {
+      result.current.restoreScriptSnapshot(rangeSnapshot())
+    })
+
+    expect(result.current.text).toBe("Unsaved draft.")
+    expect(result.current.confirmation.confirmation).toMatchObject({
+      confirmLabel: "Replace Script",
+      destructive: true,
+      title: "Replace Draft Script?",
+    })
+
+    act(() => {
+      result.current.confirmation.confirmation?.onConfirm()
+    })
+
+    expect(result.current.text).toBe("Narrator starts. Villain replies.")
+    expect(result.current.voiceAssignments).toEqual(rangeSnapshot().assignments)
+  })
 })
 
 function rangeSnapshot(

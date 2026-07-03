@@ -440,7 +440,27 @@ export function useVoiceStudioController() {
     if (!snapshot) {
       return
     }
+    if (hasDraftScriptState()) {
+      confirmation.requestConfirmation({
+        body: "This replaces the current Generate script text, assignments, dialogue rows, speaker mappings, and Natural Handoffs setting.",
+        confirmLabel: "Replace Script",
+        destructive: true,
+        onConfirm: () => applyScriptSnapshotRestore(snapshot),
+        title: "Replace Draft Script?",
+      })
+      return
+    }
     applyScriptSnapshotRestore(snapshot)
+  }
+
+  function hasDraftScriptState() {
+    return (
+      text !== DEFAULT_TEXT ||
+      voiceAssignments.length > 0 ||
+      dialogue.mode !== "range" ||
+      dialogue.blocks.length > 0 ||
+      dialogue.speakerMappings.length > 0
+    )
   }
 
   function applyScriptSnapshotRestore(snapshot: GeneratedAudioScriptSnapshot) {
