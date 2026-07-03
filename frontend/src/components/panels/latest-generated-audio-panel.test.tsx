@@ -85,6 +85,17 @@ const item: GeneratedResult = {
   voiceName: "Multi-Voice",
 }
 
+const rangeSnapshot: NonNullable<GeneratedResult["scriptSnapshot"]> = {
+  version: 1,
+  mode: "range",
+  text: "Narrator starts. Villain replies.",
+  sourceVoiceId: "narrator",
+  assignments: [],
+  dialogueBlocks: [],
+  speakerMappings: [],
+  segmentGapMs: null,
+}
+
 function voice(id: string, name: string): VoiceAsset {
   return {
     contentType: "audio/mpeg",
@@ -223,6 +234,37 @@ describe("LatestGeneratedAudioPanel pending generation", () => {
 })
 
 describe("LatestGeneratedAudioPanel multi-voice results", () => {
+  it("exposes script recall actions for the latest result", async () => {
+    const user = userEvent.setup()
+    const onViewScriptSnapshot = vi.fn()
+    const onRestoreScriptSnapshot = vi.fn()
+    const itemWithSnapshot = { ...item, scriptSnapshot: rangeSnapshot }
+
+    renderLatestPanel(
+      <LatestGeneratedAudioPanel
+        activeProviderId="elevenlabs"
+        error={null}
+        isDeleteDisabled={false}
+        isSavingVoiceTuning={false}
+        item={itemWithSnapshot}
+        onDelete={vi.fn()}
+        onRegenerateSegment={vi.fn()}
+        onRestoreScriptSnapshot={onRestoreScriptSnapshot}
+        onViewScriptSnapshot={onViewScriptSnapshot}
+        segmentResultUrls={{}}
+        status="success"
+        storageError={null}
+        voices={[narrator, villain]}
+      />
+    )
+
+    await user.click(screen.getByRole("button", { name: /view script snapshot/i }))
+    await user.click(screen.getByRole("button", { name: /use script snapshot in generate/i }))
+
+    expect(onViewScriptSnapshot).toHaveBeenCalledWith(itemWithSnapshot)
+    expect(onRestoreScriptSnapshot).toHaveBeenCalledWith(itemWithSnapshot)
+  })
+
   it("keeps segment controls collapsed until opened", async () => {
     const user = userEvent.setup()
     renderLatestPanel(

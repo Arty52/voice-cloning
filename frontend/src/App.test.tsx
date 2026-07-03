@@ -14,7 +14,7 @@ import {
 } from "./lib/generated-audio-storage"
 import { NATURAL_HANDOFFS_STORAGE_KEY } from "./lib/natural-handoffs-preference"
 import { PROVIDER_KEYS_STORAGE_KEY } from "./lib/provider-keys"
-import type { ProvidersResponse } from "./types"
+import type { GeneratedAudioScriptSnapshot, ProvidersResponse } from "./types"
 
 const audioBlob = new Blob(["fake audio"], { type: "audio/mpeg" })
 const formatTestNumber = (value: number) => new Intl.NumberFormat().format(value)
@@ -744,6 +744,17 @@ function generatedAudioInput(
     voiceName: "Default voice",
     ...restOverrides,
   }
+}
+
+const archivedRangeSnapshot: GeneratedAudioScriptSnapshot = {
+  version: 1,
+  mode: "range",
+  text: "Archived script for recall.",
+  sourceVoiceId: "default",
+  assignments: [],
+  dialogueBlocks: [],
+  speakerMappings: [],
+  segmentGapMs: null,
 }
 
 function renderApp() {
@@ -5004,6 +5015,51 @@ describe("App", () => {
     expect(archivePanel).not.toBeNull()
     expect(await within(archivePanel as HTMLElement).findByLabelText("Generated Audio Metadata")).toBeInTheDocument()
     expect(await within(archivePanel as HTMLElement).findByText("Generated In 1.2s")).toBeInTheDocument()
+  })
+
+  it("views and restores an archived script snapshot into Generate", async () => {
+    const user = userEvent.setup()
+    await saveGeneratedAudio(
+      generatedAudioInput({ id: "snapshot-audio", scriptSnapshot: archivedRangeSnapshot }),
+      100 * BYTES_PER_MEBIBYTE
+    )
+
+    renderApp()
+
+    const archivePanel = generatedAudioArchivePanel()
+    await user.click(await archivePanel.findByRole("button", { name: /view script snapshot/i }))
+
+    const snapshotDialog = screen.getByRole("dialog", { name: "Generated Script Snapshot" })
+    expect(within(snapshotDialog).getByText("Archived script for recall.")).toBeInTheDocument()
+    await user.click(within(snapshotDialog).getAllByRole("button", { name: "Close" })[0])
+
+    await user.click(archivePanel.getByRole("button", { name: /use script snapshot in generate/i }))
+
+    expect(await screen.findByDisplayValue("Archived script for recall.")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Generate Speech" })).toHaveAttribute("aria-current", "page")
+  })
+
+  it("confirms before archived script recall replaces a dirty Generate draft", async () => {
+    const user = userEvent.setup()
+    await saveGeneratedAudio(
+      generatedAudioInput({ id: "snapshot-audio", scriptSnapshot: archivedRangeSnapshot }),
+      100 * BYTES_PER_MEBIBYTE
+    )
+
+    renderApp()
+
+    const textarea = await screen.findByLabelText(/text to speak/i)
+    await user.clear(textarea)
+    await user.type(textarea, "Unsaved draft.")
+
+    const archivePanel = generatedAudioArchivePanel()
+    await user.click(await archivePanel.findByRole("button", { name: /use script snapshot in generate/i }))
+
+    const confirmationDialog = screen.getByRole("dialog", { name: "Replace Draft Script?" })
+    expect(screen.getByDisplayValue("Unsaved draft.")).toBeInTheDocument()
+    await user.click(within(confirmationDialog).getByRole("button", { name: "Replace Script" }))
+
+    expect(await screen.findByDisplayValue("Archived script for recall.")).toBeInTheDocument()
   })
 
   it("persists generated audio across remounts", async () => {

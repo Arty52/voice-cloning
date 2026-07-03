@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest"
 
 import { DEFAULT_GENERATED_AUDIO_STORAGE_LIMIT_BYTES } from "@/lib/generated-audio-storage"
 import { TooltipProvider } from "@/components/ui/tooltip"
-import type { GeneratedResult } from "@/types"
+import type { GeneratedAudioScriptSnapshot, GeneratedResult } from "@/types"
 
 import { GeneratedAudioPanel } from "./generated-audio-panel"
 
@@ -230,7 +230,7 @@ const generatedAudioItem: GeneratedResult = {
   voiceName: "Default Voice",
 }
 
-const rangeSnapshot = {
+const rangeSnapshot: GeneratedAudioScriptSnapshot = {
   version: 1,
   mode: "range",
   text: "Narrator starts. Villain replies.",
@@ -239,7 +239,7 @@ const rangeSnapshot = {
   dialogueBlocks: [],
   speakerMappings: [],
   segmentGapMs: null,
-} as const
+}
 
 const browserTarget = {
   handle: {} as never,

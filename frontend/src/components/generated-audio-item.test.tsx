@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 
-import type { GeneratedResult } from "@/types"
+import type { GeneratedAudioScriptSnapshot, GeneratedResult } from "@/types"
 import { TooltipProvider } from "@/components/ui/tooltip"
 
 import { GeneratedAudioItem } from "./generated-audio-item"
@@ -102,7 +102,7 @@ describe("GeneratedAudioItem", () => {
   })
 })
 
-const rangeSnapshot = {
+const rangeSnapshot: GeneratedAudioScriptSnapshot = {
   version: 1,
   mode: "range",
   text: "Narrator starts. Villain replies.",
@@ -111,4 +111,4 @@ const rangeSnapshot = {
   dialogueBlocks: [],
   speakerMappings: [],
   segmentGapMs: null,
-} as const
+}

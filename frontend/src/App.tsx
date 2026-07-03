@@ -269,9 +269,11 @@ function App() {
             onRegenerateVoiceSegments={(voiceId, voiceSettings) =>
               void regenerateMultiVoiceSegmentsForVoice(voiceId, voiceSettings)
             }
+            onRestoreScriptSnapshot={(item) => restoreScriptSnapshot(item.scriptSnapshot)}
             onSaveVoiceTuning={(voiceId, voiceSettings) =>
               void saveGeneratedSegmentTuningToVoice(voiceId, voiceSettings)
             }
+            onViewScriptSnapshot={(item) => setScriptSnapshotDialog(item.scriptSnapshot)}
             providerTuningControls={providerTuning.controls}
             segmentResultUrls={multiVoiceSegmentResultUrls}
             status={speechStatus}
