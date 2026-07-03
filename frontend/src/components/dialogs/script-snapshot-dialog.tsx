@@ -107,11 +107,11 @@ export function ScriptSnapshotDialog({ onOpenChange, open, snapshot }: ScriptSna
 
         <DialogFooter>
           <DialogClose asChild>
-            <Button type="button" variant="secondary">
+            <Button className="sm:order-2" type="button" variant="secondary">
               Close
             </Button>
           </DialogClose>
-          <div className="mr-auto flex items-center gap-2 text-xs text-muted-foreground">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground sm:order-1 sm:mr-auto">
             <FileText aria-hidden="true" className="size-4" />
             <span>Saved With Generated Audio</span>
           </div>

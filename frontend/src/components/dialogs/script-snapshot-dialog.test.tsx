@@ -24,6 +24,21 @@ describe("ScriptSnapshotDialog", () => {
     expect(within(dialog).getByRole("region", { name: "Script Snapshot Details" })).toHaveClass("min-h-0")
   })
 
+  it("keeps footer metadata left of the close action on desktop", () => {
+    render(<ScriptSnapshotDialog onOpenChange={vi.fn()} open snapshot={dialogueSnapshot} />)
+
+    const dialog = screen.getByRole("dialog", { name: "Generated Script Snapshot" })
+    const footer = dialog.querySelector('[data-slot="dialog-footer"]')
+    expect(footer).not.toBeNull()
+
+    const footerCloseButton = within(footer as HTMLElement).getByRole("button", { name: "Close" })
+    expect(footerCloseButton).toHaveClass("sm:order-2")
+    expect(within(footer as HTMLElement).getByText("Saved With Generated Audio").parentElement).toHaveClass(
+      "sm:order-1",
+      "sm:mr-auto"
+    )
+  })
+
   it("does not render without a snapshot", () => {
     render(<ScriptSnapshotDialog onOpenChange={vi.fn()} open snapshot={null} />)
 
