@@ -4874,6 +4874,7 @@ describe("App", () => {
     renderApp()
 
     await screen.findByText("default/default-voice.mp3")
+    await screen.findByRole("option", { name: "Eleven Flash v2.5" })
     await user.selectOptions(screen.getByLabelText(/model/i), "eleven_flash_v2_5")
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
 
