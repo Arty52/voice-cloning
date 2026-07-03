@@ -28,14 +28,12 @@ export function MetadataBadgePopover({
             "inline-flex rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring",
             "focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           )}
-          onBlur={() => setOpen(false)}
           onClick={(event) => {
             event.preventDefault()
             setOpen(true)
           }}
           onFocus={() => setOpen(true)}
           onMouseEnter={() => setOpen(true)}
-          onMouseLeave={() => setOpen(false)}
           type="button"
         >
           <Badge className="pointer-events-none" variant={variant}>

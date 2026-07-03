@@ -40,6 +40,23 @@ describe("MetadataBadgePopover", () => {
     expect(await screen.findByText("Generated with 3 Segments")).toBeInTheDocument()
   })
 
+  it("keeps focusable popover content reachable from the keyboard", async () => {
+    const user = userEvent.setup()
+    render(
+      <MetadataBadgePopover ariaLabel="Open Generation Metadata" label="Metadata">
+        <button type="button">Review Segment Details</button>
+      </MetadataBadgePopover>
+    )
+
+    await user.tab()
+    expect(screen.getByRole("button", { name: "Open Generation Metadata" })).toHaveFocus()
+    expect(await screen.findByRole("button", { name: "Review Segment Details" })).toBeInTheDocument()
+
+    await user.tab()
+
+    expect(screen.getByRole("button", { name: "Review Segment Details" })).toHaveFocus()
+  })
+
   it("opens the popover on click", async () => {
     const user = userEvent.setup()
     renderMetadataBadgePopover()
