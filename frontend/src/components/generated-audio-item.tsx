@@ -1,4 +1,4 @@
-import { Download, FolderUp, Trash2, Upload } from "lucide-react"
+import { Download, FileText, FolderUp, RotateCcw, Trash2, Upload } from "lucide-react"
 
 import { AudioPlayer } from "@/components/audio-player"
 import { GeneratedAudioMetadata } from "@/components/generated-audio-metadata"
@@ -23,7 +23,9 @@ type GeneratedAudioItemProps = {
   item: GeneratedResult
   onBrowserExport?: (id: string) => void
   onDelete: (id: string) => void
+  onRestoreScriptSnapshot?: (item: GeneratedResult) => void
   onServerExport?: (id: string) => void
+  onViewScriptSnapshot?: (item: GeneratedResult) => void
   serverExportStatus?: GeneratedAudioServerExportItem | null
 }
 
@@ -39,7 +41,9 @@ export function GeneratedAudioItem({
   item,
   onBrowserExport,
   onDelete,
+  onRestoreScriptSnapshot,
   onServerExport,
+  onViewScriptSnapshot,
   serverExportStatus = null,
 }: GeneratedAudioItemProps) {
   const serverExportLabel = serverExportActionLabel(serverExportStatus)
@@ -78,6 +82,30 @@ export function GeneratedAudioItem({
         <div className="mt-2 truncate font-mono text-xs text-muted-foreground">Request {item.requestId}</div>
       ) : null}
       <div className="mt-3 flex flex-wrap gap-2">
+        {item.scriptSnapshot && onViewScriptSnapshot ? (
+          <Button
+            aria-label={`View script snapshot for ${item.voiceName}`}
+            onClick={() => onViewScriptSnapshot(item)}
+            size="sm"
+            type="button"
+            variant="secondary"
+          >
+            <FileText aria-hidden="true" className="size-4" />
+            View Script
+          </Button>
+        ) : null}
+        {item.scriptSnapshot && onRestoreScriptSnapshot ? (
+          <Button
+            aria-label={`Use script snapshot in Generate for ${item.voiceName}`}
+            onClick={() => onRestoreScriptSnapshot(item)}
+            size="sm"
+            type="button"
+            variant="secondary"
+          >
+            <RotateCcw aria-hidden="true" className="size-4" />
+            Use In Generate
+          </Button>
+        ) : null}
         <a
           className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-secondary px-3 text-sm font-medium text-secondary-foreground transition hover:bg-secondary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           download={`voice-clone-${item.appVoiceId}-${item.id}.mp3`}

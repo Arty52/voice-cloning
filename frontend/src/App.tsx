@@ -2,6 +2,7 @@ import { type FormEvent, useRef, useState } from "react"
 
 import { AppHeader } from "@/components/app-header"
 import { ConfirmationDialog } from "@/components/dialogs/confirmation-dialog"
+import { ScriptSnapshotDialog } from "@/components/dialogs/script-snapshot-dialog"
 import { VoiceStudioShell, WorkflowSectionPanel } from "@/components/layout/voice-studio-shell"
 import { RenameVoiceDialog } from "@/components/dialogs/rename-voice-dialog"
 import { AddVoicePanel } from "@/components/panels/add-voice-panel"
@@ -19,8 +20,10 @@ import { StudioOverviewPanel } from "@/components/panels/studio-overview-panel"
 import { VoiceLibraryPanel } from "@/components/panels/voice-library-panel"
 import { useScrollIntoViewOnSignal } from "@/hooks/use-scroll-into-view-on-signal"
 import { useVoiceStudioController } from "@/hooks/use-voice-studio-controller"
+import type { GeneratedAudioScriptSnapshot } from "@/types"
 
 function App() {
+  const [scriptSnapshotDialog, setScriptSnapshotDialog] = useState<GeneratedAudioScriptSnapshot | null>(null)
   const [prepareAudioWorkflow, setPrepareAudioWorkflow] = useState<PrepareAudioWorkflow | null>(null)
   const [generatedAudioAttentionSignal, setGeneratedAudioAttentionSignal] = useState(0)
   const [sampleProcessingAttentionSignal, setSampleProcessingAttentionSignal] = useState(0)
@@ -61,6 +64,7 @@ function App() {
     requestSaveVoiceTuningDraft,
     regenerateMultiVoiceSegment,
     regenerateMultiVoiceSegmentsForVoice,
+    restoreScriptSnapshot,
     result,
     removeVoiceAssignment,
     sampleProcessing,
@@ -296,10 +300,12 @@ function App() {
             onBrowserExportFolderSelect={() => void generatedAudio.selectBrowserExportDirectory()}
             onClear={requestClearGeneratedAudio}
             onDelete={(id) => void generatedAudio.handleDeleteGeneratedAudio(id)}
+            onRestoreScriptSnapshot={(item) => restoreScriptSnapshot(item.scriptSnapshot)}
             onServerExport={(id) => void generatedAudio.handleExportGeneratedAudioToServer(id)}
             onServerExportAll={() => void generatedAudio.handleExportAllGeneratedAudioToServer()}
             onServerExportStatusRefresh={() => void generatedAudio.refreshServerExportStatus()}
             onStorageLimitChange={handleStorageLimitChange}
+            onViewScriptSnapshot={(item) => setScriptSnapshotDialog(item.scriptSnapshot)}
             persistenceMode={generatedAudio.generatedAudioPersistenceMode}
             serverExportError={generatedAudio.serverExportError}
             serverExportMutation={generatedAudio.serverExportMutation}
@@ -355,6 +361,15 @@ function App() {
         onNameChange={voiceLibrary.setRenameName}
         onSubmit={voiceLibrary.submitRename}
         voice={voiceLibrary.renameVoice}
+      />
+      <ScriptSnapshotDialog
+        onOpenChange={(open) => {
+          if (!open) {
+            setScriptSnapshotDialog(null)
+          }
+        }}
+        open={scriptSnapshotDialog !== null}
+        snapshot={scriptSnapshotDialog}
       />
       <ConfirmationDialog confirmation={confirmation.confirmation} onCancel={confirmation.clearConfirmation} />
     </>

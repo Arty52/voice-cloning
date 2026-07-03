@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 
 import type { GeneratedResult } from "@/types"
@@ -75,4 +76,39 @@ describe("GeneratedAudioItem", () => {
     expect(screen.getByRole("button", { name: /play audio/i })).toBeInTheDocument()
     expect(screen.getByRole("link", { name: /download/i })).toBeInTheDocument()
   })
+
+  it("shows script snapshot actions when callbacks are available", async () => {
+    const user = userEvent.setup()
+    const onViewScriptSnapshot = vi.fn()
+    const onRestoreScriptSnapshot = vi.fn()
+    const itemWithSnapshot = { ...multiVoiceItem, scriptSnapshot: rangeSnapshot }
+
+    render(
+      <TooltipProvider>
+        <GeneratedAudioItem
+          item={itemWithSnapshot}
+          onDelete={vi.fn()}
+          onRestoreScriptSnapshot={onRestoreScriptSnapshot}
+          onViewScriptSnapshot={onViewScriptSnapshot}
+        />
+      </TooltipProvider>
+    )
+
+    await user.click(screen.getByRole("button", { name: /view script snapshot/i }))
+    await user.click(screen.getByRole("button", { name: /use script snapshot in generate/i }))
+
+    expect(onViewScriptSnapshot).toHaveBeenCalledWith(itemWithSnapshot)
+    expect(onRestoreScriptSnapshot).toHaveBeenCalledWith(itemWithSnapshot)
+  })
 })
+
+const rangeSnapshot = {
+  version: 1,
+  mode: "range",
+  text: "Narrator starts. Villain replies.",
+  sourceVoiceId: "narrator",
+  assignments: [],
+  dialogueBlocks: [],
+  speakerMappings: [],
+  segmentGapMs: null,
+} as const

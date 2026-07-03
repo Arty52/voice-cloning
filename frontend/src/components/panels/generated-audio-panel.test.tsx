@@ -187,6 +187,26 @@ describe("GeneratedAudioPanel pending mutations", () => {
     await user.click(screen.getByRole("button", { name: /retry browser export generated audio for default voice/i }))
     expect(onBrowserExport).toHaveBeenCalledWith(generatedAudioItem)
   })
+
+  it("threads script snapshot view and restore actions for archive items", async () => {
+    const user = userEvent.setup()
+    const onViewScriptSnapshot = vi.fn()
+    const onRestoreScriptSnapshot = vi.fn()
+    const itemWithSnapshot = { ...generatedAudioItem, scriptSnapshot: rangeSnapshot }
+
+    renderGeneratedAudioPanel({
+      allItems: [itemWithSnapshot],
+      items: [itemWithSnapshot],
+      onRestoreScriptSnapshot,
+      onViewScriptSnapshot,
+    })
+
+    await user.click(screen.getByRole("button", { name: /view script snapshot/i }))
+    await user.click(screen.getByRole("button", { name: /use script snapshot in generate/i }))
+
+    expect(onViewScriptSnapshot).toHaveBeenCalledWith(itemWithSnapshot)
+    expect(onRestoreScriptSnapshot).toHaveBeenCalledWith(itemWithSnapshot)
+  })
 })
 
 const generatedAudioItem: GeneratedResult = {
@@ -209,6 +229,17 @@ const generatedAudioItem: GeneratedResult = {
   voiceId: "voice-123",
   voiceName: "Default Voice",
 }
+
+const rangeSnapshot = {
+  version: 1,
+  mode: "range",
+  text: "Narrator starts. Villain replies.",
+  sourceVoiceId: "default",
+  assignments: [],
+  dialogueBlocks: [],
+  speakerMappings: [],
+  segmentGapMs: null,
+} as const
 
 const browserTarget = {
   handle: {} as never,

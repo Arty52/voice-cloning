@@ -46,10 +46,12 @@ type GeneratedAudioPanelProps = {
   onBrowserExportFolderSelect: () => void
   onClear: () => void
   onDelete: (id: string) => void
+  onRestoreScriptSnapshot?: (item: GeneratedResult) => void
   onServerExport: (id: string) => void
   onServerExportAll: () => void
   onServerExportStatusRefresh: () => void
   onStorageLimitChange: (limitBytes: number) => void
+  onViewScriptSnapshot?: (item: GeneratedResult) => void
   persistenceMode: GeneratedAudioPersistenceMode
   serverExportError: string | null
   serverExportMutation: GeneratedAudioServerExportMutation | null
@@ -77,10 +79,12 @@ export function GeneratedAudioPanel({
   onBrowserExportFolderSelect,
   onClear,
   onDelete,
+  onRestoreScriptSnapshot,
   onServerExport,
   onServerExportAll,
   onServerExportStatusRefresh,
   onStorageLimitChange,
+  onViewScriptSnapshot,
   persistenceMode,
   serverExportError,
   serverExportMutation,
@@ -314,7 +318,9 @@ export function GeneratedAudioPanel({
                 key={item.id}
                 onBrowserExport={isBrowserExportReady ? () => onBrowserExport(item) : undefined}
                 onDelete={onDelete}
+                onRestoreScriptSnapshot={onRestoreScriptSnapshot}
                 onServerExport={serverArchiveMode ? onServerExport : undefined}
+                onViewScriptSnapshot={onViewScriptSnapshot}
                 serverExportStatus={findServerExportStatus(item, serverExportStatus)}
               />
             ))
