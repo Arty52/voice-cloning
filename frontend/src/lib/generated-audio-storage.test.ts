@@ -17,7 +17,11 @@ import {
   updateGeneratedAudioStorageLimitBytes,
   type SaveGeneratedAudioInput,
 } from "./generated-audio-storage"
-import type { GeneratedAudioMultiVoiceMetadata, GeneratedAudioTuningMetadata } from "@/types"
+import type {
+  GeneratedAudioMultiVoiceMetadata,
+  GeneratedAudioScriptSnapshot,
+  GeneratedAudioTuningMetadata,
+} from "@/types"
 
 const tuningMetadata: GeneratedAudioTuningMetadata = {
   adjustedSettings: [
@@ -71,6 +75,17 @@ const multiVoiceMetadata: GeneratedAudioMultiVoiceMetadata = {
     { segmentCount: 1, voiceId: "narrator", voiceName: "Narrator" },
     { segmentCount: 1, voiceId: "default", voiceName: "Default Voice" },
   ],
+}
+
+const scriptSnapshot: GeneratedAudioScriptSnapshot = {
+  version: 1,
+  mode: "range",
+  text: "Hello from the saved script.",
+  sourceVoiceId: "default",
+  assignments: [],
+  dialogueBlocks: [],
+  speakerMappings: [],
+  segmentGapMs: null,
 }
 
 function deleteDatabase(name: string) {
@@ -152,7 +167,13 @@ describe("generated audio storage", () => {
   it("saves generated audio and lists newest first", async () => {
     await saveGeneratedAudio(audioInput({ createdAt: "2026-05-28T10:00:00.000Z", id: "first" }), 20)
     await saveGeneratedAudio(
-      audioInput({ createdAt: "2026-05-28T10:01:00.000Z", id: "second", multiVoiceMetadata, tuningMetadata }),
+      audioInput({
+        createdAt: "2026-05-28T10:01:00.000Z",
+        id: "second",
+        multiVoiceMetadata,
+        tuningMetadata,
+        scriptSnapshot,
+      }),
       20
     )
 
@@ -170,6 +191,7 @@ describe("generated audio storage", () => {
       sha256: expect.any(String),
       sizeBytes: 4,
       multiVoiceMetadata,
+      scriptSnapshot,
       tuningMetadata,
       voiceId: "voice-123",
       voiceName: "Default voice",
@@ -188,6 +210,7 @@ describe("generated audio storage", () => {
     const record = (await listGeneratedAudio())[0]
     expect(record.generationElapsedMs).toBe(1234)
     expect(record.multiVoiceMetadata).toBeNull()
+    expect(record.scriptSnapshot).toBeNull()
     expect(record.tuningMetadata).toBeNull()
   })
 
@@ -208,6 +231,7 @@ describe("generated audio storage", () => {
       generationElapsedMs: null,
       id: "legacy",
       multiVoiceMetadata: null,
+      scriptSnapshot: null,
       sha256: null,
     })
   })

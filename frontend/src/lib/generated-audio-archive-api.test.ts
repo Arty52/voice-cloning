@@ -20,6 +20,7 @@ function archiveItem(id: string) {
     multiVoiceMetadata: null,
     providerId: "elevenlabs",
     requestId: null,
+    scriptSnapshot: null,
     sha256: "hash",
     sizeBytes: 4,
     tuningMetadata: null,
@@ -63,11 +64,13 @@ describe("generated audio archive API", () => {
 
   it("uses explicit content type for multipart archive uploads", async () => {
     let uploadedFile: unknown = null
+    let uploadedScriptSnapshot: unknown = null
     vi.stubGlobal(
       "fetch",
       vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
         const formData = init?.body as FormData
         uploadedFile = formData.get("audioFile") as File
+        uploadedScriptSnapshot = formData.get("scriptSnapshot")
         return okJson({
           alreadyExisted: false,
           item: archiveItem("audio-one"),
@@ -92,6 +95,16 @@ describe("generated audio archive API", () => {
         id: "audio-one",
         modelId: "eleven_multilingual_v2",
         requestId: null,
+        scriptSnapshot: {
+          version: 1,
+          mode: "range",
+          text: "Hello from the saved script.",
+          sourceVoiceId: "default",
+          assignments: [],
+          dialogueBlocks: [],
+          speakerMappings: [],
+          segmentGapMs: null,
+        },
         voiceId: "voice-123",
         voiceName: "Narrator",
       },
@@ -103,5 +116,10 @@ describe("generated audio archive API", () => {
     }
     expect(uploadedFile.type).toBe("audio/wav")
     expect(uploadedFile.name).toBe("audio-one.wav")
+    expect(JSON.parse(String(uploadedScriptSnapshot))).toMatchObject({
+      version: 1,
+      mode: "range",
+      text: "Hello from the saved script.",
+    })
   })
 })
