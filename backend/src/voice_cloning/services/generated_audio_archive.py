@@ -25,6 +25,7 @@ BYTES_PER_MEBIBYTE = 1024 * 1024
 DEFAULT_GENERATED_AUDIO_STORAGE_LIMIT_BYTES = 100 * BYTES_PER_MEBIBYTE
 UPLOAD_CHUNK_SIZE_BYTES = 1024 * 1024
 GENERATED_AUDIO_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+SCRIPT_SNAPSHOT_MODES = {"range", "dialogue"}
 CONTENT_TYPE_EXTENSION_BY_PREFIX = {
     "audio/mpeg": ".mp3",
     "audio/mp3": ".mp3",
@@ -440,4 +441,17 @@ def parse_optional_json_object(value: str | None, field_name: str) -> dict[str, 
         raise GeneratedAudioArchiveError(f"{field_name} must be valid JSON.", 422) from exc
     if not isinstance(payload, dict):
         raise GeneratedAudioArchiveError(f"{field_name} must be a JSON object.", 422)
+    return payload
+
+
+def parse_optional_script_snapshot(value: str | None) -> dict[str, Any] | None:
+    payload = parse_optional_json_object(value, "scriptSnapshot")
+    if payload is None:
+        return None
+    if "version" not in payload:
+        raise GeneratedAudioArchiveError("scriptSnapshot.version is required.", 422)
+    if payload.get("mode") not in SCRIPT_SNAPSHOT_MODES:
+        raise GeneratedAudioArchiveError("scriptSnapshot.mode must be range or dialogue.", 422)
+    if not isinstance(payload.get("text"), str):
+        raise GeneratedAudioArchiveError("scriptSnapshot.text must be a string.", 422)
     return payload

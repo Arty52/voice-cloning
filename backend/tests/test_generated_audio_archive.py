@@ -147,6 +147,33 @@ def test_generated_audio_archive_rejects_non_audio_upload(tmp_path: Path) -> Non
     assert client.get("/api/generated-audio").json()["items"] == []
 
 
+@pytest.mark.parametrize(
+    ("script_snapshot", "detail"),
+    [
+        ('["not","object"]', "scriptSnapshot must be a JSON object."),
+        ('{"mode":"range","text":"hello"}', "scriptSnapshot.version is required."),
+        ('{"version":1,"mode":"invalid","text":"hello"}', "scriptSnapshot.mode must be range or dialogue."),
+        ('{"version":1,"mode":"range","text":42}', "scriptSnapshot.text must be a string."),
+    ],
+)
+def test_generated_audio_archive_rejects_invalid_script_snapshot(
+    tmp_path: Path,
+    script_snapshot: str,
+    detail: str,
+) -> None:
+    client = make_client(tmp_path)
+
+    response = client.post(
+        "/api/generated-audio",
+        data={"id": "audio-one", "scriptSnapshot": script_snapshot},
+        files=audio_files(),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == detail
+    assert client.get("/api/generated-audio").json()["items"] == []
+
+
 def test_generated_audio_archive_derives_extension_from_audio_content_type(tmp_path: Path) -> None:
     from voice_cloning.api.app import create_app
 
