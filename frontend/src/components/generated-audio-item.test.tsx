@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 
@@ -69,9 +69,12 @@ describe("GeneratedAudioItem", () => {
       </TooltipProvider>
     )
 
-    expect(screen.getAllByText("Multi-Voice")).toHaveLength(2)
-    expect(screen.getByText("Combined Result")).toBeInTheDocument()
-    expect(screen.getByText("2 Segments")).toBeInTheDocument()
+    const multiVoiceBadge = screen.getByRole("button", { name: "Show Multi-Voice Generation Details" })
+    expect(multiVoiceBadge).toHaveTextContent("Multi-Voice")
+    expect(screen.queryByText("Combined Result")).not.toBeInTheDocument()
+    expect(screen.queryByText("2 Segments")).not.toBeInTheDocument()
+    fireEvent.click(multiVoiceBadge)
+    expect(await screen.findByText("2 Segments")).toBeInTheDocument()
     expect(screen.getByText("Narrator x1")).toBeInTheDocument()
     expect(screen.getByText("Villain x1")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /play audio/i })).toBeInTheDocument()
@@ -79,6 +82,32 @@ describe("GeneratedAudioItem", () => {
     const downloadAction = screen.getByRole("menuitem", { name: "Download" })
     expect(downloadAction).toHaveAttribute("href", "blob:generated-1")
     expect(downloadAction).toHaveAttribute("download", "voice-clone-narrator-generated-1.mp3")
+  })
+
+  it("shows cache badges for non-multi-voice generated audio", () => {
+    const cacheHitItem: GeneratedResult = {
+      ...multiVoiceItem,
+      cacheState: "hit",
+      multiVoiceMetadata: null,
+      voiceName: "Narrator",
+    }
+
+    const { rerender } = render(
+      <TooltipProvider>
+        <GeneratedAudioItem item={cacheHitItem} onDelete={vi.fn()} />
+      </TooltipProvider>
+    )
+
+    expect(screen.getByText("Cache Hit")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Show Multi-Voice Generation Details" })).not.toBeInTheDocument()
+
+    rerender(
+      <TooltipProvider>
+        <GeneratedAudioItem item={{ ...cacheHitItem, cacheState: "miss" }} onDelete={vi.fn()} />
+      </TooltipProvider>
+    )
+
+    expect(screen.getByText("Cache Miss")).toBeInTheDocument()
   })
 
   it("shows range text snapshot actions when callbacks are available", async () => {
