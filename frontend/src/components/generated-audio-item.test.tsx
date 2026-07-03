@@ -61,7 +61,8 @@ const multiVoiceItem: GeneratedResult = {
 }
 
 describe("GeneratedAudioItem", () => {
-  it("shows multi-voice archive metadata while preserving playback actions", () => {
+  it("shows multi-voice archive metadata while preserving playback actions", async () => {
+    const user = userEvent.setup()
     render(
       <TooltipProvider>
         <GeneratedAudioItem item={multiVoiceItem} onDelete={vi.fn()} />
@@ -74,10 +75,13 @@ describe("GeneratedAudioItem", () => {
     expect(screen.getByText("Narrator x1")).toBeInTheDocument()
     expect(screen.getByText("Villain x1")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /play audio/i })).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: /download/i })).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: /open generated audio actions/i }))
+    const downloadAction = screen.getByRole("menuitem", { name: "Download" })
+    expect(downloadAction).toHaveAttribute("href", "blob:generated-1")
+    expect(downloadAction).toHaveAttribute("download", "voice-clone-narrator-generated-1.mp3")
   })
 
-  it("shows script snapshot actions when callbacks are available", async () => {
+  it("shows range script snapshot actions when callbacks are available", async () => {
     const user = userEvent.setup()
     const onViewScriptSnapshot = vi.fn()
     const onRestoreScriptSnapshot = vi.fn()
@@ -94,10 +98,33 @@ describe("GeneratedAudioItem", () => {
       </TooltipProvider>
     )
 
-    await user.click(screen.getByRole("button", { name: /view script snapshot/i }))
-    await user.click(screen.getByRole("button", { name: /use script snapshot in generate/i }))
+    await user.click(screen.getByRole("button", { name: /open generated audio actions/i }))
+    await user.click(screen.getByRole("menuitem", { name: "View Script" }))
+    await user.click(screen.getByRole("button", { name: /open generated audio actions/i }))
+    await user.click(screen.getByRole("menuitem", { name: "Use Text" }))
 
     expect(onViewScriptSnapshot).toHaveBeenCalledWith(itemWithSnapshot)
+    expect(onRestoreScriptSnapshot).toHaveBeenCalledWith(itemWithSnapshot)
+  })
+
+  it("labels dialogue script recall actions by mode", async () => {
+    const user = userEvent.setup()
+    const onRestoreScriptSnapshot = vi.fn()
+    const itemWithSnapshot = { ...multiVoiceItem, scriptSnapshot: dialogueSnapshot }
+
+    render(
+      <TooltipProvider>
+        <GeneratedAudioItem
+          item={itemWithSnapshot}
+          onDelete={vi.fn()}
+          onRestoreScriptSnapshot={onRestoreScriptSnapshot}
+        />
+      </TooltipProvider>
+    )
+
+    await user.click(screen.getByRole("button", { name: /open generated audio actions/i }))
+    await user.click(screen.getByRole("menuitem", { name: "Use Dialogue" }))
+
     expect(onRestoreScriptSnapshot).toHaveBeenCalledWith(itemWithSnapshot)
   })
 })
@@ -111,4 +138,19 @@ const rangeSnapshot: GeneratedAudioScriptSnapshot = {
   dialogueBlocks: [],
   speakerMappings: [],
   segmentGapMs: null,
+}
+
+const dialogueSnapshot: GeneratedAudioScriptSnapshot = {
+  ...rangeSnapshot,
+  mode: "dialogue",
+  dialogueBlocks: [
+    {
+      id: "dialogue-block-1",
+      speakerLabel: "Narrator",
+      text: "Narrator starts.",
+      voiceId: "narrator",
+      voiceName: "Narrator",
+      voiceSettings: null,
+    },
+  ],
 }

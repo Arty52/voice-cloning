@@ -5027,13 +5027,15 @@ describe("App", () => {
     renderApp()
 
     const archivePanel = generatedAudioArchivePanel()
-    await user.click(await archivePanel.findByRole("button", { name: /view script snapshot/i }))
+    await user.click(await archivePanel.findByRole("button", { name: /open generated audio actions/i }))
+    await user.click(archivePanel.getByRole("menuitem", { name: "View Script" }))
 
     const snapshotDialog = screen.getByRole("dialog", { name: "Generated Script Snapshot" })
     expect(within(snapshotDialog).getByText("Archived script for recall.")).toBeInTheDocument()
     await user.click(within(snapshotDialog).getAllByRole("button", { name: "Close" })[0])
 
-    await user.click(archivePanel.getByRole("button", { name: /use script snapshot in generate/i }))
+    await user.click(archivePanel.getByRole("button", { name: /open generated audio actions/i }))
+    await user.click(archivePanel.getByRole("menuitem", { name: "Use Text" }))
 
     expect(await screen.findByDisplayValue("Archived script for recall.")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Generate Speech" })).toHaveAttribute("aria-current", "page")
@@ -5053,7 +5055,8 @@ describe("App", () => {
     await user.type(textarea, "Unsaved draft.")
 
     const archivePanel = generatedAudioArchivePanel()
-    await user.click(await archivePanel.findByRole("button", { name: /use script snapshot in generate/i }))
+    await user.click(await archivePanel.findByRole("button", { name: /open generated audio actions/i }))
+    await user.click(archivePanel.getByRole("menuitem", { name: "Use Text" }))
 
     const confirmationDialog = screen.getByRole("dialog", { name: "Replace Draft Script?" })
     expect(screen.getByDisplayValue("Unsaved draft.")).toBeInTheDocument()
@@ -5085,7 +5088,11 @@ describe("App", () => {
     expect(within(archivePanel as HTMLElement).getByText(/Generated In/)).toBeInTheDocument()
     expect(within(archivePanel as HTMLElement).getByText("Preset: Standard Narration")).toBeInTheDocument()
     expect(within(archivePanel as HTMLElement).getByText("Default Settings")).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: /download/i })).toHaveAttribute("download", expect.stringMatching(/^voice-clone-default-/))
+    await user.click(within(archivePanel as HTMLElement).getByRole("button", { name: /open generated audio actions/i }))
+    expect(within(archivePanel as HTMLElement).getByRole("menuitem", { name: "Download" })).toHaveAttribute(
+      "download",
+      expect.stringMatching(/^voice-clone-default-/)
+    )
   })
 
   it("removes one generated audio item and clears all saved audio", async () => {
@@ -5102,7 +5109,8 @@ describe("App", () => {
     await waitFor(() => expect(latestPanel.getAllByLabelText(/generated voice playback for default voice/i)).toHaveLength(1))
     await waitFor(() => expect(archivePanel.getAllByLabelText(/generated voice playback for default voice/i)).toHaveLength(2))
 
-    await user.click(archivePanel.getAllByRole("button", { name: /remove generated audio for default voice/i })[0])
+    await user.click(archivePanel.getAllByRole("button", { name: /open generated audio actions for default voice/i })[0])
+    await user.click(archivePanel.getByRole("menuitem", { name: "Remove" }))
     await waitFor(() =>
       expect(archivePanel.getAllByLabelText(/generated voice playback for default voice/i)).toHaveLength(1)
     )
@@ -5163,7 +5171,8 @@ describe("App", () => {
     expect(latestPanel.getByText(/browser storage could not save it/i)).toBeInTheDocument()
     expect(archivePanel.queryByText(/browser storage could not save it/i)).not.toBeInTheDocument()
 
-    await user.click(latestPanel.getByRole("button", { name: /remove generated audio for default voice/i }))
+    await user.click(latestPanel.getByRole("button", { name: /open generated audio actions for default voice/i }))
+    await user.click(latestPanel.getByRole("menuitem", { name: "Remove" }))
 
     await waitFor(() => expect(screen.queryByLabelText(/generated voice playback for default voice/i)).not.toBeInTheDocument())
     expect(screen.queryByRole("heading", { name: "Latest Generated Audio" })).not.toBeInTheDocument()

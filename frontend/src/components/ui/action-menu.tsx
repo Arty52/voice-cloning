@@ -4,13 +4,26 @@ import { type ReactNode, useEffect, useId, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
-export type ActionMenuItem = {
+type ActionMenuBaseItem = {
   destructive?: boolean
   disabled?: boolean
   icon?: ReactNode
   label: string
+}
+
+type ActionMenuButtonItem = ActionMenuBaseItem & {
+  download?: never
+  href?: never
   onSelect: () => void
 }
+
+type ActionMenuLinkItem = ActionMenuBaseItem & {
+  download?: string
+  href: string
+  onSelect?: never
+}
+
+export type ActionMenuItem = ActionMenuButtonItem | ActionMenuLinkItem
 
 type ActionMenuProps = {
   ariaLabel: string
@@ -74,25 +87,45 @@ export function ActionMenu({ ariaLabel, disabled = false, items }: ActionMenuPro
           id={menuId}
           role="menu"
         >
-          {items.map((item) => (
-            <button
-              className={cn(
-                "flex w-full items-center gap-2 rounded px-2.5 py-2 text-left text-sm outline-none transition hover:bg-muted focus-visible:bg-muted disabled:pointer-events-none disabled:opacity-50",
-                item.destructive ? "text-destructive" : "text-foreground"
-              )}
-              disabled={item.disabled}
-              key={item.label}
-              onClick={() => {
-                setIsOpen(false)
-                item.onSelect()
-              }}
-              role="menuitem"
-              type="button"
-            >
-              {item.icon}
-              <span>{item.label}</span>
-            </button>
-          ))}
+          {items.map((item) => {
+            const itemClassName = cn(
+              "flex w-full items-center gap-2 rounded px-2.5 py-2 text-left text-sm outline-none transition hover:bg-muted focus-visible:bg-muted disabled:pointer-events-none disabled:opacity-50",
+              item.destructive ? "text-destructive" : "text-foreground"
+            )
+
+            if (item.href && !item.disabled) {
+              return (
+                <a
+                  className={itemClassName}
+                  download={item.download}
+                  href={item.href}
+                  key={item.label}
+                  onClick={() => setIsOpen(false)}
+                  role="menuitem"
+                >
+                  {item.icon}
+                  <span>{item.label}</span>
+                </a>
+              )
+            }
+
+            return (
+              <button
+                className={itemClassName}
+                disabled={item.disabled}
+                key={item.label}
+                onClick={() => {
+                  setIsOpen(false)
+                  item.onSelect?.()
+                }}
+                role="menuitem"
+                type="button"
+              >
+                {item.icon}
+                <span>{item.label}</span>
+              </button>
+            )
+          })}
         </div>
       ) : null}
     </div>
