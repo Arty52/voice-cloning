@@ -496,6 +496,16 @@ describe("SpeechInputPanel voice assignments", () => {
     expect(assignmentsRegion).not.toHaveTextContent("1 Segment")
   })
 
+  it("shows script restore warnings for missing voices", () => {
+    renderPanel({
+      scriptRestoreWarning: "Villain no longer exists, so the current source voice was kept.",
+    })
+
+    const alert = screen.getByRole("alert")
+    expect(alert).toHaveTextContent("Script Restored With Missing Voices")
+    expect(alert).toHaveTextContent("Villain no longer exists, so the current source voice was kept.")
+  })
+
   it("shows enabled natural handoffs when voice assignments exist", async () => {
     const user = userEvent.setup()
     const props = renderPanel({
