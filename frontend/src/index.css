@@ -86,6 +86,28 @@ button:not(:disabled),
   cursor: pointer;
 }
 
+[data-slot="select-trigger"]:not(:disabled):hover,
+[data-slot="select-trigger"][data-state="open"] {
+  border-color: color-mix(in oklch, var(--ring) 70%, var(--border));
+  background-color: color-mix(in oklch, var(--muted) 50%, transparent);
+  box-shadow:
+    0 0 0 3px color-mix(in oklch, var(--ring) 20%, transparent),
+    0 1px 2px color-mix(in oklch, var(--foreground) 5%, transparent);
+}
+
+[data-slot="select-item"]:not([data-disabled]) {
+  cursor: pointer;
+}
+
+[data-slot="select-item"]:not([data-disabled]):is(:hover, :focus, [data-highlighted]) {
+  background-color: var(--muted);
+  color: var(--foreground);
+}
+
+[data-slot="select-item"][data-state="checked"] {
+  color: var(--foreground);
+}
+
 audio {
   width: 100%;
   min-height: 42px;
