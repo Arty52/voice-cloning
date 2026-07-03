@@ -57,6 +57,18 @@ def audio_files(
     return {"audioFile": (filename, content, content_type)}
 
 
+SCRIPT_SNAPSHOT = {
+    "version": 1,
+    "mode": "range",
+    "text": "Hello from the saved script.",
+    "sourceVoiceId": "narrator",
+    "assignments": [],
+    "dialogueBlocks": [],
+    "speakerMappings": [],
+    "segmentGapMs": None,
+}
+
+
 def test_generated_audio_archive_routes_save_stream_and_delete(tmp_path: Path) -> None:
     client = make_client(tmp_path)
 
@@ -74,6 +86,11 @@ def test_generated_audio_archive_routes_save_stream_and_delete(tmp_path: Path) -
             "requestId": "req_123",
             "generationElapsedMs": "1234",
             "tuningMetadata": '{"mode":"default","presetId":null,"adjustedSettings":[]}',
+            "scriptSnapshot": (
+                '{"version":1,"mode":"range","text":"Hello from the saved script.",'
+                '"sourceVoiceId":"narrator","assignments":[],"dialogueBlocks":[],'
+                '"speakerMappings":[],"segmentGapMs":null}'
+            ),
         },
         files=audio_files(),
     )
@@ -81,6 +98,7 @@ def test_generated_audio_archive_routes_save_stream_and_delete(tmp_path: Path) -
     assert save_response.status_code == 200
     assert save_response.json()["item"]["id"] == "audio-one"
     assert save_response.json()["item"]["audioUrl"] == "/api/generated-audio/audio-one/audio"
+    assert save_response.json()["item"]["scriptSnapshot"] == SCRIPT_SNAPSHOT
     assert save_response.json()["usage"] == {
         "itemCount": 1,
         "limitBytes": 100 * 1024 * 1024,
@@ -94,6 +112,7 @@ def test_generated_audio_archive_routes_save_stream_and_delete(tmp_path: Path) -
 
     assert list_response.status_code == 200
     assert list_response.json()["items"][0]["voiceName"] == "Narrator"
+    assert list_response.json()["items"][0]["scriptSnapshot"] == SCRIPT_SNAPSHOT
     assert stream_response.status_code == 200
     assert stream_response.content == b"fake-mp3"
     assert delete_response.status_code == 200
@@ -125,6 +144,35 @@ def test_generated_audio_archive_rejects_non_audio_upload(tmp_path: Path) -> Non
 
     assert response.status_code == 422
     assert response.json()["detail"] == "Generated audio content type is not supported."
+    assert client.get("/api/generated-audio").json()["items"] == []
+
+
+@pytest.mark.parametrize(
+    ("script_snapshot", "detail"),
+    [
+        ('["not","object"]', "scriptSnapshot must be a JSON object."),
+        ('{"mode":"range","text":"hello"}', "scriptSnapshot.version is required."),
+        ('{"version":null,"mode":"range","text":"hello"}', "scriptSnapshot.version is required."),
+        ('{"version":1,"mode":"invalid","text":"hello"}', "scriptSnapshot.mode must be range or dialogue."),
+        ('{"version":1,"mode":["range"],"text":"hello"}', "scriptSnapshot.mode must be range or dialogue."),
+        ('{"version":1,"mode":"range","text":42}', "scriptSnapshot.text must be a string."),
+    ],
+)
+def test_generated_audio_archive_rejects_invalid_script_snapshot(
+    tmp_path: Path,
+    script_snapshot: str,
+    detail: str,
+) -> None:
+    client = make_client(tmp_path)
+
+    response = client.post(
+        "/api/generated-audio",
+        data={"id": "audio-one", "scriptSnapshot": script_snapshot},
+        files=audio_files(),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == detail
     assert client.get("/api/generated-audio").json()["items"] == []
 
 

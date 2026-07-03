@@ -757,7 +757,7 @@ def test_postgres_migrations_upgrade_to_head() -> None:
         table_names = set(inspect(connection).get_table_names())
         version = connection.execute(text("select version_num from alembic_version")).scalar_one()
 
-    assert version == "202607010002"
+    assert version == "202607010003"
     assert {
         "voices",
         "voice_processing_steps",
@@ -805,7 +805,7 @@ def test_postgres_migrations_roundtrip_on_disposable_database() -> None:
             table_names = set(inspect(connection).get_table_names())
             version = connection.execute(text("select version_num from alembic_version")).scalar_one()
 
-        assert version == "202607010002"
+        assert version == "202607010003"
         assert "voices" in table_names
         assert "generated_audio" in table_names
         assert "generated_audio_export_ledger" in table_names

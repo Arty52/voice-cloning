@@ -29,6 +29,7 @@ class GeneratedAudioMetadata:
     generation_elapsed_ms: int | None = None
     multi_voice_metadata: dict[str, Any] | None = None
     tuning_metadata: dict[str, Any] | None = None
+    script_snapshot: dict[str, Any] | None = None
 
 
 class SqlAlchemyGeneratedAudioRepository:
@@ -74,6 +75,7 @@ class SqlAlchemyGeneratedAudioRepository:
         record.generation_elapsed_ms = metadata.generation_elapsed_ms
         record.multi_voice_metadata = metadata.multi_voice_metadata
         record.tuning_metadata = metadata.tuning_metadata
+        record.script_snapshot = metadata.script_snapshot
 
     def delete(self, audio_id: str) -> None:
         record = self.session.get(GeneratedAudioRecord, audio_id)
@@ -103,6 +105,7 @@ def _metadata_from_record(record: GeneratedAudioRecord) -> GeneratedAudioMetadat
         generation_elapsed_ms=record.generation_elapsed_ms,
         multi_voice_metadata=record.multi_voice_metadata,
         tuning_metadata=record.tuning_metadata,
+        script_snapshot=record.script_snapshot,
     )
 
 

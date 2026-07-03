@@ -25,6 +25,7 @@ BYTES_PER_MEBIBYTE = 1024 * 1024
 DEFAULT_GENERATED_AUDIO_STORAGE_LIMIT_BYTES = 100 * BYTES_PER_MEBIBYTE
 UPLOAD_CHUNK_SIZE_BYTES = 1024 * 1024
 GENERATED_AUDIO_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+SCRIPT_SNAPSHOT_MODES = {"range", "dialogue"}
 CONTENT_TYPE_EXTENSION_BY_PREFIX = {
     "audio/mpeg": ".mp3",
     "audio/mp3": ".mp3",
@@ -120,7 +121,8 @@ class GeneratedAudioArchiveService:
         generation_elapsed_ms: int | None,
         multi_voice_metadata: dict[str, Any] | None,
         tuning_metadata: dict[str, Any] | None,
-        ) -> GeneratedAudioSaveResult:
+        script_snapshot: dict[str, Any] | None,
+    ) -> GeneratedAudioSaveResult:
         _validate_audio_id(audio_id)
         limit_bytes = self.get_storage_limit()
         staged_upload = await self._stage_upload(upload, limit_bytes)
@@ -163,6 +165,7 @@ class GeneratedAudioArchiveService:
                     generation_elapsed_ms=_non_negative_int_or_none(generation_elapsed_ms),
                     multi_voice_metadata=multi_voice_metadata,
                     tuning_metadata=tuning_metadata,
+                    script_snapshot=script_snapshot,
                 )
                 audio_repository.save(metadata)
                 session.flush()
@@ -438,4 +441,18 @@ def parse_optional_json_object(value: str | None, field_name: str) -> dict[str, 
         raise GeneratedAudioArchiveError(f"{field_name} must be valid JSON.", 422) from exc
     if not isinstance(payload, dict):
         raise GeneratedAudioArchiveError(f"{field_name} must be a JSON object.", 422)
+    return payload
+
+
+def parse_optional_script_snapshot(value: str | None) -> dict[str, Any] | None:
+    payload = parse_optional_json_object(value, "scriptSnapshot")
+    if payload is None:
+        return None
+    if payload.get("version") is None:
+        raise GeneratedAudioArchiveError("scriptSnapshot.version is required.", 422)
+    mode = payload.get("mode")
+    if not isinstance(mode, str) or mode not in SCRIPT_SNAPSHOT_MODES:
+        raise GeneratedAudioArchiveError("scriptSnapshot.mode must be range or dialogue.", 422)
+    if not isinstance(payload.get("text"), str):
+        raise GeneratedAudioArchiveError("scriptSnapshot.text must be a string.", 422)
     return payload

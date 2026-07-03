@@ -10,6 +10,7 @@ from ...services.generated_audio_archive import (
     GeneratedAudioArchiveError,
     GeneratedAudioArchiveService,
     parse_optional_json_object,
+    parse_optional_script_snapshot,
 )
 from ...services.generated_audio_export import GeneratedAudioExportError, GeneratedAudioExportService
 from ..serializers import (
@@ -56,6 +57,7 @@ def create_generated_audio_router(
         generationElapsedMs: int | None = Form(None),
         multiVoiceMetadata: str | None = Form(None),
         tuningMetadata: str | None = Form(None),
+        scriptSnapshot: str | None = Form(None),
     ) -> dict[str, object]:
         archive = _require_service(service)
         try:
@@ -74,6 +76,7 @@ def create_generated_audio_router(
                 generation_elapsed_ms=generationElapsedMs,
                 multi_voice_metadata=parse_optional_json_object(multiVoiceMetadata, "multiVoiceMetadata"),
                 tuning_metadata=parse_optional_json_object(tuningMetadata, "tuningMetadata"),
+                script_snapshot=parse_optional_script_snapshot(scriptSnapshot),
             )
         except GeneratedAudioArchiveError as exc:
             raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc

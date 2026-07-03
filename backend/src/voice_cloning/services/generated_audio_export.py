@@ -371,6 +371,7 @@ def build_generated_audio_export_sidecar(
         "generationElapsedMs": item.generation_elapsed_ms,
         "tuningMetadata": item.tuning_metadata,
         "multiVoiceMetadata": item.multi_voice_metadata,
+        "scriptSnapshot": item.script_snapshot,
     }
 
 
