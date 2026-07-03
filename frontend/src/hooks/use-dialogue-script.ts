@@ -17,6 +17,12 @@ export type UseDialogueScriptOptions = {
   voices: VoiceAsset[]
 }
 
+export type RestoreDialogueScriptStateInput = {
+  blocks: MultiVoiceScriptBlock[]
+  mode?: DialogueInputMode
+  speakerMappings: SpeakerVoiceMapping[]
+}
+
 const EMPTY_VOICE_SETTINGS_BY_VOICE_ID: Record<string, VoiceTuningValues> = {}
 
 export function useDialogueScript({
@@ -57,6 +63,13 @@ export function useDialogueScript({
     setSpeakerMappings((current) => mergeSpeakerMappings(current, uniqueSpeakerLabels(nextBlocks)))
     setSelectedBlockIds(new Set())
     setMode("dialogue")
+  }
+
+  function restoreState({ blocks, mode = "dialogue", speakerMappings }: RestoreDialogueScriptStateInput) {
+    setBlocks(blocks.map(copyBlock))
+    setSpeakerMappings(speakerMappings.map(copySpeakerMapping))
+    setSelectedBlockIds(new Set())
+    setMode(mode)
   }
 
   function updateBlockText(blockId: string, text: string) {
@@ -199,6 +212,7 @@ export function useDialogueScript({
     clearSelectedBlocks,
     importFromText,
     mode,
+    restoreState,
     segmentBuild,
     selectedBlockCount,
     selectedBlockIds: selectedBlockIdsSnapshot,
@@ -216,6 +230,24 @@ export function useDialogueScript({
 }
 
 export type DialogueScriptController = ReturnType<typeof useDialogueScript>
+
+function copyBlock(block: MultiVoiceScriptBlock): MultiVoiceScriptBlock {
+  return {
+    id: block.id,
+    speakerLabel: block.speakerLabel,
+    text: block.text,
+    voiceId: block.voiceId,
+    voiceName: block.voiceName ?? null,
+    voiceSettings: block.voiceSettings ? { ...block.voiceSettings } : null,
+  }
+}
+
+function copySpeakerMapping(mapping: SpeakerVoiceMapping): SpeakerVoiceMapping {
+  return {
+    speakerLabel: mapping.speakerLabel,
+    voiceId: mapping.voiceId,
+  }
+}
 
 function uniqueSpeakerLabels(blocks: MultiVoiceScriptBlock[]) {
   const labels: string[] = []

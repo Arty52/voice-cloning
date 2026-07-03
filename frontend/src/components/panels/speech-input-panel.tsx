@@ -74,6 +74,7 @@ type SpeechInputPanelProps = {
   onTextChange: (text: string) => void
   onTextSelectionChange: () => void
   providerTuningControls?: ProviderTuningControl[]
+  scriptRestoreWarning?: string | null
   selectedVoice: VoiceAsset | null
   selectedText: string
   text: string
@@ -108,6 +109,7 @@ export function SpeechInputPanel({
   onTextChange,
   onTextSelectionChange,
   providerTuningControls = [],
+  scriptRestoreWarning = null,
   selectedVoice,
   selectedText,
   text,
@@ -293,6 +295,13 @@ export function SpeechInputPanel({
         <Alert className="mt-4 border-destructive/40 bg-destructive/10 text-destructive" role="alert">
           <AlertTitle>Dialogue Rows Need Attention</AlertTitle>
           <AlertDescription>{assignmentError}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      {scriptRestoreWarning ? (
+        <Alert className="mt-4 border-primary/40 bg-primary/10 text-foreground" role="alert">
+          <AlertTitle>Script Restored With Missing Voices</AlertTitle>
+          <AlertDescription>{scriptRestoreWarning}</AlertDescription>
         </Alert>
       ) : null}
 

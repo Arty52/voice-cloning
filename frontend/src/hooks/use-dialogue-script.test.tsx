@@ -234,6 +234,70 @@ describe("useDialogueScript", () => {
       voiceSettings: { stability: 0.31 },
     })
   })
+
+  it("restores dialogue rows and speaker mappings from a snapshot", () => {
+    const { result } = renderHook(() => useDialogueScript({ defaultVoice: narrator, voices }))
+    const restoredBlocks = [
+      {
+        id: "restored-1",
+        speakerLabel: "Skippy",
+        text: "Restored line.",
+        voiceId: null,
+        voiceName: null,
+        voiceSettings: null,
+      },
+      {
+        id: "restored-2",
+        speakerLabel: "Vegeta",
+        text: "Second line.",
+        voiceId: "vegeta",
+        voiceName: "Vegeta Voice",
+        voiceSettings: { stability: 0.83 },
+      },
+    ]
+    const restoredMappings = [
+      { speakerLabel: "Skippy", voiceId: "skippy" },
+      { speakerLabel: "Vegeta", voiceId: null },
+    ]
+
+    act(() => {
+      result.current.importFromText("Original.")
+      result.current.toggleBlockSelection("dialogue-block-1", true)
+    })
+    act(() => {
+      result.current.restoreState({
+        blocks: restoredBlocks,
+        speakerMappings: restoredMappings,
+      })
+    })
+    restoredBlocks[1].voiceSettings = { stability: 0.1 }
+    restoredMappings[0].voiceId = null
+
+    expect(result.current.mode).toBe("dialogue")
+    expect(result.current.blocks).toEqual([
+      {
+        id: "restored-1",
+        speakerLabel: "Skippy",
+        text: "Restored line.",
+        voiceId: null,
+        voiceName: null,
+        voiceSettings: null,
+      },
+      {
+        id: "restored-2",
+        speakerLabel: "Vegeta",
+        text: "Second line.",
+        voiceId: "vegeta",
+        voiceName: "Vegeta Voice",
+        voiceSettings: { stability: 0.83 },
+      },
+    ])
+    expect(result.current.speakerMappings).toEqual([
+      { speakerLabel: "Skippy", voiceId: "skippy" },
+      { speakerLabel: "Vegeta", voiceId: null },
+    ])
+    expect(result.current.selectedBlockCount).toBe(0)
+  })
 })
 
 function voice(id: string, name: string): VoiceAsset {

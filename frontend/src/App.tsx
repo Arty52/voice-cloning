@@ -69,6 +69,7 @@ function App() {
     sectionStatuses,
     selectedModel,
     selectedUserTuningPreset,
+    scriptRestoreWarning,
     setNaturalHandoffsEnabled,
     setText,
     speech,
@@ -237,6 +238,7 @@ function App() {
             onTextChange={setText}
             onTextSelectionChange={handleTextSelectionChange}
             providerTuningControls={providerTuning.controls}
+            scriptRestoreWarning={scriptRestoreWarning}
             selectedVoice={voiceLibrary.selectedVoice}
             selectedText={textSelection.text}
             naturalHandoffsEnabled={naturalHandoffsEnabled}
