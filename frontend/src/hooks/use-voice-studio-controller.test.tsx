@@ -7,6 +7,7 @@ import { useVoiceStudioController } from "./use-voice-studio-controller"
 
 const controllerMocks = vi.hoisted(() => ({
   selectedVoiceId: "narrator",
+  voiceStatus: "success",
   voices: [] as VoiceAsset[],
 }))
 
@@ -39,7 +40,7 @@ vi.mock("@/hooks/use-voice-library", async () => {
         updateVoice: vi.fn(),
         updateVoiceSettings: vi.fn(),
         voiceError: null,
-        voiceStatus: "success",
+        voiceStatus: controllerMocks.voiceStatus,
         voices: controllerMocks.voices,
       }
     },
@@ -138,8 +139,12 @@ const narrator = voice("narrator", "Narrator")
 const villain = voice("villain", "Villain")
 
 describe("useVoiceStudioController script snapshot restore", () => {
+  let originalRequestAnimationFrame: typeof window.requestAnimationFrame
+
   beforeEach(() => {
+    originalRequestAnimationFrame = window.requestAnimationFrame
     controllerMocks.selectedVoiceId = "narrator"
+    controllerMocks.voiceStatus = "success"
     controllerMocks.voices = [narrator, villain]
     window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
       callback(0)
@@ -148,6 +153,7 @@ describe("useVoiceStudioController script snapshot restore", () => {
   })
 
   afterEach(() => {
+    window.requestAnimationFrame = originalRequestAnimationFrame
     vi.restoreAllMocks()
   })
 
@@ -194,6 +200,36 @@ describe("useVoiceStudioController script snapshot restore", () => {
     expect(result.current.text).toBe("Missing.")
     expect(result.current.voiceAssignments).toEqual(snapshot.assignments)
     expect(result.current.scriptRestoreWarning).toContain("no longer in the Voice Library")
+  })
+
+  it("does not report missing voices before the Voice Library finishes loading", () => {
+    controllerMocks.voiceStatus = "loading"
+    controllerMocks.voices = []
+    const { result } = renderHook(() => useVoiceStudioController())
+    const snapshot = rangeSnapshot({
+      sourceVoiceId: "villain",
+      assignments: [
+        {
+          id: "assignment-1",
+          start: 0,
+          end: 8,
+          text: "Pending.",
+          sourceText: "Pending.",
+          voiceId: "villain",
+          voiceName: "Villain",
+        },
+      ],
+      text: "Pending.",
+    })
+
+    act(() => {
+      result.current.restoreScriptSnapshot(snapshot)
+    })
+
+    expect(result.current.voiceLibrary.selectedVoiceId).toBe("narrator")
+    expect(result.current.text).toBe("Pending.")
+    expect(result.current.voiceAssignments).toEqual(snapshot.assignments)
+    expect(result.current.scriptRestoreWarning).toBeNull()
   })
 
   it("restores dialogue rows, speaker mappings, source voice, and enabled Natural Handoffs", () => {

@@ -464,12 +464,18 @@ export function useVoiceStudioController() {
   }
 
   function applyScriptSnapshotRestore(snapshot: GeneratedAudioScriptSnapshot) {
-    const availableVoiceIds = new Set(voiceLibrary.voices.map((voice) => voice.id))
-    if (snapshot.sourceVoiceId && availableVoiceIds.has(snapshot.sourceVoiceId)) {
+    const availableVoiceIds =
+      voiceLibrary.voiceStatus === "success"
+        ? new Set(voiceLibrary.voices.map((voice) => voice.id))
+        : null
+
+    if (snapshot.sourceVoiceId && availableVoiceIds?.has(snapshot.sourceVoiceId)) {
       voiceLibrary.setSelectedVoiceId(snapshot.sourceVoiceId)
     }
 
-    const missingVoiceIds = findMissingScriptSnapshotVoiceIds(snapshot, availableVoiceIds)
+    const missingVoiceIds = availableVoiceIds
+      ? findMissingScriptSnapshotVoiceIds(snapshot, availableVoiceIds)
+      : []
     setScriptRestoreWarning(missingVoiceIds.length > 0 ? SCRIPT_RESTORE_MISSING_VOICE_WARNING : null)
     handleNaturalHandoffsEnabledChange(snapshot.segmentGapMs !== 0)
     setTextSelection({ end: 0, start: 0, text: "" })
