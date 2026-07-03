@@ -233,6 +233,7 @@ function App() {
             onNaturalHandoffsEnabledChange={setNaturalHandoffsEnabled}
             onSaveNaturalHandoffsDefault={saveNaturalHandoffsDefault}
             onRemoveAssignment={removeVoiceAssignment}
+            onSourceVoiceChange={voiceLibrary.setSelectedVoiceId}
             onTextChange={setText}
             onTextSelectionChange={handleTextSelectionChange}
             providerTuningControls={providerTuning.controls}
