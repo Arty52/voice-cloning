@@ -101,6 +101,7 @@ class GeneratedAudioRecord(Base):
     generation_elapsed_ms: Mapped[int | None] = mapped_column(Integer)
     multi_voice_metadata: Mapped[dict[str, Any] | None] = mapped_column(_json_document())
     tuning_metadata: Mapped[dict[str, Any] | None] = mapped_column(_json_document())
+    script_snapshot: Mapped[dict[str, Any] | None] = mapped_column(_json_document())
 
 
 class GeneratedAudioExportLedgerRecord(Base):
