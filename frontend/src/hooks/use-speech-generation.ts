@@ -130,6 +130,7 @@ export function useSpeechGeneration({ persistGeneratedAudio }: UseSpeechGenerati
         generationElapsedMs,
         modelId: response.modelId || submittedModelId || backendDefaultModelId || BACKEND_DEFAULT_MODEL_LABEL,
         requestId: response.requestId,
+        scriptSnapshot: null,
         tuningMetadata: buildGeneratedAudioTuningMetadata({
           provider,
           selectedPresetId: selectedTuningPresetId,

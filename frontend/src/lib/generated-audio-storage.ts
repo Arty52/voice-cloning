@@ -55,7 +55,7 @@ export type SaveGeneratedAudioInput = {
   sha256?: string | null
   multiVoiceMetadata?: GeneratedAudioMultiVoiceMetadata | null
   tuningMetadata?: GeneratedAudioTuningMetadata | null
-  scriptSnapshot?: GeneratedAudioScriptSnapshot | null
+  scriptSnapshot: GeneratedAudioScriptSnapshot | null
 }
 
 export type GeneratedAudioUsage = {

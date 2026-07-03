@@ -384,6 +384,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
         modelId: persistContext.modelId || persistContext.backendDefaultModelId || BACKEND_DEFAULT_MODEL_LABEL,
         multiVoiceMetadata: buildGeneratedAudioMultiVoiceMetadata(jobUpdate),
         requestId: null,
+        scriptSnapshot: null,
         tuningMetadata: buildGeneratedAudioTuningMetadata({
           provider: persistContext.provider,
           selectedPresetId: persistContext.selectedTuningPresetId,
