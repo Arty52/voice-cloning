@@ -450,7 +450,8 @@ def parse_optional_script_snapshot(value: str | None) -> dict[str, Any] | None:
         return None
     if "version" not in payload:
         raise GeneratedAudioArchiveError("scriptSnapshot.version is required.", 422)
-    if payload.get("mode") not in SCRIPT_SNAPSHOT_MODES:
+    mode = payload.get("mode")
+    if not isinstance(mode, str) or mode not in SCRIPT_SNAPSHOT_MODES:
         raise GeneratedAudioArchiveError("scriptSnapshot.mode must be range or dialogue.", 422)
     if not isinstance(payload.get("text"), str):
         raise GeneratedAudioArchiveError("scriptSnapshot.text must be a string.", 422)
