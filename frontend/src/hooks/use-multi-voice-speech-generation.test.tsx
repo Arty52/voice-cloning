@@ -185,6 +185,7 @@ const generatedResult: GeneratedResult = {
   sha256: "generated-1-hash",
   sizeBytes: 12,
   tuningMetadata: null,
+  scriptSnapshot: null,
   url: "blob:generated-1",
   voiceId: "narrator",
   voiceName: "Multi-Voice",

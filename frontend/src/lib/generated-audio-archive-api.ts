@@ -6,7 +6,11 @@ import {
   type GeneratedAudioUsage,
   type SaveGeneratedAudioInput,
 } from "@/lib/generated-audio-storage"
-import type { GeneratedAudioMultiVoiceMetadata, GeneratedAudioTuningMetadata } from "@/types"
+import type {
+  GeneratedAudioMultiVoiceMetadata,
+  GeneratedAudioScriptSnapshot,
+  GeneratedAudioTuningMetadata,
+} from "@/types"
 
 export type ArchivedGeneratedAudio = {
   id: string
@@ -25,6 +29,7 @@ export type ArchivedGeneratedAudio = {
   generationElapsedMs: number | null
   multiVoiceMetadata: GeneratedAudioMultiVoiceMetadata | null
   tuningMetadata: GeneratedAudioTuningMetadata | null
+  scriptSnapshot: GeneratedAudioScriptSnapshot | null
   sha256: string
 }
 
@@ -87,6 +92,7 @@ export async function saveGeneratedAudioArchive(
   appendOptional(formData, "generationElapsedMs", input.generationElapsedMs)
   appendOptionalJson(formData, "multiVoiceMetadata", input.multiVoiceMetadata)
   appendOptionalJson(formData, "tuningMetadata", input.tuningMetadata)
+  appendOptionalJson(formData, "scriptSnapshot", input.scriptSnapshot)
 
   const response = await fetch("/api/generated-audio", {
     method: "POST",
@@ -201,6 +207,7 @@ function normalizeArchiveItem(item: ArchivedGeneratedAudio): ArchivedGeneratedAu
     modelId: item.modelId || "unknown",
     multiVoiceMetadata: item.multiVoiceMetadata ?? null,
     requestId: item.requestId ?? null,
+    scriptSnapshot: item.scriptSnapshot ?? null,
     tuningMetadata: item.tuningMetadata ?? null,
     voiceId: item.voiceId || "unknown",
     voiceName: item.voiceName || "Generated Voice",

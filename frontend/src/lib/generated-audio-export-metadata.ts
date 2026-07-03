@@ -1,4 +1,8 @@
-import type { GeneratedAudioMultiVoiceMetadata, GeneratedAudioTuningMetadata } from "@/types"
+import type {
+  GeneratedAudioMultiVoiceMetadata,
+  GeneratedAudioScriptSnapshot,
+  GeneratedAudioTuningMetadata,
+} from "@/types"
 
 export const BROWSER_ARCHIVE_ROOT_NAME = "Voice Clone Lab Archive"
 export const BROWSER_GENERATED_AUDIO_EXPORT_DIR = "generated-audio"
@@ -23,6 +27,7 @@ export type GeneratedAudioExportable = {
   generationElapsedMs: number | null
   tuningMetadata: GeneratedAudioTuningMetadata | null
   multiVoiceMetadata: GeneratedAudioMultiVoiceMetadata | null
+  scriptSnapshot: GeneratedAudioScriptSnapshot | null
 }
 
 export type GeneratedAudioExportDescriptor = {
@@ -100,6 +105,7 @@ export function buildGeneratedAudioExportSidecar(
     generationElapsedMs: item.generationElapsedMs,
     tuningMetadata: item.tuningMetadata,
     multiVoiceMetadata: item.multiVoiceMetadata,
+    scriptSnapshot: item.scriptSnapshot,
   }
 }
 

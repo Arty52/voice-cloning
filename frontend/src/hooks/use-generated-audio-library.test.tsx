@@ -38,6 +38,7 @@ type ArchiveItem = {
   multiVoiceMetadata: null
   providerId: string
   requestId: string | null
+  scriptSnapshot: null
   sha256: string
   sizeBytes: number
   tuningMetadata: null
@@ -66,6 +67,7 @@ function deleteDatabase(name: string) {
 }
 
 function audioInput(overrides: Partial<SaveGeneratedAudioInput> = {}): SaveGeneratedAudioInput {
+  const { scriptSnapshot = null, ...restOverrides } = overrides
   return {
     appVoiceId: "default",
     blob: new Blob(["sample"], { type: "audio/mpeg" }),
@@ -73,9 +75,10 @@ function audioInput(overrides: Partial<SaveGeneratedAudioInput> = {}): SaveGener
     characterCount: 54,
     modelId: "eleven_multilingual_v2",
     requestId: "req_test_123",
+    scriptSnapshot,
     voiceId: "voice-123",
     voiceName: "Default Voice",
-    ...overrides,
+    ...restOverrides,
   }
 }
 
@@ -94,6 +97,7 @@ function archiveItem(overrides: Partial<ArchiveItem> = {}): ArchiveItem {
     multiVoiceMetadata: null,
     providerId: "elevenlabs",
     requestId: "req_test_123",
+    scriptSnapshot: null,
     sha256: `${id}-hash`,
     sizeBytes: 6,
     tuningMetadata: null,

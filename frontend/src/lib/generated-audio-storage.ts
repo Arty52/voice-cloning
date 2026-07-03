@@ -1,4 +1,8 @@
-import type { GeneratedAudioMultiVoiceMetadata, GeneratedAudioTuningMetadata } from "@/types"
+import type {
+  GeneratedAudioMultiVoiceMetadata,
+  GeneratedAudioScriptSnapshot,
+  GeneratedAudioTuningMetadata,
+} from "@/types"
 import { sha256Blob } from "@/lib/generated-audio-hash"
 
 export const GENERATED_AUDIO_DB_NAME = "voice-clone-generated-audio"
@@ -32,6 +36,7 @@ export type StoredGeneratedAudio = {
   sha256: string | null
   multiVoiceMetadata?: GeneratedAudioMultiVoiceMetadata | null
   tuningMetadata?: GeneratedAudioTuningMetadata | null
+  scriptSnapshot?: GeneratedAudioScriptSnapshot | null
 }
 
 export type SaveGeneratedAudioInput = {
@@ -50,6 +55,7 @@ export type SaveGeneratedAudioInput = {
   sha256?: string | null
   multiVoiceMetadata?: GeneratedAudioMultiVoiceMetadata | null
   tuningMetadata?: GeneratedAudioTuningMetadata | null
+  scriptSnapshot: GeneratedAudioScriptSnapshot | null
 }
 
 export type GeneratedAudioUsage = {
@@ -95,6 +101,7 @@ export async function saveGeneratedAudio(
     sha256: input.sha256 ?? (await sha256Blob(input.blob)),
     sizeBytes: input.blob.size,
     tuningMetadata: input.tuningMetadata ?? null,
+    scriptSnapshot: input.scriptSnapshot ?? null,
   }
 
   if (item.sizeBytes > resolvedLimitBytes) {
@@ -238,6 +245,7 @@ type LegacyStoredGeneratedAudio = Omit<StoredGeneratedAudio, "generationElapsedM
   generationElapsedMs?: number | null
   multiVoiceMetadata?: GeneratedAudioMultiVoiceMetadata | null
   sha256?: string | null
+  scriptSnapshot?: GeneratedAudioScriptSnapshot | null
 }
 
 function normalizeStoredGeneratedAudio(record: StoredGeneratedAudio | LegacyStoredGeneratedAudio): StoredGeneratedAudio {
@@ -247,6 +255,7 @@ function normalizeStoredGeneratedAudio(record: StoredGeneratedAudio | LegacyStor
     multiVoiceMetadata: record.multiVoiceMetadata ?? null,
     sha256: record.sha256 ?? null,
     tuningMetadata: record.tuningMetadata ?? null,
+    scriptSnapshot: record.scriptSnapshot ?? null,
   }
 }
 

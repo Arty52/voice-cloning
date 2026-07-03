@@ -116,6 +116,7 @@ describe("archivedAudioToResult", () => {
       sha256: "audio-hash",
       sizeBytes: 6,
       tuningMetadata: null,
+      scriptSnapshot: null,
       voiceId: "voice-123",
       voiceName: "Default Voice",
     })
@@ -159,6 +160,7 @@ function generatedResult(url: string) {
     sha256: "audio-hash",
     sizeBytes: 6,
     tuningMetadata: null,
+    scriptSnapshot: null,
     url,
     voiceId: "voice-123",
     voiceName: "Default Voice",

@@ -447,6 +447,7 @@ export type GeneratedResult = {
   sha256: string | null
   multiVoiceMetadata: GeneratedAudioMultiVoiceMetadata | null
   tuningMetadata: GeneratedAudioTuningMetadata | null
+  scriptSnapshot: GeneratedAudioScriptSnapshot | null
 }
 
 export type GeneratedAudioTuningMode = "custom" | "default" | "preset" | "userPreset"
@@ -495,6 +496,43 @@ export type GeneratedAudioMultiVoiceMetadata = {
   segmentCount: number
   segments: GeneratedAudioMultiVoiceSegmentMetadata[]
   voices: GeneratedAudioMultiVoiceVoiceMetadata[]
+}
+
+export type GeneratedAudioScriptSnapshotMode = "range" | "dialogue"
+
+export type GeneratedAudioScriptSnapshotAssignment = {
+  id: string
+  start: number
+  end: number
+  text: string
+  sourceText: string
+  voiceId: string
+  voiceName: string
+}
+
+export type GeneratedAudioScriptSnapshotDialogueBlock = {
+  id: string
+  speakerLabel: string | null
+  text: string
+  voiceId: string | null
+  voiceName?: string | null
+  voiceSettings?: VoiceTuningValues | null
+}
+
+export type GeneratedAudioScriptSnapshotSpeakerMapping = {
+  speakerLabel: string
+  voiceId: string | null
+}
+
+export type GeneratedAudioScriptSnapshot = {
+  version: 1
+  mode: GeneratedAudioScriptSnapshotMode
+  text: string
+  sourceVoiceId: string | null
+  assignments: GeneratedAudioScriptSnapshotAssignment[]
+  dialogueBlocks: GeneratedAudioScriptSnapshotDialogueBlock[]
+  speakerMappings: GeneratedAudioScriptSnapshotSpeakerMapping[]
+  segmentGapMs: number | null
 }
 
 export type ConfirmationState = {

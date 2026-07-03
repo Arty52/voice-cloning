@@ -250,6 +250,7 @@ function generatedResultToExportable(item: GeneratedResult): GeneratedAudioExpor
     sha256: item.sha256,
     sizeBytes: item.sizeBytes,
     tuningMetadata: item.tuningMetadata,
+    scriptSnapshot: item.scriptSnapshot,
     voiceId: item.voiceId,
     voiceName: item.voiceName,
   }

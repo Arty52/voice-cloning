@@ -496,7 +496,10 @@ async function importBrowserGeneratedAudioToArchive(
       continue
     }
     try {
-      await saveGeneratedAudioArchive(record, limitBytes)
+      await saveGeneratedAudioArchive(
+        { ...record, scriptSnapshot: record.scriptSnapshot ?? null },
+        limitBytes
+      )
       importedIds.push(record.id)
     } catch (caught) {
       if (isGeneratedAudioArchiveConflict(caught)) {
@@ -556,6 +559,7 @@ function storedGeneratedAudioFromInput(input: SaveGeneratedAudioInput): StoredGe
     generationElapsedMs: input.generationElapsedMs ?? null,
     id: createTemporaryGeneratedAudioId(),
     multiVoiceMetadata: input.multiVoiceMetadata ?? null,
+    scriptSnapshot: input.scriptSnapshot ?? null,
     sha256: input.sha256 ?? null,
     sizeBytes: input.blob.size,
     tuningMetadata: input.tuningMetadata ?? null,
