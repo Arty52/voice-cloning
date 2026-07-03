@@ -213,6 +213,37 @@ const rangeScriptSnapshot: GeneratedAudioScriptSnapshot = {
   segmentGapMs: 0,
 }
 
+const dialogueScriptSnapshot: GeneratedAudioScriptSnapshot = {
+  version: 1,
+  mode: "dialogue",
+  text: "Narrator: Hello.\nVillain: Hi.",
+  sourceVoiceId: "narrator",
+  assignments: [],
+  dialogueBlocks: [
+    {
+      id: "dialogue-block-1",
+      speakerLabel: "Narrator",
+      text: "Hello.",
+      voiceId: null,
+      voiceName: null,
+      voiceSettings: null,
+    },
+    {
+      id: "dialogue-block-2",
+      speakerLabel: "Villain",
+      text: "Hi.",
+      voiceId: "villain",
+      voiceName: "Villain",
+      voiceSettings: { stability: 0.8 },
+    },
+  ],
+  speakerMappings: [
+    { speakerLabel: "Narrator", voiceId: "narrator" },
+    { speakerLabel: "Villain", voiceId: "villain" },
+  ],
+  segmentGapMs: null,
+}
+
 function generationInput(overrides: Partial<GenerateMultiVoiceSpeechInput> = {}) {
   return {
     backendDefaultModelId: "eleven_multilingual_v2",
@@ -381,6 +412,35 @@ describe("useMultiVoiceSpeechGeneration", () => {
     expect(JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string)).toMatchObject({
       segmentGapMs: 0,
     })
+  })
+
+  it("persists dialogue script snapshots with multi-voice speech jobs", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path === "/api/speech/jobs" && init?.method === "POST") {
+          return okJson({ job: successJob }, 202)
+        }
+        if (path === "/api/speech/jobs/job-1/result" && !init) {
+          return okAudio("combined")
+        }
+        return okJson({})
+      })
+    )
+    const persistGeneratedAudio = vi.fn(async () => generatedResult)
+    const { result } = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+
+    await act(async () => {
+      await result.current.generateSpeech(generationInput({ scriptSnapshot: dialogueScriptSnapshot }))
+    })
+
+    expect(persistGeneratedAudio).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scriptSnapshot: dialogueScriptSnapshot,
+      }),
+      100
+    )
   })
 
   it("cancels a running job", async () => {
