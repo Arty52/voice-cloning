@@ -232,7 +232,17 @@ Generated-audio archive routes require backend persistence. When `DATABASE_URL` 
       "requestId": "req_123",
       "generationElapsedMs": 1234,
       "multiVoiceMetadata": null,
-      "tuningMetadata": null
+      "tuningMetadata": null,
+      "scriptSnapshot": {
+        "version": 1,
+        "mode": "range",
+        "text": "Welcome to the local voice clone lab.",
+        "sourceVoiceId": "local-voice-id",
+        "assignments": [],
+        "dialogueBlocks": [],
+        "speakerMappings": [],
+        "segmentGapMs": null
+      }
     }
   ],
   "usage": {
@@ -250,8 +260,14 @@ Generated-audio archive routes require backend persistence. When `DATABASE_URL` 
 - `audioFile`: generated audio file
 - `createdAt`, `cacheState`, `providerId`, `voiceId`, `appVoiceId`, `voiceName`, `modelId`, `characterCount`, `requestId`, `generationElapsedMs`: optional metadata
 - `multiVoiceMetadata`, `tuningMetadata`: optional JSON objects
+- `scriptSnapshot`: optional JSON object containing the restorable generation workflow state
 
 The save response includes `item`, `usage`, `prunedIds`, and `alreadyExisted`. Retrying with the same `id` and same audio hash returns the existing item. Retrying with the same `id` and different audio hash returns `409`.
+
+When supplied, `scriptSnapshot` must be a JSON object with `version`, `mode`, and string `text`.
+The `mode` value must be `range` or `dialogue`. Unknown fields are preserved so future frontend
+snapshot versions can add workflow state without another archive schema change. The snapshot must
+not contain provider API keys or provider secret material.
 
 `GET /api/generated-audio/{audioId}/audio` streams the archived audio file. `DELETE /api/generated-audio/{audioId}` removes one archive item and file. `DELETE /api/generated-audio` clears the archive. `GET /api/generated-audio/usage` returns only usage.
 
@@ -267,7 +283,7 @@ Generated-audio server export routes require backend persistence. They never acc
 - `POST /api/generated-audio/export-all`
 - `GET /api/generated-audio/export-status`
 
-When configured, the backend exports from the canonical archive into `GENERATED_AUDIO_EXPORT_DIR/Voice Clone Lab Archive/`, with audio and sidecar files under `generated-audio/YYYY/MM/` plus `index/generated-audio.jsonl`. The export ledger is keyed by target id, audio id, and sha256 so re-exporting the same archive item is idempotent and a later changed hash records a separate status entry.
+When configured, the backend exports from the canonical archive into `GENERATED_AUDIO_EXPORT_DIR/Voice Clone Lab Archive/`, with audio and sidecar files under `generated-audio/YYYY/MM/` plus `index/generated-audio.jsonl`. Sidecar files include the saved `scriptSnapshot` when present. The export ledger is keyed by target id, audio id, and sha256 so re-exporting the same archive item is idempotent and a later changed hash records a separate status entry.
 
 Browser folder export in `#archive` is not a backend API. The frontend uses the File System Access API, stores only the selected directory handle and local export ledger in IndexedDB, and mirrors archive blobs without sending local filesystem paths to the server.
 
