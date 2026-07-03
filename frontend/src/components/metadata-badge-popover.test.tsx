@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it } from "vitest"
 
@@ -57,12 +57,18 @@ describe("MetadataBadgePopover", () => {
     expect(screen.getByRole("button", { name: "Review Segment Details" })).toHaveFocus()
   })
 
-  it("opens the popover on click", async () => {
-    const user = userEvent.setup()
+  it("toggles the popover on click", async () => {
     renderMetadataBadgePopover()
 
-    await user.click(screen.getByRole("button", { name: "Open Generation Metadata" }))
+    const trigger = screen.getByRole("button", { name: "Open Generation Metadata" })
+    fireEvent.click(trigger)
 
     expect(await screen.findByText("Generated with 3 Segments")).toBeInTheDocument()
+
+    fireEvent.click(trigger)
+
+    await waitFor(() => {
+      expect(screen.queryByText("Generated with 3 Segments")).not.toBeInTheDocument()
+    })
   })
 })

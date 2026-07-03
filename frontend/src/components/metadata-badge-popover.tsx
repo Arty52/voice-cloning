@@ -1,4 +1,4 @@
-import { useState, type ComponentProps, type ReactNode } from "react"
+import { useRef, useState, type ComponentProps, type ReactNode } from "react"
 
 import { Badge } from "@/components/ui/badge"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -18,6 +18,7 @@ export function MetadataBadgePopover({
   variant = "secondary",
 }: MetadataBadgePopoverProps) {
   const [open, setOpen] = useState(false)
+  const pointerFocusRef = useRef(false)
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -28,12 +29,19 @@ export function MetadataBadgePopover({
             "inline-flex rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring",
             "focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           )}
-          onClick={(event) => {
-            event.preventDefault()
+          onFocus={() => {
+            if (pointerFocusRef.current) {
+              return
+            }
             setOpen(true)
           }}
-          onFocus={() => setOpen(true)}
           onMouseEnter={() => setOpen(true)}
+          onPointerDown={() => {
+            pointerFocusRef.current = true
+          }}
+          onPointerUp={() => {
+            pointerFocusRef.current = false
+          }}
           type="button"
         >
           <Badge className="pointer-events-none" variant={variant}>
