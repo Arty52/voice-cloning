@@ -53,6 +53,7 @@ const multiVoiceItem: GeneratedResult = {
   sha256: "combined-hash",
   sizeBytes: 12,
   tuningMetadata: null,
+  scriptSnapshot: null,
   url: "blob:generated-1",
   voiceId: "narrator",
   voiceName: "Multi-Voice",

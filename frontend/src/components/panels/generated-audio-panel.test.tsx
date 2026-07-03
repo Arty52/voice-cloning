@@ -204,6 +204,7 @@ const generatedAudioItem: GeneratedResult = {
   sha256: "sha-123",
   sizeBytes: 123456,
   tuningMetadata: null,
+  scriptSnapshot: null,
   url: "blob:generated-audio",
   voiceId: "voice-123",
   voiceName: "Default Voice",

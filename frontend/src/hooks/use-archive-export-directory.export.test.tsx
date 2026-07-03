@@ -138,6 +138,7 @@ function generatedItem(overrides: Partial<GeneratedResult> = {}): GeneratedResul
     sha256: "stored-sha",
     sizeBytes: 5,
     tuningMetadata: null,
+    scriptSnapshot: null,
     url: "/api/generated-audio/audio-id/audio",
     voiceId: "provider-voice",
     voiceName: "Default Voice",

@@ -38,6 +38,7 @@ type ArchiveItem = {
   multiVoiceMetadata: null
   providerId: string
   requestId: string | null
+  scriptSnapshot: null
   sha256: string
   sizeBytes: number
   tuningMetadata: null
@@ -94,6 +95,7 @@ function archiveItem(overrides: Partial<ArchiveItem> = {}): ArchiveItem {
     multiVoiceMetadata: null,
     providerId: "elevenlabs",
     requestId: "req_test_123",
+    scriptSnapshot: null,
     sha256: `${id}-hash`,
     sizeBytes: 6,
     tuningMetadata: null,

@@ -447,6 +447,7 @@ export type GeneratedResult = {
   sha256: string | null
   multiVoiceMetadata: GeneratedAudioMultiVoiceMetadata | null
   tuningMetadata: GeneratedAudioTuningMetadata | null
+  scriptSnapshot: GeneratedAudioScriptSnapshot | null
 }
 
 export type GeneratedAudioTuningMode = "custom" | "default" | "preset" | "userPreset"
