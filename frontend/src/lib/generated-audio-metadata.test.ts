@@ -426,7 +426,112 @@ describe("buildGeneratedAudioMultiVoiceMetadata", () => {
       ],
     })
   })
+
+  it("summarizes distinct off-nominal multi-voice tuning by voice in segment order", () => {
+    const job: SpeechJob = {
+      activeSegmentId: null,
+      createdAt: "2026-06-23T00:00:00.000Z",
+      defaultVoiceId: "voice-a",
+      error: null,
+      id: "job-1",
+      resultSha256: "combined-hash",
+      segmentGapMs: 250,
+      segments: [
+        speechJobSegment({
+          id: "segment-one",
+          index: 0,
+          voiceId: "voice-a",
+          voiceName: "voice_a",
+          voiceSettings: { enhanced: true, mode: "balanced", stability: 0.4 },
+        }),
+        speechJobSegment({
+          id: "segment-two",
+          index: 1,
+          voiceId: "voice-b",
+          voiceName: "voice_b",
+          voiceSettings: { enhanced: true, mode: "balanced", stability: 0.5 },
+        }),
+        speechJobSegment({
+          id: "segment-three",
+          index: 2,
+          voiceId: "voice-c",
+          voiceName: "voice_c",
+          voiceSettings: { enhanced: false, mode: "expressive", stability: 0.5 },
+        }),
+        speechJobSegment({
+          id: "segment-four",
+          index: 3,
+          voiceId: "voice-a",
+          voiceName: "voice_a",
+          voiceSettings: { enhanced: true, mode: "balanced", stability: 0.4 },
+        }),
+        speechJobSegment({
+          id: "segment-five",
+          index: 4,
+          voiceId: "voice-a",
+          voiceName: "voice_a",
+          voiceSettings: { enhanced: true, mode: "balanced", stability: 0.3 },
+        }),
+      ],
+      status: "success",
+      text: "One. Two. Three. Four. Five.",
+      updatedAt: "2026-06-23T00:00:01.000Z",
+    }
+
+    const metadata = buildGeneratedAudioMultiVoiceMetadata(job, provider)
+
+    expect(
+      metadata.tuningSummaries?.map((summary) => ({
+        adjustedSettings: summary.adjustedSettings.map((setting) => ({
+          id: setting.id,
+          label: setting.label,
+          valueLabel: setting.valueLabel,
+        })),
+        voiceId: summary.voiceId,
+        voiceName: summary.voiceName,
+      }))
+    ).toEqual([
+      {
+        adjustedSettings: [{ id: "stability", label: "Stability", valueLabel: formatNumberLabel(0.4) }],
+        voiceId: "voice-a",
+        voiceName: "voice_a",
+      },
+      {
+        adjustedSettings: [
+          { id: "mode", label: "Mode", valueLabel: "Expressive" },
+          { id: "enhanced", label: "Enhanced", valueLabel: "Off" },
+        ],
+        voiceId: "voice-c",
+        voiceName: "voice_c",
+      },
+      {
+        adjustedSettings: [{ id: "stability", label: "Stability", valueLabel: formatNumberLabel(0.3) }],
+        voiceId: "voice-a",
+        voiceName: "voice_a",
+      },
+    ])
+  })
 })
+
+function speechJobSegment(overrides: Partial<SpeechJob["segments"][number]>): SpeechJob["segments"][number] {
+  return {
+    assignmentKind: "assigned",
+    cacheState: "miss",
+    characterCount: 5,
+    error: null,
+    generationCount: 1,
+    id: "segment",
+    index: 0,
+    requestId: null,
+    resultSha256: null,
+    status: "success",
+    text: "Hello.",
+    voiceId: "voice",
+    voiceName: "Voice",
+    voiceSettings: null,
+    ...overrides,
+  }
+}
 
 function formatNumberLabel(value: number) {
   return NUMBER_FORMATTER.format(value)

@@ -490,11 +490,19 @@ export type GeneratedAudioMultiVoiceVoiceMetadata = {
   segmentCount: number
 }
 
+export type GeneratedAudioMultiVoiceTuningSummary = {
+  id: string
+  voiceId: string
+  voiceName: string
+  adjustedSettings: GeneratedAudioAdjustedSetting[]
+}
+
 export type GeneratedAudioMultiVoiceMetadata = {
   jobId: string
   resultSha256: string | null
   segmentCount: number
   segments: GeneratedAudioMultiVoiceSegmentMetadata[]
+  tuningSummaries?: GeneratedAudioMultiVoiceTuningSummary[]
   voices: GeneratedAudioMultiVoiceVoiceMetadata[]
 }
 
