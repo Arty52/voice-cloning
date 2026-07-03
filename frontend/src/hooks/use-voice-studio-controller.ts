@@ -42,6 +42,10 @@ import {
 } from "@/lib/workflow-sections"
 import type {
   GenerationPendingStatus,
+  GeneratedAudioScriptSnapshot,
+  GeneratedAudioScriptSnapshotAssignment,
+  GeneratedAudioScriptSnapshotDialogueBlock,
+  GeneratedAudioScriptSnapshotSpeakerMapping,
   ProviderTuningMetadata,
   RequestStatus,
   SpeechJob,
@@ -52,6 +56,9 @@ import type {
 } from "@/types"
 
 type LatestGenerationMode = "assignments" | "dialogue" | "single"
+
+const SCRIPT_RESTORE_MISSING_VOICE_WARNING =
+  "Some voices referenced by this script are no longer in the Voice Library. The script was restored, but missing voice assignments need to be updated before generating."
 
 const EMPTY_TUNING_METADATA: ProviderTuningMetadata = {
   controls: [],
@@ -72,6 +79,7 @@ export function useVoiceStudioController() {
     loadNaturalHandoffsPreference()
   )
   const [naturalHandoffsSaveError, setNaturalHandoffsSaveError] = useState<string | null>(null)
+  const [scriptRestoreWarning, setScriptRestoreWarning] = useState<string | null>(null)
   const [selectedUserTuningPresetId, setSelectedUserTuningPresetId] = useState<string | null>(null)
   const [textSelection, setTextSelection] = useState({ end: 0, start: 0, text: "" })
   const [voiceAssignments, setVoiceAssignments] = useState<VoiceTextAssignment[]>([])
@@ -306,6 +314,7 @@ export function useVoiceStudioController() {
   }
 
   function handleTextChange(nextText: string) {
+    setScriptRestoreWarning(null)
     setVoiceAssignments((current) => reconcileVoiceAssignmentsForTextChange(text, nextText, current))
     setText(nextText)
     setTextSelection({ end: 0, start: 0, text: "" })
@@ -427,6 +436,45 @@ export function useVoiceStudioController() {
     }
   }
 
+  function restoreScriptSnapshot(snapshot: GeneratedAudioScriptSnapshot | null) {
+    if (!snapshot) {
+      return
+    }
+    applyScriptSnapshotRestore(snapshot)
+  }
+
+  function applyScriptSnapshotRestore(snapshot: GeneratedAudioScriptSnapshot) {
+    const availableVoiceIds = new Set(voiceLibrary.voices.map((voice) => voice.id))
+    if (snapshot.sourceVoiceId && availableVoiceIds.has(snapshot.sourceVoiceId)) {
+      voiceLibrary.setSelectedVoiceId(snapshot.sourceVoiceId)
+    }
+
+    const missingVoiceIds = findMissingScriptSnapshotVoiceIds(snapshot, availableVoiceIds)
+    setScriptRestoreWarning(missingVoiceIds.length > 0 ? SCRIPT_RESTORE_MISSING_VOICE_WARNING : null)
+    handleNaturalHandoffsEnabledChange(snapshot.segmentGapMs !== 0)
+    setTextSelection({ end: 0, start: 0, text: "" })
+    setText(snapshot.text)
+
+    if (snapshot.mode === "dialogue") {
+      setVoiceAssignments([])
+      dialogue.restoreState({
+        blocks: snapshot.dialogueBlocks.map(scriptSnapshotBlockToDialogueBlock),
+        mode: "dialogue",
+        speakerMappings: snapshot.speakerMappings.map(scriptSnapshotMappingToSpeakerMapping),
+      })
+    } else {
+      setVoiceAssignments(snapshot.assignments.map(scriptSnapshotAssignmentToVoiceAssignment))
+      dialogue.restoreState({
+        blocks: [],
+        mode: "range",
+        speakerMappings: [],
+      })
+    }
+
+    workflowNavigation.navigateToSection("generate")
+    window.requestAnimationFrame(() => textRef.current?.focus())
+  }
+
   async function regenerateMultiVoiceSegment(
     segmentId: string,
     voiceId?: string | null,
@@ -519,6 +567,7 @@ export function useVoiceStudioController() {
   }
 
   function assignVoiceToSelection(voice: VoiceAsset) {
+    setScriptRestoreWarning(null)
     const selection = readTextareaSelection(textRef.current) ?? textSelection
     const assignment = createVoiceTextAssignment({
       id: createVoiceAssignmentId(),
@@ -538,6 +587,7 @@ export function useVoiceStudioController() {
   }
 
   function updateVoiceAssignment(assignmentId: string, voice: VoiceAsset) {
+    setScriptRestoreWarning(null)
     setVoiceAssignments((current) =>
       current.map((assignment) =>
         assignment.id === assignmentId
@@ -552,10 +602,12 @@ export function useVoiceStudioController() {
   }
 
   function removeVoiceAssignment(assignmentId: string) {
+    setScriptRestoreWarning(null)
     setVoiceAssignments((current) => current.filter((assignment) => assignment.id !== assignmentId))
   }
 
   function clearVoiceAssignments() {
+    setScriptRestoreWarning(null)
     setVoiceAssignments([])
   }
 
@@ -637,6 +689,7 @@ export function useVoiceStudioController() {
     requestSaveVoiceTuningDraft,
     regenerateMultiVoiceSegment,
     regenerateMultiVoiceSegmentsForVoice,
+    restoreScriptSnapshot,
     result,
     sampleProcessing,
     saveNaturalHandoffsDefault,
@@ -649,6 +702,7 @@ export function useVoiceStudioController() {
     setIsSampleProcessingExpanded,
     setNaturalHandoffsEnabled: handleNaturalHandoffsEnabledChange,
     setText: handleTextChange,
+    scriptRestoreWarning,
     speech,
     speechError: activeSpeechError,
     speechStatus: activeSpeechStatus,
@@ -692,6 +746,62 @@ function createVoiceAssignmentId() {
     return `assignment-${window.crypto.randomUUID()}`
   }
   return `assignment-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
+function scriptSnapshotAssignmentToVoiceAssignment(
+  assignment: GeneratedAudioScriptSnapshotAssignment
+): VoiceTextAssignment {
+  return {
+    id: assignment.id,
+    start: assignment.start,
+    end: assignment.end,
+    text: assignment.text,
+    sourceText: assignment.sourceText,
+    voiceId: assignment.voiceId,
+    voiceName: assignment.voiceName,
+  }
+}
+
+function scriptSnapshotBlockToDialogueBlock(block: GeneratedAudioScriptSnapshotDialogueBlock) {
+  return {
+    id: block.id,
+    speakerLabel: block.speakerLabel,
+    text: block.text,
+    voiceId: block.voiceId,
+    voiceName: block.voiceName ?? null,
+    voiceSettings: block.voiceSettings ? { ...block.voiceSettings } : null,
+  }
+}
+
+function scriptSnapshotMappingToSpeakerMapping(mapping: GeneratedAudioScriptSnapshotSpeakerMapping) {
+  return {
+    speakerLabel: mapping.speakerLabel,
+    voiceId: mapping.voiceId,
+  }
+}
+
+function findMissingScriptSnapshotVoiceIds(
+  snapshot: GeneratedAudioScriptSnapshot,
+  availableVoiceIds: Set<string>
+) {
+  const referencedVoiceIds = new Set<string>()
+  if (snapshot.sourceVoiceId) {
+    referencedVoiceIds.add(snapshot.sourceVoiceId)
+  }
+  for (const assignment of snapshot.assignments) {
+    referencedVoiceIds.add(assignment.voiceId)
+  }
+  for (const block of snapshot.dialogueBlocks) {
+    if (block.voiceId) {
+      referencedVoiceIds.add(block.voiceId)
+    }
+  }
+  for (const mapping of snapshot.speakerMappings) {
+    if (mapping.voiceId) {
+      referencedVoiceIds.add(mapping.voiceId)
+    }
+  }
+  return [...referencedVoiceIds].filter((voiceId) => !availableVoiceIds.has(voiceId))
 }
 
 function buildGenerationPendingStatus({
