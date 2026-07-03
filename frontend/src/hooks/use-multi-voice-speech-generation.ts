@@ -9,6 +9,7 @@ import {
 import type { SaveGeneratedAudioInput } from "@/lib/generated-audio-storage"
 import type { SpeechJobSegmentDraft } from "@/lib/voice-assignments"
 import type {
+  GeneratedAudioScriptSnapshot,
   GeneratedResult,
   ModelOption,
   SpeechJob,
@@ -28,6 +29,7 @@ type GenerateMultiVoiceSpeechInput = {
   provider: VoiceProvider | null
   providerId: string | null
   providerKey: string | null
+  scriptSnapshot?: GeneratedAudioScriptSnapshot | null
   segmentGapMs?: number | null
   segments: SpeechJobSegmentDraft[]
   selectedModelId: string
@@ -58,6 +60,7 @@ type PersistContext = {
   defaultVoice: VoiceAsset
   modelId: string | null
   provider: VoiceProvider | null
+  scriptSnapshot: GeneratedAudioScriptSnapshot | null
   selectedTuningPresetId: string
   selectedUserTuningPreset: UserTuningPreset | null
   storageLimitBytes: number
@@ -146,6 +149,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
       defaultVoice: input.defaultVoice,
       modelId: submittedModelId,
       provider: input.provider,
+      scriptSnapshot: input.scriptSnapshot ?? null,
       selectedTuningPresetId: input.selectedTuningPresetId,
       selectedUserTuningPreset: input.selectedUserTuningPreset ?? null,
       storageLimitBytes: input.storageLimitBytes,
@@ -384,7 +388,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
         modelId: persistContext.modelId || persistContext.backendDefaultModelId || BACKEND_DEFAULT_MODEL_LABEL,
         multiVoiceMetadata: buildGeneratedAudioMultiVoiceMetadata(jobUpdate),
         requestId: null,
-        scriptSnapshot: null,
+        scriptSnapshot: persistContext.scriptSnapshot,
         tuningMetadata: buildGeneratedAudioTuningMetadata({
           provider: persistContext.provider,
           selectedPresetId: persistContext.selectedTuningPresetId,

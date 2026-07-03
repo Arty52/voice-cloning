@@ -2,6 +2,7 @@ import { act, renderHook } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import type {
+  GeneratedAudioScriptSnapshot,
   GeneratedResult,
   SpeechJob,
   VoiceAsset,
@@ -191,6 +192,27 @@ const generatedResult: GeneratedResult = {
   voiceName: "Multi-Voice",
 }
 
+const rangeScriptSnapshot: GeneratedAudioScriptSnapshot = {
+  version: 1,
+  mode: "range",
+  text: "Hello there.",
+  sourceVoiceId: "narrator",
+  assignments: [
+    {
+      id: "assignment-1",
+      start: 0,
+      end: 6,
+      text: "Hello ",
+      sourceText: "Hello there.",
+      voiceId: "narrator",
+      voiceName: "Narrator",
+    },
+  ],
+  dialogueBlocks: [],
+  speakerMappings: [],
+  segmentGapMs: 0,
+}
+
 function generationInput(overrides: Partial<GenerateMultiVoiceSpeechInput> = {}) {
   return {
     backendDefaultModelId: "eleven_multilingual_v2",
@@ -291,7 +313,7 @@ describe("useMultiVoiceSpeechGeneration", () => {
     const { result } = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
 
     await act(async () => {
-      await result.current.generateSpeech(generationInput())
+      await result.current.generateSpeech(generationInput({ scriptSnapshot: rangeScriptSnapshot }))
     })
 
     expect(result.current.status).toBe("success")
@@ -327,6 +349,7 @@ describe("useMultiVoiceSpeechGeneration", () => {
           resultSha256: "combined-hash",
           segmentCount: 2,
         }),
+        scriptSnapshot: rangeScriptSnapshot,
         voiceId: "narrator",
         voiceName: "Multi-Voice",
       }),

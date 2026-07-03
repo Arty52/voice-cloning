@@ -372,6 +372,12 @@ export function useVoiceStudioController() {
         provider: providerKeys.activeProvider,
         providerId: providerKeys.activeProviderId,
         providerKey: providerKeys.activeProviderKey,
+        scriptSnapshot: buildRangeScriptSnapshot({
+          assignments: voiceAssignments,
+          segmentGapMs: naturalHandoffsEnabled ? null : 0,
+          sourceVoiceId: voiceLibrary.selectedVoice?.id ?? null,
+          text,
+        }),
         segmentGapMs: naturalHandoffsEnabled ? undefined : 0,
         segments: assignmentSegments.segments,
         selectedModelId: metadata.selectedModelId,
