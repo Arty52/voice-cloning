@@ -16,6 +16,14 @@ describe("ScriptSnapshotDialog", () => {
     expect(within(dialog).getAllByRole("button", { name: "Close" })).toHaveLength(2)
   })
 
+  it("keeps snapshot details scrollable inside the dialog", () => {
+    render(<ScriptSnapshotDialog onOpenChange={vi.fn()} open snapshot={dialogueSnapshot} />)
+
+    const dialog = screen.getByRole("dialog", { name: "Generated Script Snapshot" })
+    expect(dialog).toHaveClass("max-h-[min(90vh,720px)]", "grid-rows-[auto_minmax(0,1fr)_auto]", "overflow-hidden")
+    expect(within(dialog).getByRole("region", { name: "Script Snapshot Details" })).toHaveClass("min-h-0")
+  })
+
   it("does not render without a snapshot", () => {
     render(<ScriptSnapshotDialog onOpenChange={vi.fn()} open snapshot={null} />)
 
