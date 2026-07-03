@@ -145,7 +145,7 @@ export function SpeechInputPanel({
             value={dialogue.mode}
           >
             <SelectTrigger className="w-full" id="generation-input-mode">
-              <SelectValue placeholder="Select Input Mode" />
+              <SelectValue placeholder="Select input mode" />
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
@@ -334,7 +334,7 @@ export function SpeechInputPanel({
             value={selectedVoice?.id ?? ""}
           >
             <SelectTrigger className="w-full" id="source-voice">
-              <SelectValue placeholder="No Voice Selected" />
+              <SelectValue placeholder="No voice selected" />
             </SelectTrigger>
             <SelectContent position="popper">
               <SelectGroup>
