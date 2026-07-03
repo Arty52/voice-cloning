@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 
@@ -73,7 +73,7 @@ describe("GeneratedAudioItem", () => {
     expect(multiVoiceBadge).toHaveTextContent("Multi-Voice")
     expect(screen.queryByText("Combined Result")).not.toBeInTheDocument()
     expect(screen.queryByText("2 Segments")).not.toBeInTheDocument()
-    await user.click(multiVoiceBadge)
+    fireEvent.click(multiVoiceBadge)
     expect(await screen.findByText("2 Segments")).toBeInTheDocument()
     expect(screen.getByText("Narrator x1")).toBeInTheDocument()
     expect(screen.getByText("Villain x1")).toBeInTheDocument()
