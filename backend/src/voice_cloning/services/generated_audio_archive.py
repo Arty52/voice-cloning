@@ -448,7 +448,7 @@ def parse_optional_script_snapshot(value: str | None) -> dict[str, Any] | None:
     payload = parse_optional_json_object(value, "scriptSnapshot")
     if payload is None:
         return None
-    if "version" not in payload:
+    if payload.get("version") is None:
         raise GeneratedAudioArchiveError("scriptSnapshot.version is required.", 422)
     mode = payload.get("mode")
     if not isinstance(mode, str) or mode not in SCRIPT_SNAPSHOT_MODES:

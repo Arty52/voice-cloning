@@ -266,8 +266,8 @@ The save response includes `item`, `usage`, `prunedIds`, and `alreadyExisted`. R
 
 When supplied, `scriptSnapshot` must be a JSON object with `version`, `mode`, and string `text`.
 The `mode` value must be `range` or `dialogue`. Unknown fields are preserved so future frontend
-snapshot versions can add workflow state without another archive schema change. The snapshot must
-not contain provider API keys or provider secret material.
+snapshot versions can add workflow state without another archive schema change. Frontend snapshot
+builders must not include provider API keys or provider secret material.
 
 `GET /api/generated-audio/{audioId}/audio` streams the archived audio file. `DELETE /api/generated-audio/{audioId}` removes one archive item and file. `DELETE /api/generated-audio` clears the archive. `GET /api/generated-audio/usage` returns only usage.
 

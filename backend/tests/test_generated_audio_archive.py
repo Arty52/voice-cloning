@@ -152,6 +152,7 @@ def test_generated_audio_archive_rejects_non_audio_upload(tmp_path: Path) -> Non
     [
         ('["not","object"]', "scriptSnapshot must be a JSON object."),
         ('{"mode":"range","text":"hello"}', "scriptSnapshot.version is required."),
+        ('{"version":null,"mode":"range","text":"hello"}', "scriptSnapshot.version is required."),
         ('{"version":1,"mode":"invalid","text":"hello"}', "scriptSnapshot.mode must be range or dialogue."),
         ('{"version":1,"mode":["range"],"text":"hello"}', "scriptSnapshot.mode must be range or dialogue."),
         ('{"version":1,"mode":"range","text":42}', "scriptSnapshot.text must be a string."),
