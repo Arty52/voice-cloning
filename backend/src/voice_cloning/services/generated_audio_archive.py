@@ -120,7 +120,8 @@ class GeneratedAudioArchiveService:
         generation_elapsed_ms: int | None,
         multi_voice_metadata: dict[str, Any] | None,
         tuning_metadata: dict[str, Any] | None,
-        ) -> GeneratedAudioSaveResult:
+        script_snapshot: dict[str, Any] | None,
+    ) -> GeneratedAudioSaveResult:
         _validate_audio_id(audio_id)
         limit_bytes = self.get_storage_limit()
         staged_upload = await self._stage_upload(upload, limit_bytes)
@@ -163,6 +164,7 @@ class GeneratedAudioArchiveService:
                     generation_elapsed_ms=_non_negative_int_or_none(generation_elapsed_ms),
                     multi_voice_metadata=multi_voice_metadata,
                     tuning_metadata=tuning_metadata,
+                    script_snapshot=script_snapshot,
                 )
                 audio_repository.save(metadata)
                 session.flush()

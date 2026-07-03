@@ -42,6 +42,11 @@ def audio_metadata(**overrides: object) -> GeneratedAudioMetadata:
         "generation_elapsed_ms": 1234,
         "multi_voice_metadata": None,
         "tuning_metadata": {"mode": "default"},
+        "script_snapshot": {
+            "version": 1,
+            "mode": "range",
+            "text": "Hello from the saved script.",
+        },
     }
     return GeneratedAudioMetadata(**{**defaults, **overrides})
 
@@ -164,6 +169,11 @@ def test_local_export_target_writes_audio_sidecar_and_index(tmp_path: Path) -> N
     assert sidecar["id"] == "audio-one"
     assert sidecar["sha256"] == item.sha256
     assert sidecar["filename"] == result.filename
+    assert sidecar["scriptSnapshot"] == {
+        "version": 1,
+        "mode": "range",
+        "text": "Hello from the saved script.",
+    }
     assert "filePath" not in sidecar
     index_entry = json.loads(index_path.read_text(encoding="utf-8").splitlines()[0])
     assert index_entry["id"] == "audio-one"

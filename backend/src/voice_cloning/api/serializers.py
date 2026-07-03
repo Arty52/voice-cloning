@@ -98,6 +98,7 @@ def generated_audio_item_payload(item: GeneratedAudioMetadata) -> dict[str, obje
         "generationElapsedMs": item.generation_elapsed_ms,
         "multiVoiceMetadata": item.multi_voice_metadata,
         "tuningMetadata": item.tuning_metadata,
+        "scriptSnapshot": item.script_snapshot,
     }
 
 
