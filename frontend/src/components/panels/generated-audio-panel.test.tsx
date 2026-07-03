@@ -72,7 +72,7 @@ describe("GeneratedAudioPanel pending mutations", () => {
     expect(screen.queryByText(/configure the server export directory to mirror it/i)).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Export All" })).toBeDisabled()
     await user.click(screen.getByRole("button", { name: /open generated audio actions for default voice/i }))
-    expect(screen.getByRole("menuitem", { name: "Export" })).toBeDisabled()
+    expect(screen.getByRole("menuitem", { name: "Export" })).toHaveAttribute("aria-disabled", "true")
   })
 
   it("disables server export controls during archive mutations", async () => {
@@ -94,7 +94,7 @@ describe("GeneratedAudioPanel pending mutations", () => {
     expect(serverExportControls.getByRole("button", { name: "Refresh" })).toBeDisabled()
     expect(serverExportControls.getByRole("button", { name: "Export All" })).toBeDisabled()
     await user.click(screen.getByRole("button", { name: /open generated audio actions for default voice/i }))
-    expect(screen.getByRole("menuitem", { name: "Export" })).toBeDisabled()
+    expect(screen.getByRole("menuitem", { name: "Export" })).toHaveAttribute("aria-disabled", "true")
   })
 
   it("shows per-item server export status and retry action", async () => {

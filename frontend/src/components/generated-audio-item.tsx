@@ -11,6 +11,9 @@ import { formatNumber } from "@/lib/formatters"
 import { cn } from "@/lib/utils"
 import type { GeneratedResult } from "@/types"
 
+const BROWSER_EXPORT_DESCRIPTION = "Copy this audio and metadata sidecar to your selected browser export folder."
+const SERVER_EXPORT_DESCRIPTION = "Copy this audio and metadata sidecar to the configured server export folder."
+
 type GeneratedAudioItemProps = {
   badge?: string
   browserExportStatus?: BrowserArchiveExportLedgerEntry | null
@@ -151,6 +154,7 @@ function buildGeneratedAudioActionItems({
 
   if (item.scriptSnapshot && onRestoreScriptSnapshot) {
     items.push({
+      description: restoreScriptSnapshotDescription(item),
       icon: <RotateCcw aria-hidden="true" className="size-4" />,
       label: restoreScriptSnapshotLabel(item),
       onSelect: () => onRestoreScriptSnapshot(item),
@@ -166,6 +170,7 @@ function buildGeneratedAudioActionItems({
 
   if (onServerExport) {
     items.push({
+      description: isServerExportPending ? undefined : SERVER_EXPORT_DESCRIPTION,
       disabled: isServerExportDisabled || isServerExportPending,
       icon: <Upload aria-hidden="true" className="size-4" />,
       label: isServerExportPending ? "Exporting" : serverExportLabel,
@@ -175,6 +180,7 @@ function buildGeneratedAudioActionItems({
 
   if (onBrowserExport) {
     items.push({
+      description: isBrowserExportPending ? undefined : BROWSER_EXPORT_DESCRIPTION,
       disabled: isBrowserExportDisabled || isBrowserExportPending,
       icon: <FolderUp aria-hidden="true" className="size-4" />,
       label: isBrowserExportPending ? "Mirroring" : browserExportLabel,
@@ -195,6 +201,12 @@ function buildGeneratedAudioActionItems({
 
 function restoreScriptSnapshotLabel(item: GeneratedResult) {
   return item.scriptSnapshot?.mode === "dialogue" ? "Use Dialogue" : "Use Text"
+}
+
+function restoreScriptSnapshotDescription(item: GeneratedResult) {
+  return item.scriptSnapshot?.mode === "dialogue"
+    ? "Replace the Generate draft with this saved dialogue and speaker mappings."
+    : "Replace the Generate draft with this saved text and voice assignments."
 }
 
 function viewScriptSnapshotLabel(item: GeneratedResult) {

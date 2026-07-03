@@ -2,9 +2,13 @@ import { MoreHorizontal } from "lucide-react"
 import { type ReactNode, useEffect, useId, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 
+const ACTION_MENU_TOOLTIP_DELAY_MS = 700
+
 type ActionMenuBaseItem = {
+  description?: string
   destructive?: boolean
   disabled?: boolean
   icon?: ReactNode
@@ -89,45 +93,70 @@ export function ActionMenu({ ariaLabel, disabled = false, items }: ActionMenuPro
         >
           {items.map((item) => {
             const itemClassName = cn(
-              "flex w-full items-center gap-2 rounded px-2.5 py-2 text-left text-sm outline-none transition hover:bg-muted focus-visible:bg-muted disabled:pointer-events-none disabled:opacity-50",
+              "flex w-full items-center gap-2 rounded px-2.5 py-2 text-left text-sm outline-none transition hover:bg-muted focus-visible:bg-muted",
+              item.disabled ? "cursor-not-allowed opacity-50" : null,
               item.destructive ? "text-destructive" : "text-foreground"
             )
+            const menuItem = renderActionMenuEntry(item, itemClassName, () => setIsOpen(false))
 
-            if (item.href && !item.disabled) {
+            if (item.description) {
               return (
-                <a
-                  className={itemClassName}
-                  download={item.download}
-                  href={item.href}
-                  key={item.label}
-                  onClick={() => setIsOpen(false)}
-                  role="menuitem"
-                >
-                  {item.icon}
-                  <span>{item.label}</span>
-                </a>
+                <Tooltip delayDuration={ACTION_MENU_TOOLTIP_DELAY_MS} key={item.label}>
+                  <TooltipTrigger asChild>{menuItem}</TooltipTrigger>
+                  <TooltipContent className="max-w-72" side="left" sideOffset={8}>
+                    {item.description}
+                  </TooltipContent>
+                </Tooltip>
               )
             }
 
             return (
-              <button
-                className={itemClassName}
-                disabled={item.disabled}
-                key={item.label}
-                onClick={() => {
-                  setIsOpen(false)
-                  item.onSelect?.()
-                }}
-                role="menuitem"
-                type="button"
-              >
-                {item.icon}
-                <span>{item.label}</span>
-              </button>
+              menuItem
             )
           })}
         </div>
       ) : null}
     </div>
+  )
+}
+
+function renderActionMenuEntry(item: ActionMenuItem, itemClassName: string, onClose: () => void) {
+  const isTooltipDisabledItem = Boolean(item.disabled && item.description)
+
+  if (item.href && !item.disabled) {
+    return (
+      <a
+        className={itemClassName}
+        download={item.download}
+        href={item.href}
+        key={item.label}
+        onClick={onClose}
+        role="menuitem"
+      >
+        {item.icon}
+        <span>{item.label}</span>
+      </a>
+    )
+  }
+
+  return (
+    <button
+      aria-disabled={isTooltipDisabledItem ? true : undefined}
+      className={itemClassName}
+      disabled={item.disabled && !item.description}
+      key={item.label}
+      onClick={() => {
+        if (item.disabled) {
+          return
+        }
+        onClose()
+        item.onSelect?.()
+      }}
+      role="menuitem"
+      type="button"
+    >
+      {item.icon}
+      <span>{item.label}</span>
+    </button>
   )
 }

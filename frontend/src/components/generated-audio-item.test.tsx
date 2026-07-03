@@ -99,12 +99,61 @@ describe("GeneratedAudioItem", () => {
     )
 
     await user.click(screen.getByRole("button", { name: /open generated audio actions/i }))
+    await user.hover(screen.getByRole("menuitem", { name: "Use Text" }))
+
+    expect(
+      await screen.findAllByText("Replace the Generate draft with this saved text and voice assignments.")
+    ).not.toHaveLength(0)
+
     await user.click(screen.getByRole("menuitem", { name: "View Text" }))
     await user.click(screen.getByRole("button", { name: /open generated audio actions/i }))
     await user.click(screen.getByRole("menuitem", { name: "Use Text" }))
 
     expect(onViewScriptSnapshot).toHaveBeenCalledWith(itemWithSnapshot)
     expect(onRestoreScriptSnapshot).toHaveBeenCalledWith(itemWithSnapshot)
+  })
+
+  it("explains generated audio server export actions", async () => {
+    const user = userEvent.setup()
+
+    render(
+      <TooltipProvider>
+        <GeneratedAudioItem
+          item={multiVoiceItem}
+          onDelete={vi.fn()}
+          onServerExport={vi.fn()}
+        />
+      </TooltipProvider>
+    )
+
+    await user.click(screen.getByRole("button", { name: /open generated audio actions/i }))
+    const exportAction = screen.getByRole("menuitem", { name: "Export" })
+    await user.hover(exportAction)
+
+    expect(
+      await screen.findAllByText("Copy this audio and metadata sidecar to the configured server export folder.")
+    ).not.toHaveLength(0)
+  })
+
+  it("explains generated audio browser export actions", async () => {
+    const user = userEvent.setup()
+
+    render(
+      <TooltipProvider>
+        <GeneratedAudioItem
+          item={multiVoiceItem}
+          onBrowserExport={vi.fn()}
+          onDelete={vi.fn()}
+        />
+      </TooltipProvider>
+    )
+
+    await user.click(screen.getByRole("button", { name: /open generated audio actions/i }))
+    await user.hover(screen.getByRole("menuitem", { name: "Browser Export" }))
+
+    expect(
+      await screen.findAllByText("Copy this audio and metadata sidecar to your selected browser export folder.")
+    ).not.toHaveLength(0)
   })
 
   it("labels dialogue snapshot actions by mode", async () => {
