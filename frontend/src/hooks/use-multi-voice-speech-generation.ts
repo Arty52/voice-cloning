@@ -388,7 +388,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
         modelId: persistContext.modelId || persistContext.backendDefaultModelId || BACKEND_DEFAULT_MODEL_LABEL,
         multiVoiceMetadata: buildGeneratedAudioMultiVoiceMetadata(jobUpdate),
         requestId: null,
-        scriptSnapshot: persistContext.scriptSnapshot,
+        scriptSnapshot: refreshScriptSnapshotFromJob(persistContext.scriptSnapshot, jobUpdate),
         tuningMetadata: buildGeneratedAudioTuningMetadata({
           provider: persistContext.provider,
           selectedPresetId: persistContext.selectedTuningPresetId,
@@ -481,6 +481,47 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
 
 function sumCharacters(job: SpeechJob) {
   return job.segments.reduce((total, segment) => total + (segment.characterCount ?? segment.text.length), 0)
+}
+
+function refreshScriptSnapshotFromJob(
+  scriptSnapshot: GeneratedAudioScriptSnapshot | null,
+  job: SpeechJob
+): GeneratedAudioScriptSnapshot | null {
+  if (!scriptSnapshot) {
+    return null
+  }
+
+  const segmentsById = new Map(job.segments.map((segment) => [segment.id, segment]))
+  if (scriptSnapshot.mode === "range") {
+    return {
+      ...scriptSnapshot,
+      assignments: scriptSnapshot.assignments.map((assignment) => {
+        const segment = segmentsById.get(assignment.id)
+        return segment
+          ? {
+              ...assignment,
+              voiceId: segment.voiceId,
+              voiceName: segment.voiceName,
+            }
+          : assignment
+      }),
+    }
+  }
+
+  return {
+    ...scriptSnapshot,
+    dialogueBlocks: scriptSnapshot.dialogueBlocks.map((block) => {
+      const segment = segmentsById.get(block.id)
+      return segment
+        ? {
+            ...block,
+            voiceId: segment.voiceId,
+            voiceName: segment.voiceName,
+            voiceSettings: segment.voiceSettings ? { ...segment.voiceSettings } : null,
+          }
+        : block
+    }),
+  }
 }
 
 function delay(ms: number) {
