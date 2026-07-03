@@ -496,7 +496,10 @@ async function importBrowserGeneratedAudioToArchive(
       continue
     }
     try {
-      await saveGeneratedAudioArchive(record, limitBytes)
+      await saveGeneratedAudioArchive(
+        { ...record, scriptSnapshot: record.scriptSnapshot ?? null },
+        limitBytes
+      )
       importedIds.push(record.id)
     } catch (caught) {
       if (isGeneratedAudioArchiveConflict(caught)) {

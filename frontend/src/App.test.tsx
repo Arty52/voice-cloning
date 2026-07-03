@@ -728,7 +728,10 @@ function deleteDatabase(name: string) {
   })
 }
 
-function generatedAudioInput(overrides: Partial<Parameters<typeof saveGeneratedAudio>[0]> = {}) {
+function generatedAudioInput(
+  overrides: Partial<Parameters<typeof saveGeneratedAudio>[0]> = {}
+): Parameters<typeof saveGeneratedAudio>[0] {
+  const { scriptSnapshot = null, ...restOverrides } = overrides
   return {
     appVoiceId: "default",
     blob: audioBlob,
@@ -736,9 +739,10 @@ function generatedAudioInput(overrides: Partial<Parameters<typeof saveGeneratedA
     characterCount: 54,
     modelId: "eleven_multilingual_v2",
     requestId: "req_test_123",
+    scriptSnapshot,
     voiceId: "voice-123",
     voiceName: "Default voice",
-    ...overrides,
+    ...restOverrides,
   }
 }
 

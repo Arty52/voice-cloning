@@ -102,6 +102,7 @@ function audioBlob(sizeBytes: number) {
 }
 
 function audioInput(overrides: Partial<SaveGeneratedAudioInput> = {}): SaveGeneratedAudioInput {
+  const { scriptSnapshot = null, ...restOverrides } = overrides
   return {
     appVoiceId: "default",
     blob: audioBlob(4),
@@ -110,9 +111,10 @@ function audioInput(overrides: Partial<SaveGeneratedAudioInput> = {}): SaveGener
     generationElapsedMs: 1234,
     modelId: "eleven_multilingual_v2",
     requestId: "req_test_123",
+    scriptSnapshot,
     voiceId: "voice-123",
     voiceName: "Default voice",
-    ...overrides,
+    ...restOverrides,
   }
 }
 
