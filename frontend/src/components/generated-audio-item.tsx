@@ -144,7 +144,7 @@ function buildGeneratedAudioActionItems({
   if (item.scriptSnapshot && onViewScriptSnapshot) {
     items.push({
       icon: <FileText aria-hidden="true" className="size-4" />,
-      label: "View Script",
+      label: viewScriptSnapshotLabel(item),
       onSelect: () => onViewScriptSnapshot(item),
     })
   }
@@ -195,6 +195,10 @@ function buildGeneratedAudioActionItems({
 
 function restoreScriptSnapshotLabel(item: GeneratedResult) {
   return item.scriptSnapshot?.mode === "dialogue" ? "Use Dialogue" : "Use Text"
+}
+
+function viewScriptSnapshotLabel(item: GeneratedResult) {
+  return item.scriptSnapshot?.mode === "dialogue" ? "View Dialogue" : "View Text"
 }
 
 function serverExportBadgeLabel(status: GeneratedAudioServerExportItem) {

@@ -81,7 +81,7 @@ describe("GeneratedAudioItem", () => {
     expect(downloadAction).toHaveAttribute("download", "voice-clone-narrator-generated-1.mp3")
   })
 
-  it("shows range script snapshot actions when callbacks are available", async () => {
+  it("shows range text snapshot actions when callbacks are available", async () => {
     const user = userEvent.setup()
     const onViewScriptSnapshot = vi.fn()
     const onRestoreScriptSnapshot = vi.fn()
@@ -99,7 +99,7 @@ describe("GeneratedAudioItem", () => {
     )
 
     await user.click(screen.getByRole("button", { name: /open generated audio actions/i }))
-    await user.click(screen.getByRole("menuitem", { name: "View Script" }))
+    await user.click(screen.getByRole("menuitem", { name: "View Text" }))
     await user.click(screen.getByRole("button", { name: /open generated audio actions/i }))
     await user.click(screen.getByRole("menuitem", { name: "Use Text" }))
 
@@ -107,8 +107,9 @@ describe("GeneratedAudioItem", () => {
     expect(onRestoreScriptSnapshot).toHaveBeenCalledWith(itemWithSnapshot)
   })
 
-  it("labels dialogue script recall actions by mode", async () => {
+  it("labels dialogue snapshot actions by mode", async () => {
     const user = userEvent.setup()
+    const onViewScriptSnapshot = vi.fn()
     const onRestoreScriptSnapshot = vi.fn()
     const itemWithSnapshot = { ...multiVoiceItem, scriptSnapshot: dialogueSnapshot }
 
@@ -118,13 +119,17 @@ describe("GeneratedAudioItem", () => {
           item={itemWithSnapshot}
           onDelete={vi.fn()}
           onRestoreScriptSnapshot={onRestoreScriptSnapshot}
+          onViewScriptSnapshot={onViewScriptSnapshot}
         />
       </TooltipProvider>
     )
 
     await user.click(screen.getByRole("button", { name: /open generated audio actions/i }))
+    await user.click(screen.getByRole("menuitem", { name: "View Dialogue" }))
+    await user.click(screen.getByRole("button", { name: /open generated audio actions/i }))
     await user.click(screen.getByRole("menuitem", { name: "Use Dialogue" }))
 
+    expect(onViewScriptSnapshot).toHaveBeenCalledWith(itemWithSnapshot)
     expect(onRestoreScriptSnapshot).toHaveBeenCalledWith(itemWithSnapshot)
   })
 })

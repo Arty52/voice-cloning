@@ -5028,7 +5028,7 @@ describe("App", () => {
 
     const archivePanel = generatedAudioArchivePanel()
     await user.click(await archivePanel.findByRole("button", { name: /open generated audio actions/i }))
-    await user.click(archivePanel.getByRole("menuitem", { name: "View Script" }))
+    await user.click(archivePanel.getByRole("menuitem", { name: "View Text" }))
 
     const snapshotDialog = screen.getByRole("dialog", { name: "Generated Script Snapshot" })
     expect(within(snapshotDialog).getByText("Archived script for recall.")).toBeInTheDocument()

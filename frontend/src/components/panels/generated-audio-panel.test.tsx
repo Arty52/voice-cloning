@@ -209,7 +209,7 @@ describe("GeneratedAudioPanel pending mutations", () => {
     })
 
     await user.click(screen.getByRole("button", { name: /open generated audio actions for default voice/i }))
-    await user.click(screen.getByRole("menuitem", { name: "View Script" }))
+    await user.click(screen.getByRole("menuitem", { name: "View Text" }))
     await user.click(screen.getByRole("button", { name: /open generated audio actions for default voice/i }))
     await user.click(screen.getByRole("menuitem", { name: "Use Text" }))
 
