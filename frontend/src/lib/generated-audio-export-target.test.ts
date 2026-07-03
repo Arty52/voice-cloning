@@ -181,6 +181,7 @@ async function exportItem(blob: Blob, overrides: Partial<GeneratedAudioExportabl
     multiVoiceMetadata: null,
     providerId: "elevenlabs",
     requestId: "req_123",
+    scriptSnapshot: null,
     sha256: await sha256Blob(blob),
     sizeBytes: blob.size,
     tuningMetadata: null,

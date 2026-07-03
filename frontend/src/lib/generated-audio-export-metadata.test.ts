@@ -19,6 +19,16 @@ const item = {
   multiVoiceMetadata: null,
   providerId: "elevenlabs",
   requestId: "req_123",
+  scriptSnapshot: {
+    version: 1 as const,
+    mode: "range" as const,
+    text: "Hello from the saved script.",
+    sourceVoiceId: "default",
+    assignments: [],
+    dialogueBlocks: [],
+    speakerMappings: [],
+    segmentGapMs: null,
+  },
   sha256: "abcdef123456",
   sizeBytes: 123,
   tuningMetadata: null,
@@ -57,6 +67,11 @@ describe("generated audio export metadata", () => {
       sha256: "abcdef123456",
       providerId: "elevenlabs",
       modelId: "Eleven Multilingual v2",
+      scriptSnapshot: {
+        version: 1,
+        mode: "range",
+        text: "Hello from the saved script.",
+      },
     })
     expect(sidecar).not.toHaveProperty("filePath")
   })
