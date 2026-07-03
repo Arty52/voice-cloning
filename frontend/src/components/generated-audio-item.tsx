@@ -2,6 +2,7 @@ import { Download, FileText, FolderUp, RotateCcw, Trash2, Upload } from "lucide-
 
 import { AudioPlayer } from "@/components/audio-player"
 import { GeneratedAudioMetadata } from "@/components/generated-audio-metadata"
+import { GeneratedAudioMultiVoiceBadge } from "@/components/generated-audio-multi-voice-badge"
 import { GeneratedAudioSizeBadge } from "@/components/generated-audio-size-badge"
 import { ActionMenu, type ActionMenuItem } from "@/components/ui/action-menu"
 import { Badge } from "@/components/ui/badge"
@@ -87,13 +88,15 @@ export function GeneratedAudioItem({
                 {browserExportBadgeLabel(browserExportStatus)}
               </Badge>
             ) : null}
-            {item.multiVoiceMetadata ? <Badge variant="accent">Multi-Voice</Badge> : null}
-            <Badge>{cacheBadgeLabel(item)}</Badge>
+            {item.multiVoiceMetadata ? (
+              <GeneratedAudioMultiVoiceBadge metadata={item.multiVoiceMetadata} />
+            ) : (
+              <Badge>{cacheBadgeLabel(item)}</Badge>
+            )}
           </div>
           <ActionMenu ariaLabel={`Open generated audio actions for ${item.voiceName}`} items={actionItems} />
         </div>
       </div>
-      {item.multiVoiceMetadata ? <GeneratedAudioMultiVoiceSummary item={item} /> : null}
       <GeneratedAudioMetadata generationElapsedMs={item.generationElapsedMs} tuningMetadata={item.tuningMetadata} />
       <AudioPlayer ariaLabel={`Generated voice playback for ${item.voiceName}`} src={item.url} />
       <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
@@ -235,29 +238,6 @@ function browserExportActionLabel(status: BrowserArchiveExportLedgerEntry | null
   return status.status === "failed" ? "Retry Browser Export" : "Browser Export Again"
 }
 
-function GeneratedAudioMultiVoiceSummary({ item }: { item: GeneratedResult }) {
-  const metadata = item.multiVoiceMetadata
-  if (!metadata) {
-    return null
-  }
-
-  return (
-    <div className="mb-3 rounded-md border border-border bg-card/70 p-3 text-xs text-muted-foreground">
-      <div className="flex flex-wrap gap-2">
-        <Badge>{metadata.segmentCount} Segments</Badge>
-        {metadata.voices.map((voice) => (
-          <Badge key={voice.voiceId} variant="secondary">
-            {voice.voiceName} x{voice.segmentCount}
-          </Badge>
-        ))}
-      </div>
-    </div>
-  )
-}
-
 function cacheBadgeLabel(item: GeneratedResult) {
-  if (item.multiVoiceMetadata) {
-    return "Combined Result"
-  }
   return item.cacheState === "hit" ? "Cache Hit" : "Cache Miss"
 }
