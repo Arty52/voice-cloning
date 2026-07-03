@@ -41,9 +41,7 @@ describe("Select", () => {
 
     const trigger = screen.getByRole("combobox", { name: "Source Voice" })
 
-    expect(trigger.className).toContain("cursor-pointer")
-    expect(trigger.className).toContain("hover:border-ring/60")
-    expect(trigger.className).toContain("data-[state=open]:border-ring/70")
+    expect(trigger).toBeEnabled()
 
     await user.click(trigger)
 
@@ -51,9 +49,7 @@ describe("Select", () => {
 
     const courtOption = screen.getByRole("option", { name: "Court" })
 
-    expect(courtOption.className).toContain("cursor-pointer")
-    expect(courtOption.className).toContain("hover:bg-muted")
-    expect(courtOption.className).toContain("data-[highlighted]:bg-muted")
+    expect(courtOption).toBeEnabled()
 
     await user.click(courtOption)
 

@@ -86,8 +86,8 @@ button:not(:disabled),
   cursor: pointer;
 }
 
-[data-slot="select-trigger"]:not(:disabled):hover,
-[data-slot="select-trigger"][data-state="open"] {
+[data-slot="select-trigger"]:not(:disabled, [aria-invalid="true"]):hover,
+[data-slot="select-trigger"][data-state="open"]:not([aria-invalid="true"]) {
   border-color: color-mix(in oklch, var(--ring) 70%, var(--border));
   background-color: color-mix(in oklch, var(--muted) 50%, transparent);
   box-shadow:
