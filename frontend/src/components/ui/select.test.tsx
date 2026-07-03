@@ -39,11 +39,23 @@ describe("Select", () => {
       </Select>
     )
 
-    await user.click(screen.getByRole("combobox", { name: "Source Voice" }))
+    const trigger = screen.getByRole("combobox", { name: "Source Voice" })
+
+    expect(trigger.className).toContain("cursor-pointer")
+    expect(trigger.className).toContain("hover:border-ring/60")
+    expect(trigger.className).toContain("data-[state=open]:border-ring/70")
+
+    await user.click(trigger)
 
     expect(screen.getByText("Primary Voices")).toBeInTheDocument()
 
-    await user.click(screen.getByRole("option", { name: "Court" }))
+    const courtOption = screen.getByRole("option", { name: "Court" })
+
+    expect(courtOption.className).toContain("cursor-pointer")
+    expect(courtOption.className).toContain("hover:bg-muted")
+    expect(courtOption.className).toContain("data-[highlighted]:bg-muted")
+
+    await user.click(courtOption)
 
     expect(onValueChange).toHaveBeenCalledWith("court")
   })
