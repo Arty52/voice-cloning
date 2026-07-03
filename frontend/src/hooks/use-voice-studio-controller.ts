@@ -17,6 +17,7 @@ import { useVoiceMetadata } from "@/hooks/use-voice-metadata"
 import { useVoiceSampleInput } from "@/hooks/use-voice-sample-input"
 import { useVoiceTuning } from "@/hooks/use-voice-tuning"
 import { useWorkflowNavigation } from "@/hooks/use-workflow-navigation"
+import { buildDialogueScriptSnapshot, buildRangeScriptSnapshot } from "@/lib/generated-audio-script-snapshot"
 import { isTemporaryGeneratedAudioId } from "@/lib/generated-audio-view-model"
 import { isAppSettingsUnavailableError, loadAppSettings, saveAppSettings } from "@/lib/app-settings-api"
 import { formatBytes, formatNumber } from "@/lib/formatters"
@@ -346,6 +347,13 @@ export function useVoiceStudioController() {
         provider: providerKeys.activeProvider,
         providerId: providerKeys.activeProviderId,
         providerKey: providerKeys.activeProviderKey,
+        scriptSnapshot: buildDialogueScriptSnapshot({
+          dialogueBlocks: dialogue.blocks,
+          segmentGapMs: naturalHandoffsEnabled ? null : 0,
+          sourceVoiceId: voiceLibrary.selectedVoice?.id ?? null,
+          speakerMappings: dialogue.speakerMappings,
+          text: dialogue.segmentBuild.text,
+        }),
         segmentGapMs: naturalHandoffsEnabled ? undefined : 0,
         segments: dialogue.segmentBuild.segments,
         selectedModelId: metadata.selectedModelId,
@@ -371,6 +379,12 @@ export function useVoiceStudioController() {
         provider: providerKeys.activeProvider,
         providerId: providerKeys.activeProviderId,
         providerKey: providerKeys.activeProviderKey,
+        scriptSnapshot: buildRangeScriptSnapshot({
+          assignments: voiceAssignments,
+          segmentGapMs: naturalHandoffsEnabled ? null : 0,
+          sourceVoiceId: voiceLibrary.selectedVoice?.id ?? null,
+          text,
+        }),
         segmentGapMs: naturalHandoffsEnabled ? undefined : 0,
         segments: assignmentSegments.segments,
         selectedModelId: metadata.selectedModelId,
@@ -398,6 +412,12 @@ export function useVoiceStudioController() {
       selectedTuningPresetId,
       selectedUserTuningPreset,
       selectedVoice: voiceLibrary.selectedVoice,
+      scriptSnapshot: buildRangeScriptSnapshot({
+        assignments: [],
+        segmentGapMs: null,
+        sourceVoiceId: voiceLibrary.selectedVoice?.id ?? null,
+        text,
+      }),
       storageLimitBytes: generatedAudio.storageLimitBytes,
       text,
       tuning,

@@ -2,6 +2,7 @@ import { act, renderHook } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import type {
+  GeneratedAudioScriptSnapshot,
   GeneratedResult,
   SpeechJob,
   VoiceAsset,
@@ -158,6 +159,48 @@ const voiceRegeneratedJob: SpeechJob = {
   updatedAt: "2026-06-23T00:00:03.000Z",
 }
 
+const dialogueSuccessJob: SpeechJob = {
+  ...successJob,
+  id: "dialogue-job",
+  resultSha256: "dialogue-combined-hash",
+  segments: [
+    {
+      ...successJob.segments[0],
+      id: "dialogue-block-1",
+      text: "Hello.",
+      voiceId: "narrator",
+      voiceName: "Narrator",
+      voiceSettings: null,
+    },
+    {
+      ...successJob.segments[1],
+      id: "dialogue-block-2",
+      text: "\nHi.",
+      voiceId: "villain",
+      voiceName: "Villain",
+      voiceSettings: { stability: 0.8 },
+    },
+  ],
+}
+
+const dialogueRegeneratedJob: SpeechJob = {
+  ...dialogueSuccessJob,
+  resultSha256: "dialogue-combined-hash-2",
+  segments: dialogueSuccessJob.segments.map((segment) =>
+    segment.id === "dialogue-block-1"
+      ? {
+          ...segment,
+          generationCount: 2,
+          resultSha256: "dialogue-block-1-hash-2",
+          voiceId: "villain",
+          voiceName: "Villain",
+          voiceSettings: { stability: 0.91 },
+        }
+      : segment
+  ),
+  updatedAt: "2026-06-23T00:00:04.000Z",
+}
+
 const canceledJob: SpeechJob = {
   ...runningJob,
   activeSegmentId: null,
@@ -189,6 +232,68 @@ const generatedResult: GeneratedResult = {
   url: "blob:generated-1",
   voiceId: "narrator",
   voiceName: "Multi-Voice",
+}
+
+const rangeScriptSnapshot: GeneratedAudioScriptSnapshot = {
+  version: 1,
+  mode: "range",
+  text: "Hello there.",
+  sourceVoiceId: "narrator",
+  assignments: [
+    {
+      id: "assignment-1",
+      start: 0,
+      end: 6,
+      text: "Hello ",
+      sourceText: "Hello there.",
+      voiceId: "narrator",
+      voiceName: "Narrator",
+    },
+  ],
+  dialogueBlocks: [],
+  speakerMappings: [],
+  segmentGapMs: 0,
+}
+
+const rangeRegenerationScriptSnapshot: GeneratedAudioScriptSnapshot = {
+  ...rangeScriptSnapshot,
+  assignments: [
+    {
+      ...rangeScriptSnapshot.assignments[0],
+      id: "segment-one",
+    },
+  ],
+}
+
+const dialogueScriptSnapshot: GeneratedAudioScriptSnapshot = {
+  version: 1,
+  mode: "dialogue",
+  text: "Narrator: Hello.\nVillain: Hi.",
+  sourceVoiceId: "narrator",
+  assignments: [],
+  dialogueBlocks: [
+    {
+      id: "dialogue-block-1",
+      speakerLabel: "Narrator",
+      text: "Hello.",
+      voiceId: null,
+      voiceName: null,
+      voiceSettings: null,
+    },
+    {
+      id: "dialogue-block-2",
+      speakerLabel: "Villain",
+      text: "Hi.",
+      voiceId: "villain",
+      voiceName: "Villain",
+      voiceSettings: { stability: 0.8 },
+    },
+  ],
+  speakerMappings: [
+    { speakerLabel: "Narrator", voiceId: "narrator" },
+    { speakerLabel: "Villain", voiceId: "villain" },
+  ],
+  segmentGapMs: null,
 }
 
 function generationInput(overrides: Partial<GenerateMultiVoiceSpeechInput> = {}) {
@@ -291,7 +396,7 @@ describe("useMultiVoiceSpeechGeneration", () => {
     const { result } = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
 
     await act(async () => {
-      await result.current.generateSpeech(generationInput())
+      await result.current.generateSpeech(generationInput({ scriptSnapshot: rangeScriptSnapshot }))
     })
 
     expect(result.current.status).toBe("success")
@@ -327,6 +432,7 @@ describe("useMultiVoiceSpeechGeneration", () => {
           resultSha256: "combined-hash",
           segmentCount: 2,
         }),
+        scriptSnapshot: rangeScriptSnapshot,
         voiceId: "narrator",
         voiceName: "Multi-Voice",
       }),
@@ -358,6 +464,35 @@ describe("useMultiVoiceSpeechGeneration", () => {
     expect(JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string)).toMatchObject({
       segmentGapMs: 0,
     })
+  })
+
+  it("persists dialogue script snapshots with multi-voice speech jobs", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path === "/api/speech/jobs" && init?.method === "POST") {
+          return okJson({ job: successJob }, 202)
+        }
+        if (path === "/api/speech/jobs/job-1/result" && !init) {
+          return okAudio("combined")
+        }
+        return okJson({})
+      })
+    )
+    const persistGeneratedAudio = vi.fn(async () => generatedResult)
+    const { result } = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+
+    await act(async () => {
+      await result.current.generateSpeech(generationInput({ scriptSnapshot: dialogueScriptSnapshot }))
+    })
+
+    expect(persistGeneratedAudio).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scriptSnapshot: dialogueScriptSnapshot,
+      }),
+      100
+    )
   })
 
   it("cancels a running job", async () => {
@@ -483,7 +618,7 @@ describe("useMultiVoiceSpeechGeneration", () => {
     const { result } = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
 
     await act(async () => {
-      await result.current.generateSpeech(generationInput())
+      await result.current.generateSpeech(generationInput({ scriptSnapshot: rangeRegenerationScriptSnapshot }))
     })
     await act(async () => {
       await result.current.regenerateSegment({
@@ -519,8 +654,96 @@ describe("useMultiVoiceSpeechGeneration", () => {
             }),
           ]),
         }),
+        scriptSnapshot: expect.objectContaining({
+          assignments: [
+            expect.objectContaining({
+              id: "segment-one",
+              voiceId: "villain",
+              voiceName: "Villain",
+            }),
+          ],
+        }),
       }),
       80
+    )
+  })
+
+  it("regenerates a dialogue segment and persists a refreshed script snapshot", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path === "/api/speech/jobs" && init?.method === "POST") {
+          return okJson({ job: dialogueSuccessJob }, 202)
+        }
+        if (path === "/api/speech/jobs/dialogue-job/result" && !init) {
+          return okAudio("dialogue-combined")
+        }
+        if (path === "/api/speech/jobs/dialogue-job/segments/dialogue-block-1/regenerate" && init?.method === "POST") {
+          return okJson({ job: dialogueRegeneratedJob }, 202)
+        }
+        return okJson({})
+      })
+    )
+    const persistGeneratedAudio = vi.fn(async () => generatedResult)
+    const { result } = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+
+    await act(async () => {
+      await result.current.generateSpeech(
+        generationInput({
+          scriptSnapshot: dialogueScriptSnapshot,
+          segments: [
+            {
+              assignmentId: "dialogue-block-1",
+              assignmentKind: "assigned",
+              clientSegmentId: "dialogue-block-1",
+              end: 6,
+              start: 0,
+              text: "Hello.",
+              voiceId: "narrator",
+              voiceName: "Narrator",
+              voiceSettings: null,
+            },
+            {
+              assignmentId: "dialogue-block-2",
+              assignmentKind: "assigned",
+              clientSegmentId: "dialogue-block-2",
+              end: 10,
+              start: 6,
+              text: "\nHi.",
+              voiceId: "villain",
+              voiceName: "Villain",
+              voiceSettings: { stability: 0.8 },
+            },
+          ],
+          text: "Hello.\nHi.",
+        })
+      )
+    })
+    await act(async () => {
+      await result.current.regenerateSegment({
+        providerKey: "browser-secret",
+        segmentId: "dialogue-block-1",
+        voiceId: "villain",
+        voiceSettings: { stability: 0.91 },
+      })
+    })
+
+    expect(persistGeneratedAudio).toHaveBeenCalledTimes(2)
+    expect(persistGeneratedAudio).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        scriptSnapshot: expect.objectContaining({
+          dialogueBlocks: expect.arrayContaining([
+            expect.objectContaining({
+              id: "dialogue-block-1",
+              voiceId: "villain",
+              voiceName: "Villain",
+              voiceSettings: { stability: 0.91 },
+            }),
+          ]),
+        }),
+      }),
+      100
     )
   })
 
