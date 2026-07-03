@@ -10,6 +10,7 @@ import { buildGeneratedAudioTuningMetadata } from "@/lib/generated-audio-metadat
 import type { SaveGeneratedAudioInput } from "@/lib/generated-audio-storage"
 import type {
   GeneratedResult,
+  GeneratedAudioScriptSnapshot,
   ModelOption,
   RequestStatus,
   UserTuningPreset,
@@ -29,6 +30,7 @@ type GenerateSpeechInput = {
   selectedTuningPresetId: string
   selectedUserTuningPreset?: UserTuningPreset | null
   selectedVoice: VoiceAsset | null
+  scriptSnapshot?: GeneratedAudioScriptSnapshot | null
   storageLimitBytes: number
   text: string
   tuning: VoiceTuningValues
@@ -79,6 +81,7 @@ export function useSpeechGeneration({ persistGeneratedAudio }: UseSpeechGenerati
     selectedTuningPresetId,
     selectedUserTuningPreset = null,
     selectedVoice,
+    scriptSnapshot = null,
     storageLimitBytes,
     text,
     tuning,
@@ -130,7 +133,7 @@ export function useSpeechGeneration({ persistGeneratedAudio }: UseSpeechGenerati
         generationElapsedMs,
         modelId: response.modelId || submittedModelId || backendDefaultModelId || BACKEND_DEFAULT_MODEL_LABEL,
         requestId: response.requestId,
-        scriptSnapshot: null,
+        scriptSnapshot,
         tuningMetadata: buildGeneratedAudioTuningMetadata({
           provider,
           selectedPresetId: selectedTuningPresetId,

@@ -17,6 +17,7 @@ import { useVoiceMetadata } from "@/hooks/use-voice-metadata"
 import { useVoiceSampleInput } from "@/hooks/use-voice-sample-input"
 import { useVoiceTuning } from "@/hooks/use-voice-tuning"
 import { useWorkflowNavigation } from "@/hooks/use-workflow-navigation"
+import { buildRangeScriptSnapshot } from "@/lib/generated-audio-script-snapshot"
 import { isTemporaryGeneratedAudioId } from "@/lib/generated-audio-view-model"
 import { isAppSettingsUnavailableError, loadAppSettings, saveAppSettings } from "@/lib/app-settings-api"
 import { formatBytes, formatNumber } from "@/lib/formatters"
@@ -398,6 +399,12 @@ export function useVoiceStudioController() {
       selectedTuningPresetId,
       selectedUserTuningPreset,
       selectedVoice: voiceLibrary.selectedVoice,
+      scriptSnapshot: buildRangeScriptSnapshot({
+        assignments: [],
+        segmentGapMs: null,
+        sourceVoiceId: voiceLibrary.selectedVoice?.id ?? null,
+        text,
+      }),
       storageLimitBytes: generatedAudio.storageLimitBytes,
       text,
       tuning,
