@@ -97,7 +97,11 @@ export function GeneratedAudioItem({
           <ActionMenu ariaLabel={`Open generated audio actions for ${item.voiceName}`} items={actionItems} />
         </div>
       </div>
-      <GeneratedAudioMetadata generationElapsedMs={item.generationElapsedMs} tuningMetadata={item.tuningMetadata} />
+      <GeneratedAudioMetadata
+        generationElapsedMs={item.generationElapsedMs}
+        multiVoiceMetadata={item.multiVoiceMetadata}
+        tuningMetadata={item.tuningMetadata}
+      />
       <AudioPlayer ariaLabel={`Generated voice playback for ${item.voiceName}`} src={item.url} />
       <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
         <span className="truncate font-mono">Model {item.modelId}</span>
