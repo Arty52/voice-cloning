@@ -80,7 +80,7 @@ function AdjustedSettingBadge({ setting }: { setting: GeneratedAudioAdjustedSett
   return (
     <Badge
       title={`${setting.label} default: ${setting.nominalValueLabel}`}
-      variant="accent"
+      variant="modified"
     >
       {setting.label} {setting.valueLabel}
     </Badge>

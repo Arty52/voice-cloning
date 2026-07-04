@@ -2,7 +2,7 @@ import { forwardRef, type HTMLAttributes } from "react"
 
 import { cn } from "@/lib/utils"
 
-type BadgeVariant = "accent" | "secondary"
+type BadgeVariant = "accent" | "modified" | "secondary"
 
 type BadgeProps = HTMLAttributes<HTMLSpanElement> & {
   variant?: BadgeVariant
@@ -10,6 +10,7 @@ type BadgeProps = HTMLAttributes<HTMLSpanElement> & {
 
 const badgeVariants: Record<BadgeVariant, string> = {
   accent: "border-primary/30 bg-primary/10 text-primary",
+  modified: "border-modified/35 bg-modified/10 text-modified-foreground",
   secondary: "border-border bg-secondary text-secondary-foreground",
 }
 

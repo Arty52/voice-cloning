@@ -89,14 +89,39 @@ describe("GeneratedAudioMetadata", () => {
     fireEvent.click(screen.getByRole("button", { name: "Show Multi-Voice Custom Settings" }))
 
     expect(await screen.findByText("voice_a")).toBeInTheDocument()
-    expect(screen.getByText("Stability 0.4")).toBeInTheDocument()
-    expect(screen.getByText("Style 0.35")).toBeInTheDocument()
-    expect(screen.getByText("Speed 1.04")).toBeInTheDocument()
+    expect(screen.getByText("Custom Settings")).toHaveClass("bg-secondary")
+    expect(screen.getByText("Stability 0.4")).toHaveClass(
+      "border-modified/35",
+      "bg-modified/10",
+      "text-modified-foreground"
+    )
+    expect(screen.getByText("Style 0.35")).toHaveClass(
+      "border-modified/35",
+      "bg-modified/10",
+      "text-modified-foreground"
+    )
+    expect(screen.getByText("Speed 1.04")).toHaveClass(
+      "border-modified/35",
+      "bg-modified/10",
+      "text-modified-foreground"
+    )
     expect(screen.getByText("voice_b")).toBeInTheDocument()
-    expect(screen.getByText("Stability 0.2")).toBeInTheDocument()
+    expect(screen.getByText("Stability 0.2")).toHaveClass(
+      "border-modified/35",
+      "bg-modified/10",
+      "text-modified-foreground"
+    )
     expect(screen.getByText("voice_c")).toBeInTheDocument()
-    expect(screen.getByText("Style 0.32")).toBeInTheDocument()
-    expect(screen.getByText("Speed 1.02")).toBeInTheDocument()
+    expect(screen.getByText("Style 0.32")).toHaveClass(
+      "border-modified/35",
+      "bg-modified/10",
+      "text-modified-foreground"
+    )
+    expect(screen.getByText("Speed 1.02")).toHaveClass(
+      "border-modified/35",
+      "bg-modified/10",
+      "text-modified-foreground"
+    )
   })
 
   it("shows multi-voice custom settings for preset jobs with per-voice overrides", async () => {
@@ -137,7 +162,11 @@ describe("GeneratedAudioMetadata", () => {
     fireEvent.click(screen.getByRole("button", { name: "Show Multi-Voice Custom Settings" }))
 
     expect(await screen.findByText("voice_b")).toBeInTheDocument()
-    expect(screen.getByText("Stability 0.2")).toBeInTheDocument()
+    expect(screen.getByText("Stability 0.2")).toHaveClass(
+      "border-modified/35",
+      "bg-modified/10",
+      "text-modified-foreground"
+    )
   })
 
   it("suppresses default settings when multi-voice custom settings are present", () => {
