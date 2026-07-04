@@ -690,6 +690,7 @@ export function useVoiceStudioController() {
     confirmation,
     dialogue,
     dialogueSpeechSegmentCount,
+    effectiveVoiceSettingsByVoiceId,
     estimatedCredits,
     generatedAudio,
     handleGenerate,

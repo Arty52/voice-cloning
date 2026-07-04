@@ -44,12 +44,10 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import type { DialogueScriptController } from "@/hooks/use-dialogue-script"
 import { speakerColorClassName, type MultiVoiceScriptBlock } from "@/lib/dialogue-script"
 import { cn } from "@/lib/utils"
-import { resolveSavedVoiceTuning } from "@/lib/voice-tuning"
 import type { VoiceTextAssignment } from "@/lib/voice-assignments"
 import type { ProviderTuningControl, ProviderTuningValue, VoiceAsset, VoiceTuningValues } from "@/types"
 
 type SpeechInputPanelProps = {
-  activeProviderId?: string | null
   assignmentError: string | null
   assignmentSpeechSegmentCount: number | null
   assignments: VoiceTextAssignment[]
@@ -58,6 +56,7 @@ type SpeechInputPanelProps = {
   characterCount: number
   dialogue: DialogueScriptController
   dialogueSpeechSegmentCount: number | null
+  effectiveVoiceSettingsByVoiceId?: Record<string, VoiceTuningValues>
   isGenerating: boolean
   naturalHandoffsEnabled: boolean
   naturalHandoffsSaveError?: string | null
@@ -83,8 +82,9 @@ type SpeechInputPanelProps = {
   voices: VoiceAsset[]
 }
 
+const EMPTY_VOICE_SETTINGS_BY_VOICE_ID: Record<string, VoiceTuningValues> = {}
+
 export function SpeechInputPanel({
-  activeProviderId = null,
   assignmentError,
   assignmentSpeechSegmentCount,
   assignments,
@@ -93,6 +93,7 @@ export function SpeechInputPanel({
   characterCount,
   dialogue,
   dialogueSpeechSegmentCount,
+  effectiveVoiceSettingsByVoiceId = EMPTY_VOICE_SETTINGS_BY_VOICE_ID,
   isGenerating,
   naturalHandoffsEnabled,
   naturalHandoffsSaveError = null,
@@ -319,10 +320,10 @@ export function SpeechInputPanel({
 
       {isDialogueMode ? (
         <DialogueEditor
-          activeProviderId={activeProviderId}
           defaultVoice={selectedVoice}
           dialogue={dialogue}
           dialogueSpeechSegmentCount={dialogueSpeechSegmentCount}
+          effectiveVoiceSettingsByVoiceId={effectiveVoiceSettingsByVoiceId}
           isGenerating={isGenerating}
           providerTuningControls={providerTuningControls}
           tuning={tuning}
@@ -468,10 +469,10 @@ function VoiceAssignmentsList({
 }
 
 type DialogueEditorProps = {
-  activeProviderId: string | null
   defaultVoice: VoiceAsset | null
   dialogue: DialogueScriptController
   dialogueSpeechSegmentCount: number | null
+  effectiveVoiceSettingsByVoiceId: Record<string, VoiceTuningValues>
   isGenerating: boolean
   providerTuningControls: ProviderTuningControl[]
   tuning: VoiceTuningValues
@@ -479,10 +480,10 @@ type DialogueEditorProps = {
 }
 
 function DialogueEditor({
-  activeProviderId,
   defaultVoice,
   dialogue,
   dialogueSpeechSegmentCount,
+  effectiveVoiceSettingsByVoiceId,
   isGenerating,
   providerTuningControls,
   tuning,
@@ -544,10 +545,10 @@ function DialogueEditor({
         <div className="grid gap-3">
           {dialogue.blocks.map((block, index) => (
             <DialogueRow
-              activeProviderId={activeProviderId}
               block={block}
               defaultVoice={defaultVoice}
               dialogue={dialogue}
+              effectiveVoiceSettingsByVoiceId={effectiveVoiceSettingsByVoiceId}
               index={index}
               isGenerating={isGenerating}
               providerTuningControls={providerTuningControls}
@@ -613,10 +614,10 @@ function SpeakerMappings({ dialogue, isGenerating, voices }: SpeakerMappingsProp
 }
 
 type DialogueRowProps = {
-  activeProviderId: string | null
   block: MultiVoiceScriptBlock
   defaultVoice: VoiceAsset | null
   dialogue: DialogueScriptController
+  effectiveVoiceSettingsByVoiceId: Record<string, VoiceTuningValues>
   index: number
   isGenerating: boolean
   providerTuningControls: ProviderTuningControl[]
@@ -625,10 +626,10 @@ type DialogueRowProps = {
 }
 
 function DialogueRow({
-  activeProviderId,
   block,
   defaultVoice,
   dialogue,
+  effectiveVoiceSettingsByVoiceId,
   index,
   isGenerating,
   providerTuningControls,
@@ -643,9 +644,12 @@ function DialogueRow({
   })
   const mappingMissing = Boolean(block.speakerLabel && !effectiveVoice)
   const isAssignedVoice = Boolean(overrideVoice || mappedVoice)
-  const savedVoiceTuning =
-    isAssignedVoice && effectiveVoice ? resolveSavedVoiceTuning(activeProviderId, effectiveVoice) : null
-  const rowTuning = block.voiceSettings ?? savedVoiceTuning ?? tuning
+  const isDefaultVoice = Boolean(defaultVoice && effectiveVoice?.id === defaultVoice.id)
+  const assignedVoiceTuning =
+    isAssignedVoice && effectiveVoice && !isDefaultVoice
+      ? effectiveVoiceSettingsByVoiceId[effectiveVoice.id] ?? null
+      : null
+  const rowTuning = block.voiceSettings ?? assignedVoiceTuning ?? tuning
   const hasCustomRowTuning = block.voiceSettings !== null && block.voiceSettings !== undefined
   const hasMatchingVoiceRows =
     effectiveVoice !== null &&
