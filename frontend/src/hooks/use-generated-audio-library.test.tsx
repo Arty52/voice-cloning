@@ -153,15 +153,6 @@ const legacyScriptSnapshot = {
   version: 1 as const,
 }
 
-const legacyTuningMetadata: GeneratedAudioTuningMetadata = {
-  adjustedSettings: [],
-  mode: "default",
-  presetId: null,
-  presetLabel: null,
-  providerId: "elevenlabs",
-  providerLabel: "ElevenLabs",
-}
-
 const provider = {
   id: "elevenlabs",
   label: "ElevenLabs",
@@ -206,6 +197,7 @@ function GeneratedAudioHarness({
   const library = useGeneratedAudioLibrary(activeProvider)
   const firstItemId = library.generatedAudioItems[0]?.id ?? null
   const firstSummaryCount = library.generatedAudioItems[0]?.multiVoiceMetadata?.tuningSummaries?.length ?? 0
+  const firstProviderLabel = library.generatedAudioItems[0]?.tuningMetadata?.providerLabel ?? ""
 
   onSnapshot({
     itemCount: library.generatedAudioItems.length,
@@ -225,6 +217,7 @@ function GeneratedAudioHarness({
       <div data-testid="server-export-error">{library.serverExportError ?? ""}</div>
       <div data-testid="server-export-mutation">{library.serverExportMutation ?? "none"}</div>
       <div data-testid="first-url">{library.generatedAudioItems[0]?.url ?? ""}</div>
+      <div data-testid="first-provider-label">{firstProviderLabel}</div>
       <div data-testid="first-summary-count">{firstSummaryCount}</div>
       <div data-testid="item-count">{library.generatedAudioItems.length}</div>
       <button disabled={!firstItemId} onClick={() => firstItemId && void library.handleDeleteGeneratedAudio(firstItemId)}>
@@ -433,7 +426,7 @@ describe("useGeneratedAudioLibrary", () => {
         id: "legacy-multi-voice",
         multiVoiceMetadata: legacyMultiVoiceMetadata,
         scriptSnapshot: legacyScriptSnapshot,
-        tuningMetadata: legacyTuningMetadata,
+        tuningMetadata: null,
       }),
       20
     )
@@ -448,6 +441,7 @@ describe("useGeneratedAudioLibrary", () => {
     rerender(<GeneratedAudioHarness onSnapshot={(snapshot) => snapshots.push(snapshot)} provider={provider} />)
 
     expect(screen.getByTestId("first-summary-count")).toHaveTextContent("1")
+    expect(screen.getByTestId("first-provider-label")).toHaveTextContent("ElevenLabs")
     expect(snapshots.map((snapshot) => snapshot.status)).toContain("success")
   })
 

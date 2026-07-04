@@ -8,7 +8,7 @@ import {
   buildGeneratedAudioMultiVoiceTuningSummaries,
   type GeneratedAudioMultiVoiceTuningSegment,
 } from "@/lib/generated-audio-metadata"
-import type { GeneratedResult, VoiceProvider } from "@/types"
+import type { GeneratedAudioTuningMetadata, GeneratedResult, VoiceProvider } from "@/types"
 
 export type GeneratedAudioSizeDisplay = {
   ariaLabel: string
@@ -91,6 +91,19 @@ export function enrichGeneratedAudioResultMetadata(
       ...item.multiVoiceMetadata,
       tuningSummaries,
     },
+    tuningMetadata: item.tuningMetadata ?? providerTuningMetadata(provider),
+  }
+}
+
+function providerTuningMetadata(provider: VoiceProvider): GeneratedAudioTuningMetadata {
+  return {
+    adjustedSettings: [],
+    mode: "custom",
+    presetId: null,
+    presetLabel: null,
+    providerId: provider.id,
+    providerLabel: provider.label,
+    userPreset: null,
   }
 }
 

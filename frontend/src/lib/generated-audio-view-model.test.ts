@@ -280,6 +280,28 @@ describe("enrichGeneratedAudioResultMetadata", () => {
     ])
   })
 
+  it("adds minimal provider tuning metadata when legacy records have none", () => {
+    const result = enrichGeneratedAudioResultMetadata(
+      {
+        ...generatedResult("blob:generated-audio"),
+        multiVoiceMetadata,
+        tuningMetadata: null,
+      },
+      provider
+    )
+
+    expect(result.tuningMetadata).toEqual({
+      adjustedSettings: [],
+      mode: "custom",
+      presetId: null,
+      presetLabel: null,
+      providerId: "elevenlabs",
+      providerLabel: "ElevenLabs",
+      userPreset: null,
+    })
+    expect(result.multiVoiceMetadata?.tuningSummaries).toHaveLength(1)
+  })
+
   it("does not backfill summaries with mismatched provider metadata", () => {
     const item = {
       ...generatedResult("blob:generated-audio"),
