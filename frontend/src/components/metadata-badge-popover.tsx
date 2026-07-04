@@ -7,14 +7,20 @@ import { cn } from "@/lib/utils"
 type MetadataBadgePopoverProps = {
   ariaLabel: string
   children: ReactNode
+  contentClassName?: string
   label: string
+  side?: ComponentProps<typeof PopoverContent>["side"]
+  sideOffset?: ComponentProps<typeof PopoverContent>["sideOffset"]
   variant?: ComponentProps<typeof Badge>["variant"]
 }
 
 export function MetadataBadgePopover({
   ariaLabel,
   children,
+  contentClassName,
   label,
+  side,
+  sideOffset,
   variant = "secondary",
 }: MetadataBadgePopoverProps) {
   const [open, setOpen] = useState(false)
@@ -49,7 +55,13 @@ export function MetadataBadgePopover({
           </Badge>
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-fit max-w-80" onOpenAutoFocus={(event) => event.preventDefault()}>
+      <PopoverContent
+        align="start"
+        className={cn("w-fit max-w-80", contentClassName)}
+        onOpenAutoFocus={(event) => event.preventDefault()}
+        side={side}
+        sideOffset={sideOffset}
+      >
         {children}
       </PopoverContent>
     </Popover>

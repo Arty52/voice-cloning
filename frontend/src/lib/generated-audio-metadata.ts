@@ -1,6 +1,7 @@
 import type {
   GeneratedAudioAdjustedSetting,
   GeneratedAudioMultiVoiceMetadata,
+  GeneratedAudioMultiVoiceTuningSummary,
   GeneratedAudioTuningMetadata,
   ProviderTuningControl,
   ProviderTuningValue,
@@ -58,7 +59,10 @@ export function buildGeneratedAudioTuningMetadata({
   }
 }
 
-export function buildGeneratedAudioMultiVoiceMetadata(job: SpeechJob): GeneratedAudioMultiVoiceMetadata {
+export function buildGeneratedAudioMultiVoiceMetadata(
+  job: SpeechJob,
+  provider?: VoiceProvider | null
+): GeneratedAudioMultiVoiceMetadata {
   const voiceCounts = new Map<string, { segmentCount: number; voiceId: string; voiceName: string }>()
   for (const segment of job.segments) {
     const current = voiceCounts.get(segment.voiceId)
@@ -72,6 +76,7 @@ export function buildGeneratedAudioMultiVoiceMetadata(job: SpeechJob): Generated
       })
     }
   }
+  const tuningSummaries = provider ? buildMultiVoiceTuningSummaries(job, provider) : []
 
   return {
     jobId: job.id,
@@ -89,8 +94,44 @@ export function buildGeneratedAudioMultiVoiceMetadata(job: SpeechJob): Generated
       voiceName: segment.voiceName,
       voiceSettings: segment.voiceSettings,
     })),
+    ...(tuningSummaries.length > 0 ? { tuningSummaries } : {}),
     voices: Array.from(voiceCounts.values()),
   }
+}
+
+function buildMultiVoiceTuningSummaries(
+  job: SpeechJob,
+  provider: VoiceProvider
+): GeneratedAudioMultiVoiceTuningSummary[] {
+  const summaries: GeneratedAudioMultiVoiceTuningSummary[] = []
+  const seenSummaryIds = new Set<string>()
+
+  for (const segment of job.segments) {
+    const adjustedSettings = provider.tuning.controls
+      .map((control) => adjustedSettingForControl(control, provider.tuning.defaultValues, segment.voiceSettings ?? {}))
+      .filter((setting): setting is GeneratedAudioAdjustedSetting => setting !== null)
+    if (adjustedSettings.length === 0) {
+      continue
+    }
+
+    const id = `${segment.voiceId}:${settingSignature(adjustedSettings)}`
+    if (seenSummaryIds.has(id)) {
+      continue
+    }
+    seenSummaryIds.add(id)
+    summaries.push({
+      adjustedSettings,
+      id,
+      voiceId: segment.voiceId,
+      voiceName: segment.voiceName,
+    })
+  }
+
+  return summaries
+}
+
+function settingSignature(settings: GeneratedAudioAdjustedSetting[]) {
+  return settings.map((setting) => `${setting.id}=${String(setting.value)}`).join(";")
 }
 
 function adjustedSettingForControl(

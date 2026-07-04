@@ -110,6 +110,49 @@ describe("GeneratedAudioItem", () => {
     expect(screen.getByText("Cache Miss")).toBeInTheDocument()
   })
 
+  it("threads multi-voice custom tuning summaries into the metadata popover", async () => {
+    render(
+      <TooltipProvider>
+        <GeneratedAudioItem
+          item={{
+            ...multiVoiceItem,
+            multiVoiceMetadata: {
+              ...multiVoiceItem.multiVoiceMetadata!,
+              tuningSummaries: [
+                {
+                  adjustedSettings: [adjustedSetting("stability", "Stability", "0.5", "0.4")],
+                  id: "narrator:settings",
+                  voiceId: "narrator",
+                  voiceName: "voice_a",
+                },
+              ],
+            },
+            tuningMetadata: {
+              adjustedSettings: [adjustedSetting("stability", "Stability", "0.5", "0.4")],
+              mode: "custom",
+              presetId: null,
+              presetLabel: null,
+              providerId: "elevenlabs",
+              providerLabel: "ElevenLabs",
+            },
+          }}
+          onDelete={vi.fn()}
+        />
+      </TooltipProvider>
+    )
+
+    expect(screen.getByRole("button", { name: "Show Multi-Voice Generation Details" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Show Multi-Voice Custom Settings" })).toHaveTextContent(
+      "Custom Settings"
+    )
+    expect(screen.queryByText("Stability 0.4")).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Show Multi-Voice Custom Settings" }))
+
+    expect(await screen.findByText("voice_a")).toBeInTheDocument()
+    expect(screen.getByText("Stability 0.4")).toBeInTheDocument()
+  })
+
   it("shows range text snapshot actions when callbacks are available", async () => {
     const user = userEvent.setup()
     const onViewScriptSnapshot = vi.fn()
@@ -236,4 +279,15 @@ const dialogueSnapshot: GeneratedAudioScriptSnapshot = {
       voiceSettings: null,
     },
   ],
+}
+
+function adjustedSetting(id: string, label: string, nominalValueLabel: string, valueLabel: string) {
+  return {
+    id,
+    label,
+    nominalValue: nominalValueLabel,
+    nominalValueLabel,
+    value: valueLabel,
+    valueLabel,
+  }
 }
