@@ -62,7 +62,9 @@ export function GeneratedAudioMetadata({
           ) : tuningMetadata.mode === "custom" ? (
             <Badge>Custom Settings</Badge>
           ) : null}
-          {tuningMetadata.adjustedSettings.length === 0 ? <Badge>Default Settings</Badge> : null}
+          {tuningMetadata.adjustedSettings.length === 0 && !showMultiVoiceCustomSettings ? (
+            <Badge>Default Settings</Badge>
+          ) : null}
           {showMultiVoiceCustomSettings
             ? null
             : tuningMetadata.adjustedSettings.map((setting) => (

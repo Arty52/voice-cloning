@@ -139,6 +139,40 @@ describe("GeneratedAudioMetadata", () => {
     expect(await screen.findByText("voice_b")).toBeInTheDocument()
     expect(screen.getByText("Stability 0.2")).toBeInTheDocument()
   })
+
+  it("suppresses default settings when multi-voice custom settings are present", () => {
+    render(
+      <GeneratedAudioMetadata
+        generationElapsedMs={14_000}
+        multiVoiceMetadata={{
+          jobId: "job-1",
+          resultSha256: "combined-hash",
+          segmentCount: 3,
+          segments: [],
+          tuningSummaries: [
+            {
+              adjustedSettings: [adjustedSetting("stability", "Stability", "0.5", "0.2")],
+              id: "voice-b:settings",
+              voiceId: "voice-b",
+              voiceName: "voice_b",
+            },
+          ],
+          voices: [],
+        }}
+        tuningMetadata={{
+          adjustedSettings: [],
+          mode: "default",
+          presetId: null,
+          presetLabel: null,
+          providerId: "elevenlabs",
+          providerLabel: "ElevenLabs",
+        }}
+      />
+    )
+
+    expect(screen.getAllByText("Custom Settings")).toHaveLength(1)
+    expect(screen.queryByText("Default Settings")).not.toBeInTheDocument()
+  })
 })
 
 function adjustedSetting(id: string, label: string, nominalValueLabel: string, valueLabel: string) {
