@@ -98,6 +98,47 @@ describe("GeneratedAudioMetadata", () => {
     expect(screen.getByText("Style 0.32")).toBeInTheDocument()
     expect(screen.getByText("Speed 1.02")).toBeInTheDocument()
   })
+
+  it("shows multi-voice custom settings for preset jobs with per-voice overrides", async () => {
+    render(
+      <GeneratedAudioMetadata
+        generationElapsedMs={14_000}
+        multiVoiceMetadata={{
+          jobId: "job-1",
+          resultSha256: "combined-hash",
+          segmentCount: 3,
+          segments: [],
+          tuningSummaries: [
+            {
+              adjustedSettings: [adjustedSetting("stability", "Stability", "0.5", "0.2")],
+              id: "voice-b:settings",
+              voiceId: "voice-b",
+              voiceName: "voice_b",
+            },
+          ],
+          voices: [],
+        }}
+        tuningMetadata={{
+          adjustedSettings: [adjustedSetting("style", "Style", "0", "0.35")],
+          mode: "preset",
+          presetId: "animated-dialogue",
+          presetLabel: "Animated Dialogue",
+          providerId: "elevenlabs",
+          providerLabel: "ElevenLabs",
+        }}
+      />
+    )
+
+    expect(screen.getByText("Preset: Animated Dialogue")).toBeInTheDocument()
+    expect(screen.getAllByText("Custom Settings")).toHaveLength(1)
+    expect(screen.queryByText("Stability 0.2")).not.toBeInTheDocument()
+    expect(screen.queryByText("Style 0.35")).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Show Multi-Voice Custom Settings" }))
+
+    expect(await screen.findByText("voice_b")).toBeInTheDocument()
+    expect(screen.getByText("Stability 0.2")).toBeInTheDocument()
+  })
 })
 
 function adjustedSetting(id: string, label: string, nominalValueLabel: string, valueLabel: string) {

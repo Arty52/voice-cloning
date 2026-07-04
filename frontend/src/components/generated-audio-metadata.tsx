@@ -22,8 +22,7 @@ export function GeneratedAudioMetadata({
     return null
   }
 
-  const multiVoiceTuningSummaries =
-    tuningMetadata?.mode === "custom" ? multiVoiceMetadata?.tuningSummaries ?? [] : []
+  const multiVoiceTuningSummaries = multiVoiceMetadata?.tuningSummaries ?? []
   const showMultiVoiceCustomSettings = multiVoiceTuningSummaries.length > 0
 
   return (
