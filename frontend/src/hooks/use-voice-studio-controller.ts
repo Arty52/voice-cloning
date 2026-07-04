@@ -94,7 +94,7 @@ export function useVoiceStudioController() {
     providerKey: providerKeys.activeProviderKey,
     providerStatus: providerKeys.providerStatus,
   })
-  const generatedAudio = useGeneratedAudioLibrary()
+  const generatedAudio = useGeneratedAudioLibrary(providerKeys.activeProvider)
   const userTuningPresets = useUserTuningPresets()
   const speech = useSpeechGeneration({
     persistGeneratedAudio: generatedAudio.persistGeneratedAudio,

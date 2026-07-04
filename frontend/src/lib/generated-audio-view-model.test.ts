@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { archivedAudioToResult, buildGeneratedAudioSizeDisplay, revokeGeneratedAudioUrls, storedAudioToResult } from "./generated-audio-view-model"
+import {
+  archivedAudioToResult,
+  buildGeneratedAudioSizeDisplay,
+  enrichGeneratedAudioResultMetadata,
+  revokeGeneratedAudioUrls,
+  storedAudioToResult,
+} from "./generated-audio-view-model"
 import type { StoredGeneratedAudio } from "./generated-audio-storage"
+import type { GeneratedResult, VoiceProvider } from "@/types"
 
 const formatTestNumber = (value: number) => new Intl.NumberFormat().format(value)
 
@@ -42,6 +49,40 @@ const multiVoiceMetadata = {
   ],
   voices: [{ segmentCount: 1, voiceId: "voice-123", voiceName: "Default Voice" }],
 }
+
+const provider = {
+  id: "elevenlabs",
+  label: "ElevenLabs",
+  docsUrl: "https://example.test/docs",
+  links: [],
+  manageKeyUrl: "https://example.test/key",
+  sample: {
+    maxSelectedSourceAudioBytes: 1024 * 1024 * 1024,
+    maxSourceUploadBytes: 1024 * 1024 * 1024,
+    maxUploadBytes: 10 * 1024 * 1024,
+    maxWindowSeconds: 120,
+    recommendedMaxSeconds: 120,
+    recommendedMinSeconds: 60,
+    targetSampleRateHz: 16000,
+  },
+  serverKeyConfigured: true,
+  tuning: {
+    controls: [
+      {
+        defaultValue: 0.5,
+        description: "Controls how stable the generated voice sounds.",
+        id: "stability",
+        label: "Stability",
+        max: 1,
+        min: 0,
+        step: 0.01,
+        type: "slider" as const,
+      },
+    ],
+    defaultValues: { stability: 0.5 },
+    presets: [],
+  },
+} satisfies VoiceProvider
 
 describe("storedAudioToResult", () => {
   beforeEach(() => {
@@ -144,7 +185,120 @@ describe("revokeGeneratedAudioUrls", () => {
   })
 })
 
-function generatedResult(url: string) {
+describe("enrichGeneratedAudioResultMetadata", () => {
+  it("backfills multi-voice tuning summaries for legacy archive items", () => {
+    const result = enrichGeneratedAudioResultMetadata(
+      {
+        ...generatedResult("blob:generated-audio"),
+        multiVoiceMetadata,
+        tuningMetadata: {
+          adjustedSettings: [],
+          mode: "default",
+          presetId: null,
+          presetLabel: null,
+          providerId: "elevenlabs",
+          providerLabel: "ElevenLabs",
+        },
+      },
+      provider
+    )
+
+    expect(result.multiVoiceMetadata?.tuningSummaries).toEqual([
+      {
+        adjustedSettings: [
+          {
+            id: "stability",
+            label: "Stability",
+            nominalValue: 0.5,
+            nominalValueLabel: "0.5",
+            value: 0.42,
+            valueLabel: "0.42",
+          },
+        ],
+        id: "voice-123:stability=0.42",
+        voiceId: "voice-123",
+        voiceName: "Default Voice",
+      },
+    ])
+  })
+
+  it("backfills multi-voice tuning summaries from dialogue snapshots when segment settings are missing", () => {
+    const result = enrichGeneratedAudioResultMetadata(
+      {
+        ...generatedResult("blob:generated-audio"),
+        multiVoiceMetadata: {
+          ...multiVoiceMetadata,
+          segments: multiVoiceMetadata.segments.map((segment) => ({ ...segment, voiceSettings: null })),
+        },
+        scriptSnapshot: {
+          assignments: [],
+          dialogueBlocks: [
+            {
+              id: "block-one",
+              speakerLabel: "speaker_a",
+              text: "Hello.",
+              voiceId: "voice-123",
+              voiceName: "Default Voice",
+              voiceSettings: { stability: 0.42 },
+            },
+          ],
+          mode: "dialogue",
+          segmentGapMs: null,
+          sourceVoiceId: null,
+          speakerMappings: [],
+          text: "Hello.",
+          version: 1,
+        },
+        tuningMetadata: {
+          adjustedSettings: [],
+          mode: "default",
+          presetId: null,
+          presetLabel: null,
+          providerId: "elevenlabs",
+          providerLabel: "ElevenLabs",
+        },
+      },
+      provider
+    )
+
+    expect(result.multiVoiceMetadata?.tuningSummaries).toEqual([
+      {
+        adjustedSettings: [
+          {
+            id: "stability",
+            label: "Stability",
+            nominalValue: 0.5,
+            nominalValueLabel: "0.5",
+            value: 0.42,
+            valueLabel: "0.42",
+          },
+        ],
+        id: "voice-123:stability=0.42",
+        voiceId: "voice-123",
+        voiceName: "Default Voice",
+      },
+    ])
+  })
+
+  it("does not backfill summaries with mismatched provider metadata", () => {
+    const item = {
+      ...generatedResult("blob:generated-audio"),
+      multiVoiceMetadata,
+      tuningMetadata: {
+        adjustedSettings: [],
+        mode: "default" as const,
+        presetId: null,
+        presetLabel: null,
+        providerId: "other-provider",
+        providerLabel: "Other Provider",
+      },
+    }
+
+    expect(enrichGeneratedAudioResultMetadata(item, provider)).toBe(item)
+  })
+})
+
+function generatedResult(url: string): GeneratedResult {
   return {
     appVoiceId: "default",
     cacheState: "miss",
