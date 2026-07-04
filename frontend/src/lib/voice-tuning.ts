@@ -67,6 +67,18 @@ export function resolveSavedVoiceTuning(
   return activeProviderId ? voice?.voiceSettingsByProvider[activeProviderId] ?? null : null
 }
 
+export function resolveEffectiveVoiceTuning({
+  activeProviderId,
+  providerTuning,
+  voice,
+}: {
+  activeProviderId: string | null
+  providerTuning: ProviderTuningMetadata
+  voice: Pick<VoiceAsset, "voicePresetId" | "voiceSettingsByProvider"> | null
+}): VoiceTuningValues {
+  return resolveVoiceTuningState({ activeProviderId, providerTuning, voice }).values
+}
+
 export function presetValues(providerTuning: ProviderTuningMetadata, preset: ProviderTuningPreset): VoiceTuningValues {
   return {
     ...(providerTuning.defaultValues ?? {}),
