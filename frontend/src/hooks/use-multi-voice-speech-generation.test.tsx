@@ -466,6 +466,74 @@ describe("useMultiVoiceSpeechGeneration", () => {
     })
   })
 
+  it("submits nominal assigned voice speed instead of relying on job-level tuning", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input)
+        if (path === "/api/speech/jobs" && init?.method === "POST") {
+          return okJson({ job: successJob }, 202)
+        }
+        if (path === "/api/speech/jobs/job-1/result" && !init) {
+          return okAudio("combined")
+        }
+        return okJson({})
+      })
+    )
+    const persistGeneratedAudio = vi.fn(async () => generatedResult)
+    const { result } = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+
+    await act(async () => {
+      await result.current.generateSpeech(
+        generationInput({
+          defaultVoice: {
+            ...defaultVoice,
+            id: "skippy",
+            name: "Skippy",
+          },
+          segments: [
+            {
+              assignmentId: null,
+              assignmentKind: "default",
+              clientSegmentId: "segment-skippy",
+              end: 14,
+              start: 0,
+              text: "Skippy opens.",
+              voiceId: "skippy",
+              voiceName: "Skippy",
+              voiceSettings: null,
+            },
+            {
+              assignmentId: "segment-court",
+              assignmentKind: "assigned",
+              clientSegmentId: "segment-court",
+              end: 29,
+              start: 14,
+              text: "\nCourt replies.",
+              voiceId: "court",
+              voiceName: "Court",
+              voiceSettings: { speed: 1, stability: 0.4, style: 0.35 },
+            },
+          ],
+          text: "Skippy opens.\nCourt replies.",
+          tuning: { speed: 1.04, stability: 0.4, style: 0.35 },
+        })
+      )
+    })
+
+    expect(JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string)).toMatchObject({
+      defaultVoiceId: "skippy",
+      segments: [
+        expect.objectContaining({ clientSegmentId: "segment-skippy", voiceSettings: null }),
+        expect.objectContaining({
+          clientSegmentId: "segment-court",
+          voiceSettings: { speed: 1, stability: 0.4, style: 0.35 },
+        }),
+      ],
+      voiceSettings: { speed: 1.04, stability: 0.4, style: 0.35 },
+    })
+  })
+
   it("persists dialogue script snapshots with multi-voice speech jobs", async () => {
     vi.stubGlobal(
       "fetch",

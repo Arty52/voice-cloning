@@ -41,6 +41,16 @@ const dialogueTuningControls: ProviderTuningControl[] = [
     step: 0.01,
     type: "slider",
   },
+  {
+    defaultValue: 1,
+    description: "Controls speed.",
+    id: "speed",
+    label: "Speed",
+    max: 1.2,
+    min: 0.7,
+    step: 0.01,
+    type: "slider",
+  },
 ]
 
 beforeAll(() => {
@@ -73,7 +83,6 @@ function voice(id: string, name: string): VoiceAsset {
 
 function renderPanel(overrides: Partial<Parameters<typeof SpeechInputPanel>[0]> = {}) {
   const props = {
-    activeProviderId: "elevenlabs",
     assignmentError: null,
     assignmentSpeechSegmentCount: null,
     assignments: [],
@@ -316,6 +325,53 @@ describe("SpeechInputPanel voice assignments", () => {
     expect(dialogue.updateBlockVoiceSettings).toHaveBeenCalledWith("dialogue-block-1", {
       speed: 1,
       stability: 0.34,
+    })
+  })
+
+  it("uses effective assigned voice tuning instead of source voice tuning for dialogue rows", async () => {
+    const user = userEvent.setup()
+    const dialogue = dialogueController({
+      blocks: [dialogueBlock()],
+      mode: "dialogue",
+      segmentBuild: {
+        error: null,
+        missingSpeakerLabels: [],
+        segments: [
+          {
+            assignmentId: "dialogue-block-1",
+            assignmentKind: "assigned",
+            clientSegmentId: "dialogue-block-1",
+            end: "Hello world.".length,
+            start: 0,
+            text: "Hello world.",
+            voiceId: "skippy",
+            voiceName: "Skippy Voice",
+            voiceSettings: { speed: 1, stability: 0.4 },
+          },
+        ],
+        text: "Hello world.",
+      },
+      speakerLabels: ["Skippy"],
+      speakerMappings: [{ speakerLabel: "Skippy", voiceId: "skippy" }],
+    })
+    renderPanel({
+      dialogue,
+      effectiveVoiceSettingsByVoiceId: {
+        skippy: { speed: 1, stability: 0.4 },
+      },
+      providerTuningControls: dialogueTuningControls,
+      tuning: { speed: 1.04, stability: 0.4 },
+    })
+
+    await user.click(screen.getByRole("button", { name: "Tune Dialogue Row 1" }))
+
+    expect(screen.getByRole("slider", { name: "Speed" })).toHaveValue("1")
+
+    fireEvent.change(screen.getByRole("slider", { name: "Speed" }), { target: { value: "1.02" } })
+
+    expect(dialogue.updateBlockVoiceSettings).toHaveBeenCalledWith("dialogue-block-1", {
+      speed: 1.02,
+      stability: 0.4,
     })
   })
 
