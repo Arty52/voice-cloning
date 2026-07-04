@@ -4,7 +4,11 @@ import {
 } from "@/lib/generated-audio-storage"
 import type { ArchivedGeneratedAudio } from "@/lib/generated-audio-archive-api"
 import { formatCompactBytes, formatExactBytes, formatGeneratedAudioTime } from "@/lib/formatters"
-import type { GeneratedResult } from "@/types"
+import {
+  buildGeneratedAudioMultiVoiceTuningSummaries,
+  type GeneratedAudioMultiVoiceTuningSegment,
+} from "@/lib/generated-audio-metadata"
+import type { GeneratedAudioTuningMetadata, GeneratedResult, VoiceProvider } from "@/types"
 
 export type GeneratedAudioSizeDisplay = {
   ariaLabel: string
@@ -57,6 +61,68 @@ export function archivedAudioToResult(record: ArchivedGeneratedAudio): Generated
     voiceId: record.voiceId,
     voiceName: record.voiceName,
   }
+}
+
+export function enrichGeneratedAudioResultMetadata(
+  item: GeneratedResult,
+  provider: VoiceProvider | null | undefined
+): GeneratedResult {
+  if (!provider || !item.multiVoiceMetadata || item.multiVoiceMetadata.tuningSummaries?.length) {
+    return item
+  }
+  if (item.tuningMetadata && item.tuningMetadata.providerId !== provider.id) {
+    return item
+  }
+
+  const tuningSummaries = buildGeneratedAudioMultiVoiceTuningSummaries(
+    [
+      ...item.multiVoiceMetadata.segments,
+      ...scriptSnapshotTuningSegments(item),
+    ],
+    provider
+  )
+  if (tuningSummaries.length === 0) {
+    return item
+  }
+
+  return {
+    ...item,
+    multiVoiceMetadata: {
+      ...item.multiVoiceMetadata,
+      tuningSummaries,
+    },
+    tuningMetadata: item.tuningMetadata ?? providerTuningMetadata(provider),
+  }
+}
+
+function providerTuningMetadata(provider: VoiceProvider): GeneratedAudioTuningMetadata {
+  return {
+    adjustedSettings: [],
+    mode: "custom",
+    presetId: null,
+    presetLabel: null,
+    providerId: provider.id,
+    providerLabel: provider.label,
+    userPreset: null,
+  }
+}
+
+function scriptSnapshotTuningSegments(item: GeneratedResult): GeneratedAudioMultiVoiceTuningSegment[] {
+  if (item.scriptSnapshot?.mode !== "dialogue") {
+    return []
+  }
+
+  return item.scriptSnapshot.dialogueBlocks.flatMap((block) =>
+    block.voiceId
+      ? [
+          {
+            voiceId: block.voiceId,
+            voiceName: block.voiceName ?? block.speakerLabel ?? block.voiceId,
+            voiceSettings: block.voiceSettings,
+          },
+        ]
+      : []
+  )
 }
 
 export function revokeGeneratedAudioUrls(items: GeneratedResult[]) {

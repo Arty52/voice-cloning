@@ -1,5 +1,6 @@
 import type {
   GeneratedAudioAdjustedSetting,
+  GeneratedAudioMultiVoiceSegmentMetadata,
   GeneratedAudioMultiVoiceMetadata,
   GeneratedAudioMultiVoiceTuningSummary,
   GeneratedAudioTuningMetadata,
@@ -10,6 +11,11 @@ import type {
   VoiceProvider,
   VoiceTuningValues,
 } from "@/types"
+
+export type GeneratedAudioMultiVoiceTuningSegment = Pick<
+  GeneratedAudioMultiVoiceSegmentMetadata,
+  "voiceId" | "voiceName" | "voiceSettings"
+>
 
 type BuildGeneratedAudioTuningMetadataInput = {
   provider: VoiceProvider | null | undefined
@@ -76,7 +82,7 @@ export function buildGeneratedAudioMultiVoiceMetadata(
       })
     }
   }
-  const tuningSummaries = provider ? buildMultiVoiceTuningSummaries(job, provider) : []
+  const tuningSummaries = provider ? buildGeneratedAudioMultiVoiceTuningSummaries(job.segments, provider) : []
 
   return {
     jobId: job.id,
@@ -99,14 +105,14 @@ export function buildGeneratedAudioMultiVoiceMetadata(
   }
 }
 
-function buildMultiVoiceTuningSummaries(
-  job: SpeechJob,
+export function buildGeneratedAudioMultiVoiceTuningSummaries(
+  segments: GeneratedAudioMultiVoiceTuningSegment[],
   provider: VoiceProvider
 ): GeneratedAudioMultiVoiceTuningSummary[] {
   const summaries: GeneratedAudioMultiVoiceTuningSummary[] = []
   const seenSummaryIds = new Set<string>()
 
-  for (const segment of job.segments) {
+  for (const segment of segments) {
     const adjustedSettings = provider.tuning.controls
       .map((control) => adjustedSettingForControl(control, provider.tuning.defaultValues, segment.voiceSettings ?? {}))
       .filter((setting): setting is GeneratedAudioAdjustedSetting => setting !== null)

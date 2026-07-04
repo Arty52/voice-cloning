@@ -16,7 +16,12 @@ import {
   type SaveGeneratedAudioInput,
 } from "@/lib/generated-audio-storage"
 import { readGeneratedAudioArchiveMigrationState } from "@/lib/generated-audio-archive-migration"
-import type { AsyncStatus } from "@/types"
+import type {
+  AsyncStatus,
+  GeneratedAudioMultiVoiceMetadata,
+  GeneratedAudioTuningMetadata,
+  VoiceProvider,
+} from "@/types"
 
 type Snapshot = {
   itemCount: number
@@ -35,13 +40,13 @@ type ArchiveItem = {
   generationElapsedMs: number | null
   id: string
   modelId: string
-  multiVoiceMetadata: null
+  multiVoiceMetadata: GeneratedAudioMultiVoiceMetadata | null
   providerId: string
   requestId: string | null
   scriptSnapshot: null
   sha256: string
   sizeBytes: number
-  tuningMetadata: null
+  tuningMetadata: GeneratedAudioTuningMetadata | null
   voiceId: string
   voiceName: string
 }
@@ -107,9 +112,92 @@ function archiveItem(overrides: Partial<ArchiveItem> = {}): ArchiveItem {
   }
 }
 
-function GeneratedAudioHarness({ onSnapshot }: { onSnapshot: (snapshot: Snapshot) => void }) {
-  const library = useGeneratedAudioLibrary()
+const legacyMultiVoiceMetadata: GeneratedAudioMultiVoiceMetadata = {
+  jobId: "job-1",
+  resultSha256: "combined-hash",
+  segmentCount: 1,
+  segments: [
+    {
+      assignmentKind: "assigned",
+      characterCount: 12,
+      generationCount: 1,
+      id: "segment-one",
+      index: 0,
+      resultSha256: "segment-hash",
+      text: "Hello.",
+      voiceId: "voice-a",
+      voiceName: "voice_a",
+      voiceSettings: null,
+    },
+  ],
+  voices: [{ segmentCount: 1, voiceId: "voice-a", voiceName: "voice_a" }],
+}
+
+const legacyScriptSnapshot = {
+  assignments: [],
+  dialogueBlocks: [
+    {
+      id: "block-one",
+      speakerLabel: "speaker_a",
+      text: "Hello.",
+      voiceId: "voice-a",
+      voiceName: "voice_a",
+      voiceSettings: { stability: 0.4 },
+    },
+  ],
+  mode: "dialogue" as const,
+  segmentGapMs: null,
+  sourceVoiceId: null,
+  speakerMappings: [],
+  text: "Hello.",
+  version: 1 as const,
+}
+
+const provider = {
+  id: "elevenlabs",
+  label: "ElevenLabs",
+  docsUrl: "https://example.test/docs",
+  links: [],
+  manageKeyUrl: "https://example.test/key",
+  sample: {
+    maxSelectedSourceAudioBytes: 1024 * 1024 * 1024,
+    maxSourceUploadBytes: 1024 * 1024 * 1024,
+    maxUploadBytes: 10 * 1024 * 1024,
+    maxWindowSeconds: 120,
+    recommendedMaxSeconds: 120,
+    recommendedMinSeconds: 60,
+    targetSampleRateHz: 16000,
+  },
+  serverKeyConfigured: true,
+  tuning: {
+    controls: [
+      {
+        defaultValue: 0.5,
+        description: "Controls how stable the generated voice sounds.",
+        id: "stability",
+        label: "Stability",
+        max: 1,
+        min: 0,
+        step: 0.01,
+        type: "slider" as const,
+      },
+    ],
+    defaultValues: { stability: 0.5 },
+    presets: [],
+  },
+} satisfies VoiceProvider
+
+function GeneratedAudioHarness({
+  onSnapshot,
+  provider: activeProvider = null,
+}: {
+  onSnapshot: (snapshot: Snapshot) => void
+  provider?: VoiceProvider | null
+}) {
+  const library = useGeneratedAudioLibrary(activeProvider)
   const firstItemId = library.generatedAudioItems[0]?.id ?? null
+  const firstSummaryCount = library.generatedAudioItems[0]?.multiVoiceMetadata?.tuningSummaries?.length ?? 0
+  const firstProviderLabel = library.generatedAudioItems[0]?.tuningMetadata?.providerLabel ?? ""
 
   onSnapshot({
     itemCount: library.generatedAudioItems.length,
@@ -129,6 +217,8 @@ function GeneratedAudioHarness({ onSnapshot }: { onSnapshot: (snapshot: Snapshot
       <div data-testid="server-export-error">{library.serverExportError ?? ""}</div>
       <div data-testid="server-export-mutation">{library.serverExportMutation ?? "none"}</div>
       <div data-testid="first-url">{library.generatedAudioItems[0]?.url ?? ""}</div>
+      <div data-testid="first-provider-label">{firstProviderLabel}</div>
+      <div data-testid="first-summary-count">{firstSummaryCount}</div>
       <div data-testid="item-count">{library.generatedAudioItems.length}</div>
       <button disabled={!firstItemId} onClick={() => firstItemId && void library.handleDeleteGeneratedAudio(firstItemId)}>
         Delete First
@@ -328,6 +418,31 @@ describe("useGeneratedAudioLibrary", () => {
     await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("success"))
     expect(snapshots.map((snapshot) => snapshot.status)).toContain("loading")
     expect(screen.getByTestId("mutation")).toHaveTextContent("none")
+  })
+
+  it("backfills multi-voice tuning summaries for legacy browser records when provider metadata loads", async () => {
+    await saveGeneratedAudio(
+      audioInput({
+        id: "legacy-multi-voice",
+        multiVoiceMetadata: legacyMultiVoiceMetadata,
+        scriptSnapshot: legacyScriptSnapshot,
+        tuningMetadata: null,
+      }),
+      20
+    )
+    const snapshots: Snapshot[] = []
+    const { rerender } = render(
+      <GeneratedAudioHarness onSnapshot={(snapshot) => snapshots.push(snapshot)} provider={null} />
+    )
+
+    await waitFor(() => expect(screen.getByTestId("item-count")).toHaveTextContent("1"))
+    expect(screen.getByTestId("first-summary-count")).toHaveTextContent("0")
+
+    rerender(<GeneratedAudioHarness onSnapshot={(snapshot) => snapshots.push(snapshot)} provider={provider} />)
+
+    expect(screen.getByTestId("first-summary-count")).toHaveTextContent("1")
+    expect(screen.getByTestId("first-provider-label")).toHaveTextContent("ElevenLabs")
+    expect(snapshots.map((snapshot) => snapshot.status)).toContain("success")
   })
 
   it("reports delete, clear, and storage-limit mutation states", async () => {

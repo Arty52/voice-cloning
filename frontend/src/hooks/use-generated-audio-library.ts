@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 
 import {
   DEFAULT_GENERATED_AUDIO_STORAGE_LIMIT_BYTES,
@@ -40,12 +40,13 @@ import { useArchiveExportDirectory } from "@/hooks/use-archive-export-directory"
 import {
   archivedAudioToResult,
   createTemporaryGeneratedAudioId,
+  enrichGeneratedAudioResultMetadata,
   formatGeneratedAudioStorageError,
   isTemporaryGeneratedAudioId,
   revokeGeneratedAudioUrls,
   storedAudioToResult,
 } from "@/lib/generated-audio-view-model"
-import type { AsyncStatus, GeneratedResult } from "@/types"
+import type { AsyncStatus, GeneratedResult, VoiceProvider } from "@/types"
 
 export type GeneratedAudioMutation = "clear" | "delete" | "storage-limit"
 export type GeneratedAudioPersistenceMode = "browser" | "server"
@@ -67,7 +68,7 @@ type ServerExportStatusLoadResult = {
   status: GeneratedAudioServerExportStatus | null
 }
 
-export function useGeneratedAudioLibrary() {
+export function useGeneratedAudioLibrary(provider?: VoiceProvider | null) {
   const [generatedAudioItems, setGeneratedAudioItems] = useState<GeneratedResult[]>([])
   const [generatedAudioUsage, setGeneratedAudioUsage] = useState<GeneratedAudioUsage | null>(null)
   const [generatedAudioStorageError, setGeneratedAudioStorageError] = useState<string | null>(null)
@@ -82,7 +83,11 @@ export function useGeneratedAudioLibrary() {
   const generatedAudioMutationIdRef = useRef(0)
   const serverExportMutationIdRef = useRef(0)
   const persistenceModeRef = useRef<GeneratedAudioPersistenceMode>("browser")
-  const browserExport = useArchiveExportDirectory(generatedAudioItems)
+  const enrichedGeneratedAudioItems = useMemo(
+    () => generatedAudioItems.map((item) => enrichGeneratedAudioResultMetadata(item, provider)),
+    [generatedAudioItems, provider]
+  )
+  const browserExport = useArchiveExportDirectory(enrichedGeneratedAudioItems)
 
   useEffect(() => {
     let isMounted = true
@@ -421,7 +426,7 @@ export function useGeneratedAudioLibrary() {
   return {
     applyGeneratedAudioStorageLimit,
     clearAllGeneratedAudio,
-    generatedAudioItems,
+    generatedAudioItems: enrichedGeneratedAudioItems,
     generatedAudioMutation: generatedAudioMutationState?.type ?? null,
     generatedAudioPersistenceMode,
     generatedAudioStorageError,
