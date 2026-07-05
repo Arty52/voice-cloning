@@ -29,6 +29,18 @@ const segmentTuningControls: ProviderTuningControl[] = [
     type: "toggle",
   },
 ]
+const speedTuningControls: ProviderTuningControl[] = [
+  {
+    defaultValue: 1,
+    description: "Controls speed.",
+    id: "speed",
+    label: "Speed",
+    max: 1.2,
+    min: 0.7,
+    step: 0.01,
+    type: "slider",
+  },
+]
 
 const item: GeneratedResult = {
   appVoiceId: "narrator",
@@ -345,6 +357,72 @@ describe("LatestGeneratedAudioPanel multi-voice results", () => {
     await user.click(screen.getAllByRole("button", { name: /^Regenerate$/i })[0])
 
     expect(onRegenerateSegment).toHaveBeenCalledWith("segment-one", "villain")
+  })
+
+  it("uses effective assigned voice tuning when opening segment controls", async () => {
+    const user = userEvent.setup()
+    const skippy = voice("skippy", "Skippy")
+    const court = voice("court", "Court")
+    const multiVoiceItem: GeneratedResult = {
+      ...item,
+      appVoiceId: "skippy",
+      multiVoiceMetadata: {
+        ...item.multiVoiceMetadata!,
+        segments: [
+          {
+            ...item.multiVoiceMetadata!.segments[0],
+            id: "segment-skippy",
+            index: 0,
+            text: "Skippy opens.",
+            voiceId: "skippy",
+            voiceName: "Skippy",
+            voiceSettings: { speed: 1.04, stability: 0.4 },
+          },
+          {
+            ...item.multiVoiceMetadata!.segments[1],
+            id: "segment-court",
+            index: 1,
+            text: "Court replies.",
+            voiceId: "court",
+            voiceName: "Court",
+            voiceSettings: { speed: 1, stability: 0.4 },
+          },
+        ],
+        voices: [
+          { segmentCount: 1, voiceId: "skippy", voiceName: "Skippy" },
+          { segmentCount: 1, voiceId: "court", voiceName: "Court" },
+        ],
+      },
+    }
+
+    renderLatestPanel(
+      <LatestGeneratedAudioPanel
+        activeProviderId="elevenlabs"
+        effectiveVoiceSettingsByVoiceId={{ court: { speed: 1, stability: 0.4 } }}
+        error={null}
+        isDeleteDisabled={false}
+        isSavingVoiceTuning={false}
+        item={multiVoiceItem}
+        onDelete={vi.fn()}
+        onRegenerateSegment={vi.fn()}
+        onRegenerateVoiceSegments={vi.fn()}
+        onSaveVoiceTuning={vi.fn()}
+        providerTuningControls={speedTuningControls}
+        segmentResultUrls={{
+          "segment-court": "/api/speech/jobs/job-1/segments/segment-court/result",
+          "segment-skippy": "/api/speech/jobs/job-1/segments/segment-skippy/result",
+        }}
+        status="success"
+        storageError={null}
+        tuning={{ speed: 1.04, stability: 0.4 }}
+        voices={[skippy, court]}
+      />
+    )
+
+    await user.click(screen.getByRole("button", { name: /show segments/i }))
+    await user.click(screen.getAllByRole("button", { name: /^Tune$/i })[1])
+
+    expect(screen.getByRole("slider", { name: "Speed" })).toHaveValue("1")
   })
 
   it("resets segment voice choices when the latest job changes", async () => {

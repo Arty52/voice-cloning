@@ -41,6 +41,7 @@ function App() {
     confirmation,
     dialogue,
     dialogueSpeechSegmentCount,
+    effectiveVoiceSettingsByVoiceId,
     estimatedCredits,
     generatedAudio,
     generationPendingStatus,
@@ -220,7 +221,6 @@ function App() {
 
         <WorkflowSectionPanel activeSectionId={activeSectionId} id="generate">
           <SpeechInputPanel
-            activeProviderId={providerKeys.activeProviderId}
             assignmentError={voiceAssignmentError}
             assignmentSpeechSegmentCount={voiceAssignmentSpeechSegmentCount}
             assignments={voiceAssignments}
@@ -229,6 +229,7 @@ function App() {
             characterCount={characterCount}
             dialogue={dialogue}
             dialogueSpeechSegmentCount={dialogueSpeechSegmentCount}
+            effectiveVoiceSettingsByVoiceId={effectiveVoiceSettingsByVoiceId}
             isGenerating={isSpeechGenerating}
             onAssignVoice={assignVoiceToSelection}
             onCancelGeneration={cancelGeneration}
@@ -275,6 +276,7 @@ function App() {
             }
             onViewScriptSnapshot={(item) => setScriptSnapshotDialog(item.scriptSnapshot)}
             providerTuningControls={providerTuning.controls}
+            effectiveVoiceSettingsByVoiceId={effectiveVoiceSettingsByVoiceId}
             segmentResultUrls={multiVoiceSegmentResultUrls}
             status={speechStatus}
             storageError={latestStorageError}

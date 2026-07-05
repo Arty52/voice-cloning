@@ -27,7 +27,7 @@ import {
   saveNaturalHandoffsPreference,
 } from "@/lib/natural-handoffs-preference"
 import { readTextareaSelection } from "@/lib/text-selection"
-import { CUSTOM_TUNING_PRESET_ID, resolveSavedVoiceTuning, userPresetValues } from "@/lib/voice-tuning"
+import { CUSTOM_TUNING_PRESET_ID, resolveEffectiveVoiceTuning, userPresetValues } from "@/lib/voice-tuning"
 import {
   buildSpeechJobSegments,
   compareAssignments,
@@ -116,13 +116,13 @@ export function useVoiceStudioController() {
   const selectedModel = metadata.models.find((model) => model.modelId === metadata.selectedModelId) ?? null
   const providerTuning = providerKeys.activeProvider?.tuning ?? EMPTY_TUNING_METADATA
   const activeProviderId = providerKeys.activeProviderId || null
-  const savedVoiceSettingsByVoiceId = useMemo(
-    () => buildSavedVoiceSettingsByVoiceId(activeProviderId, voiceLibrary.voices),
-    [activeProviderId, voiceLibrary.voices]
+  const effectiveVoiceSettingsByVoiceId = useMemo(
+    () => buildEffectiveVoiceSettingsByVoiceId(activeProviderId, providerTuning, voiceLibrary.voices),
+    [activeProviderId, providerTuning, voiceLibrary.voices]
   )
   const dialogue = useDialogueScript({
     defaultVoice: voiceLibrary.selectedVoice,
-    voiceSettingsByVoiceId: savedVoiceSettingsByVoiceId,
+    voiceSettingsByVoiceId: effectiveVoiceSettingsByVoiceId,
     voices: voiceLibrary.voices,
   })
   const workflowNavigation = useWorkflowNavigation()
@@ -168,10 +168,10 @@ export function useVoiceStudioController() {
     () =>
       voiceLibrary.selectedVoice
         ? buildSpeechJobSegments(text, voiceAssignments, voiceLibrary.selectedVoice, {
-            voiceSettingsByVoiceId: savedVoiceSettingsByVoiceId,
+            voiceSettingsByVoiceId: effectiveVoiceSettingsByVoiceId,
           })
         : { error: null, segments: [], stale: voiceAssignments.length > 0 },
-    [savedVoiceSettingsByVoiceId, text, voiceAssignments, voiceLibrary.selectedVoice]
+    [effectiveVoiceSettingsByVoiceId, text, voiceAssignments, voiceLibrary.selectedVoice]
   )
   const missingAssignedVoiceError = useMemo(() => {
     if (voiceAssignments.length === 0) {
@@ -690,6 +690,7 @@ export function useVoiceStudioController() {
     confirmation,
     dialogue,
     dialogueSpeechSegmentCount,
+    effectiveVoiceSettingsByVoiceId,
     estimatedCredits,
     generatedAudio,
     handleGenerate,
@@ -756,13 +757,21 @@ export function useVoiceStudioController() {
   }
 }
 
-function buildSavedVoiceSettingsByVoiceId(activeProviderId: string | null, voices: VoiceAsset[]) {
+function buildEffectiveVoiceSettingsByVoiceId(
+  activeProviderId: string | null,
+  providerTuning: ProviderTuningMetadata,
+  voices: VoiceAsset[]
+) {
   const entries: [string, VoiceTuningValues][] = []
   for (const voice of voices) {
-    const settings = resolveSavedVoiceTuning(activeProviderId, voice)
-    if (settings) {
-      entries.push([voice.id, settings])
-    }
+    entries.push([
+      voice.id,
+      resolveEffectiveVoiceTuning({
+        activeProviderId,
+        providerTuning,
+        voice,
+      }),
+    ])
   }
   return Object.fromEntries(entries)
 }

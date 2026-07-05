@@ -22,7 +22,7 @@ import { Separator } from "@/components/ui/separator"
 import { VoiceTuningControls } from "@/components/voice-tuning-controls"
 import { formatElapsedTime } from "@/lib/formatters"
 import { cn } from "@/lib/utils"
-import { resolveSavedVoiceTuning, voiceTuningValuesEqual } from "@/lib/voice-tuning"
+import { voiceTuningValuesEqual } from "@/lib/voice-tuning"
 import type {
   GenerationPendingSegmentStatus,
   GenerationPendingStatus,
@@ -39,6 +39,7 @@ type LatestGeneratedAudioPanelProps = {
   activeProviderId?: string | null
   attentionRef?: RefObject<HTMLElement | null>
   error: string | null
+  effectiveVoiceSettingsByVoiceId?: Record<string, VoiceTuningValues>
   generationPendingStatus?: GenerationPendingStatus | null
   isDeleteDisabled: boolean
   isSavingVoiceTuning?: boolean
@@ -61,6 +62,7 @@ export function LatestGeneratedAudioPanel({
   activeProviderId = null,
   attentionRef,
   error,
+  effectiveVoiceSettingsByVoiceId = EMPTY_VOICE_SETTINGS_BY_VOICE_ID,
   generationPendingStatus = null,
   isDeleteDisabled,
   isSavingVoiceTuning = false,
@@ -136,6 +138,8 @@ export function LatestGeneratedAudioPanel({
             <MultiVoiceSegmentResults
               disabled={isGenerating}
               activeProviderId={activeProviderId}
+              defaultVoiceId={item.appVoiceId}
+              effectiveVoiceSettingsByVoiceId={effectiveVoiceSettingsByVoiceId}
               isSavingVoiceTuning={isSavingVoiceTuning}
               key={`${item.multiVoiceMetadata.jobId}:${item.multiVoiceMetadata.resultSha256 ?? ""}`}
               onRegenerateSegment={onRegenerateSegment}
@@ -163,6 +167,8 @@ const fallbackGenerationPendingStatus: GenerationPendingStatus = {
   statusLabel: "Running",
   title: "Generating Speech",
 }
+
+const EMPTY_VOICE_SETTINGS_BY_VOICE_ID: Record<string, VoiceTuningValues> = {}
 
 function GenerationPendingStatusView({ status }: { status: GenerationPendingStatus }) {
   const meta = (
@@ -236,7 +242,9 @@ function GenerationPendingStatusView({ status }: { status: GenerationPendingStat
 
 type MultiVoiceSegmentResultsProps = {
   activeProviderId: string | null
+  defaultVoiceId: string | null
   disabled: boolean
+  effectiveVoiceSettingsByVoiceId: Record<string, VoiceTuningValues>
   isSavingVoiceTuning: boolean
   onRegenerateSegment: (segmentId: string, voiceId?: string | null, voiceSettings?: VoiceTuningValues | null) => void
   onRegenerateVoiceSegments: (voiceId: string, voiceSettings: VoiceTuningValues) => void
@@ -282,7 +290,9 @@ function generationSegmentStatusLabel(status: GenerationPendingSegmentStatus) {
 
 function MultiVoiceSegmentResults({
   activeProviderId,
+  defaultVoiceId,
   disabled,
+  effectiveVoiceSettingsByVoiceId,
   isSavingVoiceTuning,
   onRegenerateSegment,
   onRegenerateVoiceSegments,
@@ -302,13 +312,33 @@ function MultiVoiceSegmentResults({
     return counts
   }, {})
 
+  function tuningForVoice(voiceId: string) {
+    return voiceId === defaultVoiceId ? tuning : effectiveVoiceSettingsByVoiceId[voiceId] ?? tuning
+  }
+
+  function segmentDefaultTuning(segment: GeneratedAudioMultiVoiceSegmentMetadata) {
+    return tuningForVoice(segment.voiceId)
+  }
+
+  function selectedSegmentTuning(segment: GeneratedAudioMultiVoiceSegmentMetadata, selectedVoiceId: string) {
+    return (
+      segmentTuning[segment.id] ??
+      (selectedVoiceId === segment.voiceId ? segment.voiceSettings : null) ??
+      tuningForVoice(selectedVoiceId)
+    )
+  }
+
   function handleSegmentTuningValueChange(
     segment: GeneratedAudioMultiVoiceSegmentMetadata,
     control: ProviderTuningControl,
     value: ProviderTuningValue
   ) {
     setSegmentTuning((current) => {
-      const currentValues = current[segment.id] ?? segment.voiceSettings ?? tuning
+      const selectedVoiceId = voiceSelections[segment.id] ?? segment.voiceId
+      const currentValues =
+        current[segment.id] ??
+        (selectedVoiceId === segment.voiceId ? segment.voiceSettings : null) ??
+        tuningForVoice(selectedVoiceId)
       return {
         ...current,
         [segment.id]: {
@@ -350,18 +380,17 @@ function MultiVoiceSegmentResults({
             {segments.map((segment) => {
               const selectedVoiceId = voiceSelections[segment.id] ?? segment.voiceId
               const voiceOptions = segmentVoiceOptions(voices, segment)
-              const selectedTuning = segmentTuning[segment.id] ?? segment.voiceSettings ?? tuning
+              const selectedTuning = selectedSegmentTuning(segment, selectedVoiceId)
               const segmentUrl = segmentResultUrls[segment.id]
               const hasPendingSegmentTuning = segmentTuning[segment.id] !== undefined
               const sharesVoice = (selectedSegmentCountByVoiceId[selectedVoiceId] ?? 0) > 1
               const selectedVoice = voices.find((voice) => voice.id === selectedVoiceId) ?? null
               const selectedVoiceExists = selectedVoice !== null
-              const savedVoiceTuning = resolveSavedVoiceTuning(activeProviderId, selectedVoice)
-              const segmentDefaultTuning = savedVoiceTuning ?? tuning
+              const currentSegmentDefaultTuning = segmentDefaultTuning(segment)
               const hasExplicitSegmentTuning =
                 segment.voiceSettings !== null &&
                 segment.voiceSettings !== undefined &&
-                !voiceTuningValuesEqual(segment.voiceSettings, segmentDefaultTuning)
+                !voiceTuningValuesEqual(segment.voiceSettings, currentSegmentDefaultTuning)
               const hasActionableSegmentTuning = hasPendingSegmentTuning || hasExplicitSegmentTuning
               return (
                 <article className="rounded-md border border-border/70 bg-background/40 p-3" key={segment.id}>

@@ -511,6 +511,78 @@ describe("buildGeneratedAudioMultiVoiceMetadata", () => {
       },
     ])
   })
+
+  it("omits nominal speed from multi-voice tuning summaries", () => {
+    const speedProvider: VoiceProvider = {
+      ...provider,
+      tuning: {
+        ...provider.tuning,
+        controls: [
+          ...provider.tuning.controls,
+          {
+            defaultValue: 1,
+            description: "Controls delivery speed.",
+            id: "speed",
+            label: "Speed",
+            max: 1.2,
+            min: 0.7,
+            step: 0.01,
+            type: "slider",
+          },
+        ],
+        defaultValues: {
+          ...provider.tuning.defaultValues,
+          speed: 1,
+        },
+      },
+    }
+    const job: SpeechJob = {
+      activeSegmentId: null,
+      createdAt: "2026-06-23T00:00:00.000Z",
+      defaultVoiceId: "skippy",
+      error: null,
+      id: "job-1",
+      resultSha256: "combined-hash",
+      segmentGapMs: 250,
+      segments: [
+        speechJobSegment({
+          id: "segment-one",
+          index: 0,
+          voiceId: "skippy",
+          voiceName: "Skippy",
+          voiceSettings: { enhanced: true, mode: "balanced", stability: 0.4, speed: 1.04 },
+        }),
+        speechJobSegment({
+          id: "segment-two",
+          index: 1,
+          voiceId: "court",
+          voiceName: "Court",
+          voiceSettings: { enhanced: true, mode: "balanced", stability: 0.4, speed: 1 },
+        }),
+      ],
+      status: "success",
+      text: "One. Two.",
+      updatedAt: "2026-06-23T00:00:01.000Z",
+    }
+
+    const metadata = buildGeneratedAudioMultiVoiceMetadata(job, speedProvider)
+
+    expect(
+      metadata.tuningSummaries?.map((summary) => ({
+        adjustedSettings: summary.adjustedSettings.map((setting) => setting.label),
+        voiceName: summary.voiceName,
+      }))
+    ).toEqual([
+      {
+        adjustedSettings: ["Stability", "Speed"],
+        voiceName: "Skippy",
+      },
+      {
+        adjustedSettings: ["Stability"],
+        voiceName: "Court",
+      },
+    ])
+  })
 })
 
 function speechJobSegment(overrides: Partial<SpeechJob["segments"][number]>): SpeechJob["segments"][number] {

@@ -157,6 +157,38 @@ Narration between them.
     ])
   })
 
+  it("keeps selected voice tuning at job level while assigned voices carry effective preset tuning", () => {
+    const blocks = parseSpeakerLabeledScript("Vegeta: Assigned line.\nSkippy: Default line.")
+
+    const result = buildDialogueSpeechJobSegments({
+      blocks,
+      defaultVoice: skippy,
+      speakerMappings: mappings([
+        ["Vegeta", "vegeta"],
+        ["Skippy", "skippy"],
+      ]),
+      voiceSettingsByVoiceId: {
+        skippy: { stability: 0.4, speed: 1.04, style: 0.35 },
+        vegeta: { stability: 0.4, speed: 1, style: 0.35 },
+      },
+      voices,
+    })
+
+    expect(result.error).toBeNull()
+    expect(result.segments).toEqual([
+      expect.objectContaining({
+        assignmentKind: "assigned",
+        voiceId: "vegeta",
+        voiceSettings: { stability: 0.4, speed: 1, style: 0.35 },
+      }),
+      expect.objectContaining({
+        assignmentKind: "assigned",
+        voiceId: "skippy",
+        voiceSettings: null,
+      }),
+    ])
+  })
+
   it("keeps mapped default voice rows on job-level tuning", () => {
     const blocks = parseSpeakerLabeledScript("Narrator: Hello.")
 

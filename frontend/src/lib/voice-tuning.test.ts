@@ -4,6 +4,7 @@ import type { ProviderTuningMetadata, UserTuningPreset, VoiceAsset } from "@/typ
 
 import {
   CUSTOM_TUNING_PRESET_ID,
+  resolveEffectiveVoiceTuning,
   resolveSavedVoiceTuning,
   resolveVoiceTuningState,
   userPresetValues,
@@ -78,6 +79,37 @@ describe("voice tuning resolution", () => {
       selectedPresetId: "dialogue",
       values: { speed: 1.1, stability: 0.7 },
     })
+  })
+
+  it("resolves effective voice tuning from saved settings before presets and defaults", () => {
+    expect(
+      resolveEffectiveVoiceTuning({
+        activeProviderId: "elevenlabs",
+        providerTuning,
+        voice: voiceAsset({
+          voicePresetId: "animatedDialogue",
+          voiceSettingsByProvider: {
+            elevenlabs: { speed: 0.92, stability: 0.33 },
+          },
+        }),
+      })
+    ).toEqual({ speed: 0.92, stability: 0.33 })
+
+    expect(
+      resolveEffectiveVoiceTuning({
+        activeProviderId: "elevenlabs",
+        providerTuning,
+        voice: voiceAsset({ voicePresetId: "animatedDialogue" }),
+      })
+    ).toEqual({ speed: 1.1, stability: 0.7 })
+
+    expect(
+      resolveEffectiveVoiceTuning({
+        activeProviderId: "elevenlabs",
+        providerTuning,
+        voice: voiceAsset({ voicePresetId: "standardNarration" }),
+      })
+    ).toEqual({ speed: 1, stability: 0.4 })
   })
 
   it("returns null saved tuning without an active provider", () => {
