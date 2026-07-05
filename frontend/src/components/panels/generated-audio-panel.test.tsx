@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { ComponentProps } from "react"
 import { describe, expect, it, vi } from "vitest"
@@ -216,6 +216,25 @@ describe("GeneratedAudioPanel pending mutations", () => {
     expect(onViewScriptSnapshot).toHaveBeenCalledWith(itemWithSnapshot)
     expect(onRestoreScriptSnapshot).toHaveBeenCalledWith(itemWithSnapshot)
   })
+
+  it("keeps one custom settings popover open across archive items", async () => {
+    renderGeneratedAudioPanel({
+      allItems: [generatedAudioItemWithFirstCustomSettings, generatedAudioItemWithSecondCustomSettings],
+      items: [generatedAudioItemWithFirstCustomSettings, generatedAudioItemWithSecondCustomSettings],
+    })
+
+    fireEvent.mouseEnter(screen.getAllByRole("button", { name: "Show Multi-Voice Custom Settings" })[0])
+
+    expect(await screen.findByText("voice_a")).toBeInTheDocument()
+    expect(screen.queryByText("voice_b")).not.toBeInTheDocument()
+
+    fireEvent.mouseEnter(screen.getAllByRole("button", { name: "Show Multi-Voice Custom Settings" })[1])
+
+    expect(await screen.findByText("voice_b")).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByText("voice_a")).not.toBeInTheDocument()
+    })
+  })
 })
 
 const generatedAudioItem: GeneratedResult = {
@@ -238,6 +257,24 @@ const generatedAudioItem: GeneratedResult = {
   voiceId: "voice-123",
   voiceName: "Default Voice",
 }
+
+const generatedAudioItemWithFirstCustomSettings: GeneratedResult = buildGeneratedAudioItemWithCustomSettings({
+  id: "generated-audio-one",
+  settingId: "stability",
+  settingLabel: "Stability",
+  valueLabel: "0.4",
+  voiceName: "Multi-Voice One",
+  summaryVoiceName: "voice_a",
+})
+
+const generatedAudioItemWithSecondCustomSettings: GeneratedResult = buildGeneratedAudioItemWithCustomSettings({
+  id: "generated-audio-two",
+  settingId: "style",
+  settingLabel: "Style",
+  valueLabel: "0.35",
+  voiceName: "Multi-Voice Two",
+  summaryVoiceName: "voice_b",
+})
 
 const rangeSnapshot: GeneratedAudioScriptSnapshot = {
   version: 1,
@@ -298,4 +335,69 @@ function renderGeneratedAudioPanel(overrides: RenderGeneratedAudioPanelProps = {
       <GeneratedAudioPanel {...props} />
     </TooltipProvider>
   )
+}
+
+type BuildGeneratedAudioItemWithCustomSettingsInput = {
+  id: string
+  settingId: string
+  settingLabel: string
+  summaryVoiceName: string
+  valueLabel: string
+  voiceName: string
+}
+
+function buildGeneratedAudioItemWithCustomSettings({
+  id,
+  settingId,
+  settingLabel,
+  summaryVoiceName,
+  valueLabel,
+  voiceName,
+}: BuildGeneratedAudioItemWithCustomSettingsInput): GeneratedResult {
+  const adjustedSetting = buildAdjustedSetting(settingId, settingLabel, valueLabel)
+
+  return {
+    ...generatedAudioItem,
+    appVoiceId: `${id}-app-voice`,
+    cacheState: "multi-voice",
+    id,
+    multiVoiceMetadata: {
+      jobId: `${id}-job`,
+      resultSha256: `${id}-hash`,
+      segmentCount: 1,
+      segments: [],
+      tuningSummaries: [
+        {
+          adjustedSettings: [adjustedSetting],
+          id: `${id}:settings`,
+          voiceId: `${id}-voice`,
+          voiceName: summaryVoiceName,
+        },
+      ],
+      voices: [],
+    },
+    sha256: `${id}-hash`,
+    tuningMetadata: {
+      adjustedSettings: [adjustedSetting],
+      mode: "custom",
+      presetId: null,
+      presetLabel: null,
+      providerId: "elevenlabs",
+      providerLabel: "ElevenLabs",
+    },
+    voiceId: `${id}-voice`,
+    voiceName,
+  }
+}
+
+function buildAdjustedSetting(id: string, label: string, valueLabel: string) {
+  const nominalValueLabel = id === "style" ? "0" : "0.5"
+  return {
+    id,
+    label,
+    nominalValue: nominalValueLabel,
+    nominalValueLabel,
+    value: valueLabel,
+    valueLabel,
+  }
 }
