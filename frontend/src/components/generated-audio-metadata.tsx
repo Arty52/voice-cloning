@@ -8,14 +8,20 @@ import type {
 } from "@/types"
 
 type GeneratedAudioMetadataProps = {
+  customSettingsPopoverId?: string
+  customSettingsPopoverOpen?: boolean
   generationElapsedMs: number | null
   multiVoiceMetadata?: GeneratedAudioMultiVoiceMetadata | null
+  onCustomSettingsPopoverOpenChange?: (id: string, open: boolean) => void
   tuningMetadata: GeneratedAudioTuningMetadata | null
 }
 
 export function GeneratedAudioMetadata({
+  customSettingsPopoverId,
+  customSettingsPopoverOpen,
   generationElapsedMs,
   multiVoiceMetadata = null,
+  onCustomSettingsPopoverOpenChange,
   tuningMetadata,
 }: GeneratedAudioMetadataProps) {
   if (!tuningMetadata && generationElapsedMs === null) {
@@ -24,6 +30,10 @@ export function GeneratedAudioMetadata({
 
   const multiVoiceTuningSummaries = multiVoiceMetadata?.tuningSummaries ?? []
   const showMultiVoiceCustomSettings = multiVoiceTuningSummaries.length > 0
+  const handleCustomSettingsPopoverOpenChange =
+    customSettingsPopoverId && onCustomSettingsPopoverOpenChange
+      ? (open: boolean) => onCustomSettingsPopoverOpenChange(customSettingsPopoverId, open)
+      : undefined
 
   return (
     <div aria-label="Generated Audio Metadata" className="mb-3 flex flex-wrap gap-2" role="group">
@@ -41,6 +51,8 @@ export function GeneratedAudioMetadata({
               ariaLabel="Show Multi-Voice Custom Settings"
               contentClassName="max-w-xl"
               label="Custom Settings"
+              onOpenChange={handleCustomSettingsPopoverOpenChange}
+              open={customSettingsPopoverOpen}
               side="top"
               sideOffset={8}
             >

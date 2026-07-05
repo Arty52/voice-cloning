@@ -27,9 +27,11 @@ type GeneratedAudioItemProps = {
   item: GeneratedResult
   onBrowserExport?: (id: string) => void
   onDelete: (id: string) => void
+  onMetadataPopoverOpenChange?: (id: string, open: boolean) => void
   onRestoreScriptSnapshot?: (item: GeneratedResult) => void
   onServerExport?: (id: string) => void
   onViewScriptSnapshot?: (item: GeneratedResult) => void
+  openMetadataPopoverId?: string | null
   serverExportStatus?: GeneratedAudioServerExportItem | null
 }
 
@@ -45,13 +47,16 @@ export function GeneratedAudioItem({
   item,
   onBrowserExport,
   onDelete,
+  onMetadataPopoverOpenChange,
   onRestoreScriptSnapshot,
   onServerExport,
   onViewScriptSnapshot,
+  openMetadataPopoverId,
   serverExportStatus = null,
 }: GeneratedAudioItemProps) {
   const serverExportLabel = serverExportActionLabel(serverExportStatus)
   const browserExportLabel = browserExportActionLabel(browserExportStatus)
+  const customSettingsPopoverId = `${item.id}:custom-settings`
   const actionItems = buildGeneratedAudioActionItems({
     browserExportLabel,
     isBrowserExportDisabled,
@@ -98,8 +103,13 @@ export function GeneratedAudioItem({
         </div>
       </div>
       <GeneratedAudioMetadata
+        customSettingsPopoverId={customSettingsPopoverId}
+        customSettingsPopoverOpen={
+          openMetadataPopoverId === undefined ? undefined : openMetadataPopoverId === customSettingsPopoverId
+        }
         generationElapsedMs={item.generationElapsedMs}
         multiVoiceMetadata={item.multiVoiceMetadata}
+        onCustomSettingsPopoverOpenChange={onMetadataPopoverOpenChange}
         tuningMetadata={item.tuningMetadata}
       />
       <AudioPlayer ariaLabel={`Generated voice playback for ${item.voiceName}`} src={item.url} />
