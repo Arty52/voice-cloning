@@ -29,9 +29,13 @@ export function MetadataBadgePopover({
 }: MetadataBadgePopoverProps) {
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false)
   const pointerFocusRef = useRef(false)
+  const suppressFocusOpenRef = useRef(false)
   const resolvedOpen = open ?? uncontrolledOpen
 
   function handleOpenChange(nextOpen: boolean) {
+    if (open !== undefined && open === nextOpen) {
+      return
+    }
     onOpenChange?.(nextOpen)
     if (open === undefined) {
       setUncontrolledOpen(nextOpen)
@@ -48,7 +52,8 @@ export function MetadataBadgePopover({
             "focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           )}
           onFocus={() => {
-            if (pointerFocusRef.current) {
+            if (pointerFocusRef.current || suppressFocusOpenRef.current) {
+              suppressFocusOpenRef.current = false
               return
             }
             handleOpenChange(true)
@@ -70,6 +75,9 @@ export function MetadataBadgePopover({
       <PopoverContent
         align="start"
         className={cn("w-fit max-w-80", contentClassName)}
+        onCloseAutoFocus={() => {
+          suppressFocusOpenRef.current = true
+        }}
         onOpenAutoFocus={(event) => event.preventDefault()}
         side={side}
         sideOffset={sideOffset}
