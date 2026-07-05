@@ -9,6 +9,8 @@ type MetadataBadgePopoverProps = {
   children: ReactNode
   contentClassName?: string
   label: string
+  onOpenChange?: (open: boolean) => void
+  open?: boolean
   side?: ComponentProps<typeof PopoverContent>["side"]
   sideOffset?: ComponentProps<typeof PopoverContent>["sideOffset"]
   variant?: ComponentProps<typeof Badge>["variant"]
@@ -19,15 +21,25 @@ export function MetadataBadgePopover({
   children,
   contentClassName,
   label,
+  onOpenChange,
+  open,
   side,
   sideOffset,
   variant = "secondary",
 }: MetadataBadgePopoverProps) {
-  const [open, setOpen] = useState(false)
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false)
   const pointerFocusRef = useRef(false)
+  const resolvedOpen = open ?? uncontrolledOpen
+
+  function handleOpenChange(nextOpen: boolean) {
+    onOpenChange?.(nextOpen)
+    if (open === undefined) {
+      setUncontrolledOpen(nextOpen)
+    }
+  }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={resolvedOpen} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <button
           aria-label={ariaLabel}
@@ -39,9 +51,9 @@ export function MetadataBadgePopover({
             if (pointerFocusRef.current) {
               return
             }
-            setOpen(true)
+            handleOpenChange(true)
           }}
-          onMouseEnter={() => setOpen(true)}
+          onMouseEnter={() => handleOpenChange(true)}
           onPointerDown={() => {
             pointerFocusRef.current = true
           }}
