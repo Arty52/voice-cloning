@@ -89,6 +89,32 @@ describe("MetadataBadgePopover", () => {
     })
   })
 
+  it("keeps a pointer-opened controlled popover open on the following click", async () => {
+    render(<ControlledMetadataBadgePopoverGroup />)
+
+    const firstTrigger = screen.getByRole("button", { name: "Open First Metadata" })
+    const secondTrigger = screen.getByRole("button", { name: "Open Second Metadata" })
+
+    fireEvent.pointerDown(firstTrigger)
+
+    expect(await screen.findByText("First Details")).toBeInTheDocument()
+
+    fireEvent.pointerUp(firstTrigger)
+    fireEvent.click(firstTrigger)
+
+    expect(screen.getByText("First Details")).toBeInTheDocument()
+
+    fireEvent.pointerDown(secondTrigger)
+
+    expect(await screen.findByText("Second Details")).toBeInTheDocument()
+    expect(screen.queryByText("First Details")).not.toBeInTheDocument()
+
+    fireEvent.pointerUp(secondTrigger)
+    fireEvent.click(secondTrigger)
+
+    expect(screen.getByText("Second Details")).toBeInTheDocument()
+  })
+
   it("supports caller-controlled open state", async () => {
     const user = userEvent.setup()
     render(<ControlledMetadataBadgePopover />)
@@ -120,5 +146,39 @@ function ControlledMetadataBadgePopover() {
     >
       <div>Controlled Details</div>
     </MetadataBadgePopover>
+  )
+}
+
+function ControlledMetadataBadgePopoverGroup() {
+  const [openId, setOpenId] = useState<string | null>(null)
+
+  function handleOpenChange(id: string, open: boolean) {
+    setOpenId((currentOpenId) => {
+      if (open) {
+        return id
+      }
+      return currentOpenId === id ? null : currentOpenId
+    })
+  }
+
+  return (
+    <>
+      <MetadataBadgePopover
+        ariaLabel="Open First Metadata"
+        label="First"
+        onOpenChange={(open) => handleOpenChange("first", open)}
+        open={openId === "first"}
+      >
+        <div>First Details</div>
+      </MetadataBadgePopover>
+      <MetadataBadgePopover
+        ariaLabel="Open Second Metadata"
+        label="Second"
+        onOpenChange={(open) => handleOpenChange("second", open)}
+        open={openId === "second"}
+      >
+        <div>Second Details</div>
+      </MetadataBadgePopover>
+    </>
   )
 }
