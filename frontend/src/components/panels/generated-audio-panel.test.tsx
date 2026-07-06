@@ -286,6 +286,56 @@ describe("GeneratedAudioPanel pending mutations", () => {
       expect(screen.queryByText("voice_b")).not.toBeInTheDocument()
     })
   })
+
+  it("keeps one custom settings popover open across direct archive pointer presses", async () => {
+    renderGeneratedAudioPanel({
+      allItems: [
+        generatedAudioItemWithFirstCustomSettings,
+        generatedAudioItemWithSecondCustomSettings,
+        generatedAudioItemWithThirdCustomSettings,
+      ],
+      items: [
+        generatedAudioItemWithFirstCustomSettings,
+        generatedAudioItemWithSecondCustomSettings,
+        generatedAudioItemWithThirdCustomSettings,
+      ],
+    })
+
+    const triggers = screen.getAllByRole("button", { name: "Show Multi-Voice Custom Settings" })
+
+    fireEvent.pointerDown(triggers[0])
+
+    expect(await screen.findByText("voice_a")).toBeInTheDocument()
+
+    fireEvent.pointerUp(triggers[0])
+    fireEvent.click(triggers[0])
+
+    expect(screen.getByText("voice_a")).toBeInTheDocument()
+
+    fireEvent.pointerDown(triggers[1])
+
+    expect(await screen.findByText("voice_b")).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByText("voice_a")).not.toBeInTheDocument()
+    })
+
+    fireEvent.pointerUp(triggers[1])
+    fireEvent.click(triggers[1])
+
+    expect(screen.getByText("voice_b")).toBeInTheDocument()
+
+    fireEvent.pointerDown(triggers[2])
+
+    expect(await screen.findByText("voice_c")).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByText("voice_b")).not.toBeInTheDocument()
+    })
+
+    fireEvent.pointerUp(triggers[2])
+    fireEvent.click(triggers[2])
+
+    expect(screen.getByText("voice_c")).toBeInTheDocument()
+  })
 })
 
 const generatedAudioItem: GeneratedResult = {
