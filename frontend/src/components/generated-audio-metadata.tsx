@@ -34,6 +34,8 @@ export function GeneratedAudioMetadata({
     customSettingsPopoverId && onCustomSettingsPopoverOpenChange
       ? (open: boolean) => onCustomSettingsPopoverOpenChange(customSettingsPopoverId, open)
       : undefined
+  const isCustomSettingsPopoverControlled =
+    customSettingsPopoverOpen !== undefined && handleCustomSettingsPopoverOpenChange !== undefined
 
   return (
     <div aria-label="Generated Audio Metadata" className="mb-3 flex flex-wrap gap-2" role="group">
@@ -52,7 +54,7 @@ export function GeneratedAudioMetadata({
               contentClassName="max-w-xl"
               label="Custom Settings"
               onOpenChange={handleCustomSettingsPopoverOpenChange}
-              open={customSettingsPopoverOpen}
+              open={isCustomSettingsPopoverControlled ? customSettingsPopoverOpen : undefined}
               side="top"
               sideOffset={8}
             >

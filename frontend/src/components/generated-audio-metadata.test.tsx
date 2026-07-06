@@ -202,6 +202,45 @@ describe("GeneratedAudioMetadata", () => {
     expect(screen.getAllByText("Custom Settings")).toHaveLength(1)
     expect(screen.queryByText("Default Settings")).not.toBeInTheDocument()
   })
+
+  it("keeps custom settings interactive when controlled open is missing a handler", async () => {
+    render(
+      <GeneratedAudioMetadata
+        customSettingsPopoverOpen
+        generationElapsedMs={14_000}
+        multiVoiceMetadata={{
+          jobId: "job-1",
+          resultSha256: "combined-hash",
+          segmentCount: 1,
+          segments: [],
+          tuningSummaries: [
+            {
+              adjustedSettings: [adjustedSetting("stability", "Stability", "0.5", "0.4")],
+              id: "voice-a:settings",
+              voiceId: "voice-a",
+              voiceName: "voice_a",
+            },
+          ],
+          voices: [],
+        }}
+        tuningMetadata={{
+          adjustedSettings: [adjustedSetting("stability", "Stability", "0.5", "0.4")],
+          mode: "custom",
+          presetId: null,
+          presetLabel: null,
+          providerId: "elevenlabs",
+          providerLabel: "ElevenLabs",
+        }}
+      />
+    )
+
+    expect(screen.queryByText("voice_a")).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Show Multi-Voice Custom Settings" }))
+
+    expect(await screen.findByText("voice_a")).toBeInTheDocument()
+    expect(screen.getByText("Stability 0.4")).toBeInTheDocument()
+  })
 })
 
 function adjustedSetting(id: string, label: string, nominalValueLabel: string, valueLabel: string) {

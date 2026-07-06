@@ -175,6 +175,25 @@ describe("GeneratedAudioItem", () => {
     expect(onMetadataPopoverOpenChange).toHaveBeenCalledWith("generated-1:custom-settings", false)
   })
 
+  it("keeps custom settings interactive when an open id is provided without a handler", async () => {
+    render(
+      <TooltipProvider>
+        <GeneratedAudioItem
+          item={multiVoiceItemWithCustomSettings}
+          onDelete={vi.fn()}
+          openMetadataPopoverId="generated-1:custom-settings"
+        />
+      </TooltipProvider>
+    )
+
+    expect(screen.queryByText("voice_a")).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Show Multi-Voice Custom Settings" }))
+
+    expect(await screen.findByText("voice_a")).toBeInTheDocument()
+    expect(screen.getByText("Stability 0.4")).toBeInTheDocument()
+  })
+
   it("shows range text snapshot actions when callbacks are available", async () => {
     const user = userEvent.setup()
     const onViewScriptSnapshot = vi.fn()

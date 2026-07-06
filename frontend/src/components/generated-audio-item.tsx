@@ -57,6 +57,7 @@ export function GeneratedAudioItem({
   const serverExportLabel = serverExportActionLabel(serverExportStatus)
   const browserExportLabel = browserExportActionLabel(browserExportStatus)
   const customSettingsPopoverId = `${item.id}:custom-settings`
+  const isMetadataPopoverControlled = onMetadataPopoverOpenChange !== undefined && openMetadataPopoverId !== undefined
   const actionItems = buildGeneratedAudioActionItems({
     browserExportLabel,
     isBrowserExportDisabled,
@@ -105,7 +106,7 @@ export function GeneratedAudioItem({
       <GeneratedAudioMetadata
         customSettingsPopoverId={customSettingsPopoverId}
         customSettingsPopoverOpen={
-          openMetadataPopoverId === undefined ? undefined : openMetadataPopoverId === customSettingsPopoverId
+          isMetadataPopoverControlled ? openMetadataPopoverId === customSettingsPopoverId : undefined
         }
         generationElapsedMs={item.generationElapsedMs}
         multiVoiceMetadata={item.multiVoiceMetadata}
