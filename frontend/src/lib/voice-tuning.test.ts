@@ -4,9 +4,12 @@ import type { ProviderTuningMetadata, UserTuningPreset, VoiceAsset } from "@/typ
 
 import {
   CUSTOM_TUNING_PRESET_ID,
+  isTuningControlValueOffNominal,
   resolveEffectiveVoiceTuning,
+  resolveNominalTuningValue,
   resolveSavedVoiceTuning,
   resolveVoiceTuningState,
+  tuningControlValuesEqual,
   userPresetValues,
 } from "./voice-tuning"
 
@@ -135,6 +138,21 @@ describe("voice tuning resolution", () => {
       speed: 1,
       stability: 0.8,
     })
+  })
+
+  it("resolves nominal values from provider defaults before control defaults", () => {
+    expect(resolveNominalTuningValue(providerTuning.controls[0], { stability: 0.42 })).toBe(0.42)
+    expect(resolveNominalTuningValue(providerTuning.controls[0], {})).toBe(0.5)
+  })
+
+  it("normalizes slider values when comparing tuning controls", () => {
+    expect(tuningControlValuesEqual(providerTuning.controls[0], "0.5", 0.5)).toBe(true)
+    expect(tuningControlValuesEqual(providerTuning.controls[0], "0.51", 0.5)).toBe(false)
+  })
+
+  it("detects off-nominal tuning values against provider defaults", () => {
+    expect(isTuningControlValueOffNominal(providerTuning.controls[0], 0.42, { stability: 0.42 })).toBe(false)
+    expect(isTuningControlValueOffNominal(providerTuning.controls[0], 0.5, { stability: 0.42 })).toBe(true)
   })
 })
 

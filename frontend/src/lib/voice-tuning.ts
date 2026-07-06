@@ -1,7 +1,9 @@
 import { DEFAULT_VOICE_PRESET_ID } from "@/lib/voice-presets"
 import type {
+  ProviderTuningControl,
   ProviderTuningMetadata,
   ProviderTuningPreset,
+  ProviderTuningValue,
   UserTuningPreset,
   VoiceAsset,
   VoicePresetId,
@@ -117,6 +119,43 @@ export function voiceTuningValuesEqual(
   return true
 }
 
+export function resolveNominalTuningValue(
+  control: ProviderTuningControl,
+  defaultValues: VoiceTuningValues | null | undefined = {}
+): ProviderTuningValue {
+  return defaultValues?.[control.id] ?? control.defaultValue
+}
+
+export function tuningControlValuesEqual(
+  control: ProviderTuningControl,
+  left: ProviderTuningValue,
+  right: ProviderTuningValue
+) {
+  return comparisonValue(control, left) === comparisonValue(control, right)
+}
+
+export function isTuningControlValueOffNominal(
+  control: ProviderTuningControl,
+  value: ProviderTuningValue | undefined,
+  defaultValues: VoiceTuningValues | null | undefined = {}
+) {
+  const nominalValue = resolveNominalTuningValue(control, defaultValues)
+  return !tuningControlValuesEqual(control, value ?? nominalValue, nominalValue)
+}
+
 function findMatchingPresetId(presets: ProviderTuningPreset[], values: VoiceTuningValues) {
   return presets.find((preset) => voiceTuningValuesEqual(preset.values, values))?.id ?? null
+}
+
+function comparisonValue(control: ProviderTuningControl, value: ProviderTuningValue) {
+  if (control.type === "toggle") {
+    return value === true || value === "true"
+  }
+
+  if (control.type === "slider") {
+    const numericValue = Number(value)
+    return Number.isFinite(numericValue) ? numericValue : String(value)
+  }
+
+  return String(value)
 }
