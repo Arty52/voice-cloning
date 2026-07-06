@@ -1,4 +1,5 @@
 import { CircleHelp, FolderUp, HardDrive, RefreshCw, Trash2, Upload } from "lucide-react"
+import { useState } from "react"
 
 import { GeneratedAudioItem } from "@/components/generated-audio-item"
 import { Badge } from "@/components/ui/badge"
@@ -117,6 +118,16 @@ export function GeneratedAudioPanel({
   const isBrowserExportReady = browserExportSupported && browserExportTarget !== null
   const isBrowserExportWritable = isBrowserExportReady && browserExportPermission !== "denied"
   const isBrowserExportDisabled = !isBrowserExportReady || isBrowserExportBusy || isBusy
+  const [openMetadataPopoverId, setOpenMetadataPopoverId] = useState<string | null>(null)
+
+  function handleMetadataPopoverOpenChange(popoverId: string, open: boolean) {
+    setOpenMetadataPopoverId((currentPopoverId) => {
+      if (open) {
+        return popoverId
+      }
+      return currentPopoverId === popoverId ? null : currentPopoverId
+    })
+  }
 
   return (
     <section aria-busy={isBusy} className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5">
@@ -318,9 +329,11 @@ export function GeneratedAudioPanel({
                 key={item.id}
                 onBrowserExport={isBrowserExportReady ? () => onBrowserExport(item) : undefined}
                 onDelete={onDelete}
+                onMetadataPopoverOpenChange={handleMetadataPopoverOpenChange}
                 onRestoreScriptSnapshot={onRestoreScriptSnapshot}
                 onServerExport={serverArchiveMode ? onServerExport : undefined}
                 onViewScriptSnapshot={onViewScriptSnapshot}
+                openMetadataPopoverId={openMetadataPopoverId}
                 serverExportStatus={findServerExportStatus(item, serverExportStatus)}
               />
             ))

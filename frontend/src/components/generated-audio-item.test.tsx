@@ -153,6 +153,47 @@ describe("GeneratedAudioItem", () => {
     expect(screen.getByText("Stability 0.4")).toBeInTheDocument()
   })
 
+  it("accepts controlled metadata popover state for custom settings", () => {
+    const onMetadataPopoverOpenChange = vi.fn()
+
+    render(
+      <TooltipProvider>
+        <GeneratedAudioItem
+          item={multiVoiceItemWithCustomSettings}
+          onDelete={vi.fn()}
+          onMetadataPopoverOpenChange={onMetadataPopoverOpenChange}
+          openMetadataPopoverId="generated-1:custom-settings"
+        />
+      </TooltipProvider>
+    )
+
+    expect(screen.getByText("voice_a")).toBeInTheDocument()
+    expect(screen.getByText("Stability 0.4")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Show Multi-Voice Custom Settings" }))
+
+    expect(onMetadataPopoverOpenChange).toHaveBeenCalledWith("generated-1:custom-settings", false)
+  })
+
+  it("keeps custom settings interactive when an open id is provided without a handler", async () => {
+    render(
+      <TooltipProvider>
+        <GeneratedAudioItem
+          item={multiVoiceItemWithCustomSettings}
+          onDelete={vi.fn()}
+          openMetadataPopoverId="generated-1:custom-settings"
+        />
+      </TooltipProvider>
+    )
+
+    expect(screen.queryByText("voice_a")).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Show Multi-Voice Custom Settings" }))
+
+    expect(await screen.findByText("voice_a")).toBeInTheDocument()
+    expect(screen.getByText("Stability 0.4")).toBeInTheDocument()
+  })
+
   it("shows range text snapshot actions when callbacks are available", async () => {
     const user = userEvent.setup()
     const onViewScriptSnapshot = vi.fn()
@@ -254,6 +295,29 @@ describe("GeneratedAudioItem", () => {
     expect(onRestoreScriptSnapshot).toHaveBeenCalledWith(itemWithSnapshot)
   })
 })
+
+const multiVoiceItemWithCustomSettings: GeneratedResult = {
+  ...multiVoiceItem,
+  multiVoiceMetadata: {
+    ...multiVoiceItem.multiVoiceMetadata!,
+    tuningSummaries: [
+      {
+        adjustedSettings: [adjustedSetting("stability", "Stability", "0.5", "0.4")],
+        id: "narrator:settings",
+        voiceId: "narrator",
+        voiceName: "voice_a",
+      },
+    ],
+  },
+  tuningMetadata: {
+    adjustedSettings: [adjustedSetting("stability", "Stability", "0.5", "0.4")],
+    mode: "custom",
+    presetId: null,
+    presetLabel: null,
+    providerId: "elevenlabs",
+    providerLabel: "ElevenLabs",
+  },
+}
 
 const rangeSnapshot: GeneratedAudioScriptSnapshot = {
   version: 1,
