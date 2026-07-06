@@ -9,6 +9,8 @@ type MetadataBadgePopoverProps = {
   children: ReactNode
   contentClassName?: string
   label: string
+  onOpenChange?: (open: boolean) => void
+  open?: boolean
   side?: ComponentProps<typeof PopoverContent>["side"]
   sideOffset?: ComponentProps<typeof PopoverContent>["sideOffset"]
   variant?: ComponentProps<typeof Badge>["variant"]
@@ -19,15 +21,31 @@ export function MetadataBadgePopover({
   children,
   contentClassName,
   label,
+  onOpenChange,
+  open,
   side,
   sideOffset,
   variant = "secondary",
 }: MetadataBadgePopoverProps) {
-  const [open, setOpen] = useState(false)
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false)
+  const hoverOpenedRef = useRef(false)
+  const pointerOpenedRef = useRef(false)
   const pointerFocusRef = useRef(false)
+  const suppressFocusOpenRef = useRef(false)
+  const resolvedOpen = open ?? uncontrolledOpen
+
+  function handleOpenChange(nextOpen: boolean) {
+    if (open !== undefined && open === nextOpen) {
+      return
+    }
+    onOpenChange?.(nextOpen)
+    if (open === undefined) {
+      setUncontrolledOpen(nextOpen)
+    }
+  }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={resolvedOpen} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <button
           aria-label={ariaLabel}
@@ -36,14 +54,31 @@ export function MetadataBadgePopover({
             "focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           )}
           onFocus={() => {
-            if (pointerFocusRef.current) {
+            if (pointerFocusRef.current || suppressFocusOpenRef.current) {
+              suppressFocusOpenRef.current = false
               return
             }
-            setOpen(true)
+            handleOpenChange(true)
           }}
-          onMouseEnter={() => setOpen(true)}
+          onClick={(event) => {
+            if (!hoverOpenedRef.current && !pointerOpenedRef.current) {
+              return
+            }
+            event.preventDefault()
+            hoverOpenedRef.current = false
+            pointerOpenedRef.current = false
+            handleOpenChange(true)
+          }}
+          onMouseEnter={() => {
+            hoverOpenedRef.current = !resolvedOpen
+            handleOpenChange(true)
+          }}
           onPointerDown={() => {
             pointerFocusRef.current = true
+            pointerOpenedRef.current = !resolvedOpen
+            if (!resolvedOpen) {
+              handleOpenChange(true)
+            }
           }}
           onPointerUp={() => {
             pointerFocusRef.current = false
@@ -58,6 +93,9 @@ export function MetadataBadgePopover({
       <PopoverContent
         align="start"
         className={cn("w-fit max-w-80", contentClassName)}
+        onCloseAutoFocus={() => {
+          suppressFocusOpenRef.current = true
+        }}
         onOpenAutoFocus={(event) => event.preventDefault()}
         side={side}
         sideOffset={sideOffset}
