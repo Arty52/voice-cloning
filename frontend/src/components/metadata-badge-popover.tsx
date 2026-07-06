@@ -28,6 +28,7 @@ export function MetadataBadgePopover({
   variant = "secondary",
 }: MetadataBadgePopoverProps) {
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false)
+  const hoverOpenedRef = useRef(false)
   const pointerFocusRef = useRef(false)
   const suppressFocusOpenRef = useRef(false)
   const resolvedOpen = open ?? uncontrolledOpen
@@ -58,7 +59,18 @@ export function MetadataBadgePopover({
             }
             handleOpenChange(true)
           }}
-          onMouseEnter={() => handleOpenChange(true)}
+          onClick={(event) => {
+            if (!hoverOpenedRef.current) {
+              return
+            }
+            event.preventDefault()
+            hoverOpenedRef.current = false
+            handleOpenChange(true)
+          }}
+          onMouseEnter={() => {
+            hoverOpenedRef.current = !resolvedOpen
+            handleOpenChange(true)
+          }}
           onPointerDown={() => {
             pointerFocusRef.current = true
           }}

@@ -73,6 +73,22 @@ describe("MetadataBadgePopover", () => {
     })
   })
 
+  it("keeps a hover-opened popover open on the following click", async () => {
+    const user = userEvent.setup()
+    renderMetadataBadgePopover()
+
+    const trigger = screen.getByRole("button", { name: "Open Generation Metadata" })
+    await user.click(trigger)
+
+    expect(await screen.findByText("Generated with 3 Segments")).toBeInTheDocument()
+
+    await user.click(trigger)
+
+    await waitFor(() => {
+      expect(screen.queryByText("Generated with 3 Segments")).not.toBeInTheDocument()
+    })
+  })
+
   it("supports caller-controlled open state", async () => {
     const user = userEvent.setup()
     render(<ControlledMetadataBadgePopover />)
