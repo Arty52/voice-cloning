@@ -219,8 +219,16 @@ describe("GeneratedAudioPanel pending mutations", () => {
 
   it("keeps one custom settings popover open across archive items", async () => {
     renderGeneratedAudioPanel({
-      allItems: [generatedAudioItemWithFirstCustomSettings, generatedAudioItemWithSecondCustomSettings],
-      items: [generatedAudioItemWithFirstCustomSettings, generatedAudioItemWithSecondCustomSettings],
+      allItems: [
+        generatedAudioItemWithFirstCustomSettings,
+        generatedAudioItemWithSecondCustomSettings,
+        generatedAudioItemWithThirdCustomSettings,
+      ],
+      items: [
+        generatedAudioItemWithFirstCustomSettings,
+        generatedAudioItemWithSecondCustomSettings,
+        generatedAudioItemWithThirdCustomSettings,
+      ],
     })
 
     fireEvent.mouseEnter(screen.getAllByRole("button", { name: "Show Multi-Voice Custom Settings" })[0])
@@ -233,6 +241,49 @@ describe("GeneratedAudioPanel pending mutations", () => {
     expect(await screen.findByText("voice_b")).toBeInTheDocument()
     await waitFor(() => {
       expect(screen.queryByText("voice_a")).not.toBeInTheDocument()
+    })
+
+    fireEvent.mouseEnter(screen.getAllByRole("button", { name: "Show Multi-Voice Custom Settings" })[2])
+
+    expect(await screen.findByText("voice_c")).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByText("voice_b")).not.toBeInTheDocument()
+    })
+  })
+
+  it("keeps one custom settings popover open across repeated archive presses", async () => {
+    const user = userEvent.setup()
+    renderGeneratedAudioPanel({
+      allItems: [
+        generatedAudioItemWithFirstCustomSettings,
+        generatedAudioItemWithSecondCustomSettings,
+        generatedAudioItemWithThirdCustomSettings,
+      ],
+      items: [
+        generatedAudioItemWithFirstCustomSettings,
+        generatedAudioItemWithSecondCustomSettings,
+        generatedAudioItemWithThirdCustomSettings,
+      ],
+    })
+
+    await user.click(screen.getAllByRole("button", { name: "Show Multi-Voice Custom Settings" })[0])
+
+    expect(await screen.findByText("voice_a")).toBeInTheDocument()
+    expect(screen.queryByText("voice_b")).not.toBeInTheDocument()
+    expect(screen.queryByText("voice_c")).not.toBeInTheDocument()
+
+    await user.click(screen.getAllByRole("button", { name: "Show Multi-Voice Custom Settings" })[1])
+
+    expect(await screen.findByText("voice_b")).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByText("voice_a")).not.toBeInTheDocument()
+    })
+
+    await user.click(screen.getAllByRole("button", { name: "Show Multi-Voice Custom Settings" })[2])
+
+    expect(await screen.findByText("voice_c")).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByText("voice_b")).not.toBeInTheDocument()
     })
   })
 })
@@ -274,6 +325,15 @@ const generatedAudioItemWithSecondCustomSettings: GeneratedResult = buildGenerat
   valueLabel: "0.35",
   voiceName: "Multi-Voice Two",
   summaryVoiceName: "voice_b",
+})
+
+const generatedAudioItemWithThirdCustomSettings: GeneratedResult = buildGeneratedAudioItemWithCustomSettings({
+  id: "generated-audio-three",
+  settingId: "speed",
+  settingLabel: "Speed",
+  valueLabel: "1.04",
+  voiceName: "Multi-Voice Three",
+  summaryVoiceName: "voice_c",
 })
 
 const rangeSnapshot: GeneratedAudioScriptSnapshot = {
@@ -391,7 +451,7 @@ function buildGeneratedAudioItemWithCustomSettings({
 }
 
 function buildAdjustedSetting(id: string, label: string, valueLabel: string) {
-  const nominalValueLabel = id === "style" ? "0" : "0.5"
+  const nominalValueLabel = id === "style" ? "0" : id === "speed" ? "1" : "0.5"
   return {
     id,
     label,
