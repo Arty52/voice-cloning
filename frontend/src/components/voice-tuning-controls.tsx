@@ -1,6 +1,13 @@
+import { RotateCcw } from "lucide-react"
+
+import { Button } from "@/components/ui/button"
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { TuningInfo } from "@/components/tuning-info"
 import { cn } from "@/lib/utils"
+import {
+  isTuningControlValueOffNominal,
+  resolveNominalTuningValue,
+} from "@/lib/voice-tuning"
 import type {
   ProviderTuningControl,
   ProviderTuningValue,
@@ -12,6 +19,7 @@ type VoiceTuningControlsProps = {
   controls: ProviderTuningControl[]
   disabled: boolean
   idPrefix: string
+  nominalValues?: VoiceTuningValues
   onTuningValueChange: (control: ProviderTuningControl, value: ProviderTuningValue) => void
   tuning: VoiceTuningValues
 }
@@ -21,21 +29,26 @@ export function VoiceTuningControls({
   controls,
   disabled,
   idPrefix,
+  nominalValues = {},
   onTuningValueChange,
   tuning,
 }: VoiceTuningControlsProps) {
   return (
     <FieldGroup className={cn("grid gap-4 sm:grid-cols-2", className)}>
-      {controls.map((control) => (
-        <VoiceTuningControl
-          control={control}
-          disabled={disabled}
-          idPrefix={idPrefix}
-          key={control.id}
-          onChange={onTuningValueChange}
-          value={tuning[control.id] ?? control.defaultValue}
-        />
-      ))}
+      {controls.map((control) => {
+        const nominalValue = resolveNominalTuningValue(control, nominalValues)
+        return (
+          <VoiceTuningControl
+            control={control}
+            disabled={disabled}
+            idPrefix={idPrefix}
+            key={control.id}
+            nominalValue={nominalValue}
+            onChange={onTuningValueChange}
+            value={tuning[control.id] ?? nominalValue}
+          />
+        )
+      })}
     </FieldGroup>
   )
 }
@@ -44,12 +57,14 @@ function VoiceTuningControl({
   control,
   disabled,
   idPrefix,
+  nominalValue,
   onChange,
   value,
 }: {
   control: ProviderTuningControl
   disabled: boolean
   idPrefix: string
+  nominalValue: ProviderTuningValue
   onChange: (control: ProviderTuningControl, value: ProviderTuningValue) => void
   value: ProviderTuningValue
 }) {
@@ -106,6 +121,7 @@ function VoiceTuningControl({
 
   const numericValue = typeof value === "number" ? value : Number(value)
   const sliderValue = Number.isNaN(numericValue) ? Number(control.defaultValue) || 0 : numericValue
+  const isOffNominal = isTuningControlValueOffNominal(control, value, { [control.id]: nominalValue })
   return (
     <Field>
       <div className="flex items-center justify-between gap-3">
@@ -115,11 +131,24 @@ function VoiceTuningControl({
           </FieldLabel>
           <TuningInfo description={control.description} id={controlId} label={control.label} />
         </div>
-        <span className="font-mono text-xs text-muted-foreground">{sliderValue.toFixed(2)}</span>
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-xs text-muted-foreground">{sliderValue.toFixed(2)}</span>
+          <Button
+            aria-label={`Reset ${control.label} To Nominal`}
+            className="size-8 shrink-0"
+            disabled={disabled || !isOffNominal}
+            onClick={() => onChange(control, nominalValue)}
+            size="icon"
+            type="button"
+            variant="ghost"
+          >
+            <RotateCcw aria-hidden="true" data-icon="inline-start" />
+          </Button>
+        </div>
       </div>
       <input
         aria-labelledby={`${controlId}-label`}
-        className="h-2 w-full accent-primary"
+        className={cn("h-2 w-full", isOffNominal ? "accent-modified" : "accent-primary")}
         disabled={disabled}
         id={controlId}
         max={control.max}

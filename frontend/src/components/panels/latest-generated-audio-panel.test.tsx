@@ -580,6 +580,49 @@ describe("LatestGeneratedAudioPanel multi-voice results", () => {
     expect(stabilityHelp).not.toHaveFocus()
   })
 
+  it("resets segment slider tuning to provider default values", async () => {
+    const user = userEvent.setup()
+    const itemWithCustomStability: GeneratedResult = {
+      ...item,
+      multiVoiceMetadata: {
+        ...item.multiVoiceMetadata!,
+        segments: item.multiVoiceMetadata!.segments.map((segment) =>
+          segment.id === "segment-one"
+            ? { ...segment, voiceSettings: { stability: 0.4, useSpeakerBoost: false } }
+            : segment
+        ),
+      },
+    }
+
+    renderLatestPanel(
+      <LatestGeneratedAudioPanel
+        activeProviderId="elevenlabs"
+        error={null}
+        isDeleteDisabled={false}
+        isSavingVoiceTuning={false}
+        item={itemWithCustomStability}
+        onDelete={vi.fn()}
+        onRegenerateSegment={vi.fn()}
+        onRegenerateVoiceSegments={vi.fn()}
+        onSaveVoiceTuning={vi.fn()}
+        providerTuningControls={segmentTuningControls}
+        providerTuningDefaultValues={{ stability: 0.42, useSpeakerBoost: false }}
+        segmentResultUrls={{ "segment-one": "/api/speech/jobs/job-1/segments/segment-one/result" }}
+        status="success"
+        storageError={null}
+        tuning={{ stability: 0.4, useSpeakerBoost: false }}
+        voices={[narrator, villain]}
+      />
+    )
+
+    await user.click(screen.getByRole("button", { name: /show segments/i }))
+    await user.click(screen.getAllByRole("button", { name: /^Tune$/i })[0])
+    await user.click(screen.getByRole("button", { name: "Reset Stability To Nominal" }))
+
+    expect(screen.getByRole("slider", { name: "Stability" })).toHaveValue("0.42")
+    expect(screen.getByRole("button", { name: "Reset Stability To Nominal" })).toBeDisabled()
+  })
+
   it("regenerates with a segment tuning override", async () => {
     const user = userEvent.setup()
     const onRegenerateSegment = vi.fn()

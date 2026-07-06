@@ -243,6 +243,7 @@ function App() {
             onTextChange={setText}
             onTextSelectionChange={handleTextSelectionChange}
             providerTuningControls={providerTuning.controls}
+            providerTuningDefaultValues={providerTuning.defaultValues}
             scriptRestoreWarning={scriptRestoreWarning}
             selectedVoice={voiceLibrary.selectedVoice}
             selectedText={textSelection.text}
@@ -276,6 +277,7 @@ function App() {
             }
             onViewScriptSnapshot={(item) => setScriptSnapshotDialog(item.scriptSnapshot)}
             providerTuningControls={providerTuning.controls}
+            providerTuningDefaultValues={providerTuning.defaultValues}
             effectiveVoiceSettingsByVoiceId={effectiveVoiceSettingsByVoiceId}
             segmentResultUrls={multiVoiceSegmentResultUrls}
             status={speechStatus}

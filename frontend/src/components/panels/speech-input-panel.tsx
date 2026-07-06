@@ -73,6 +73,7 @@ type SpeechInputPanelProps = {
   onTextChange: (text: string) => void
   onTextSelectionChange: () => void
   providerTuningControls?: ProviderTuningControl[]
+  providerTuningDefaultValues?: VoiceTuningValues
   scriptRestoreWarning?: string | null
   selectedVoice: VoiceAsset | null
   selectedText: string
@@ -110,6 +111,7 @@ export function SpeechInputPanel({
   onTextChange,
   onTextSelectionChange,
   providerTuningControls = [],
+  providerTuningDefaultValues = {},
   scriptRestoreWarning = null,
   selectedVoice,
   selectedText,
@@ -326,6 +328,7 @@ export function SpeechInputPanel({
           effectiveVoiceSettingsByVoiceId={effectiveVoiceSettingsByVoiceId}
           isGenerating={isGenerating}
           providerTuningControls={providerTuningControls}
+          providerTuningDefaultValues={providerTuningDefaultValues}
           tuning={tuning}
           voices={voices}
         />
@@ -475,6 +478,7 @@ type DialogueEditorProps = {
   effectiveVoiceSettingsByVoiceId: Record<string, VoiceTuningValues>
   isGenerating: boolean
   providerTuningControls: ProviderTuningControl[]
+  providerTuningDefaultValues: VoiceTuningValues
   tuning: VoiceTuningValues
   voices: VoiceAsset[]
 }
@@ -486,6 +490,7 @@ function DialogueEditor({
   effectiveVoiceSettingsByVoiceId,
   isGenerating,
   providerTuningControls,
+  providerTuningDefaultValues,
   tuning,
   voices,
 }: DialogueEditorProps) {
@@ -552,6 +557,7 @@ function DialogueEditor({
               index={index}
               isGenerating={isGenerating}
               providerTuningControls={providerTuningControls}
+              providerTuningDefaultValues={providerTuningDefaultValues}
               tuning={tuning}
               key={block.id}
               voices={voices}
@@ -621,6 +627,7 @@ type DialogueRowProps = {
   index: number
   isGenerating: boolean
   providerTuningControls: ProviderTuningControl[]
+  providerTuningDefaultValues: VoiceTuningValues
   tuning: VoiceTuningValues
   voices: VoiceAsset[]
 }
@@ -633,6 +640,7 @@ function DialogueRow({
   index,
   isGenerating,
   providerTuningControls,
+  providerTuningDefaultValues,
   tuning,
   voices,
 }: DialogueRowProps) {
@@ -765,6 +773,7 @@ function DialogueRow({
                     controls={providerTuningControls}
                     disabled={isGenerating || !effectiveVoice}
                     idPrefix={`dialogue-row-${block.id}-tuning`}
+                    nominalValues={providerTuningDefaultValues}
                     onTuningValueChange={handleRowTuningValueChange}
                     tuning={rowTuning}
                   />
