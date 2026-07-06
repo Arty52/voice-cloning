@@ -111,6 +111,35 @@ describe("VoiceLibraryPanel voice tuning", () => {
     expect(onUserTuningPresetApply).toHaveBeenCalledWith(createdPreset)
   })
 
+  it("resets voice tuning sliders to provider default values", async () => {
+    const user = userEvent.setup()
+
+    renderVoiceLibraryPanel({
+      providerTuning: {
+        ...providerTuning,
+        defaultValues: { stability: 0.42 },
+      },
+      voices: [
+        {
+          ...selectedVoice,
+          voiceSettingsByProvider: {
+            elevenlabs: { stability: 0.4 },
+          },
+        },
+      ],
+    })
+
+    await user.click(screen.getByRole("button", { name: "Show Voice Tuning" }))
+
+    expect(screen.getByRole("slider", { name: "Stability" })).toHaveClass("accent-modified")
+    expect(screen.getByRole("button", { name: "Reset Stability To Nominal" })).toBeEnabled()
+
+    await user.click(screen.getByRole("button", { name: "Reset Stability To Nominal" }))
+
+    expect(screen.getByRole("slider", { name: "Stability" })).toHaveValue("0.42")
+    expect(screen.getByRole("button", { name: "Reset Stability To Nominal" })).toBeDisabled()
+  })
+
   it("applies, updates, and deletes saved user presets", async () => {
     const user = userEvent.setup()
     const warmPreset = userPreset({ id: "warm-read", name: "Warm Read", settings: { stability: 0.8 } })

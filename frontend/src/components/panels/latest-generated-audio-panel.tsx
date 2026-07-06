@@ -51,6 +51,7 @@ type LatestGeneratedAudioPanelProps = {
   onSaveVoiceTuning?: (voiceId: string, voiceSettings: VoiceTuningValues) => void
   onViewScriptSnapshot?: (item: GeneratedResult) => void
   providerTuningControls?: ProviderTuningControl[]
+  providerTuningDefaultValues?: VoiceTuningValues
   segmentResultUrls: Record<string, string>
   status: RequestStatus
   storageError: string | null
@@ -74,6 +75,7 @@ export function LatestGeneratedAudioPanel({
   onSaveVoiceTuning = noopSaveVoiceTuning,
   onViewScriptSnapshot,
   providerTuningControls = [],
+  providerTuningDefaultValues = {},
   segmentResultUrls,
   status,
   storageError,
@@ -146,6 +148,7 @@ export function LatestGeneratedAudioPanel({
               onRegenerateVoiceSegments={onRegenerateVoiceSegments}
               onSaveVoiceTuning={onSaveVoiceTuning}
               providerTuningControls={providerTuningControls}
+              providerTuningDefaultValues={providerTuningDefaultValues}
               segmentResultUrls={segmentResultUrls}
               segments={item.multiVoiceMetadata.segments}
               tuning={tuning}
@@ -250,6 +253,7 @@ type MultiVoiceSegmentResultsProps = {
   onRegenerateVoiceSegments: (voiceId: string, voiceSettings: VoiceTuningValues) => void
   onSaveVoiceTuning: (voiceId: string, voiceSettings: VoiceTuningValues) => void
   providerTuningControls: ProviderTuningControl[]
+  providerTuningDefaultValues: VoiceTuningValues
   segmentResultUrls: Record<string, string>
   segments: GeneratedAudioMultiVoiceSegmentMetadata[]
   tuning: VoiceTuningValues
@@ -298,6 +302,7 @@ function MultiVoiceSegmentResults({
   onRegenerateVoiceSegments,
   onSaveVoiceTuning,
   providerTuningControls,
+  providerTuningDefaultValues,
   segmentResultUrls,
   segments,
   tuning,
@@ -468,6 +473,7 @@ function MultiVoiceSegmentResults({
                             controls={providerTuningControls}
                             disabled={disabled || !segmentUrl}
                             idPrefix={`segment-${segment.id}-tuning`}
+                            nominalValues={providerTuningDefaultValues}
                             onTuningValueChange={(control, value) =>
                               handleSegmentTuningValueChange(segment, control, value)
                             }

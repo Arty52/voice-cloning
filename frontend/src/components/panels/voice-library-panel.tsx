@@ -563,6 +563,7 @@ function SelectedVoiceTuning({
                     controls={providerTuning.controls}
                     disabled={disabled}
                     idPrefix={`selected-${voice.id}-voice-tuning`}
+                    nominalValues={providerTuning.defaultValues}
                     onTuningValueChange={handleTuningValueChange}
                     tuning={activeDraft.values}
                   />
