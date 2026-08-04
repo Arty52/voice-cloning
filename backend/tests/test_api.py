@@ -4073,6 +4073,52 @@ def test_diarization_processor_rejects_oversized_speaker_stream(
     assert job["error"] == "Processed voice sample must be 5 bytes or smaller."
 
 
+def test_diarization_processor_keeps_runtime_speaker_streams_above_provider_cap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        sample_processors_module,
+        "_load_diarization_dependencies",
+        lambda: sample_processors_module._DiarizationDependencies(
+            pipeline_class=FakePyannotePipeline,
+            whisper_model_class=FakeWhisperModel,
+        ),
+    )
+    settings = replace(
+        make_settings(tmp_path),
+        max_upload_bytes=5,
+        max_source_upload_bytes=64,
+        sample_processing_enable_diarization=True,
+        sample_processing_hf_token="hf_test",
+        sample_processing_ffmpeg_command=str(
+            ffmpeg_fake_command(tmp_path / "ffmpeg-fake", output=b"runtime-speaker")
+        ),
+    )
+    app = create_app(settings=settings)
+    with TestClient(app) as client:
+        create = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "separateSpeakers"},
+            files={"sourceFile": ("conversation.wav", b"src", "audio/wav")},
+        )
+        job = wait_for_processing_job(client, create.json()["job"]["id"])
+        patch = client.patch(
+            f"/api/sample-processing/jobs/{job['id']}/speaker-assignments",
+            json={"transcriptAssignments": [{"itemId": "item-2", "speakerId": "speaker-1"}]},
+        )
+        speaker_stream = client.get(
+            f"/api/sample-processing/jobs/{job['id']}/speakers/speaker-1/result"
+        )
+
+    assert create.status_code == 202
+    assert job["status"] == "success"
+    assert patch.status_code == 200
+    assert patch.json()["job"]["status"] == "success"
+    assert speaker_stream.status_code == 200
+    assert speaker_stream.content == b"runtime-speaker"
+
+
 def test_sample_processing_job_accepts_uploaded_source(tmp_path: Path) -> None:
     settings = make_settings(tmp_path)
     processor = FakeSampleProcessor()
