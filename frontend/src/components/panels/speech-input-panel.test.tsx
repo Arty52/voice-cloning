@@ -201,9 +201,34 @@ describe("SpeechInputPanel voice assignments", () => {
     const props = renderPanel({ selectedText: "villain line" })
 
     await user.click(screen.getByRole("button", { name: /^Assign Voice$/i }))
+
+    const voiceList = screen.getByRole("region", { name: "Voice List" })
+    expect(voiceList).toHaveClass("max-h-72")
+    expect(voiceList).not.toHaveClass("h-72")
+
     await user.click(screen.getByRole("button", { name: "Villain" }))
 
     expect(props.onAssignVoice).toHaveBeenCalledWith(villain)
+    expect(screen.queryByRole("region", { name: "Voice List" })).not.toBeInTheDocument()
+  })
+
+  it("keeps long voice lists scrollable through the final option", async () => {
+    const user = userEvent.setup()
+    const voices = Array.from({ length: 7 }, (_, index) =>
+      voice(`voice-${index + 1}`, `Voice ${index + 1}`)
+    )
+    const props = renderPanel({ selectedText: "villain line", voices })
+
+    await user.click(screen.getByRole("button", { name: /^Assign Voice$/i }))
+
+    const voiceList = screen.getByRole("region", { name: "Voice List" })
+    expect(voiceList).toHaveClass("h-72")
+    expect(voiceList).not.toHaveClass("max-h-72")
+
+    await user.click(screen.getByRole("button", { name: "Voice 7" }))
+
+    expect(props.onAssignVoice).toHaveBeenCalledWith(voices[6])
+    expect(screen.queryByRole("region", { name: "Voice List" })).not.toBeInTheDocument()
   })
 
   it("shows multi-line selected text as a compact excerpt", () => {

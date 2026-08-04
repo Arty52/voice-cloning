@@ -949,8 +949,14 @@ type VoicePickerListProps = {
 }
 
 function VoicePickerList({ onSelect, selectedVoiceId, voices }: VoicePickerListProps) {
+  const hasScrollableVoiceList = voices.length > 6
+
   return (
-    <ScrollArea className="max-h-72 pr-3">
+    <ScrollArea
+      aria-label="Voice List"
+      className={cn("pr-3", hasScrollableVoiceList ? "h-72" : "max-h-72")}
+      role="region"
+    >
       <div className="flex flex-col gap-2">
         {voices.map((voice) => (
           <Button
