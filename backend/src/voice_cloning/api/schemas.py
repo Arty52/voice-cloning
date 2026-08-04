@@ -36,6 +36,15 @@ class UpdateSpeakerAssignmentsRequest(BaseModel):
     transcriptAssignments: list[SpeakerTranscriptAssignmentRequest] = Field(default_factory=list)
 
 
+class TranscriptTextUpdateRequest(BaseModel):
+    itemId: str
+    text: str
+
+
+class UpdateTranscriptItemsRequest(BaseModel):
+    items: list[TranscriptTextUpdateRequest] = Field(min_length=1)
+
+
 class SaveSpeakerVoiceRequest(BaseModel):
     speakerId: str
     name: str

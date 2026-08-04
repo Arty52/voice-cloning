@@ -212,6 +212,12 @@ class SpeakerTranscriptAssignment:
 
 
 @dataclass(frozen=True)
+class TranscriptTextUpdate:
+    item_id: str
+    text: str
+
+
+@dataclass(frozen=True)
 class SpeakerAssignmentRequest:
     job_id: str
     job_dir: Path
@@ -713,6 +719,19 @@ class SampleProcessingService:
             )
         else:
             self._refresh_speaker_processing_steps_from_result(job_id, updated_result)
+        self._update_job(job_id, result=updated_result)
+        return self.get_job(job_id)
+
+    def update_transcript_items(
+        self,
+        job_id: str,
+        *,
+        items: tuple[TranscriptTextUpdate, ...],
+    ) -> SampleProcessingJob:
+        job = self.get_job(job_id)
+        result = self._speaker_separation_result(job)
+        updated_result = apply_transcript_text_updates(result, items)
+        self._validate_speaker_separation_result(updated_result)
         self._update_job(job_id, result=updated_result)
         return self.get_job(job_id)
 
@@ -2844,6 +2863,36 @@ def apply_speaker_assignment_metadata(
     return SpeakerSeparationResult(
         kind="speakerSeparation",
         speakers=tuple(updated_speakers),
+        transcript=SpeakerSeparationTranscript(items=updated_items),
+    )
+
+
+def apply_transcript_text_updates(
+    result: SpeakerSeparationResult,
+    items: tuple[TranscriptTextUpdate, ...],
+) -> SpeakerSeparationResult:
+    if not items:
+        raise SampleProcessingServiceError("Choose at least one transcript item to update.", 422)
+
+    known_item_ids = {item.id for item in result.transcript.items}
+    text_by_item_id: dict[str, str] = {}
+    for update in items:
+        if update.item_id not in known_item_ids:
+            raise SampleProcessingServiceError("Transcript item was not found.", 404)
+        if update.item_id in text_by_item_id:
+            raise SampleProcessingServiceError("Transcript item can only be updated once.", 422)
+        normalized_text = update.text.strip()
+        if not normalized_text:
+            raise SampleProcessingServiceError("Transcript text is required.", 422)
+        text_by_item_id[update.item_id] = normalized_text
+
+    updated_items = tuple(
+        replace(item, text=text_by_item_id.get(item.id, item.text))
+        for item in result.transcript.items
+    )
+    return SpeakerSeparationResult(
+        kind="speakerSeparation",
+        speakers=result.speakers,
         transcript=SpeakerSeparationTranscript(items=updated_items),
     )
 

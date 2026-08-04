@@ -18,6 +18,10 @@ from voice_cloning.models import (
     SampleProcessingJobStep,
     SampleProcessingProgressPhase,
     SampleProcessingResult,
+    SpeakerSeparationResult,
+    SpeakerSeparationSpeaker,
+    SpeakerSeparationTranscript,
+    SpeakerTranscriptItem,
     SpeechJob,
     SpeechJobSegment,
     VoiceAsset,
@@ -307,6 +311,58 @@ def test_job_repositories_persist_snapshots_and_mark_interrupted() -> None:
         assert restored_speech_job.active_segment_id is None
         assert restored_speech_job.segments[0].status == "error"
         assert restored_speech_job.segments[0].error == INTERRUPTED_MESSAGE
+
+
+def test_sample_processing_job_repository_roundtrips_corrected_transcript_text() -> None:
+    engine = create_database_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session_factory = create_session_factory(engine)
+    job = SampleProcessingJob(
+        id="transcript-job",
+        operation_id="separateSpeakers",
+        status="success",
+        source_name="Conversation",
+        source_filename="conversation.m4a",
+        source_content_type="audio/mp4",
+        source_sha256="source-hash",
+        source_size_bytes=1024,
+        source_preference="original",
+        created_at="2026-08-04T12:00:00+00:00",
+        updated_at="2026-08-04T12:01:00+00:00",
+        result=SpeakerSeparationResult(
+            kind="speakerSeparation",
+            speakers=(
+                SpeakerSeparationSpeaker(
+                    id="speaker-1",
+                    label="Speaker 1",
+                    assigned_name="Morgan",
+                    transcript_item_ids=("item-1",),
+                ),
+            ),
+            transcript=SpeakerSeparationTranscript(
+                items=(
+                    SpeakerTranscriptItem(
+                        id="item-1",
+                        text="Corrected dialogue.",
+                        start_seconds=0.0,
+                        end_seconds=1.2,
+                        speaker_id="speaker-1",
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    with unit_of_work(session_factory) as session:
+        SqlAlchemySampleProcessingJobRepository(session).save_job(job)
+
+    with unit_of_work(session_factory) as session:
+        restored = SqlAlchemySampleProcessingJobRepository(session).get_job(job.id)
+
+    assert restored == job
+    assert restored is not None
+    assert isinstance(restored.result, SpeakerSeparationResult)
+    assert restored.result.transcript.items[0].text == "Corrected dialogue."
 
 
 def test_job_routes_read_persisted_snapshots_after_app_recreation(tmp_path: Path) -> None:

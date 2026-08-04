@@ -769,6 +769,18 @@ Speaker Separation jobs return a structured result instead of a single audio fil
 
 The response is `200` with `{ "job": { ... } }` and the updated Speaker Separation result. Unknown speaker ids, unknown transcript item ids, duplicate item assignments, and blank assigned names are rejected.
 
+`PATCH /api/sample-processing/jobs/{jobId}/transcript-items` corrects the text of one or more existing transcript items without changing timestamps, speaker assignments, or generated speaker audio:
+
+```json
+{
+  "items": [
+    { "itemId": "item-2", "text": "Corrected dialogue." }
+  ]
+}
+```
+
+The response is `200` with `{ "job": { ... } }` and the corrected text in the existing Speaker Separation result. The backend trims outer whitespace while preserving internal whitespace. Empty update lists, unknown item ids, duplicate item updates, and blank corrected text are rejected. Corrections are stored with the sample-processing job snapshot when database persistence is configured.
+
 `POST /api/sample-processing/jobs/{jobId}/speaker-voices` saves any subset of generated speakers to the local Voice Library:
 
 ```json

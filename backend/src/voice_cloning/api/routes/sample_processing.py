@@ -14,11 +14,13 @@ from ...services.sample_processing import (
     SpeakerNameAssignment,
     SpeakerTranscriptAssignment,
     SpeakerVoiceSelection,
+    TranscriptTextUpdate,
 )
 from ..schemas import (
     SavePreparedCandidateVoicesRequest,
     SaveProcessedVoiceRequest,
     SaveSpeakerVoicesRequest,
+    UpdateTranscriptItemsRequest,
     UpdateSpeakerAssignmentsRequest,
 )
 from ..serializers import (
@@ -141,6 +143,23 @@ def create_sample_processing_router(sample_processing: SampleProcessingService) 
                 transcript_assignments=tuple(
                     SpeakerTranscriptAssignment(item_id=item.itemId, speaker_id=item.speakerId)
                     for item in request.transcriptAssignments
+                ),
+            )
+        except SampleProcessingServiceError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+        return {"job": sample_processing_job_payload(job)}
+
+    @router.patch("/api/sample-processing/jobs/{job_id}/transcript-items")
+    def update_sample_processing_transcript_items(
+        job_id: str,
+        request: UpdateTranscriptItemsRequest,
+    ) -> dict[str, object]:
+        try:
+            job = sample_processing.update_transcript_items(
+                job_id,
+                items=tuple(
+                    TranscriptTextUpdate(item_id=item.itemId, text=item.text)
+                    for item in request.items
                 ),
             )
         except SampleProcessingServiceError as exc:

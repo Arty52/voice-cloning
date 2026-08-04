@@ -3281,6 +3281,86 @@ def test_sample_processing_speaker_separation_contract_updates_and_saves_speaker
     assert (settings.voice_assets_dir / "riley.wav").read_bytes() == b"speaker-2:"
 
 
+def test_sample_processing_transcript_items_update_without_regenerating_speaker_audio(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    processor = FakeSpeakerSeparationProcessor()
+    app = create_app(settings=settings, sample_processor=processor)
+    client = TestClient(app)
+    create = client.post(
+        "/api/sample-processing/jobs",
+        data={"operationId": "separateSpeakers"},
+        files={"sourceFile": ("conversation.wav", b"speaker-source", "audio/wav")},
+    )
+    job_id = create.json()["job"]["id"]
+    original_job = wait_for_processing_job(client, job_id)
+    original_stream = client.get(f"/api/sample-processing/jobs/{job_id}/speakers/speaker-1/result")
+
+    response = client.patch(
+        f"/api/sample-processing/jobs/{job_id}/transcript-items",
+        json={
+            "items": [
+                {"itemId": "item-1", "text": "  Corrected hello.  "},
+                {"itemId": "item-2", "text": "First line.\nSecond line."},
+            ]
+        },
+    )
+    updated_job = response.json()["job"]
+    fetched_job = client.get(f"/api/sample-processing/jobs/{job_id}").json()["job"]
+    updated_stream = client.get(f"/api/sample-processing/jobs/{job_id}/speakers/speaker-1/result")
+
+    assert create.status_code == 202
+    assert response.status_code == 200
+    assert updated_job["result"]["transcript"]["items"][0]["text"] == "Corrected hello."
+    assert updated_job["result"]["transcript"]["items"][1]["text"] == "First line.\nSecond line."
+    assert updated_job["result"]["transcript"]["items"][2] == original_job["result"]["transcript"]["items"][2]
+    assert fetched_job == updated_job
+    assert processor.assignment_requests == []
+    assert original_stream.content == updated_stream.content == b"speaker-one"
+
+
+def test_sample_processing_transcript_item_updates_validate_payload(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    app = create_app(settings=settings, sample_processor=FakeSpeakerSeparationProcessor())
+    client = TestClient(app)
+    create = client.post(
+        "/api/sample-processing/jobs",
+        data={"operationId": "separateSpeakers"},
+        files={"sourceFile": ("conversation.wav", b"speaker-source", "audio/wav")},
+    )
+    job_id = create.json()["job"]["id"]
+    wait_for_processing_job(client, job_id)
+
+    empty = client.patch(
+        f"/api/sample-processing/jobs/{job_id}/transcript-items",
+        json={"items": []},
+    )
+    missing = client.patch(
+        f"/api/sample-processing/jobs/{job_id}/transcript-items",
+        json={"items": [{"itemId": "missing", "text": "Corrected."}]},
+    )
+    duplicate = client.patch(
+        f"/api/sample-processing/jobs/{job_id}/transcript-items",
+        json={
+            "items": [
+                {"itemId": "item-1", "text": "First correction."},
+                {"itemId": "item-1", "text": "Second correction."},
+            ]
+        },
+    )
+    blank = client.patch(
+        f"/api/sample-processing/jobs/{job_id}/transcript-items",
+        json={"items": [{"itemId": "item-1", "text": "  \n  "}]},
+    )
+
+    assert empty.status_code == 422
+    assert missing.status_code == 404
+    assert missing.json()["detail"] == "Transcript item was not found."
+    assert duplicate.status_code == 422
+    assert duplicate.json()["detail"] == "Transcript item can only be updated once."
+    assert blank.status_code == 422
+    assert blank.json()["detail"] == "Transcript text is required."
+
+
 def test_sample_processing_stack_runs_speaker_split_then_trims_each_speaker(tmp_path: Path) -> None:
     settings = make_settings(tmp_path)
     processor = FakeStackSampleProcessor()
