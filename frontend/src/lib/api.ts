@@ -86,6 +86,15 @@ export type UpdateSpeakerAssignmentsRequest = {
   transcriptAssignments?: SpeakerTranscriptAssignmentRequest[]
 }
 
+export type TranscriptTextUpdateRequest = {
+  itemId: string
+  text: string
+}
+
+export type UpdateTranscriptItemsRequest = {
+  items: TranscriptTextUpdateRequest[]
+}
+
 export type SaveSpeakerVoiceRequest = {
   speakerId: string
   name: string
@@ -369,6 +378,17 @@ export function sampleProcessingCandidateResultUrl(jobId: string, candidateId: s
 export async function updateSampleProcessingSpeakerAssignments(jobId: string, request: UpdateSpeakerAssignmentsRequest) {
   return fetchJson<SampleProcessingJobResponse>(
     `/api/sample-processing/jobs/${encodeURIComponent(jobId)}/speaker-assignments`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    }
+  )
+}
+
+export async function updateSampleProcessingTranscriptItems(jobId: string, request: UpdateTranscriptItemsRequest) {
+  return fetchJson<SampleProcessingJobResponse>(
+    `/api/sample-processing/jobs/${encodeURIComponent(jobId)}/transcript-items`,
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },

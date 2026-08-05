@@ -23,6 +23,7 @@ import {
   speechJobResultUrl,
   speechJobSegmentResultUrl,
   updateSampleProcessingSpeakerAssignments,
+  updateSampleProcessingTranscriptItems,
   updateVoice,
   VOICE_PROVIDER_KEY_HEADER,
 } from "./api"
@@ -301,6 +302,31 @@ describe("voice API helpers", () => {
         body: JSON.stringify({
           speakerNames: [{ speakerId: "speaker-1", name: "Morgan" }],
           transcriptAssignments: [{ itemId: "item-2", speakerId: "speaker-1" }],
+        }),
+        headers: { "Content-Type": "application/json" },
+        method: "PATCH",
+      })
+    )
+  })
+
+  it("patches corrected transcript text", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => okJson({ job: { id: "job-1", status: "success" } })))
+
+    await updateSampleProcessingTranscriptItems("job 1", {
+      items: [
+        { itemId: "item-1", text: "Corrected dialogue." },
+        { itemId: "item-2", text: "Another correction." },
+      ],
+    })
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/sample-processing/jobs/job%201/transcript-items",
+      expect.objectContaining({
+        body: JSON.stringify({
+          items: [
+            { itemId: "item-1", text: "Corrected dialogue." },
+            { itemId: "item-2", text: "Another correction." },
+          ],
         }),
         headers: { "Content-Type": "application/json" },
         method: "PATCH",
