@@ -179,9 +179,12 @@ def create_sample_processing_router(sample_processing: SampleProcessingService) 
         return {"voice": voice_asset_payload(voice)}
 
     @router.post("/api/sample-processing/jobs/{job_id}/speaker-voices", status_code=201)
-    def save_sample_processing_speaker_results(job_id: str, request: SaveSpeakerVoicesRequest) -> dict[str, object]:
+    async def save_sample_processing_speaker_results(
+        job_id: str,
+        request: SaveSpeakerVoicesRequest,
+    ) -> dict[str, object]:
         try:
-            voices = sample_processing.save_speaker_results_as_voices(
+            voices = await sample_processing.save_speaker_results_as_voices(
                 job_id,
                 voices=tuple(
                     SpeakerVoiceSelection(

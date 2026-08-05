@@ -3281,6 +3281,100 @@ def test_sample_processing_speaker_separation_contract_updates_and_saves_speaker
     assert (settings.voice_assets_dir / "riley.wav").read_bytes() == b"speaker-2:"
 
 
+@pytest.mark.parametrize(
+    ("max_upload_bytes", "expected_duration"),
+    (
+        (10 * 1024 * 1024, 120.0),
+        (36_096, 1.0),
+    ),
+)
+def test_sample_processing_speaker_voice_save_prepares_ranked_provider_safe_excerpt(
+    tmp_path: Path,
+    max_upload_bytes: int,
+    expected_duration: float,
+) -> None:
+    ffmpeg_args_log = tmp_path / "ffmpeg-args.json"
+    settings = make_settings(
+        tmp_path,
+        max_upload_bytes=max_upload_bytes,
+        sample_processing_ffmpeg_command=str(
+            ffmpeg_fake_command(
+                tmp_path / "ffmpeg-fake",
+                output=b"ranked-speaker-excerpt",
+                args_log_path=ffmpeg_args_log,
+            )
+        ),
+        sample_processing_ffprobe_command=str(
+            ffprobe_fake_command(tmp_path / "ffprobe-fake", duration_seconds=300)
+        ),
+    )
+    app = create_app(settings=settings, sample_processor=FakeSpeakerSeparationProcessor())
+    with TestClient(app) as client:
+        create = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "separateSpeakers"},
+            files={"sourceFile": ("conversation.wav", b"speaker-source", "audio/wav")},
+        )
+        job_id = create.json()["job"]["id"]
+        wait_for_processing_job(client, job_id)
+        save = client.post(
+            f"/api/sample-processing/jobs/{job_id}/speaker-voices",
+            json={"voices": [{"speakerId": "speaker-1", "name": "Morgan"}]},
+        )
+
+    assert save.status_code == 201
+    voice = save.json()["voices"][0]
+    assert voice["sha256"] == sample_hash(b"ranked-speaker-excerpt")
+    assert [step["operationId"] for step in voice["processingSteps"]] == [
+        "separateSpeakers",
+        "prepareVoice",
+    ]
+    prepare_step = voice["processingSteps"][1]
+    assert prepare_step["sourceSha256"] == sample_hash(b"speaker-one")
+    assert prepare_step["resultSha256"] == sample_hash(b"ranked-speaker-excerpt")
+    assert prepare_step["engine"] == "ffmpeg"
+    assert prepare_step["speakerId"] == "speaker-1"
+    assert prepare_step["speakerLabel"] == "Speaker 1"
+    assert (settings.voice_assets_dir / "morgan.wav").read_bytes() == b"ranked-speaker-excerpt"
+    assert (
+        settings.sample_processing_dir / job_id / "speaker-voice-samples" / "speaker-1.wav"
+    ).read_bytes() == b"ranked-speaker-excerpt"
+    ffmpeg_calls = json.loads(ffmpeg_args_log.read_text(encoding="utf-8"))
+    excerpt_call = next(call for call in ffmpeg_calls if "-t" in call)
+    assert float(excerpt_call[excerpt_call.index("-t") + 1]) == expected_duration
+    assert excerpt_call[excerpt_call.index("-ac") + 1] == "1"
+    assert excerpt_call[excerpt_call.index("-ar") + 1] == "16000"
+
+
+def test_sample_processing_speaker_voice_save_uses_full_stream_within_limits(tmp_path: Path) -> None:
+    settings = make_settings(
+        tmp_path,
+        sample_processing_ffprobe_command=str(
+            ffprobe_fake_command(tmp_path / "ffprobe-fake", duration_seconds=60)
+        ),
+    )
+    app = create_app(settings=settings, sample_processor=FakeSpeakerSeparationProcessor())
+    with TestClient(app) as client:
+        create = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "separateSpeakers"},
+            files={"sourceFile": ("conversation.wav", b"speaker-source", "audio/wav")},
+        )
+        job_id = create.json()["job"]["id"]
+        wait_for_processing_job(client, job_id)
+        save = client.post(
+            f"/api/sample-processing/jobs/{job_id}/speaker-voices",
+            json={"voices": [{"speakerId": "speaker-1", "name": "Morgan"}]},
+        )
+
+    assert save.status_code == 201
+    voice = save.json()["voices"][0]
+    assert voice["sha256"] == sample_hash(b"speaker-one")
+    assert [step["operationId"] for step in voice["processingSteps"]] == ["separateSpeakers"]
+    assert (settings.voice_assets_dir / "morgan.wav").read_bytes() == b"speaker-one"
+    assert not (settings.sample_processing_dir / job_id / "speaker-voice-samples").exists()
+
+
 def test_sample_processing_transcript_items_update_without_regenerating_speaker_audio(tmp_path: Path) -> None:
     settings = make_settings(tmp_path)
     processor = FakeSpeakerSeparationProcessor()

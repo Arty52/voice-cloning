@@ -58,6 +58,8 @@ NO_SPEAKERS_DETECTED_DETAIL = "Speaker diarization did not detect any speakers."
 PREPARED_SAMPLE_RATE_HZ = 16000
 PREPARE_MAX_WINDOW_SECONDS = 120.0
 PREPARE_MAX_CANDIDATES_PER_SPEAKER = 3
+PREPARED_WAV_BYTES_PER_SECOND = PREPARED_SAMPLE_RATE_HZ * 2
+PREPARED_WAV_HEADER_RESERVE_BYTES = 4096
 BYTES_PER_MEBIBYTE = 1024 * 1024
 PREPARE_FINAL_TRIM_FILTER = (
     "silenceremove="
@@ -735,7 +737,7 @@ class SampleProcessingService:
         self._update_job(job_id, result=updated_result)
         return self.get_job(job_id)
 
-    def save_speaker_results_as_voices(
+    async def save_speaker_results_as_voices(
         self,
         job_id: str,
         *,
@@ -748,10 +750,7 @@ class SampleProcessingService:
         for selection, speaker in normalized:
             if speaker.result is None:
                 raise SampleProcessingServiceError("Speaker result is not ready.", 409)
-            result_path = self._result_path(speaker.result)
-            self._validate_provider_facing_sample_size(result_path)
-            sample = load_sample_file(result_path, speaker.result.content_type)
-            steps = self._voice_processing_steps_for_speaker(job, speaker, final_result_sha256=sample.sha256)
+            sample, steps = await self._prepare_provider_facing_speaker_sample(job, speaker)
             prepared.append(
                 (
                     selection,
@@ -779,6 +778,78 @@ class SampleProcessingService:
                     pass
             raise
         return tuple(saved)
+
+    async def _prepare_provider_facing_speaker_sample(
+        self,
+        job: SampleProcessingJob,
+        speaker: SpeakerSeparationSpeaker,
+    ) -> tuple[VoiceSample, tuple[VoiceProcessingStep, ...]]:
+        if speaker.result is None:
+            raise SampleProcessingServiceError("Speaker result is not ready.", 409)
+        result_path = self._result_path(speaker.result)
+        probe, _ = await _probe_audio(result_path, self.settings)
+        duration_within_limit = (
+            probe.duration_seconds is None or probe.duration_seconds <= PREPARE_MAX_WINDOW_SECONDS
+        )
+        if result_path.stat().st_size <= self.settings.max_upload_bytes and duration_within_limit:
+            sample = load_sample_file(result_path, speaker.result.content_type)
+            steps = self._voice_processing_steps_for_speaker(
+                job,
+                speaker,
+                final_result_sha256=sample.sha256,
+            )
+            return sample, steps
+
+        max_window_seconds = _provider_safe_excerpt_seconds(self.settings.max_upload_bytes)
+        if max_window_seconds < 0.01:
+            self._validate_provider_facing_sample_size(result_path)
+            raise SampleProcessingServiceError(
+                "Provider voice sample limit is too small to prepare an excerpt.",
+                413,
+            )
+
+        regions, _ = await _detect_nonsilent_regions(
+            result_path,
+            probe.duration_seconds,
+            self.settings,
+        )
+        windows = _rank_candidate_windows(
+            regions,
+            probe.duration_seconds,
+            max_window_seconds=max_window_seconds,
+        )
+        if not windows:
+            raise SampleProcessingServiceError("No provider-safe speaker excerpt was available.", 422)
+
+        excerpt_path = self._job_dir(job.id) / "speaker-voice-samples" / f"{speaker.id}.wav"
+        await _write_prepared_candidate_audio(
+            result_path,
+            excerpt_path,
+            windows[0],
+            self.settings,
+            trim_candidates=False,
+            trim_preset_id=None,
+        )
+        self._validate_provider_facing_sample_size(excerpt_path)
+        sample = load_sample_file(excerpt_path, RESULT_CONTENT_TYPE)
+        steps = self._voice_processing_steps_for_speaker(
+            job,
+            speaker,
+            final_result_sha256=speaker.result.sha256,
+        ) + (
+            VoiceProcessingStep(
+                id=f"{job.id}-{speaker.id}-prepare-voice",
+                label="Prepare Voice",
+                operation_id="prepareVoice",
+                created_at=_utc_now(),
+                source_sha256=speaker.result.sha256,
+                result_sha256=sample.sha256,
+                engine="ffmpeg",
+                speaker_id=speaker.id,
+                speaker_label=speaker.label,
+            ),
+        )
+        return sample, steps
 
     def save_candidate_results_as_voices(
         self,
@@ -2490,6 +2561,8 @@ def _fallback_speech_regions(duration_seconds: float | None) -> tuple[SpeechRegi
 def _rank_candidate_windows(
     regions: tuple[SpeechRegion, ...],
     duration_seconds: float | None,
+    *,
+    max_window_seconds: float = PREPARE_MAX_WINDOW_SECONDS,
 ) -> tuple[CandidateWindow, ...]:
     if not regions:
         regions = _fallback_speech_regions(duration_seconds)
@@ -2497,20 +2570,34 @@ def _rank_candidate_windows(
     sorted_regions = tuple(sorted(regions, key=lambda region: (region.start_seconds, region.end_seconds)))
     source_end = duration_seconds or max(region.end_seconds for region in sorted_regions)
     for index, region in enumerate(sorted_regions):
-        for window_start in _candidate_window_starts(region, source_end):
-            window_end = min(source_end, window_start + PREPARE_MAX_WINDOW_SECONDS)
+        for window_start in _candidate_window_starts(
+            region,
+            source_end,
+            max_window_seconds=max_window_seconds,
+        ):
+            window_end = min(source_end, window_start + max_window_seconds)
             if duration_seconds is not None:
                 window_end = min(window_end, duration_seconds)
             speech_seconds = _speech_overlap_seconds(sorted_regions, window_start, window_end)
-            candidate = _candidate_window(window_start, window_end, speech_seconds)
+            candidate = _candidate_window(
+                window_start,
+                window_end,
+                speech_seconds,
+                max_window_seconds=max_window_seconds,
+            )
             candidates[(round(candidate.start_seconds, 3), round(candidate.end_seconds, 3))] = candidate
 
         merged_start = max(0.0, sorted_regions[0].start_seconds if index == 0 else region.start_seconds)
-        merged_end = min(source_end, merged_start + PREPARE_MAX_WINDOW_SECONDS)
+        merged_end = min(source_end, merged_start + max_window_seconds)
         if duration_seconds is not None:
             merged_end = min(merged_end, duration_seconds)
         merged_speech = _speech_overlap_seconds(sorted_regions, merged_start, merged_end)
-        merged = _candidate_window(merged_start, merged_end, merged_speech)
+        merged = _candidate_window(
+            merged_start,
+            merged_end,
+            merged_speech,
+            max_window_seconds=max_window_seconds,
+        )
         candidates[(round(merged.start_seconds, 3), round(merged.end_seconds, 3))] = merged
 
     return tuple(
@@ -2525,24 +2612,35 @@ def _rank_candidate_windows(
     )
 
 
-def _candidate_window_starts(region: SpeechRegion, source_end: float) -> tuple[float, ...]:
+def _candidate_window_starts(
+    region: SpeechRegion,
+    source_end: float,
+    *,
+    max_window_seconds: float = PREPARE_MAX_WINDOW_SECONDS,
+) -> tuple[float, ...]:
     start = max(0.0, region.start_seconds)
     region_end = min(source_end, max(region.end_seconds, start + 1.0))
-    latest_full_start = max(start, region_end - PREPARE_MAX_WINDOW_SECONDS)
+    latest_full_start = max(start, region_end - max_window_seconds)
     starts: list[float] = []
     cursor = start
     while cursor <= latest_full_start:
         starts.append(cursor)
-        cursor += PREPARE_MAX_WINDOW_SECONDS
+        cursor += max_window_seconds
     if not starts or abs(starts[-1] - latest_full_start) > 0.001:
         starts.append(latest_full_start)
     return tuple(starts)
 
 
-def _candidate_window(start_seconds: float, end_seconds: float, speech_seconds: float) -> CandidateWindow:
+def _candidate_window(
+    start_seconds: float,
+    end_seconds: float,
+    speech_seconds: float,
+    *,
+    max_window_seconds: float = PREPARE_MAX_WINDOW_SECONDS,
+) -> CandidateWindow:
     duration_seconds = max(0.01, end_seconds - start_seconds)
     speech_density = max(0.0, min(1.0, speech_seconds / duration_seconds))
-    duration_fit = max(0.0, min(1.0, duration_seconds / PREPARE_MAX_WINDOW_SECONDS))
+    duration_fit = max(0.0, min(1.0, duration_seconds / max_window_seconds))
     continuity = 1.0 if speech_density >= 0.8 else max(0.2, speech_density)
     level_quality = 1.0
     clipping_quality = 1.0
@@ -2563,6 +2661,15 @@ def _candidate_window(start_seconds: float, end_seconds: float, speech_seconds: 
     if speech_density < 0.4:
         warnings.append("Candidate contains a high amount of nonspeech audio.")
     return CandidateWindow(start_seconds, end_seconds, speech_seconds, score, tuple(warnings))
+
+
+def _provider_safe_excerpt_seconds(max_upload_bytes: int) -> float:
+    available_audio_bytes = max_upload_bytes - PREPARED_WAV_HEADER_RESERVE_BYTES
+    if available_audio_bytes <= 0:
+        return 0.0
+    byte_safe_seconds = available_audio_bytes / PREPARED_WAV_BYTES_PER_SECOND
+    bounded_seconds = min(PREPARE_MAX_WINDOW_SECONDS, byte_safe_seconds)
+    return math.floor(bounded_seconds * 1000.0) / 1000.0
 
 
 def _speech_overlap_seconds(regions: tuple[SpeechRegion, ...], start_seconds: float, end_seconds: float) -> float:

@@ -792,7 +792,9 @@ The response is `200` with `{ "job": { ... } }` and the corrected text in the ex
 }
 ```
 
-The response is `201` with `{ "voices": [ ... ] }`. Each saved voice receives a normal `voicePresetId` and `processingSteps` entries for prior stack steps plus speaker-specific split/trim metadata with optional `speakerId` and `speakerLabel` fields. The available `voicePresetId` values are the top-level `/api/providers.voicePresets` values used by normal uploads. Provider authors should map provider-specific tuning controls and presets to those shared semantic presets in [How To Add A Provider](ADDING_PROVIDER.md).
+The response is `201` with `{ "voices": [ ... ] }`. The endpoint prepares every selected speaker asynchronously before writing any Voice Library entries, so a preparation failure leaves the entire requested batch unsaved. A speaker stream is saved in full when FFprobe reports at most 120 seconds (or duration metadata is unavailable) and the file is within `MAX_UPLOAD_BYTES`. Longer or larger streams reuse Prepare Voice speech-density ranking, select rank 1, and write a mono 16 kHz PCM WAV excerpt capped at 120 seconds and at a conservative duration derived from `MAX_UPLOAD_BYTES`. The added `prepareVoice` processing step records the full speaker stream hash as its source and the excerpt hash as its result.
+
+Each saved voice receives a normal `voicePresetId` and `processingSteps` entries for prior stack steps plus speaker-specific split/trim metadata with optional `speakerId` and `speakerLabel` fields. The available `voicePresetId` values are the top-level `/api/providers.voicePresets` values used by normal uploads. Provider authors should map provider-specific tuning controls and presets to those shared semantic presets in [How To Add A Provider](ADDING_PROVIDER.md).
 
 ## Speech
 
