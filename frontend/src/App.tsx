@@ -17,6 +17,7 @@ import {
 import { SampleProcessingPanel } from "@/components/panels/sample-processing-panel"
 import { SpeechInputPanel } from "@/components/panels/speech-input-panel"
 import { StudioOverviewPanel } from "@/components/panels/studio-overview-panel"
+import { TranscriptPanel } from "@/components/panels/transcript-panel"
 import { VoiceLibraryPanel } from "@/components/panels/voice-library-panel"
 import { useScrollIntoViewOnSignal } from "@/hooks/use-scroll-into-view-on-signal"
 import { useVoiceStudioController } from "@/hooks/use-voice-studio-controller"
@@ -84,6 +85,7 @@ function App() {
     textRef,
     textSelection,
     tuning,
+    transcript,
     userTuningPresets,
     voiceInput,
     voiceAssignmentError,
@@ -190,6 +192,10 @@ function App() {
               voicePresets={providerKeys.voicePresets}
             />
           ) : null}
+        </WorkflowSectionPanel>
+
+        <WorkflowSectionPanel activeSectionId={activeSectionId} id="transcript">
+          <TranscriptPanel transcript={transcript} voicePresets={providerKeys.voicePresets} />
         </WorkflowSectionPanel>
 
         <WorkflowSectionPanel activeSectionId={activeSectionId} id="voices">

@@ -796,6 +796,12 @@ function prepareAudioPanel() {
   return within(panel as HTMLElement)
 }
 
+function transcriptPanel() {
+  const panel = document.querySelector('[data-section-id="transcript"]')
+  expect(panel).not.toBeNull()
+  return within(panel as HTMLElement)
+}
+
 function expectHiddenAudioInputDoesNotWidenPage(inputId: string) {
   const input = document.querySelector(`#${inputId}`)
   expect(input).not.toBeNull()
@@ -3158,6 +3164,131 @@ describe("App", () => {
       voices: [{ speakerId: "speaker-1", name: "Mina", voicePresetId: "standardNarration" }],
     })
     expect(await voiceLibraryPanel().findByText("Mina")).toBeInTheDocument()
+  })
+
+  it("runs the complete Transcript workspace at #transcript", async () => {
+    window.history.replaceState(null, "", "/#transcript")
+    const baseFetch = mockFetch()
+    const correctedSpeakerJob = {
+      job: {
+        ...successfulSpeakerSeparationJob.job,
+        result: {
+          ...successfulSpeakerSeparationJob.job.result,
+          transcript: {
+            items: [
+              { ...successfulSpeakerSeparationJob.job.result.transcript.items[0], text: "Corrected hello." },
+              successfulSpeakerSeparationJob.job.result.transcript.items[1],
+            ],
+          },
+        },
+      },
+    }
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input).split("?")[0]
+        if (path === "/api/sample-processing/options" && !init) {
+          return okJson({
+            engine: "pyannote-community-1+faster-whisper",
+            operations: sampleProcessingOptions.operations.map((operation) =>
+              operation.id === "separateSpeakers" ? { ...operation, enabled: true } : operation
+            ),
+          })
+        }
+        if (path === "/api/sample-processing/jobs" && init?.method === "POST") {
+          return Promise.resolve(
+            new Response(JSON.stringify(successfulSpeakerSeparationJob), {
+              status: 202,
+              headers: { "Content-Type": "application/json" },
+            })
+          )
+        }
+        if (path === "/api/sample-processing/jobs/job-1/transcript-items" && init?.method === "PATCH") {
+          return okJson(correctedSpeakerJob)
+        }
+        if (path === "/api/sample-processing/jobs/job-1/speaker-voices" && init?.method === "POST") {
+          const request = JSON.parse(String(init.body)) as {
+            voices: { speakerId: string; name: string; voicePresetId: string }[]
+          }
+          const firstVoice = savedSpeakerVoiceFrom(init)
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                voices: request.voices.map((voice, index) => ({
+                  ...firstVoice,
+                  id: `saved-speaker-${index + 1}`,
+                  name: voice.name,
+                })),
+              }),
+              { status: 201, headers: { "Content-Type": "application/json" } }
+            )
+          )
+        }
+        return baseFetch(input, init)
+      })
+    )
+    const clickDownload = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined)
+    const user = userEvent.setup()
+    renderApp()
+
+    expect(await screen.findByRole("heading", { level: 2, name: "Transcript" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Transcript" })).toHaveAttribute("aria-current", "page")
+    const sourceFile = new File(["complete meeting audio"], "planning-session.m4a", { type: "audio/mp4" })
+    await user.upload(document.querySelector("#transcript-source-audio") as HTMLInputElement, sourceFile)
+    await user.click(transcriptPanel().getByRole("button", { name: "Create Transcript" }))
+
+    const jobCall = vi.mocked(fetch).mock.calls.find(
+      ([url, init]) => String(url) === "/api/sample-processing/jobs" && init?.method === "POST"
+    )
+    const jobForm = jobCall?.[1]?.body as FormData
+    expect(jobForm.get("operationId")).toBe("separateSpeakers")
+    expect(jobForm.get("sourceFile")).toEqual(sourceFile)
+    expect(jobForm.has("sourceRanges")).toBe(false)
+    expect(jobForm.has("sourceMediaId")).toBe(false)
+
+    expect(await transcriptPanel().findByText("Speaker Streams")).toBeInTheDocument()
+    expect(transcriptPanel().getByDisplayValue("Morgan")).toBeInTheDocument()
+    expect(transcriptPanel().getByDisplayValue("Speaker 2")).toBeInTheDocument()
+    const exportButton = transcriptPanel().getByRole("button", { name: "Export Transcript" })
+    expect(exportButton).toBeEnabled()
+
+    await user.click(transcriptPanel().getByRole("button", { name: "Hello." }))
+    const dialogueText = screen.getByRole("textbox", { name: "Dialogue Text" })
+    await user.clear(dialogueText)
+    await user.type(dialogueText, "Corrected hello.")
+    expect(exportButton).toBeDisabled()
+    await user.click(screen.getByRole("button", { name: "Save Correction" }))
+    await waitFor(() => expect(exportButton).toBeEnabled())
+    const transcriptPatchCall = vi.mocked(fetch).mock.calls.find(
+      ([url, init]) =>
+        String(url) === "/api/sample-processing/jobs/job-1/transcript-items" && init?.method === "PATCH"
+    )
+    expect(JSON.parse(String(transcriptPatchCall?.[1]?.body))).toEqual({
+      items: [{ itemId: "item-1", text: "Corrected hello." }],
+    })
+
+    await user.keyboard("{Escape}")
+    await user.click(transcriptPanel().getByRole("radio", { name: "TXT" }))
+    await user.click(transcriptPanel().getByRole("checkbox", { name: "Include Start Times" }))
+    await user.click(exportButton)
+    await user.click(transcriptPanel().getByRole("radio", { name: "Markdown" }))
+    await user.click(transcriptPanel().getByRole("checkbox", { name: "Include Start Times" }))
+    await user.click(exportButton)
+    expect(clickDownload).toHaveBeenCalledTimes(2)
+
+    await user.click(transcriptPanel().getByRole("button", { name: "Add Selected Voices" }))
+    const saveDialog = await screen.findByRole("dialog", { name: "Add Selected Voices To Voice Library" })
+    await user.click(within(saveDialog).getByRole("button", { name: "Add To Voice Library" }))
+    const saveSpeakersCall = vi.mocked(fetch).mock.calls.find(
+      ([url, init]) =>
+        String(url) === "/api/sample-processing/jobs/job-1/speaker-voices" && init?.method === "POST"
+    )
+    expect(JSON.parse(String(saveSpeakersCall?.[1]?.body))).toEqual({
+      voices: [
+        { speakerId: "speaker-1", name: "Morgan", voicePresetId: "standardNarration" },
+        { speakerId: "speaker-2", name: "Speaker 2", voicePresetId: "standardNarration" },
+      ],
+    })
   })
 
   it("shows live and final sample processing elapsed time", async () => {
