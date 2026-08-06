@@ -366,7 +366,15 @@ def test_sample_processing_job_repository_roundtrips_corrected_transcript_text()
     assert restored.result.transcript.items[0].text == "Corrected dialogue."
 
 
-def test_sample_processing_service_rehydrates_persisted_transcript_source_path(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "persist_step_source_sha256",
+    [True, False],
+    ids=["step-hash", "job-hash-fallback"],
+)
+def test_sample_processing_service_rehydrates_persisted_transcript_source_path(
+    tmp_path: Path,
+    persist_step_source_sha256: bool,
+) -> None:
     settings = make_settings(tmp_path)
     engine = create_database_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
@@ -392,7 +400,7 @@ def test_sample_processing_service_rehydrates_persisted_transcript_source_path(t
                 operation_label="Separate Speakers",
                 status="success",
                 engine="pyannote-community-1+faster-whisper",
-                source_sha256=source_sha256,
+                source_sha256=source_sha256 if persist_step_source_sha256 else None,
                 result_sha256="speaker-result-hash",
             ),
         ),

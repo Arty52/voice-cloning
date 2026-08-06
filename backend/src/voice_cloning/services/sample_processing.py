@@ -640,7 +640,11 @@ class SampleProcessingService:
 
     def _rehydrate_uploaded_speaker_source_path(self, job: SampleProcessingJob) -> Path | None:
         separation_step = _successful_job_step(job, "separateSpeakers")
-        expected_sha256 = separation_step.source_sha256 if separation_step is not None else job.source_sha256
+        expected_sha256 = (
+            separation_step.source_sha256
+            if separation_step is not None and separation_step.source_sha256
+            else job.source_sha256
+        )
         source_suffix = Path(job.source_filename).suffix.lower() or ".wav"
         candidate = (self._job_dir(job.id) / f"source{source_suffix}").resolve()
         _require_relative_path(candidate, self.processing_dir)
