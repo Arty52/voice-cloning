@@ -41,6 +41,7 @@ export function useTranscriptWorkflow({
     initialStoredJobId ? "restoring" : "idle"
   )
   const [error, setError] = useState<string | null>(null)
+  const [validationError, setValidationError] = useState<string | null>(null)
   const [processingElapsedMs, setProcessingElapsedMs] = useState<number | null>(null)
   const mountedRef = useRef(true)
   const runIdRef = useRef(0)
@@ -116,10 +117,11 @@ export function useTranscriptWorkflow({
   function handleSourceFileSelect(nextFile: File | null) {
     if (nextFile && !isSupportedTranscriptAudio(nextFile)) {
       setSourceFile(null)
-      setError("Choose an MP3, WAV, M4A, M4B, AAC, OGG, or FLAC audio file.")
+      setValidationError("Choose an MP3, WAV, M4A, M4B, AAC, OGG, or FLAC audio file.")
       return
     }
     setSourceFile(nextFile)
+    setValidationError(null)
     setError(null)
   }
 
@@ -288,6 +290,7 @@ export function useTranscriptWorkflow({
     speakerTranscript,
     status,
     unavailableReason,
+    validationError,
   }
 }
 

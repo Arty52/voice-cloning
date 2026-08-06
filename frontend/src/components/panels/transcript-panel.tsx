@@ -90,6 +90,13 @@ export function TranscriptPanel({ transcript, voicePresets }: TranscriptPanelPro
               ) : null}
             </FieldGroup>
 
+            {transcript.validationError ? (
+              <Alert role="alert">
+                <AlertTitle>Unsupported Audio File</AlertTitle>
+                <AlertDescription>{transcript.validationError}</AlertDescription>
+              </Alert>
+            ) : null}
+
             {transcript.job ? (
               <Card className="bg-background/60 shadow-none">
                 <CardHeader className="flex-row items-start justify-between gap-3">
@@ -114,8 +121,10 @@ export function TranscriptPanel({ transcript, voicePresets }: TranscriptPanelPro
             ) : null}
 
             {transcript.error ? (
-              <Alert className="border-destructive/40 bg-destructive/10 text-destructive" role="alert">
-                <AlertTitle>Transcript Processing Failed</AlertTitle>
+              <Alert role="alert" variant={transcript.status === "error" ? "destructive" : "default"}>
+                <AlertTitle>
+                  {transcript.status === "error" ? "Transcript Processing Failed" : "Transcript Processing Notice"}
+                </AlertTitle>
                 <AlertDescription>{transcript.error}</AlertDescription>
               </Alert>
             ) : null}

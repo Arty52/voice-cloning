@@ -203,7 +203,12 @@ describe("useTranscriptWorkflow", () => {
     act(() => result.current.handleSourceFileSelect(new File(["video"], "meeting.mp4", { type: "video/mp4" })))
 
     expect(result.current.sourceFile).toBeNull()
-    expect(result.current.error).toContain("Choose an MP3")
+    expect(result.current.error).toBeNull()
+    expect(result.current.validationError).toContain("Choose an MP3")
     expect(result.current.canStart).toBe(false)
+
+    act(() => result.current.handleSourceFileSelect(new File(["audio"], "meeting.m4a", { type: "audio/mp4" })))
+    expect(result.current.validationError).toBeNull()
+    expect(result.current.canStart).toBe(true)
   })
 })

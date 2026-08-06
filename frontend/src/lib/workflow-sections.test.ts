@@ -135,8 +135,28 @@ describe("workflow sections", () => {
     expect(
       buildWorkflowSectionStatuses({
         ...baseStatusInput,
+        processingOptionsStatus: "loading",
+        transcriptStatus: "success",
+      }).transcript
+    ).toMatchObject({ label: "Ready", tone: "success" })
+    expect(
+      buildWorkflowSectionStatuses({
+        ...baseStatusInput,
+        processingOptionsStatus: "loading",
         transcriptUnavailableReason: "Speaker detection is unavailable.",
       }).transcript
     ).toMatchObject({ label: "Unavailable", tone: "attention" })
+  })
+
+  it("distinguishes transcript startup from processing errors", () => {
+    expect(
+      buildWorkflowSectionStatuses({ ...baseStatusInput, transcriptStatus: "starting" }).transcript
+    ).toMatchObject({ label: "Starting", tone: "busy" })
+    expect(
+      buildWorkflowSectionStatuses({
+        ...baseStatusInput,
+        transcriptError: "Choose a supported audio file.",
+      }).transcript
+    ).toMatchObject({ label: "Error", tone: "error" })
   })
 })

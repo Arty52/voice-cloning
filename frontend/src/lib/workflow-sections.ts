@@ -152,24 +152,26 @@ export function buildWorkflowSectionStatuses(input: WorkflowSectionStatusInput):
 }
 
 function transcriptStatus(input: WorkflowSectionStatusInput): WorkflowSectionStatus {
-  if (
-    input.transcriptStatus === "restoring" ||
-    input.transcriptStatus === "starting" ||
-    input.transcriptStatus === "processing"
-  ) {
-    return busyStatus(input.transcriptStatus === "restoring" ? "Restoring" : "Processing")
+  if (input.transcriptStatus === "restoring") {
+    return busyStatus("Restoring")
+  }
+  if (input.transcriptStatus === "starting") {
+    return busyStatus("Starting")
+  }
+  if (input.transcriptStatus === "processing") {
+    return busyStatus("Processing")
   }
   if (input.transcriptStatus === "error" || input.transcriptError !== null) {
     return errorStatus("Error")
   }
-  if (input.processingOptionsStatus === "idle" || input.processingOptionsStatus === "loading") {
-    return busyStatus("Loading")
+  if (input.transcriptStatus === "success") {
+    return successStatus("Ready")
   }
   if (input.transcriptUnavailableReason !== null) {
     return attentionStatus("Unavailable")
   }
-  if (input.transcriptStatus === "success") {
-    return successStatus("Ready")
+  if (input.processingOptionsStatus === "idle" || input.processingOptionsStatus === "loading") {
+    return busyStatus("Loading")
   }
   return neutralStatus("Optional")
 }
