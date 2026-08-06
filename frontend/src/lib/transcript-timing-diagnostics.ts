@@ -4,6 +4,8 @@ export const TRANSCRIPT_TIMING_DIAGNOSTICS_STORAGE_KEY =
   "voice-cloning.transcriptTimingDiagnostics.v1"
 export const ACTIVE_TRANSCRIPT_TIMING_DIAGNOSTIC_STORAGE_KEY =
   "voice-cloning.activeTranscriptTimingDiagnosticId.v1"
+export const ACTIVE_TRANSCRIPT_TIMING_DIAGNOSTIC_IDS_STORAGE_KEY =
+  "voice-cloning.activeTranscriptTimingDiagnosticIds.v1"
 export const TRANSCRIPT_TIMING_DIAGNOSTIC_SCHEMA_VERSION = 1
 export const TRANSCRIPT_TIMING_DIAGNOSTIC_MAX_RECORDS = 50
 export const TRANSCRIPT_TIMING_DIAGNOSTIC_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
@@ -90,6 +92,10 @@ export function startTranscriptTimingDiagnostic({
     }
     const records = readTranscriptTimingDiagnostics(resolvedStorage, now.getTime())
     writeRecords([record, ...records], resolvedStorage, now.getTime())
+    writeActiveDiagnosticIds(
+      [...readActiveDiagnosticIds(resolvedStorage), record.id],
+      resolvedStorage
+    )
     resolvedStorage.setItem(ACTIVE_TRANSCRIPT_TIMING_DIAGNOSTIC_STORAGE_KEY, record.id)
   } catch {
     // Timing diagnostics are optional and must never block transcript processing.
@@ -137,19 +143,63 @@ export function readActiveTranscriptTimingDiagnostic(
     if (!resolvedStorage) {
       return null
     }
-    const activeId = resolvedStorage.getItem(ACTIVE_TRANSCRIPT_TIMING_DIAGNOSTIC_STORAGE_KEY)
+    const activeId = readActiveDiagnosticIds(resolvedStorage).at(-1)
+      ?? resolvedStorage.getItem(ACTIVE_TRANSCRIPT_TIMING_DIAGNOSTIC_STORAGE_KEY)
     if (!activeId) {
       return null
     }
     const record = readTranscriptTimingDiagnostics(resolvedStorage, nowMs).find(({ id }) => id === activeId) ?? null
     if (!record || TERMINAL_STATUSES.has(record.workflowStatus)) {
-      resolvedStorage.removeItem(ACTIVE_TRANSCRIPT_TIMING_DIAGNOSTIC_STORAGE_KEY)
+      removeActiveDiagnosticId(activeId, resolvedStorage)
       return null
     }
     return record
   } catch {
     return null
   }
+}
+
+export function readActiveTranscriptTimingDiagnostics(
+  storage?: Storage,
+  nowMs = Date.now()
+): TranscriptTimingDiagnosticRecord[] {
+  try {
+    const resolvedStorage = resolveStorage(storage)
+    if (!resolvedStorage) {
+      return []
+    }
+    const recordsById = new Map(
+      readTranscriptTimingDiagnostics(resolvedStorage, nowMs).map((record) => [record.id, record])
+    )
+    const activeIds = readActiveDiagnosticIds(resolvedStorage)
+    const activeRecords = activeIds
+      .map((id) => recordsById.get(id))
+      .filter((record): record is TranscriptTimingDiagnosticRecord =>
+        record !== undefined && !TERMINAL_STATUSES.has(record.workflowStatus)
+      )
+    writeActiveDiagnosticIds(activeRecords.map(({ id }) => id), resolvedStorage)
+    return activeRecords
+  } catch {
+    return []
+  }
+}
+
+export function markUnpairedTranscriptTimingDiagnosticsIncomplete(
+  pairedDiagnosticIds: ReadonlySet<string>,
+  storage?: Storage,
+  nowMs = Date.now()
+) {
+  return readActiveTranscriptTimingDiagnostics(storage, nowMs)
+    .filter(({ id }) => !pairedDiagnosticIds.has(id))
+    .map(({ id }) =>
+      updateTranscriptTimingDiagnostic(
+        id,
+        { workflowStatus: "incomplete", actualElapsedMs: null, completedAt: null },
+        storage,
+        nowMs
+      )
+    )
+    .filter(isPresent)
 }
 
 export function updateTranscriptTimingDiagnostic(
@@ -191,6 +241,9 @@ export function updateTranscriptTimingDiagnostic(
     ) {
       resolvedStorage.removeItem(ACTIVE_TRANSCRIPT_TIMING_DIAGNOSTIC_STORAGE_KEY)
     }
+    if (isTerminal) {
+      removeActiveDiagnosticId(diagnosticId, resolvedStorage)
+    }
     return updatedRecord
   } catch {
     return null
@@ -219,8 +272,44 @@ export function clearTranscriptTimingDiagnostics(storage?: Storage) {
     }
     resolvedStorage.removeItem(TRANSCRIPT_TIMING_DIAGNOSTICS_STORAGE_KEY)
     resolvedStorage.removeItem(ACTIVE_TRANSCRIPT_TIMING_DIAGNOSTIC_STORAGE_KEY)
+    resolvedStorage.removeItem(ACTIVE_TRANSCRIPT_TIMING_DIAGNOSTIC_IDS_STORAGE_KEY)
   } catch {
     // Browser storage is optional.
+  }
+}
+
+function readActiveDiagnosticIds(storage: Storage) {
+  try {
+    const rawValue = storage.getItem(ACTIVE_TRANSCRIPT_TIMING_DIAGNOSTIC_IDS_STORAGE_KEY)
+    if (!rawValue) {
+      const legacyActiveId = storage.getItem(ACTIVE_TRANSCRIPT_TIMING_DIAGNOSTIC_STORAGE_KEY)
+      return legacyActiveId ? [legacyActiveId] : []
+    }
+    const parsed = JSON.parse(rawValue) as unknown
+    return Array.isArray(parsed)
+      ? [...new Set(parsed.filter((id): id is string => typeof id === "string" && id.length > 0 && id.length <= 128))]
+      : []
+  } catch {
+    return []
+  }
+}
+
+function writeActiveDiagnosticIds(ids: readonly string[], storage: Storage) {
+  const uniqueIds = [...new Set(ids)]
+  if (uniqueIds.length === 0) {
+    storage.removeItem(ACTIVE_TRANSCRIPT_TIMING_DIAGNOSTIC_IDS_STORAGE_KEY)
+    return
+  }
+  storage.setItem(ACTIVE_TRANSCRIPT_TIMING_DIAGNOSTIC_IDS_STORAGE_KEY, JSON.stringify(uniqueIds))
+}
+
+function removeActiveDiagnosticId(diagnosticId: string, storage: Storage) {
+  writeActiveDiagnosticIds(
+    readActiveDiagnosticIds(storage).filter((id) => id !== diagnosticId),
+    storage
+  )
+  if (storage.getItem(ACTIVE_TRANSCRIPT_TIMING_DIAGNOSTIC_STORAGE_KEY) === diagnosticId) {
+    storage.removeItem(ACTIVE_TRANSCRIPT_TIMING_DIAGNOSTIC_STORAGE_KEY)
   }
 }
 

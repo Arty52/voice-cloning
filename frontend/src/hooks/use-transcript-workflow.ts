@@ -3,6 +3,7 @@ import { type ChangeEvent, type FormEvent, useEffect, useMemo, useRef, useState 
 import * as api from "@/lib/api"
 import { estimateSampleProcessingDurationRangeSeconds } from "@/lib/sample-processing-estimate"
 import {
+  markUnpairedTranscriptTimingDiagnosticsIncomplete,
   readActiveTranscriptTimingDiagnostic,
   readTranscriptTimingDiagnostics,
   startTranscriptTimingDiagnostic,
@@ -34,6 +35,7 @@ const POLL_INTERVAL_MS = 1500
 const TIMER_INTERVAL_MS = 250
 export const LATEST_TRANSCRIPT_JOB_STORAGE_KEY = "voice-cloning.latestTranscriptJobId.v1"
 export const LATEST_TRANSCRIPT_SESSION_STORAGE_KEY = "voice-cloning.latestTranscriptSession.v1"
+export const ACTIVE_TRANSCRIPT_SESSIONS_STORAGE_KEY = "voice-cloning.activeTranscriptSessions.v1"
 export const TRANSCRIPT_AUDIO_ACCEPT = ".mp3,.wav,.m4a,.m4b,.aac,.ogg,.flac,audio/*"
 const SUPPORTED_AUDIO_EXTENSIONS = new Set(["aac", "flac", "m4a", "m4b", "mp3", "ogg", "wav"])
 
@@ -43,7 +45,10 @@ export function useTranscriptWorkflow({
   diarizationAvailable,
   onVoiceSaved,
 }: UseTranscriptWorkflowOptions) {
-  const [initialStoredTranscriptSession] = useState(readStoredLatestTranscriptSession)
+  const [initialStoredTranscriptSessions] = useState(readStoredTranscriptSessions)
+  const [initialStoredTranscriptSession] = useState(
+    () => readStoredLatestTranscriptSession() ?? initialStoredTranscriptSessions.at(-1) ?? null
+  )
   const [initialStoredJobId] = useState(
     () => initialStoredTranscriptSession?.jobId ?? readStoredLatestTranscriptJobId()
   )
@@ -56,7 +61,7 @@ export function useTranscriptWorkflow({
   const [validationError, setValidationError] = useState<string | null>(null)
   const [processingElapsedMs, setProcessingElapsedMs] = useState<number | null>(null)
   const [timingDiagnostic, setTimingDiagnostic] = useState<TranscriptTimingDiagnosticRecord | null>(() =>
-    readInitialTimingDiagnostic(initialStoredJobId, initialStoredTranscriptSession?.timingDiagnosticId ?? null)
+    readInitialTimingDiagnostic(initialStoredJobId, initialStoredTranscriptSessions)
   )
   const timingDiagnosticIdRef = useRef<string | null>(timingDiagnostic?.id ?? null)
   const mountedRef = useRef(true)
@@ -410,11 +415,22 @@ function readStoredLatestTranscriptJobId() {
   }
 }
 
-function readInitialTimingDiagnostic(initialStoredJobId: string | null, timingDiagnosticId: string | null) {
+function readInitialTimingDiagnostic(
+  initialStoredJobId: string | null,
+  storedSessions: readonly StoredTranscriptSession[]
+) {
+  const pairedDiagnosticIds = new Set(
+    storedSessions.flatMap(({ timingDiagnosticId }) => (timingDiagnosticId ? [timingDiagnosticId] : []))
+  )
+  const reconciledDiagnostics = markUnpairedTranscriptTimingDiagnosticsIncomplete(pairedDiagnosticIds)
+  const timingDiagnosticId = storedSessions.find(({ jobId }) => jobId === initialStoredJobId)?.timingDiagnosticId ?? null
   if (timingDiagnosticId) {
     return readTranscriptTimingDiagnostics().find(({ id }) => id === timingDiagnosticId) ?? null
   }
   const activeDiagnostic = readActiveTranscriptTimingDiagnostic()
+  if (!initialStoredJobId && reconciledDiagnostics.length > 0) {
+    return reconciledDiagnostics.at(-1) ?? null
+  }
   if (!initialStoredJobId && activeDiagnostic) {
     return (
       updateTranscriptTimingDiagnostic(activeDiagnostic.id, {
@@ -454,6 +470,28 @@ function readStoredLatestTranscriptSession(): StoredTranscriptSession | null {
   }
 }
 
+function readStoredTranscriptSessions(): StoredTranscriptSession[] {
+  try {
+    const rawValue = window.localStorage.getItem(ACTIVE_TRANSCRIPT_SESSIONS_STORAGE_KEY)
+    if (!rawValue) {
+      const latestSession = readStoredLatestTranscriptSession()
+      return latestSession ? [latestSession] : []
+    }
+    const parsed = JSON.parse(rawValue) as unknown
+    if (!Array.isArray(parsed)) {
+      window.localStorage.removeItem(ACTIVE_TRANSCRIPT_SESSIONS_STORAGE_KEY)
+      return []
+    }
+    const sessions = parsed.filter(isStoredTranscriptSession).filter(isValidStoredTranscriptSession).slice(-50)
+    if (sessions.length !== parsed.length) {
+      writeStoredTranscriptSessions(sessions)
+    }
+    return sessions
+  } catch {
+    return []
+  }
+}
+
 function isStoredTranscriptSession(value: unknown): value is StoredTranscriptSession {
   return (
     typeof value === "object" &&
@@ -465,17 +503,30 @@ function isStoredTranscriptSession(value: unknown): value is StoredTranscriptSes
   )
 }
 
+function isValidStoredTranscriptSession(session: StoredTranscriptSession) {
+  return (
+    session.jobId.length > 0 &&
+    session.jobId.length <= 128 &&
+    (session.timingDiagnosticId === null ||
+      (session.timingDiagnosticId.length > 0 && session.timingDiagnosticId.length <= 128))
+  )
+}
+
 function writeStoredLatestTranscriptJob(jobId: string, timingDiagnosticId: string | null) {
+  const nextSession = { jobId, timingDiagnosticId } satisfies StoredTranscriptSession
   try {
+    const sessions = readStoredTranscriptSessions().filter((session) => session.jobId !== jobId)
+    writeStoredTranscriptSessions([...sessions, nextSession])
     window.localStorage.setItem(
       LATEST_TRANSCRIPT_SESSION_STORAGE_KEY,
-      JSON.stringify({ jobId, timingDiagnosticId } satisfies StoredTranscriptSession)
+      JSON.stringify(nextSession)
     )
   } catch {
     // A failed replacement must not leave an older paired session authoritative.
     // Prefer the legacy pointer only after that stale session has been removed.
     try {
       window.localStorage.removeItem(LATEST_TRANSCRIPT_SESSION_STORAGE_KEY)
+      window.localStorage.removeItem(ACTIVE_TRANSCRIPT_SESSIONS_STORAGE_KEY)
       window.localStorage.setItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY, jobId)
     } catch {
       // Browser storage is optional; the active mounted workflow still works.
@@ -493,11 +544,19 @@ function writeStoredLatestTranscriptJob(jobId: string, timingDiagnosticId: strin
 
 function clearStoredLatestTranscriptJob(jobId: string | null) {
   try {
+    const remainingSessions = readStoredTranscriptSessions().filter(({ jobId: storedJobId }) => storedJobId !== jobId)
+    writeStoredTranscriptSessions(remainingSessions)
     const storedSession = readStoredLatestTranscriptSession()
     if (storedSession) {
       if (storedSession.jobId === jobId) {
-        window.localStorage.removeItem(LATEST_TRANSCRIPT_SESSION_STORAGE_KEY)
-        window.localStorage.removeItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY)
+        const nextLatestSession = remainingSessions.at(-1) ?? null
+        if (nextLatestSession) {
+          window.localStorage.setItem(LATEST_TRANSCRIPT_SESSION_STORAGE_KEY, JSON.stringify(nextLatestSession))
+          window.localStorage.setItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY, nextLatestSession.jobId)
+        } else {
+          window.localStorage.removeItem(LATEST_TRANSCRIPT_SESSION_STORAGE_KEY)
+          window.localStorage.removeItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY)
+        }
       }
       return
     }
@@ -507,6 +566,14 @@ function clearStoredLatestTranscriptJob(jobId: string | null) {
   } catch {
     // Ignore browser storage cleanup failures.
   }
+}
+
+function writeStoredTranscriptSessions(sessions: readonly StoredTranscriptSession[]) {
+  if (sessions.length === 0) {
+    window.localStorage.removeItem(ACTIVE_TRANSCRIPT_SESSIONS_STORAGE_KEY)
+    return
+  }
+  window.localStorage.setItem(ACTIVE_TRANSCRIPT_SESSIONS_STORAGE_KEY, JSON.stringify(sessions.slice(-50)))
 }
 
 function delay(milliseconds: number) {
