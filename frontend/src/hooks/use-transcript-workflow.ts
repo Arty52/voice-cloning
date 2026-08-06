@@ -208,8 +208,12 @@ export function useTranscriptWorkflow({
         resetMissingJob()
         return
       }
-      setStatus("error")
-      setError(caught instanceof Error ? caught.message : "Unable to restore the latest transcript job.")
+      activeJobIdRef.current = jobId
+      writeStoredLatestTranscriptJobId(jobId)
+      setStatus("processing")
+      const detail = caught instanceof Error ? caught.message : "Unable to restore the latest transcript job."
+      setError(`${detail} Retrying.`)
+      void pollJobRef.current(jobId, runId)
     }
   }
 

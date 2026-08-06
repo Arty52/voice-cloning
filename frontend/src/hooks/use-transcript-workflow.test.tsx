@@ -199,6 +199,42 @@ describe("useTranscriptWorkflow", () => {
     expect(window.localStorage.getItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY)).toBeNull()
   })
 
+  it("keeps an initially unrestorable stored job active until polling recovers", async () => {
+    vi.useFakeTimers()
+    const runningJob = buildJob("running")
+    const completedJob = buildJob("success")
+    window.localStorage.setItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY, runningJob.id)
+    vi.mocked(api.fetchSampleProcessingJob)
+      .mockRejectedValueOnce(new Error("Local API temporarily unavailable."))
+      .mockResolvedValueOnce({ job: runningJob })
+      .mockResolvedValueOnce({ job: completedJob })
+    const { result } = renderTranscriptWorkflow()
+
+    await act(async () => Promise.resolve())
+
+    expect(result.current.status).toBe("processing")
+    expect(result.current.canCancel).toBe(true)
+    expect(result.current.canStart).toBe(false)
+    expect(result.current.error).toBe("Local API temporarily unavailable. Retrying.")
+    expect(window.localStorage.getItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY)).toBe(runningJob.id)
+
+    act(() => result.current.handleSourceFileSelect(new File(["audio"], "duplicate.mp3", { type: "audio/mpeg" })))
+    expect(result.current.canStart).toBe(false)
+    await act(async () => result.current.handleStartTranscription())
+    expect(api.createSampleProcessingJob).not.toHaveBeenCalled()
+
+    await act(async () => vi.advanceTimersByTimeAsync(1_500))
+    expect(result.current.status).toBe("processing")
+    expect(result.current.job).toEqual(runningJob)
+    expect(result.current.error).toBeNull()
+    expect(result.current.canCancel).toBe(true)
+
+    await act(async () => vi.advanceTimersByTimeAsync(1_500))
+    expect(result.current.status).toBe("success")
+    expect(result.current.job).toEqual(completedJob)
+    expect(result.current.error).toBeNull()
+  })
+
   it("clears a running job that disappears while polling", async () => {
     vi.useFakeTimers()
     const runningJob = buildJob("running")
