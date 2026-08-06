@@ -18,7 +18,11 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-RUN python -m pip install --no-cache-dir --upgrade pip \
+RUN if [ "$INSTALL_SAMPLE_PROCESSING" = "1" ]; then \
+      apt-get update \
+      && apt-get install -y --no-install-recommends cargo gcc; \
+    fi \
+    && python -m pip install --no-cache-dir --upgrade pip \
     && if [ "$INSTALL_SAMPLE_PROCESSING" = "1" ] || [ "$INSTALL_DIARIZATION" = "1" ]; then \
       python -m pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch torchaudio torchcodec; \
     fi \
@@ -30,7 +34,11 @@ RUN python -m pip install --no-cache-dir --upgrade pip \
       python -m pip install --no-cache-dir -e "/app/backend[diarization]"; \
     else \
       python -m pip install --no-cache-dir -e /app/backend; \
-    fi
+    fi \
+    && if [ "$INSTALL_SAMPLE_PROCESSING" = "1" ]; then \
+      apt-get purge -y --auto-remove cargo gcc; \
+    fi \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY assets /app/assets
 
