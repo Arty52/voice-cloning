@@ -7,6 +7,7 @@ import {
   FileAudio,
   KeyRound,
   Loader2,
+  MessageSquareText,
   Sparkles,
   Wand2,
   type LucideIcon,
@@ -15,8 +16,9 @@ import {
 import type { AsyncStatus, ProviderKeySource, RequestStatus } from "@/types"
 import type { GeneratedAudioMutation } from "@/hooks/use-generated-audio-library"
 import type { SampleProcessingStatus } from "@/hooks/use-sample-processing"
+import type { TranscriptWorkflowStatus } from "@/hooks/use-transcript-workflow"
 
-export type WorkflowSectionId = "overview" | "prepare" | "voices" | "generate" | "archive" | "provider"
+export type WorkflowSectionId = "overview" | "prepare" | "transcript" | "voices" | "generate" | "archive" | "provider"
 
 export type WorkflowSection = {
   description: string
@@ -52,6 +54,9 @@ export type WorkflowSectionStatusInput = {
   selectedVoiceId: string
   speechError: string | null
   speechStatus: RequestStatus
+  transcriptError: string | null
+  transcriptStatus: TranscriptWorkflowStatus
+  transcriptUnavailableReason: string | null
   voiceError: string | null
   voiceStatus: AsyncStatus
 }
@@ -76,6 +81,15 @@ export const WORKFLOW_SECTIONS: WorkflowSection[] = [
     label: "Prepare Audio",
     optional: true,
     stepLabel: "0",
+  },
+  {
+    description: "Transcribe complete audio, name speakers, correct dialogue, export text, and save selected voices.",
+    hash: "#transcript",
+    icon: MessageSquareText,
+    id: "transcript",
+    label: "Transcript",
+    optional: true,
+    stepLabel: "Optional",
   },
   {
     description: "Select, preview, tune, rename, and manage local voice samples.",
@@ -132,8 +146,34 @@ export function buildWorkflowSectionStatuses(input: WorkflowSectionStatusInput):
     overview: overviewStatus(),
     prepare: prepareStatus(input),
     provider: providerStatus(input),
+    transcript: transcriptStatus(input),
     voices: voicesStatus(input),
   }
+}
+
+function transcriptStatus(input: WorkflowSectionStatusInput): WorkflowSectionStatus {
+  if (input.transcriptStatus === "restoring") {
+    return busyStatus("Restoring")
+  }
+  if (input.transcriptStatus === "starting") {
+    return busyStatus("Starting")
+  }
+  if (input.transcriptStatus === "processing") {
+    return busyStatus("Processing")
+  }
+  if (input.transcriptStatus === "error" || input.transcriptError !== null) {
+    return errorStatus("Error")
+  }
+  if (input.transcriptStatus === "success") {
+    return successStatus("Ready")
+  }
+  if (input.transcriptUnavailableReason !== null) {
+    return attentionStatus("Unavailable")
+  }
+  if (input.processingOptionsStatus === "idle" || input.processingOptionsStatus === "loading") {
+    return busyStatus("Loading")
+  }
+  return neutralStatus("Optional")
 }
 
 function overviewStatus(): WorkflowSectionStatus {

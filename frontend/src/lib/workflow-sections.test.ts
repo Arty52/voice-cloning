@@ -25,6 +25,9 @@ const baseStatusInput: WorkflowSectionStatusInput = {
   selectedVoiceId: "demo-voice",
   speechError: null,
   speechStatus: "idle",
+  transcriptError: null,
+  transcriptStatus: "idle",
+  transcriptUnavailableReason: null,
   voiceError: null,
   voiceStatus: "success",
 }
@@ -34,6 +37,7 @@ describe("workflow sections", () => {
     expect(WORKFLOW_SECTIONS.map((section) => section.id)).toEqual([
       "overview",
       "prepare",
+      "transcript",
       "voices",
       "generate",
       "archive",
@@ -69,6 +73,7 @@ describe("workflow sections", () => {
 
     expect(statuses.overview).toMatchObject({ label: "Start Here", tone: "neutral" })
     expect(statuses.prepare).toMatchObject({ label: "Error", tone: "error" })
+    expect(statuses.transcript).toMatchObject({ label: "Optional", tone: "neutral" })
     expect(statuses.voices).toMatchObject({ label: "Select Voice", tone: "attention" })
     expect(statuses.generate).toMatchObject({ label: "Error", tone: "error" })
     expect(statuses.archive).toMatchObject({ label: "Error", tone: "error" })
@@ -86,6 +91,7 @@ describe("workflow sections", () => {
     })
 
     expect(statusOnlyStatuses.prepare).toMatchObject({ label: "Error", tone: "error" })
+    expect(statusOnlyStatuses.transcript).toMatchObject({ label: "Optional", tone: "neutral" })
     expect(statusOnlyStatuses.voices).toMatchObject({ label: "Error", tone: "error" })
     expect(statusOnlyStatuses.generate).toMatchObject({ label: "Error", tone: "error" })
     expect(statusOnlyStatuses.archive).toMatchObject({ label: "Error", tone: "error" })
@@ -111,12 +117,46 @@ describe("workflow sections", () => {
       generatedAudioCount: 3,
       processingStatus: "processing",
       speechStatus: "generating",
+      transcriptStatus: "processing",
     })
 
     expect(statuses.prepare).toMatchObject({ label: "Processing", tone: "busy" })
+    expect(statuses.transcript).toMatchObject({ label: "Processing", tone: "busy" })
     expect(statuses.voices).toMatchObject({ label: "Ready", tone: "success" })
     expect(statuses.generate).toMatchObject({ label: "Generating", tone: "busy" })
     expect(statuses.archive).toMatchObject({ label: "3 Saved", tone: "success" })
     expect(statuses.provider).toMatchObject({ label: "Ready", tone: "success" })
+  })
+
+  it("derives transcript ready and unavailable status labels", () => {
+    expect(
+      buildWorkflowSectionStatuses({ ...baseStatusInput, transcriptStatus: "success" }).transcript
+    ).toMatchObject({ label: "Ready", tone: "success" })
+    expect(
+      buildWorkflowSectionStatuses({
+        ...baseStatusInput,
+        processingOptionsStatus: "loading",
+        transcriptStatus: "success",
+      }).transcript
+    ).toMatchObject({ label: "Ready", tone: "success" })
+    expect(
+      buildWorkflowSectionStatuses({
+        ...baseStatusInput,
+        processingOptionsStatus: "loading",
+        transcriptUnavailableReason: "Speaker detection is unavailable.",
+      }).transcript
+    ).toMatchObject({ label: "Unavailable", tone: "attention" })
+  })
+
+  it("distinguishes transcript startup from processing errors", () => {
+    expect(
+      buildWorkflowSectionStatuses({ ...baseStatusInput, transcriptStatus: "starting" }).transcript
+    ).toMatchObject({ label: "Starting", tone: "busy" })
+    expect(
+      buildWorkflowSectionStatuses({
+        ...baseStatusInput,
+        transcriptError: "Choose a supported audio file.",
+      }).transcript
+    ).toMatchObject({ label: "Error", tone: "error" })
   })
 })

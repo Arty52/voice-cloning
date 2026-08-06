@@ -1,11 +1,11 @@
 import { type ChangeEvent, type FormEvent, useEffect, useMemo, useRef, useState } from "react"
 
 import * as api from "@/lib/api"
+import { estimateSampleProcessingDurationRangeSeconds } from "@/lib/sample-processing-estimate"
 import { DEFAULT_VOICE_PRESET_ID } from "@/lib/voice-presets"
 import type {
   AsyncStatus,
   SampleProcessingJob,
-  SampleProcessingDurationRange,
   SampleProcessingOperation,
   SampleProcessingOperationId,
   SampleProcessingOptionsResponse,
@@ -32,7 +32,6 @@ type UseSampleProcessingOptions = {
 
 const POLL_INTERVAL_MS = 1500
 const TIMER_INTERVAL_MS = 100
-const BYTES_PER_MEBIBYTE = 1024 * 1024
 const ACTIVE_SAMPLE_PROCESSING_JOB_STORAGE_KEY = "voice-cloning.activeSampleProcessingJobId.v1"
 const DEFAULT_WORKFLOW_ORDER: SampleProcessingOperationId[] = ["prepareVoice", "isolateVoice", "separateSpeakers", "trimSilence"]
 const DEFAULT_PROCESSING_PRESET_ID: SampleProcessingPresetId = "balanced"
@@ -155,7 +154,7 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
   const prepareEstimateRangeSeconds = useMemo(
     () =>
       job?.estimatedDurationRangeSeconds ??
-      estimatePrepareDurationRangeSeconds({
+      estimateSampleProcessingDurationRangeSeconds({
         cleanVoice: prepareCleanVoice && canCleanVoice,
         detectSpeakers: prepareDetectSpeakers && canDetectSpeakers,
         sourceSizeBytes: isPrepareVoiceSelected && sourceMode === "upload"
@@ -973,42 +972,6 @@ function isSpeakerSeparationResult(result: SampleProcessingJob["result"]): resul
 
 function isPreparedSamplesResult(result: SampleProcessingJob["result"]): result is PreparedSamplesResult {
   return Boolean(result && "kind" in result && result.kind === "preparedSamples")
-}
-
-function estimatePrepareDurationRangeSeconds({
-  cleanVoice,
-  detectSpeakers,
-  sourceSizeBytes,
-  trimCandidates,
-}: {
-  cleanVoice: boolean
-  detectSpeakers: boolean
-  sourceSizeBytes: number | null
-  trimCandidates: boolean
-}): SampleProcessingDurationRange | null {
-  if (sourceSizeBytes === null) {
-    return null
-  }
-  const sourceMib = Math.max(0.1, sourceSizeBytes / BYTES_PER_MEBIBYTE)
-  let minSeconds = 10 + sourceMib * 0.08
-  let maxSeconds = 25 + sourceMib * 0.18
-  if (cleanVoice) {
-    minSeconds += 20 + sourceMib * 0.18
-    maxSeconds += 60 + sourceMib * 0.35
-  }
-  if (detectSpeakers) {
-    minSeconds += 30 + sourceMib * 0.18
-    maxSeconds += 90 + sourceMib * 0.45
-  }
-  if (trimCandidates) {
-    minSeconds += 15 + sourceMib * 0.08
-    maxSeconds += 45 + sourceMib * 0.18
-  }
-  const roundedMin = Math.max(10, Math.round(minSeconds))
-  return {
-    minSeconds: roundedMin,
-    maxSeconds: Math.max(roundedMin + 30, Math.round(maxSeconds)),
-  }
 }
 
 function syncStoredActiveJobId(job: SampleProcessingJob | null) {

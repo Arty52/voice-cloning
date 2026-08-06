@@ -48,7 +48,7 @@ export function StudioOverviewPanel({ sections }: StudioOverviewPanelProps) {
           <h3 className="text-base font-medium">Workflow Map</h3>
           <p className="mt-1 text-sm text-muted-foreground">Pick a card to jump into that part of the studio.</p>
         </div>
-        <ol aria-label="Voice Studio Workflow" className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <ol aria-label="Voice Studio Workflow" className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
           {workflowSections.map((section, index) => {
             const SectionIcon = section.icon
             const isRequired = !section.optional

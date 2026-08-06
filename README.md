@@ -81,10 +81,11 @@ http://localhost:6420
 The Voice Studio opens on `Overview`. Use the sidebar to move between stable workflow sections:
 
 1. `Prepare Audio` (`#prepare`, optional step 0): choose Add Voice for ready samples or Process Source Media for cleanup, trimming, and speaker extraction before saving.
-2. `Voices` (`#voices`, step 1): select, preview, rename, and manage local voice samples, then save default voice tuning for future generations.
-3. `Generate Speech` (`#generate`, step 2): enter text, optionally assign selected text spans to saved voices, generate speech with saved voice defaults, play combined and segment results, and regenerate individual multi-voice segments with contextual overrides.
-4. `Generated Audio` (`#archive`, optional): review, download, remove, clear, server-export, or browser-mirror saved generated audio, including Multi-Voice metadata for combined speech jobs. With backend persistence configured, the archive streams from the server; otherwise it falls back to browser IndexedDB.
-5. `Provider & Usage` (`#provider`): add browser-local provider keys, confirm `.env` fallback, choose models, and review quota/cost metadata.
+2. `Transcript` (`#transcript`, optional): transcribe a complete local audio file, name or reassign speakers, correct dialogue, export Markdown/TXT, and save selected speakers as voices.
+3. `Voices` (`#voices`, step 1): select, preview, rename, and manage local voice samples, then save default voice tuning for future generations.
+4. `Generate Speech` (`#generate`, step 2): enter text, optionally assign selected text spans to saved voices, generate speech with saved voice defaults, play combined and segment results, and regenerate individual multi-voice segments with contextual overrides.
+5. `Generated Audio` (`#archive`, optional): review, download, remove, clear, server-export, or browser-mirror saved generated audio, including Multi-Voice metadata for combined speech jobs. With backend persistence configured, the archive streams from the server; otherwise it falls back to browser IndexedDB.
+6. `Provider & Usage` (`#provider`): add browser-local provider keys, confirm `.env` fallback, choose models, and review quota/cost metadata.
 
 ## Optional Sample Processing
 

@@ -6,6 +6,7 @@ import { useDialogueScript } from "@/hooks/use-dialogue-script"
 import { useGeneratedAudioLibrary } from "@/hooks/use-generated-audio-library"
 import { useProviderKeys } from "@/hooks/use-provider-keys"
 import { useSampleProcessing } from "@/hooks/use-sample-processing"
+import { useTranscriptWorkflow } from "@/hooks/use-transcript-workflow"
 import { useUserTuningPresets } from "@/hooks/use-user-tuning-presets"
 import {
   useMultiVoiceSpeechGeneration,
@@ -112,6 +113,12 @@ export function useVoiceStudioController() {
     onVoiceSaved: voiceLibrary.addSavedVoice,
     selectedVoice: voiceLibrary.selectedVoice,
     voices: voiceLibrary.voices,
+  })
+  const transcript = useTranscriptWorkflow({
+    availabilityError: sampleProcessing.optionsError,
+    availabilityStatus: sampleProcessing.optionsStatus,
+    diarizationAvailable: sampleProcessing.canDetectSpeakers,
+    onVoiceSaved: voiceLibrary.addSavedVoice,
   })
   const selectedModel = metadata.models.find((model) => model.modelId === metadata.selectedModelId) ?? null
   const providerTuning = providerKeys.activeProvider?.tuning ?? EMPTY_TUNING_METADATA
@@ -236,6 +243,9 @@ export function useVoiceStudioController() {
         selectedVoiceId: voiceLibrary.selectedVoiceId,
         speechError: activeSpeechError,
         speechStatus: activeSpeechStatus,
+        transcriptError: transcript.error,
+        transcriptStatus: transcript.status,
+        transcriptUnavailableReason: transcript.unavailableReason,
         voiceError: voiceLibrary.voiceError,
         voiceStatus: voiceLibrary.voiceStatus,
       }),
@@ -254,6 +264,9 @@ export function useVoiceStudioController() {
       sampleProcessing.status,
       activeSpeechError,
       activeSpeechStatus,
+      transcript.error,
+      transcript.status,
+      transcript.unavailableReason,
       voiceLibrary.selectedVoiceId,
       voiceLibrary.voiceError,
       voiceLibrary.voiceStatus,
@@ -737,6 +750,7 @@ export function useVoiceStudioController() {
     textRef,
     textSelection,
     tuning,
+    transcript,
     userTuningPresets,
     voiceInput,
     voiceAssignmentError,
