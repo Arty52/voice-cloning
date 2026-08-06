@@ -26,6 +26,7 @@ The FastAPI service is available at `http://localhost:6420` when the Docker stac
 - `GET /api/sample-processing/jobs/{jobId}/source`
 - `GET /api/sample-processing/jobs/{jobId}/speakers/{speakerId}/result`
 - `PATCH /api/sample-processing/jobs/{jobId}/speaker-assignments`
+- `PATCH /api/sample-processing/jobs/{jobId}/transcript-items`
 - `POST /api/sample-processing/jobs/{jobId}/voice`
 - `POST /api/sample-processing/jobs/{jobId}/speaker-voices`
 - `POST /api/speech`
