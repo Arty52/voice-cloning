@@ -35,6 +35,10 @@ const POLL_INTERVAL_MS = 1500
 const TIMER_INTERVAL_MS = 250
 export const LATEST_TRANSCRIPT_JOB_STORAGE_KEY = "voice-cloning.latestTranscriptJobId.v1"
 export const LATEST_TRANSCRIPT_SESSION_STORAGE_KEY = "voice-cloning.latestTranscriptSession.v1"
+// Each active session has its own key so tabs never need a read-modify-write
+// update to a shared JSON array.
+export const TRANSCRIPT_SESSION_STORAGE_PREFIX = "voice-cloning.transcriptSession.v1."
+// Kept only to migrate installations created by the first paired-session release.
 export const ACTIVE_TRANSCRIPT_SESSIONS_STORAGE_KEY = "voice-cloning.activeTranscriptSessions.v1"
 export const TRANSCRIPT_AUDIO_ACCEPT = ".mp3,.wav,.m4a,.m4b,.aac,.ogg,.flac,audio/*"
 const SUPPORTED_AUDIO_EXTENSIONS = new Set(["aac", "flac", "m4a", "m4b", "mp3", "ogg", "wav"])
@@ -458,6 +462,7 @@ function readInitialTimingDiagnostic(
 type StoredTranscriptSession = {
   jobId: string
   timingDiagnosticId: string | null
+  createdAt?: string
 }
 
 function readStoredLatestTranscriptSession(): StoredTranscriptSession | null {
@@ -485,24 +490,54 @@ function readStoredLatestTranscriptSession(): StoredTranscriptSession | null {
 
 function readStoredTranscriptSessions(): StoredTranscriptSession[] {
   try {
-    const rawValue = window.localStorage.getItem(ACTIVE_TRANSCRIPT_SESSIONS_STORAGE_KEY)
-    if (!rawValue) {
-      const latestSession = readStoredLatestTranscriptSession()
-      return latestSession ? [latestSession] : []
-    }
+    const perSessionRecords = readStoredTranscriptSessionRecords()
+    const legacySessions = readLegacyStoredTranscriptSessions()
+    const latestSession = readStoredLatestTranscriptSession()
+    const sessions = [...legacySessions, ...perSessionRecords, ...(latestSession ? [latestSession] : [])]
+    const uniqueSessions = [...new Map(sessions.map((session) => [session.jobId, session])).values()]
+    const retainedSessions = retainStoredTranscriptSessions(uniqueSessions)
+    pruneStoredTranscriptSessionRecords(uniqueSessions, retainedSessions)
+    return retainedSessions
+  } catch {
+    return []
+  }
+}
+
+function readLegacyStoredTranscriptSessions(): StoredTranscriptSession[] {
+  const rawValue = window.localStorage.getItem(ACTIVE_TRANSCRIPT_SESSIONS_STORAGE_KEY)
+  if (!rawValue) return []
+  try {
     const parsed = JSON.parse(rawValue) as unknown
     if (!Array.isArray(parsed)) {
       window.localStorage.removeItem(ACTIVE_TRANSCRIPT_SESSIONS_STORAGE_KEY)
       return []
     }
-    const sessions = parsed.filter(isStoredTranscriptSession).filter(isValidStoredTranscriptSession).slice(-50)
-    if (sessions.length !== parsed.length) {
-      writeStoredTranscriptSessions(sessions)
-    }
+    const sessions = parsed.filter(isStoredTranscriptSession).filter(isValidStoredTranscriptSession)
+    sessions.forEach(writeStoredTranscriptSession)
+    window.localStorage.removeItem(ACTIVE_TRANSCRIPT_SESSIONS_STORAGE_KEY)
     return sessions
   } catch {
     return []
   }
+}
+
+function readStoredTranscriptSessionRecords(): StoredTranscriptSession[] {
+  return Array.from({ length: window.localStorage.length }, (_, index) => window.localStorage.key(index))
+    .filter((key): key is string => key?.startsWith(TRANSCRIPT_SESSION_STORAGE_PREFIX) ?? false)
+    .flatMap((key) => {
+      const rawValue = window.localStorage.getItem(key)
+      if (!rawValue) return []
+      try {
+        const parsed = JSON.parse(rawValue) as unknown
+        if (isStoredTranscriptSession(parsed) && isValidStoredTranscriptSession(parsed)) {
+          return [parsed]
+        }
+      } catch {
+        // Fall through to remove corrupt entries.
+      }
+      window.localStorage.removeItem(key)
+      return []
+    })
 }
 
 function isStoredTranscriptSession(value: unknown): value is StoredTranscriptSession {
@@ -520,16 +555,46 @@ function isValidStoredTranscriptSession(session: StoredTranscriptSession) {
   return (
     session.jobId.length > 0 &&
     session.jobId.length <= 128 &&
+    (session.createdAt === undefined || Number.isFinite(Date.parse(session.createdAt))) &&
     (session.timingDiagnosticId === null ||
       (session.timingDiagnosticId.length > 0 && session.timingDiagnosticId.length <= 128))
   )
 }
 
+function retainStoredTranscriptSessions(sessions: readonly StoredTranscriptSession[]) {
+  return [...sessions]
+    .sort((first, second) => (first.createdAt ?? "").localeCompare(second.createdAt ?? ""))
+    .slice(-50)
+}
+
+function transcriptSessionStorageKey(jobId: string) {
+  return `${TRANSCRIPT_SESSION_STORAGE_PREFIX}${jobId}`
+}
+
+function writeStoredTranscriptSession(session: StoredTranscriptSession) {
+  window.localStorage.setItem(
+    transcriptSessionStorageKey(session.jobId),
+    JSON.stringify({ ...session, createdAt: session.createdAt ?? new Date().toISOString() })
+  )
+}
+
+function pruneStoredTranscriptSessionRecords(
+  observedSessions: readonly StoredTranscriptSession[],
+  retainedSessions: readonly StoredTranscriptSession[]
+) {
+  const retainedJobIds = new Set(retainedSessions.map(({ jobId }) => jobId))
+  // Delete only records observed in this read. Enumerating storage again could
+  // discover and erase a session another tab wrote after the read completed.
+  observedSessions.forEach(({ jobId }) => {
+    if (!retainedJobIds.has(jobId)) window.localStorage.removeItem(transcriptSessionStorageKey(jobId))
+  })
+}
+
 function writeStoredLatestTranscriptJob(jobId: string, timingDiagnosticId: string | null) {
-  const nextSession = { jobId, timingDiagnosticId } satisfies StoredTranscriptSession
+  const nextSession = { jobId, timingDiagnosticId, createdAt: new Date().toISOString() } satisfies StoredTranscriptSession
   try {
-    const sessions = readStoredTranscriptSessions().filter((session) => session.jobId !== jobId)
-    writeStoredTranscriptSessions([...sessions, nextSession])
+    writeStoredTranscriptSession(nextSession)
+    readStoredTranscriptSessions()
     window.localStorage.setItem(
       LATEST_TRANSCRIPT_SESSION_STORAGE_KEY,
       JSON.stringify(nextSession)
@@ -558,7 +623,8 @@ function writeStoredLatestTranscriptJob(jobId: string, timingDiagnosticId: strin
 function clearStoredLatestTranscriptJob(jobId: string | null) {
   try {
     const remainingSessions = readStoredTranscriptSessions().filter(({ jobId: storedJobId }) => storedJobId !== jobId)
-    writeStoredTranscriptSessions(remainingSessions)
+    if (jobId) window.localStorage.removeItem(transcriptSessionStorageKey(jobId))
+    pruneStoredTranscriptSessionRecords(remainingSessions, remainingSessions)
     const storedSession = readStoredLatestTranscriptSession()
     if (storedSession) {
       if (storedSession.jobId === jobId) {
@@ -579,14 +645,6 @@ function clearStoredLatestTranscriptJob(jobId: string | null) {
   } catch {
     // Ignore browser storage cleanup failures.
   }
-}
-
-function writeStoredTranscriptSessions(sessions: readonly StoredTranscriptSession[]) {
-  if (sessions.length === 0) {
-    window.localStorage.removeItem(ACTIVE_TRANSCRIPT_SESSIONS_STORAGE_KEY)
-    return
-  }
-  window.localStorage.setItem(ACTIVE_TRANSCRIPT_SESSIONS_STORAGE_KEY, JSON.stringify(sessions.slice(-50)))
 }
 
 function delay(milliseconds: number) {

@@ -12,6 +12,7 @@ import {
   ACTIVE_TRANSCRIPT_SESSIONS_STORAGE_KEY,
   LATEST_TRANSCRIPT_JOB_STORAGE_KEY,
   LATEST_TRANSCRIPT_SESSION_STORAGE_KEY,
+  TRANSCRIPT_SESSION_STORAGE_PREFIX,
   useTranscriptWorkflow,
 } from "./use-transcript-workflow"
 
@@ -247,7 +248,7 @@ describe("useTranscriptWorkflow", () => {
     )
   })
 
-  it("keeps the latest paired session authoritative when another tab interleaves the session registry", async () => {
+  it("retains independently written session pairs when tabs interleave without a shared registry", async () => {
     const olderDiagnostic = startTranscriptTimingDiagnostic({
       createId: () => "timing-older-session",
       estimate: { minSeconds: 40, maxSeconds: 115 },
@@ -259,12 +260,24 @@ describe("useTranscriptWorkflow", () => {
       sourceFile: new File(["latest"], "latest.mp3", { type: "audio/mpeg" }),
     })
     const latestJob = buildJob("success", { id: "transcript-job-latest" })
-    // The registry can be momentarily stale when writes from separate tabs
-    // interleave. The latest paired session must still protect and restore its
-    // diagnostic rather than treating it as an orphan.
+    // Simulate the old read-modify-write interleaving: both tabs write their
+    // own pair before either can observe the other's session. Per-job keys
+    // keep both pairs, while the latest pointer selects the job to restore.
     window.localStorage.setItem(
-      ACTIVE_TRANSCRIPT_SESSIONS_STORAGE_KEY,
-      JSON.stringify([{ jobId: "transcript-job-older", timingDiagnosticId: olderDiagnostic.id }])
+      `${TRANSCRIPT_SESSION_STORAGE_PREFIX}transcript-job-older`,
+      JSON.stringify({
+        jobId: "transcript-job-older",
+        timingDiagnosticId: olderDiagnostic.id,
+        createdAt: "2026-08-04T20:00:00.000Z",
+      })
+    )
+    window.localStorage.setItem(
+      `${TRANSCRIPT_SESSION_STORAGE_PREFIX}${latestJob.id}`,
+      JSON.stringify({
+        jobId: latestJob.id,
+        timingDiagnosticId: latestDiagnostic.id,
+        createdAt: "2026-08-04T20:00:01.000Z",
+      })
     )
     window.localStorage.setItem(
       LATEST_TRANSCRIPT_SESSION_STORAGE_KEY,
@@ -286,6 +299,45 @@ describe("useTranscriptWorkflow", () => {
         expect.objectContaining({ id: olderDiagnostic.id, workflowStatus: "starting" }),
       ])
     )
+  })
+
+  it("does not lose another tab's paired session when session writes interleave", async () => {
+    const secondDiagnostic = startTranscriptTimingDiagnostic({
+      createId: () => "timing-interleaved-tab",
+      estimate: { minSeconds: 40, maxSeconds: 115 },
+      sourceFile: new File(["second"], "second.mp3", { type: "audio/mpeg" }),
+    })
+    const firstJob = buildJob("running", { id: "transcript-job-first-tab" })
+    const secondSession = {
+      jobId: "transcript-job-second-tab",
+      timingDiagnosticId: secondDiagnostic.id,
+      createdAt: "2026-08-04T20:00:01.000Z",
+    }
+    const originalSetItem = Storage.prototype.setItem
+    let interleaved = false
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (this: Storage, key, value) {
+      originalSetItem.call(this, key, value)
+      if (key === `${TRANSCRIPT_SESSION_STORAGE_PREFIX}${firstJob.id}` && !interleaved) {
+        interleaved = true
+        originalSetItem.call(
+          this,
+          `${TRANSCRIPT_SESSION_STORAGE_PREFIX}${secondSession.jobId}`,
+          JSON.stringify(secondSession)
+        )
+      }
+    })
+    vi.mocked(api.createSampleProcessingJob).mockResolvedValue({ job: firstJob })
+    const { result, unmount } = renderTranscriptWorkflow()
+
+    act(() => result.current.handleSourceFileSelect(new File(["first"], "first.mp3", { type: "audio/mpeg" })))
+    await act(async () => result.current.handleStartTranscription())
+
+    expect(interleaved).toBe(true)
+    expect(window.localStorage.getItem(`${TRANSCRIPT_SESSION_STORAGE_PREFIX}${firstJob.id}`)).not.toBeNull()
+    expect(window.localStorage.getItem(`${TRANSCRIPT_SESSION_STORAGE_PREFIX}${secondSession.jobId}`)).toBe(
+      JSON.stringify(secondSession)
+    )
+    unmount()
   })
 
   it("restores a completed transcript result and retains the latest pointer", async () => {

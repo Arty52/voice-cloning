@@ -29,7 +29,7 @@ The allowlist intentionally excludes filenames, paths, raw transcript text, spea
 - A record begins at transcript submission with the exact pre-start estimate and safe source metadata.
 - A server job moves it to `processing`; success, cancellation, and terminal errors retain the final job-timestamp elapsed duration.
 - A start failure is recorded as `error` with browser-observed attempt time.
-- Reload restoration uses one stored transcript session that pairs the latest server job id with its diagnostic record id. When that pair is available, restoration continues that exact record. Legacy job-only storage may restore the server job, but never infers a diagnostic record from the global active-diagnostic pointer.
+- Reload restoration uses a latest-session pointer plus a bounded registry of individually stored transcript sessions. Each session pairs one server job id with its diagnostic record id, so concurrent browser tabs do not need to overwrite a shared session array. The latest pointer selects the job to restore; the registry protects every active paired diagnostic during orphan reconciliation. When a matching pair is available, restoration continues that exact record. Legacy job-only storage may restore the server job, but never infers a diagnostic record from the global active-diagnostic pointer.
 - A missing or inaccessible job, a mismatched restored operation, or an orphaned active record with no restorable job becomes `incomplete`. Its elapsed duration remains `null` because no reliable terminal duration is available.
 - Transient restore or polling failures remain `processing` while the existing retry and cancellation behavior continues.
 
@@ -37,7 +37,7 @@ Browser storage is optional. Blocked, unavailable, corrupt, or cleared storage n
 
 ## Retention And Clearing
 
-The store keeps at most 50 records and drops records older than 30 days on the next diagnostics access. This bounded, short-lived default is used because the app has no existing diagnostics-view convention and no in-product diagnostics viewer.
+The diagnostics store keeps at most 50 records and drops records older than 30 days on the next diagnostics access. The active-session registry is likewise bounded to its most recent 50 job/diagnostic pairs. This bounded, short-lived default is used because the app has no existing diagnostics-view convention and no in-product diagnostics viewer.
 
 Users can clear the records with their browser's site-data controls. Code that later adds a diagnostics viewer or settings surface must use `clearTranscriptTimingDiagnostics()` so the record store and active diagnostic pointer are removed together.
 
