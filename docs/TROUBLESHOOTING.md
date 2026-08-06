@@ -88,6 +88,8 @@ SAMPLE_PROCESSING_FFMPEG_COMMAND=/path/to/ffmpeg
 
 The backend invokes external tools with argument arrays and no shell, so shell aliases and interactive-only PATH changes may not apply.
 
+Demucs 4.1 requires NumPy at runtime, but its Linux package metadata does not declare that dependency. The `sample-processing` extra installs `numpy>=2.3.2`, the first NumPy patch release with Python 3.14 wheels. If Demucs fails to import NumPy after an upgrade, rebuild the Docker API image or reinstall the host extra with `.venv/bin/python -m pip install -e "backend[sample-processing]"`.
+
 ## Speaker Diarization Dependencies Are Missing
 
 Speaker Separation requires the optional backend `diarization` extra. For Docker, set `INSTALL_DIARIZATION=1` and rebuild with `make recycle`. For host development, install the extra in the backend environment:
