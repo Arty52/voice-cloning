@@ -47,6 +47,7 @@ from voice_cloning.persistence.models import AppSettingRecord, SampleProcessingJ
 from voice_cloning.persistence.postgres_voice_library import PostgresVoiceLibrary
 from voice_cloning.persistence.voices import SqlAlchemyVoiceRepository
 from voice_cloning.samples import sample_hash
+from voice_cloning.services.sample_processing import SampleProcessingService
 from voice_cloning.voice_library import VoiceLibrary
 from voice_cloning.voice_library_factory import create_voice_library
 
@@ -363,6 +364,75 @@ def test_sample_processing_job_repository_roundtrips_corrected_transcript_text()
     assert restored is not None
     assert isinstance(restored.result, SpeakerSeparationResult)
     assert restored.result.transcript.items[0].text == "Corrected dialogue."
+
+
+def test_sample_processing_service_rehydrates_persisted_transcript_source_path(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    engine = create_database_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session_factory = create_session_factory(engine)
+    source_content = b"persisted transcript source"
+    source_sha256 = sample_hash(source_content)
+    job = SampleProcessingJob(
+        id="transcript-job",
+        operation_id="separateSpeakers",
+        status="success",
+        source_name="Meeting",
+        source_filename="meeting.m4a",
+        source_content_type="audio/mp4",
+        source_sha256=source_sha256,
+        source_size_bytes=len(source_content),
+        source_preference="original",
+        created_at="2026-08-04T12:00:00+00:00",
+        updated_at="2026-08-04T12:01:00+00:00",
+        steps=(
+            SampleProcessingJobStep(
+                id="transcript-job",
+                operation_id="separateSpeakers",
+                operation_label="Separate Speakers",
+                status="success",
+                engine="pyannote-community-1+faster-whisper",
+                source_sha256=source_sha256,
+                result_sha256="speaker-result-hash",
+            ),
+        ),
+        result=SpeakerSeparationResult(
+            kind="speakerSeparation",
+            speakers=(
+                SpeakerSeparationSpeaker(
+                    id="speaker-1",
+                    label="Speaker 1",
+                    transcript_item_ids=("item-1",),
+                ),
+            ),
+            transcript=SpeakerSeparationTranscript(
+                items=(
+                    SpeakerTranscriptItem(
+                        id="item-1",
+                        text="Persisted dialogue.",
+                        start_seconds=0.0,
+                        end_seconds=1.0,
+                        speaker_id="speaker-1",
+                    ),
+                ),
+            ),
+        ),
+    )
+    source_path = settings.sample_processing_dir / job.id / "source.m4a"
+    source_path.parent.mkdir(parents=True)
+    source_path.write_bytes(source_content)
+    with unit_of_work(session_factory) as session:
+        SqlAlchemySampleProcessingJobRepository(session).save_job(job)
+
+    service = SampleProcessingService(
+        settings,
+        VoiceLibrary(settings),
+        job_session_factory=session_factory,
+    )
+
+    assert service._source_paths == {}
+    assert service.source_path(job.id) == source_path
+    assert service._source_paths == {job.id: source_path}
 
 
 def test_job_routes_read_persisted_snapshots_after_app_recreation(tmp_path: Path) -> None:

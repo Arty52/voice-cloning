@@ -629,12 +629,25 @@ class SampleProcessingService:
             raise SampleProcessingServiceError("Speaker separation source is not ready.", 409)
         path = self._source_paths.get(job_id)
         if path is None:
+            path = self._rehydrate_uploaded_speaker_source_path(job)
+        if path is None:
             raise SampleProcessingServiceError("Speaker separation source is missing.", 404)
         resolved_path = path.resolve()
         _require_allowed_source_path(resolved_path, self.processing_dir, self.voice_library.assets_dir)
         if not resolved_path.exists():
             raise SampleProcessingServiceError("Speaker separation source is missing.", 404)
         return resolved_path
+
+    def _rehydrate_uploaded_speaker_source_path(self, job: SampleProcessingJob) -> Path | None:
+        separation_step = _successful_job_step(job, "separateSpeakers")
+        expected_sha256 = separation_step.source_sha256 if separation_step is not None else job.source_sha256
+        source_suffix = Path(job.source_filename).suffix.lower() or ".wav"
+        candidate = (self._job_dir(job.id) / f"source{source_suffix}").resolve()
+        _require_relative_path(candidate, self.processing_dir)
+        if not candidate.is_file() or _file_sha256(candidate) != expected_sha256:
+            return None
+        self._source_paths[job.id] = candidate
+        return candidate
 
     def speaker_result_path(self, job_id: str, speaker_id: str) -> Path:
         job = self.get_job(job_id)
