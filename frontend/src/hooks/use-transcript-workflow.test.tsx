@@ -118,8 +118,10 @@ describe("useTranscriptWorkflow", () => {
     vi.mocked(api.createSampleProcessingJob).mockResolvedValue({ job: completedJob })
     const { result } = renderTranscriptWorkflow()
 
+    expect(result.current.preStartEstimateRangeSeconds).toBeNull()
     act(() => result.current.handleSourceFileSelect(sourceFile))
     expect(result.current.canStart).toBe(true)
+    expect(result.current.preStartEstimateRangeSeconds).toEqual({ minSeconds: 40, maxSeconds: 115 })
 
     await act(async () => result.current.handleStartTranscription())
 
@@ -129,6 +131,8 @@ describe("useTranscriptWorkflow", () => {
     })
     expect(result.current.status).toBe("success")
     expect(result.current.job).toEqual(completedJob)
+    expect(result.current.preStartEstimateRangeSeconds).toBeNull()
+    expect(result.current.processingElapsedMs).toBe(5_000)
     expect(window.localStorage.getItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY)).toBe(completedJob.id)
   })
 

@@ -1,6 +1,7 @@
 import { Ban, FileAudio, MessageSquareText, Sparkles } from "lucide-react"
 
 import { MediaFileDropZone } from "@/components/media-file-drop-zone"
+import { ProcessingTimeEstimate } from "@/components/processing-time-estimate"
 import { SpeakerTranscriptWorkspace } from "@/components/speaker-transcript-workspace"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -81,6 +82,12 @@ export function TranscriptPanel({ transcript, voicePresets }: TranscriptPanelPro
                 Language and speaker count are detected automatically by the local FFmpeg, pyannote, and faster-whisper
                 pipeline.
               </FieldDescription>
+              {transcript.preStartEstimateRangeSeconds && transcript.sourceFile && !transcript.isProcessing ? (
+                <ProcessingTimeEstimate
+                  range={transcript.preStartEstimateRangeSeconds}
+                  sourceSizeBytes={transcript.sourceFile.size}
+                />
+              ) : null}
             </FieldGroup>
 
             {transcript.job ? (

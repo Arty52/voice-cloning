@@ -1,6 +1,7 @@
-import { type ChangeEvent, type FormEvent, useEffect, useRef, useState } from "react"
+import { type ChangeEvent, type FormEvent, useEffect, useMemo, useRef, useState } from "react"
 
 import * as api from "@/lib/api"
+import { estimateSampleProcessingDurationRangeSeconds } from "@/lib/sample-processing-estimate"
 import type { AsyncStatus, SampleProcessingJob, VoiceAsset } from "@/types"
 
 import { useSpeakerTranscript } from "./use-speaker-transcript"
@@ -51,6 +52,16 @@ export function useTranscriptWorkflow({
     onJobUpdate: updateJob,
     onVoiceSaved,
   })
+  const preStartEstimateRangeSeconds = useMemo(
+    () =>
+      estimateSampleProcessingDurationRangeSeconds({
+        cleanVoice: false,
+        detectSpeakers: true,
+        sourceSizeBytes: sourceFile?.size ?? null,
+        trimCandidates: false,
+      }),
+    [sourceFile?.size]
+  )
 
   const isProcessing = status === "restoring" || status === "starting" || status === "processing"
   const canStart =
@@ -271,6 +282,7 @@ export function useTranscriptWorkflow({
     handleStartTranscription,
     isProcessing,
     job,
+    preStartEstimateRangeSeconds,
     processingElapsedMs,
     sourceFile,
     speakerTranscript,

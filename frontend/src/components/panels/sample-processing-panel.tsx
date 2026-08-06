@@ -32,6 +32,7 @@ import {
 
 import { MediaFileDropZone } from "@/components/media-file-drop-zone"
 import { AudioPlayer } from "@/components/audio-player"
+import { ProcessingTimeEstimate } from "@/components/processing-time-estimate"
 import { SpeakerTranscriptWorkspace } from "@/components/speaker-transcript-workspace"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -54,7 +55,6 @@ import { cn } from "@/lib/utils"
 import { voicePresetLabel } from "@/lib/voice-presets"
 import type {
   PreparedSampleCandidate,
-  SampleProcessingDurationRange,
   SampleProcessingOperationId,
   SampleProcessingPresetId,
   SampleProcessingSourcePreference,
@@ -366,12 +366,12 @@ function PrepareAdvancedOptions({ processing }: { processing: SampleProcessingCo
       </div>
       <PreparePresetControls processing={processing} />
       {processing.prepareEstimateRangeSeconds ? (
-        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          <Badge variant="secondary">Estimated Time {formatDurationRange(processing.prepareEstimateRangeSeconds)}</Badge>
-          {processing.sourceMode === "upload" && processing.sourceFile ? (
-            <span>{formatCompactBytes(processing.sourceFile.size)} source file</span>
-          ) : null}
-        </div>
+        <ProcessingTimeEstimate
+          range={processing.prepareEstimateRangeSeconds}
+          sourceSizeBytes={
+            processing.sourceMode === "upload" && processing.sourceFile ? processing.sourceFile.size : null
+          }
+        />
       ) : null}
     </Field>
   )
@@ -1644,10 +1644,6 @@ function panelElapsedTimeLabel(processing: SampleProcessingController) {
     return `Canceled After ${elapsedTime}`
   }
   return null
-}
-
-function formatDurationRange(range: SampleProcessingDurationRange) {
-  return `${formatElapsedTime(range.minSeconds * 1000)} to ${formatElapsedTime(range.maxSeconds * 1000)}`
 }
 
 function progressPhaseTimeLabel(phase: { startedAt: string | null; completedAt: string | null; status: string }) {

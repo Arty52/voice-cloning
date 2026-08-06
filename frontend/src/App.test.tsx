@@ -3235,6 +3235,8 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "Transcript" })).toHaveAttribute("aria-current", "page")
     const sourceFile = new File(["complete meeting audio"], "planning-session.m4a", { type: "audio/mp4" })
     await user.upload(document.querySelector("#transcript-source-audio") as HTMLInputElement, sourceFile)
+    expect(transcriptPanel().getByText("Estimated Time 40s to 1m 55s")).toBeInTheDocument()
+    expect(transcriptPanel().getByText("File-size estimate from a 22 B source file.")).toBeInTheDocument()
     await user.click(transcriptPanel().getByRole("button", { name: "Create Transcript" }))
 
     const jobCall = vi.mocked(fetch).mock.calls.find(
@@ -3247,6 +3249,8 @@ describe("App", () => {
     expect(jobForm.has("sourceMediaId")).toBe(false)
 
     expect(await transcriptPanel().findByText("Speaker Streams")).toBeInTheDocument()
+    expect(transcriptPanel().queryByText(/Estimated Time/)).not.toBeInTheDocument()
+    expect(transcriptPanel().getByText("Finished In 1s")).toBeInTheDocument()
     expect(transcriptPanel().getByDisplayValue("Morgan")).toBeInTheDocument()
     expect(transcriptPanel().getByDisplayValue("Speaker 2")).toBeInTheDocument()
     const exportButton = transcriptPanel().getByRole("button", { name: "Export Transcript" })
