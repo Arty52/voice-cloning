@@ -2,6 +2,10 @@ import { act, renderHook, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import * as api from "@/lib/api"
+import {
+  readTranscriptTimingDiagnostics,
+  startTranscriptTimingDiagnostic,
+} from "@/lib/transcript-timing-diagnostics"
 import type { SampleProcessingJob, SpeakerSeparationResult } from "@/types"
 
 import { LATEST_TRANSCRIPT_JOB_STORAGE_KEY, useTranscriptWorkflow } from "./use-transcript-workflow"
@@ -135,10 +139,25 @@ describe("useTranscriptWorkflow", () => {
     expect(result.current.preStartEstimateRangeSeconds).toBeNull()
     expect(result.current.processingElapsedMs).toBe(5_000)
     expect(window.localStorage.getItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY)).toBe(completedJob.id)
+    expect(result.current.timingDiagnostic).toMatchObject({
+      actualElapsedMs: 5_000,
+      estimateMinSeconds: 40,
+      estimateMaxSeconds: 115,
+      sourceExtension: "m4a",
+      sourceMediaType: "audio/mp4",
+      sourceSizeBytes: sourceFile.size,
+      workflowStatus: "success",
+    })
+    expect(JSON.stringify(readTranscriptTimingDiagnostics())).not.toContain(sourceFile.name)
   })
 
   it("restores and resumes a running latest transcript job", async () => {
     window.localStorage.setItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY, "transcript-job-1")
+    startTranscriptTimingDiagnostic({
+      createId: () => "timing-1",
+      estimate: { minSeconds: 40, maxSeconds: 115 },
+      sourceFile: new File(["audio"], "private-name.mp3", { type: "audio/mpeg" }),
+    })
     vi.mocked(api.fetchSampleProcessingJob).mockResolvedValue({ job: buildJob("running") })
     const { result, unmount } = renderTranscriptWorkflow()
 
@@ -146,6 +165,7 @@ describe("useTranscriptWorkflow", () => {
     await waitFor(() => expect(result.current.status).toBe("processing"))
     expect(result.current.job?.id).toBe("transcript-job-1")
     expect(result.current.processingElapsedMs).not.toBeNull()
+    expect(result.current.timingDiagnostic?.workflowStatus).toBe("processing")
 
     unmount()
   })
@@ -176,6 +196,27 @@ describe("useTranscriptWorkflow", () => {
     expect(api.cancelSampleProcessingJob).toHaveBeenCalledWith(runningJob.id)
     expect(result.current.status).toBe("canceled")
     expect(result.current.job).toEqual(canceledJob)
+    expect(result.current.timingDiagnostic).toMatchObject({
+      actualElapsedMs: 5_000,
+      workflowStatus: "canceled",
+    })
+  })
+
+  it("records a terminal error when a transcript cannot be started", async () => {
+    const sourceFile = new File(["audio"], "meeting.wav", { type: "audio/wav" })
+    vi.mocked(api.createSampleProcessingJob).mockRejectedValue(new Error("Local processor unavailable."))
+    const { result } = renderTranscriptWorkflow()
+
+    act(() => result.current.handleSourceFileSelect(sourceFile))
+    await act(async () => result.current.handleStartTranscription())
+
+    expect(result.current.status).toBe("error")
+    expect(result.current.error).toBe("Local processor unavailable.")
+    expect(result.current.timingDiagnostic).toMatchObject({
+      sourceExtension: "wav",
+      workflowStatus: "error",
+    })
+    expect(result.current.timingDiagnostic?.actualElapsedMs).toBeGreaterThanOrEqual(0)
   })
 
   it("disables transcription when local diarization is unavailable", () => {
@@ -190,6 +231,11 @@ describe("useTranscriptWorkflow", () => {
 
   it("clears a stale latest job pointer when restoration fails", async () => {
     window.localStorage.setItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY, "missing-job")
+    startTranscriptTimingDiagnostic({
+      createId: () => "timing-missing",
+      estimate: { minSeconds: 40, maxSeconds: 115 },
+      sourceFile: new File(["audio"], "missing.flac", { type: "audio/flac" }),
+    })
     vi.mocked(api.fetchSampleProcessingJob).mockRejectedValue(new Error("Sample processing job not found."))
     const { result } = renderTranscriptWorkflow()
 
@@ -197,6 +243,20 @@ describe("useTranscriptWorkflow", () => {
     expect(result.current.job).toBeNull()
     expect(result.current.error).toBeNull()
     expect(window.localStorage.getItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY)).toBeNull()
+    expect(result.current.timingDiagnostic?.workflowStatus).toBe("incomplete")
+  })
+
+  it("marks an orphaned local diagnostic incomplete when no restorable job remains", async () => {
+    startTranscriptTimingDiagnostic({
+      createId: () => "timing-orphaned",
+      estimate: { minSeconds: 40, maxSeconds: 115 },
+      sourceFile: new File(["audio"], "orphaned.ogg", { type: "audio/ogg" }),
+    })
+
+    const { result } = renderTranscriptWorkflow()
+
+    await waitFor(() => expect(result.current.timingDiagnostic?.workflowStatus).toBe("incomplete"))
+    expect(readTranscriptTimingDiagnostics()[0]?.actualElapsedMs).toBeNull()
   })
 
   it("keeps an initially unrestorable stored job active until polling recovers", async () => {

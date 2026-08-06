@@ -2,6 +2,13 @@ import { type ChangeEvent, type FormEvent, useEffect, useMemo, useRef, useState 
 
 import * as api from "@/lib/api"
 import { estimateSampleProcessingDurationRangeSeconds } from "@/lib/sample-processing-estimate"
+import {
+  readActiveTranscriptTimingDiagnostic,
+  startTranscriptTimingDiagnostic,
+  type TranscriptTimingDiagnosticRecord,
+  type TranscriptTimingDiagnosticStatus,
+  updateActiveTranscriptTimingDiagnostic,
+} from "@/lib/transcript-timing-diagnostics"
 import type { AsyncStatus, SampleProcessingJob, VoiceAsset } from "@/types"
 
 import { useSpeakerTranscript } from "./use-speaker-transcript"
@@ -43,6 +50,9 @@ export function useTranscriptWorkflow({
   const [error, setError] = useState<string | null>(null)
   const [validationError, setValidationError] = useState<string | null>(null)
   const [processingElapsedMs, setProcessingElapsedMs] = useState<number | null>(null)
+  const [timingDiagnostic, setTimingDiagnostic] = useState<TranscriptTimingDiagnosticRecord | null>(() =>
+    readInitialTimingDiagnostic(initialStoredJobId)
+  )
   const mountedRef = useRef(true)
   const runIdRef = useRef(0)
   const activeJobIdRef = useRef<string | null>(null)
@@ -131,12 +141,17 @@ export function useTranscriptWorkflow({
 
   async function handleStartTranscription(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault()
-    if (!canStart || !sourceFile) {
+    if (!canStart || !sourceFile || !preStartEstimateRangeSeconds) {
       return
     }
 
     const runId = runIdRef.current + 1
     runIdRef.current = runId
+    const startedTimingDiagnostic = startTranscriptTimingDiagnostic({
+      estimate: preStartEstimateRangeSeconds,
+      sourceFile,
+    })
+    setTimingDiagnostic(startedTimingDiagnostic)
     setStatus("starting")
     setError(null)
     setProcessingElapsedMs(0)
@@ -160,6 +175,10 @@ export function useTranscriptWorkflow({
       }
       setStatus("error")
       setError(caught instanceof Error ? caught.message : "Unable to start transcript processing.")
+      finishTimingDiagnostic(
+        "error",
+        Math.max(0, Date.now() - Date.parse(startedTimingDiagnostic.createdAt))
+      )
     }
   }
 
@@ -191,6 +210,7 @@ export function useTranscriptWorkflow({
         return
       }
       if (payload.job.operationId !== "separateSpeakers") {
+        finishTimingDiagnostic("incomplete", null)
         clearStoredLatestTranscriptJobId()
         setStatus("idle")
         return
@@ -210,6 +230,7 @@ export function useTranscriptWorkflow({
       }
       activeJobIdRef.current = jobId
       writeStoredLatestTranscriptJobId(jobId)
+      updateTimingDiagnostic("processing")
       setStatus("processing")
       const detail = caught instanceof Error ? caught.message : "Unable to restore the latest transcript job."
       setError(`${detail} Retrying.`)
@@ -247,6 +268,7 @@ export function useTranscriptWorkflow({
   }
 
   function resetMissingJob() {
+    finishTimingDiagnostic("incomplete", null)
     activeJobIdRef.current = null
     clearStoredLatestTranscriptJobId()
     setJob(null)
@@ -257,22 +279,27 @@ export function useTranscriptWorkflow({
 
   function applyJob(nextJob: SampleProcessingJob) {
     updateJob(nextJob)
-    updateElapsedTime(nextJob)
+    const elapsedMs = elapsedMsFromJob(nextJob)
+    setProcessingElapsedMs(elapsedMs)
     if (nextJob.status === "success") {
+      finishTimingDiagnostic("success", elapsedMs, completedAtFromJob(nextJob))
       setStatus("success")
       setError(null)
       return true
     }
     if (nextJob.status === "canceled") {
+      finishTimingDiagnostic("canceled", elapsedMs, completedAtFromJob(nextJob))
       setStatus("canceled")
       setError(null)
       return true
     }
     if (nextJob.status === "error" || nextJob.status === "interrupted") {
+      finishTimingDiagnostic("error", elapsedMs, completedAtFromJob(nextJob))
       setStatus("error")
       setError(nextJob.error || "Transcript processing failed.")
       return true
     }
+    updateTimingDiagnostic("processing")
     setError(null)
     return false
   }
@@ -285,6 +312,28 @@ export function useTranscriptWorkflow({
 
   function updateElapsedTime(nextJob: SampleProcessingJob) {
     setProcessingElapsedMs(elapsedMsFromJob(nextJob))
+  }
+
+  function updateTimingDiagnostic(workflowStatus: TranscriptTimingDiagnosticStatus) {
+    const updatedDiagnostic = updateActiveTranscriptTimingDiagnostic({ workflowStatus })
+    if (updatedDiagnostic) {
+      setTimingDiagnostic(updatedDiagnostic)
+    }
+  }
+
+  function finishTimingDiagnostic(
+    workflowStatus: Extract<TranscriptTimingDiagnosticStatus, "success" | "canceled" | "error" | "incomplete">,
+    actualElapsedMs: number | null,
+    completedAt?: string | null
+  ) {
+    const updatedDiagnostic = updateActiveTranscriptTimingDiagnostic({
+      workflowStatus,
+      actualElapsedMs,
+      completedAt,
+    })
+    if (updatedDiagnostic) {
+      setTimingDiagnostic(updatedDiagnostic)
+    }
   }
 
   function isActiveRun(runId: number) {
@@ -306,6 +355,7 @@ export function useTranscriptWorkflow({
     sourceFile,
     speakerTranscript,
     status,
+    timingDiagnostic,
     unavailableReason,
     validationError,
   }
@@ -334,12 +384,28 @@ function elapsedMsFromJob(job: SampleProcessingJob) {
   return Number.isFinite(endTime) ? Math.max(0, endTime - startTime) : 0
 }
 
+function completedAtFromJob(job: SampleProcessingJob) {
+  const completedAt = job.steps.at(-1)?.completedAt ?? job.updatedAt
+  return Number.isFinite(Date.parse(completedAt)) ? completedAt : null
+}
+
 function readStoredLatestTranscriptJobId() {
   try {
     return window.localStorage.getItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY)
   } catch {
     return null
   }
+}
+
+function readInitialTimingDiagnostic(initialStoredJobId: string | null) {
+  const activeDiagnostic = readActiveTranscriptTimingDiagnostic()
+  if (!initialStoredJobId && activeDiagnostic) {
+    return updateActiveTranscriptTimingDiagnostic({
+      workflowStatus: "incomplete",
+      actualElapsedMs: null,
+    }) ?? activeDiagnostic
+  }
+  return activeDiagnostic
 }
 
 function writeStoredLatestTranscriptJobId(jobId: string) {
