@@ -12,6 +12,7 @@ This guide covers local setup, provider key handling, and the sidebar workflow f
   - FFmpeg for multi-voice speech job assembly
 - Optional for local sample processing:
   - Demucs, when `SAMPLE_PROCESSING_ENGINE=demucs`
+  - Cargo, a C compiler, pkg-config, and Opus development headers when the host platform has no prebuilt `sphn` wheel; on Debian or Ubuntu install `cargo gcc pkg-config libopus-dev`
 
 ## ElevenLabs API Key Permissions
 
