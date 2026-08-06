@@ -247,6 +247,47 @@ describe("useTranscriptWorkflow", () => {
     )
   })
 
+  it("keeps the latest paired session authoritative when another tab interleaves the session registry", async () => {
+    const olderDiagnostic = startTranscriptTimingDiagnostic({
+      createId: () => "timing-older-session",
+      estimate: { minSeconds: 40, maxSeconds: 115 },
+      sourceFile: new File(["older"], "older.mp3", { type: "audio/mpeg" }),
+    })
+    const latestDiagnostic = startTranscriptTimingDiagnostic({
+      createId: () => "timing-latest-session",
+      estimate: { minSeconds: 40, maxSeconds: 115 },
+      sourceFile: new File(["latest"], "latest.mp3", { type: "audio/mpeg" }),
+    })
+    const latestJob = buildJob("success", { id: "transcript-job-latest" })
+    // The registry can be momentarily stale when writes from separate tabs
+    // interleave. The latest paired session must still protect and restore its
+    // diagnostic rather than treating it as an orphan.
+    window.localStorage.setItem(
+      ACTIVE_TRANSCRIPT_SESSIONS_STORAGE_KEY,
+      JSON.stringify([{ jobId: "transcript-job-older", timingDiagnosticId: olderDiagnostic.id }])
+    )
+    window.localStorage.setItem(
+      LATEST_TRANSCRIPT_SESSION_STORAGE_KEY,
+      JSON.stringify({ jobId: latestJob.id, timingDiagnosticId: latestDiagnostic.id })
+    )
+    vi.mocked(api.fetchSampleProcessingJob).mockResolvedValue({ job: latestJob })
+
+    const { result } = renderTranscriptWorkflow()
+
+    await waitFor(() => expect(result.current.status).toBe("success"))
+    expect(result.current.timingDiagnostic).toMatchObject({
+      id: latestDiagnostic.id,
+      workflowStatus: "success",
+      actualElapsedMs: 5_000,
+    })
+    expect(readTranscriptTimingDiagnostics()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: latestDiagnostic.id, workflowStatus: "success" }),
+        expect.objectContaining({ id: olderDiagnostic.id, workflowStatus: "starting" }),
+      ])
+    )
+  })
+
   it("restores a completed transcript result and retains the latest pointer", async () => {
     window.localStorage.setItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY, "transcript-job-1")
     vi.mocked(api.fetchSampleProcessingJob).mockResolvedValue({ job: buildJob("success") })

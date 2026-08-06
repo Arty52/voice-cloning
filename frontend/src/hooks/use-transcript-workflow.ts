@@ -61,7 +61,11 @@ export function useTranscriptWorkflow({
   const [validationError, setValidationError] = useState<string | null>(null)
   const [processingElapsedMs, setProcessingElapsedMs] = useState<number | null>(null)
   const [timingDiagnostic, setTimingDiagnostic] = useState<TranscriptTimingDiagnosticRecord | null>(() =>
-    readInitialTimingDiagnostic(initialStoredJobId, initialStoredTranscriptSessions)
+    readInitialTimingDiagnostic(
+      initialStoredJobId,
+      initialStoredTranscriptSessions,
+      initialStoredTranscriptSession
+    )
   )
   const timingDiagnosticIdRef = useRef<string | null>(timingDiagnostic?.id ?? null)
   const mountedRef = useRef(true)
@@ -417,13 +421,22 @@ function readStoredLatestTranscriptJobId() {
 
 function readInitialTimingDiagnostic(
   initialStoredJobId: string | null,
-  storedSessions: readonly StoredTranscriptSession[]
+  storedSessions: readonly StoredTranscriptSession[],
+  latestStoredSession: StoredTranscriptSession | null
 ) {
+  // The latest session pointer is authoritative for restoration, even when a
+  // concurrent tab has interleaved the bounded session registry write.
+  const sessionsForReconciliation = latestStoredSession
+    ? [...storedSessions.filter(({ jobId }) => jobId !== latestStoredSession.jobId), latestStoredSession]
+    : storedSessions
   const pairedDiagnosticIds = new Set(
-    storedSessions.flatMap(({ timingDiagnosticId }) => (timingDiagnosticId ? [timingDiagnosticId] : []))
+    sessionsForReconciliation.flatMap(({ timingDiagnosticId }) => (timingDiagnosticId ? [timingDiagnosticId] : []))
   )
   const reconciledDiagnostics = markUnpairedTranscriptTimingDiagnosticsIncomplete(pairedDiagnosticIds)
-  const timingDiagnosticId = storedSessions.find(({ jobId }) => jobId === initialStoredJobId)?.timingDiagnosticId ?? null
+  const timingDiagnosticId =
+    (latestStoredSession?.jobId === initialStoredJobId ? latestStoredSession : null)?.timingDiagnosticId ??
+    storedSessions.find(({ jobId }) => jobId === initialStoredJobId)?.timingDiagnosticId ??
+    null
   if (timingDiagnosticId) {
     return readTranscriptTimingDiagnostics().find(({ id }) => id === timingDiagnosticId) ?? null
   }
