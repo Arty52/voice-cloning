@@ -110,6 +110,13 @@ describe("SpeakerTranscriptWorkspace", () => {
 
     await screen.findByDisplayValue("Morgan")
     expect(screen.getByDisplayValue("Speaker 2")).toBeInTheDocument()
+    expect(screen.getByRole("group", { name: "Export Settings" })).toBeInTheDocument()
+    const markdown = screen.getByRole("radio", { name: "Markdown" })
+    const text = screen.getByRole("radio", { name: "TXT" })
+    expect(markdown).toHaveAttribute("aria-checked", "true")
+    expect(markdown).toHaveAttribute("data-state", "on")
+    expect(text).toHaveAttribute("aria-checked", "false")
+    expect(text).toHaveAttribute("data-state", "off")
     const exportButton = screen.getByRole("button", { name: "Export Transcript" })
     expect(exportButton).toBeEnabled()
 
@@ -127,8 +134,12 @@ describe("SpeakerTranscriptWorkspace", () => {
     }))
     await waitFor(() => expect(exportButton).toBeEnabled())
 
-    await user.click(screen.getByRole("radio", { name: "TXT" }))
-    await user.click(screen.getByRole("checkbox", { name: "Include Start Times" }))
+    await user.click(text)
+    expect(markdown).toHaveAttribute("aria-checked", "false")
+    expect(markdown).toHaveAttribute("data-state", "off")
+    expect(text).toHaveAttribute("aria-checked", "true")
+    expect(text).toHaveAttribute("data-state", "on")
+    await user.click(screen.getByRole("checkbox", { name: "Include Timestamps" }))
     await user.click(exportButton)
 
     expect(createObjectUrl).toHaveBeenCalledOnce()
