@@ -29,7 +29,7 @@ The allowlist intentionally excludes filenames, paths, raw transcript text, spea
 - A record begins at transcript submission with the exact pre-start estimate and safe source metadata.
 - A server job moves it to `processing`; success, cancellation, and terminal errors retain the final job-timestamp elapsed duration.
 - A start failure is recorded as `error` with browser-observed attempt time.
-- Reload restoration continues the same active local record when both the latest-job pointer and diagnostic pointer remain available.
+- Reload restoration uses one stored transcript session that pairs the latest server job id with its diagnostic record id. When that pair is available, restoration continues that exact record. Legacy job-only storage may restore the server job, but never infers a diagnostic record from the global active-diagnostic pointer.
 - A missing or inaccessible job, a mismatched restored operation, or an orphaned active record with no restorable job becomes `incomplete`. Its elapsed duration remains `null` because no reliable terminal duration is available.
 - Transient restore or polling failures remain `processing` while the existing retry and cancellation behavior continues.
 
