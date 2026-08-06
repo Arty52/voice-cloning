@@ -10,6 +10,7 @@ import {
   TRANSCRIPT_TIMING_DIAGNOSTIC_RETENTION_MS,
   TRANSCRIPT_TIMING_DIAGNOSTICS_STORAGE_KEY,
   updateActiveTranscriptTimingDiagnostic,
+  updateTranscriptTimingDiagnostic,
 } from "./transcript-timing-diagnostics"
 
 const NOW = new Date("2026-08-06T12:00:00.000Z")
@@ -85,6 +86,95 @@ describe("transcript timing diagnostics", () => {
     })
     expect(readActiveTranscriptTimingDiagnostic()).toBeNull()
     expect(localStorage.getItem(ACTIVE_TRANSCRIPT_TIMING_DIAGNOSTIC_STORAGE_KEY)).toBeNull()
+  })
+
+  it("persists explicitly supplied null terminal values instead of substituting defaults", () => {
+    const started = startTranscriptTimingDiagnostic({
+      createId: () => "timing-null-terminal-values",
+      estimate: { minSeconds: 40, maxSeconds: 115 },
+      now: NOW,
+      sourceFile: new File(["audio"], "source.mp3", { type: "audio/mpeg" }),
+    })
+
+    const completed = updateTranscriptTimingDiagnostic(
+      started.id,
+      { workflowStatus: "success", actualElapsedMs: null, completedAt: null },
+      localStorage,
+      NOW.getTime() + 1_000
+    )
+
+    expect(completed).toMatchObject({
+      actualElapsedMs: null,
+      completedAt: null,
+      workflowStatus: "success",
+    })
+  })
+
+  it("keeps concurrent lifecycle updates bound to the diagnostic that started them", () => {
+    const first = startTranscriptTimingDiagnostic({
+      createId: () => "timing-first",
+      estimate: { minSeconds: 40, maxSeconds: 115 },
+      now: NOW,
+      sourceFile: new File(["first"], "first.mp3", { type: "audio/mpeg" }),
+    })
+    const second = startTranscriptTimingDiagnostic({
+      createId: () => "timing-second",
+      estimate: { minSeconds: 40, maxSeconds: 115 },
+      now: new Date(NOW.getTime() + 1),
+      sourceFile: new File(["second"], "second.mp3", { type: "audio/mpeg" }),
+    })
+
+    updateTranscriptTimingDiagnostic(
+      first.id,
+      { workflowStatus: "success", actualElapsedMs: 1_000 },
+      localStorage,
+      NOW.getTime() + 1_000
+    )
+
+    expect(readTranscriptTimingDiagnostics(localStorage, NOW.getTime() + 1_000)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: first.id,
+          workflowStatus: "success",
+          actualElapsedMs: 1_000,
+        }),
+        expect.objectContaining({
+          id: second.id,
+          workflowStatus: "starting",
+          actualElapsedMs: null,
+        }),
+      ])
+    )
+    expect(localStorage.getItem(ACTIVE_TRANSCRIPT_TIMING_DIAGNOSTIC_STORAGE_KEY)).toBe(second.id)
+  })
+
+  it("does not throw when browser policy blocks the default localStorage lookup", () => {
+    const descriptor = Object.getOwnPropertyDescriptor(window, "localStorage")
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      get() {
+        throw new DOMException("Storage access denied", "SecurityError")
+      },
+    })
+
+    try {
+      expect(() =>
+        startTranscriptTimingDiagnostic({
+          createId: () => "timing-blocked-storage",
+          estimate: { minSeconds: 40, maxSeconds: 115 },
+          now: NOW,
+          sourceFile: new File(["audio"], "source.mp3", { type: "audio/mpeg" }),
+        })
+      ).not.toThrow()
+      expect(() => readTranscriptTimingDiagnostics()).not.toThrow()
+      expect(() => readActiveTranscriptTimingDiagnostic()).not.toThrow()
+      expect(() => updateActiveTranscriptTimingDiagnostic({ workflowStatus: "processing" })).not.toThrow()
+      expect(() => clearTranscriptTimingDiagnostics()).not.toThrow()
+    } finally {
+      if (descriptor) {
+        Object.defineProperty(window, "localStorage", descriptor)
+      }
+    }
   })
 
   it("rejects unversioned or unsafe records instead of exposing extra fields", () => {
