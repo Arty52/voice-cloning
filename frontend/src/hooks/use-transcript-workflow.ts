@@ -467,13 +467,27 @@ function isStoredTranscriptSession(value: unknown): value is StoredTranscriptSes
 
 function writeStoredLatestTranscriptJob(jobId: string, timingDiagnosticId: string | null) {
   try {
-    window.localStorage.setItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY, jobId)
     window.localStorage.setItem(
       LATEST_TRANSCRIPT_SESSION_STORAGE_KEY,
       JSON.stringify({ jobId, timingDiagnosticId } satisfies StoredTranscriptSession)
     )
   } catch {
-    // Browser storage is optional; the active mounted workflow still works.
+    // A failed replacement must not leave an older paired session authoritative.
+    // Prefer the legacy pointer only after that stale session has been removed.
+    try {
+      window.localStorage.removeItem(LATEST_TRANSCRIPT_SESSION_STORAGE_KEY)
+      window.localStorage.setItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY, jobId)
+    } catch {
+      // Browser storage is optional; the active mounted workflow still works.
+    }
+    return
+  }
+  try {
+    // The paired session is authoritative; this legacy pointer preserves recovery
+    // for installations created before paired timing diagnostics were introduced.
+    window.localStorage.setItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY, jobId)
+  } catch {
+    // The paired session is enough to restore the current job safely.
   }
 }
 

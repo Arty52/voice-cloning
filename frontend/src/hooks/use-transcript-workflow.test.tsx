@@ -178,6 +178,37 @@ describe("useTranscriptWorkflow", () => {
     unmount()
   })
 
+  it("invalidates a stale paired session when writing its replacement fails", async () => {
+    const { result } = renderTranscriptWorkflow()
+    const staleDiagnostic = startTranscriptTimingDiagnostic({
+      createId: () => "timing-stale",
+      estimate: { minSeconds: 40, maxSeconds: 115 },
+      sourceFile: new File(["stale"], "stale.mp3", { type: "audio/mpeg" }),
+    })
+    window.localStorage.setItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY, "transcript-job-stale")
+    window.localStorage.setItem(
+      LATEST_TRANSCRIPT_SESSION_STORAGE_KEY,
+      JSON.stringify({ jobId: "transcript-job-stale", timingDiagnosticId: staleDiagnostic.id })
+    )
+    const originalSetItem = Storage.prototype.setItem
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (this: Storage, key, value) {
+      if (key === LATEST_TRANSCRIPT_SESSION_STORAGE_KEY) {
+        throw new DOMException("Storage quota exceeded", "QuotaExceededError")
+      }
+      return originalSetItem.call(this, key, value)
+    })
+    const runningJob = buildJob("running", { id: "transcript-job-current" })
+    const sourceFile = new File(["current"], "current.mp3", { type: "audio/mpeg" })
+    vi.mocked(api.createSampleProcessingJob).mockResolvedValue({ job: runningJob })
+
+    act(() => result.current.handleSourceFileSelect(sourceFile))
+    await act(async () => result.current.handleStartTranscription())
+
+    expect(result.current.job?.id).toBe(runningJob.id)
+    expect(window.localStorage.getItem(LATEST_TRANSCRIPT_SESSION_STORAGE_KEY)).toBeNull()
+    expect(window.localStorage.getItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY)).toBe(runningJob.id)
+  })
+
   it("restores the diagnostic paired with its stored job instead of another tab's active diagnostic", async () => {
     const firstJob = buildJob("success", { id: "transcript-job-first" })
     const firstDiagnostic = startTranscriptTimingDiagnostic({
