@@ -2,9 +2,19 @@ import { act, renderHook, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import * as api from "@/lib/api"
+import {
+  readTranscriptTimingDiagnostics,
+  startTranscriptTimingDiagnostic,
+} from "@/lib/transcript-timing-diagnostics"
 import type { SampleProcessingJob, SpeakerSeparationResult } from "@/types"
 
-import { LATEST_TRANSCRIPT_JOB_STORAGE_KEY, useTranscriptWorkflow } from "./use-transcript-workflow"
+import {
+  ACTIVE_TRANSCRIPT_SESSIONS_STORAGE_KEY,
+  LATEST_TRANSCRIPT_JOB_STORAGE_KEY,
+  LATEST_TRANSCRIPT_SESSION_STORAGE_KEY,
+  TRANSCRIPT_SESSION_STORAGE_PREFIX,
+  useTranscriptWorkflow,
+} from "./use-transcript-workflow"
 
 vi.mock("@/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api")>()
@@ -135,10 +145,29 @@ describe("useTranscriptWorkflow", () => {
     expect(result.current.preStartEstimateRangeSeconds).toBeNull()
     expect(result.current.processingElapsedMs).toBe(5_000)
     expect(window.localStorage.getItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY)).toBe(completedJob.id)
+    expect(result.current.timingDiagnostic).toMatchObject({
+      actualElapsedMs: 5_000,
+      estimateMinSeconds: 40,
+      estimateMaxSeconds: 115,
+      sourceExtension: "m4a",
+      sourceMediaType: "audio/mp4",
+      sourceSizeBytes: sourceFile.size,
+      workflowStatus: "success",
+    })
+    expect(JSON.stringify(readTranscriptTimingDiagnostics())).not.toContain(sourceFile.name)
   })
 
   it("restores and resumes a running latest transcript job", async () => {
     window.localStorage.setItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY, "transcript-job-1")
+    const diagnostic = startTranscriptTimingDiagnostic({
+      createId: () => "timing-1",
+      estimate: { minSeconds: 40, maxSeconds: 115 },
+      sourceFile: new File(["audio"], "private-name.mp3", { type: "audio/mpeg" }),
+    })
+    window.localStorage.setItem(
+      LATEST_TRANSCRIPT_SESSION_STORAGE_KEY,
+      JSON.stringify({ jobId: "transcript-job-1", timingDiagnosticId: diagnostic.id })
+    )
     vi.mocked(api.fetchSampleProcessingJob).mockResolvedValue({ job: buildJob("running") })
     const { result, unmount } = renderTranscriptWorkflow()
 
@@ -146,7 +175,168 @@ describe("useTranscriptWorkflow", () => {
     await waitFor(() => expect(result.current.status).toBe("processing"))
     expect(result.current.job?.id).toBe("transcript-job-1")
     expect(result.current.processingElapsedMs).not.toBeNull()
+    expect(result.current.timingDiagnostic?.workflowStatus).toBe("processing")
 
+    unmount()
+  })
+
+  it("invalidates a stale paired session when writing its replacement fails", async () => {
+    const { result } = renderTranscriptWorkflow()
+    const staleDiagnostic = startTranscriptTimingDiagnostic({
+      createId: () => "timing-stale",
+      estimate: { minSeconds: 40, maxSeconds: 115 },
+      sourceFile: new File(["stale"], "stale.mp3", { type: "audio/mpeg" }),
+    })
+    window.localStorage.setItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY, "transcript-job-stale")
+    window.localStorage.setItem(
+      LATEST_TRANSCRIPT_SESSION_STORAGE_KEY,
+      JSON.stringify({ jobId: "transcript-job-stale", timingDiagnosticId: staleDiagnostic.id })
+    )
+    const originalSetItem = Storage.prototype.setItem
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (this: Storage, key, value) {
+      if (key === LATEST_TRANSCRIPT_SESSION_STORAGE_KEY) {
+        throw new DOMException("Storage quota exceeded", "QuotaExceededError")
+      }
+      return originalSetItem.call(this, key, value)
+    })
+    const runningJob = buildJob("running", { id: "transcript-job-current" })
+    const sourceFile = new File(["current"], "current.mp3", { type: "audio/mpeg" })
+    vi.mocked(api.createSampleProcessingJob).mockResolvedValue({ job: runningJob })
+
+    act(() => result.current.handleSourceFileSelect(sourceFile))
+    await act(async () => result.current.handleStartTranscription())
+
+    expect(result.current.job?.id).toBe(runningJob.id)
+    expect(window.localStorage.getItem(LATEST_TRANSCRIPT_SESSION_STORAGE_KEY)).toBeNull()
+    expect(window.localStorage.getItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY)).toBe(runningJob.id)
+  })
+
+  it("restores the diagnostic paired with its stored job instead of another tab's active diagnostic", async () => {
+    const firstJob = buildJob("success", { id: "transcript-job-first" })
+    const firstDiagnostic = startTranscriptTimingDiagnostic({
+      createId: () => "timing-first",
+      estimate: { minSeconds: 40, maxSeconds: 115 },
+      sourceFile: new File(["first"], "first.mp3", { type: "audio/mpeg" }),
+    })
+    const secondDiagnostic = startTranscriptTimingDiagnostic({
+      createId: () => "timing-second",
+      estimate: { minSeconds: 40, maxSeconds: 115 },
+      sourceFile: new File(["second"], "second.mp3", { type: "audio/mpeg" }),
+    })
+    // A second tab may have most recently written the legacy job pointer, but
+    // the paired session remains the only safe restoration source.
+    window.localStorage.setItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY, "transcript-job-second")
+    window.localStorage.setItem(
+      LATEST_TRANSCRIPT_SESSION_STORAGE_KEY,
+      JSON.stringify({ jobId: firstJob.id, timingDiagnosticId: firstDiagnostic.id })
+    )
+    vi.mocked(api.fetchSampleProcessingJob).mockResolvedValue({ job: firstJob })
+
+    const { result } = renderTranscriptWorkflow()
+
+    await waitFor(() => expect(result.current.status).toBe("success"))
+    expect(result.current.timingDiagnostic).toMatchObject({
+      id: firstDiagnostic.id,
+      workflowStatus: "success",
+      actualElapsedMs: 5_000,
+    })
+    expect(readTranscriptTimingDiagnostics()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: firstDiagnostic.id, workflowStatus: "success" }),
+        expect.objectContaining({ id: secondDiagnostic.id, workflowStatus: "incomplete", actualElapsedMs: null }),
+      ])
+    )
+  })
+
+  it("retains independently written session pairs when tabs interleave without a shared registry", async () => {
+    const olderDiagnostic = startTranscriptTimingDiagnostic({
+      createId: () => "timing-older-session",
+      estimate: { minSeconds: 40, maxSeconds: 115 },
+      sourceFile: new File(["older"], "older.mp3", { type: "audio/mpeg" }),
+    })
+    const latestDiagnostic = startTranscriptTimingDiagnostic({
+      createId: () => "timing-latest-session",
+      estimate: { minSeconds: 40, maxSeconds: 115 },
+      sourceFile: new File(["latest"], "latest.mp3", { type: "audio/mpeg" }),
+    })
+    const latestJob = buildJob("success", { id: "transcript-job-latest" })
+    // Simulate the old read-modify-write interleaving: both tabs write their
+    // own pair before either can observe the other's session. Per-job keys
+    // keep both pairs, while the latest pointer selects the job to restore.
+    window.localStorage.setItem(
+      `${TRANSCRIPT_SESSION_STORAGE_PREFIX}transcript-job-older`,
+      JSON.stringify({
+        jobId: "transcript-job-older",
+        timingDiagnosticId: olderDiagnostic.id,
+        createdAt: "2026-08-04T20:00:00.000Z",
+      })
+    )
+    window.localStorage.setItem(
+      `${TRANSCRIPT_SESSION_STORAGE_PREFIX}${latestJob.id}`,
+      JSON.stringify({
+        jobId: latestJob.id,
+        timingDiagnosticId: latestDiagnostic.id,
+        createdAt: "2026-08-04T20:00:01.000Z",
+      })
+    )
+    window.localStorage.setItem(
+      LATEST_TRANSCRIPT_SESSION_STORAGE_KEY,
+      JSON.stringify({ jobId: latestJob.id, timingDiagnosticId: latestDiagnostic.id })
+    )
+    vi.mocked(api.fetchSampleProcessingJob).mockResolvedValue({ job: latestJob })
+
+    const { result } = renderTranscriptWorkflow()
+
+    await waitFor(() => expect(result.current.status).toBe("success"))
+    expect(result.current.timingDiagnostic).toMatchObject({
+      id: latestDiagnostic.id,
+      workflowStatus: "success",
+      actualElapsedMs: 5_000,
+    })
+    expect(readTranscriptTimingDiagnostics()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: latestDiagnostic.id, workflowStatus: "success" }),
+        expect.objectContaining({ id: olderDiagnostic.id, workflowStatus: "starting" }),
+      ])
+    )
+  })
+
+  it("does not lose another tab's paired session when session writes interleave", async () => {
+    const secondDiagnostic = startTranscriptTimingDiagnostic({
+      createId: () => "timing-interleaved-tab",
+      estimate: { minSeconds: 40, maxSeconds: 115 },
+      sourceFile: new File(["second"], "second.mp3", { type: "audio/mpeg" }),
+    })
+    const firstJob = buildJob("running", { id: "transcript-job-first-tab" })
+    const secondSession = {
+      jobId: "transcript-job-second-tab",
+      timingDiagnosticId: secondDiagnostic.id,
+      createdAt: "2026-08-04T20:00:01.000Z",
+    }
+    const originalSetItem = Storage.prototype.setItem
+    let interleaved = false
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (this: Storage, key, value) {
+      originalSetItem.call(this, key, value)
+      if (key === `${TRANSCRIPT_SESSION_STORAGE_PREFIX}${firstJob.id}` && !interleaved) {
+        interleaved = true
+        originalSetItem.call(
+          this,
+          `${TRANSCRIPT_SESSION_STORAGE_PREFIX}${secondSession.jobId}`,
+          JSON.stringify(secondSession)
+        )
+      }
+    })
+    vi.mocked(api.createSampleProcessingJob).mockResolvedValue({ job: firstJob })
+    const { result, unmount } = renderTranscriptWorkflow()
+
+    act(() => result.current.handleSourceFileSelect(new File(["first"], "first.mp3", { type: "audio/mpeg" })))
+    await act(async () => result.current.handleStartTranscription())
+
+    expect(interleaved).toBe(true)
+    expect(window.localStorage.getItem(`${TRANSCRIPT_SESSION_STORAGE_PREFIX}${firstJob.id}`)).not.toBeNull()
+    expect(window.localStorage.getItem(`${TRANSCRIPT_SESSION_STORAGE_PREFIX}${secondSession.jobId}`)).toBe(
+      JSON.stringify(secondSession)
+    )
     unmount()
   })
 
@@ -176,6 +366,55 @@ describe("useTranscriptWorkflow", () => {
     expect(api.cancelSampleProcessingJob).toHaveBeenCalledWith(runningJob.id)
     expect(result.current.status).toBe("canceled")
     expect(result.current.job).toEqual(canceledJob)
+    expect(result.current.timingDiagnostic).toMatchObject({
+      actualElapsedMs: 5_000,
+      workflowStatus: "canceled",
+    })
+  })
+
+  it("keeps timing lifecycle updates attached to each concurrently mounted transcript workflow", async () => {
+    const firstRunningJob = buildJob("running", { id: "transcript-job-first" })
+    const secondRunningJob = buildJob("running", { id: "transcript-job-second" })
+    const firstCanceledJob = buildJob("canceled", { id: "transcript-job-first" })
+    vi.mocked(api.createSampleProcessingJob)
+      .mockResolvedValueOnce({ job: firstRunningJob })
+      .mockResolvedValueOnce({ job: secondRunningJob })
+    vi.mocked(api.cancelSampleProcessingJob).mockResolvedValue({ job: firstCanceledJob })
+    const first = renderTranscriptWorkflow()
+    const second = renderTranscriptWorkflow()
+
+    act(() => first.result.current.handleSourceFileSelect(new File(["first"], "first.mp3", { type: "audio/mpeg" })))
+    await act(async () => first.result.current.handleStartTranscription())
+    act(() => second.result.current.handleSourceFileSelect(new File(["second"], "second.mp3", { type: "audio/mpeg" })))
+    await act(async () => second.result.current.handleStartTranscription())
+    await act(async () => first.result.current.handleCancelTranscription())
+
+    const records = readTranscriptTimingDiagnostics()
+    expect(records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ sourceExtension: "mp3", workflowStatus: "canceled" }),
+        expect.objectContaining({ sourceExtension: "mp3", workflowStatus: "processing" }),
+      ])
+    )
+    expect(first.result.current.timingDiagnostic?.workflowStatus).toBe("canceled")
+    expect(second.result.current.timingDiagnostic?.workflowStatus).toBe("processing")
+  })
+
+  it("records a terminal error when a transcript cannot be started", async () => {
+    const sourceFile = new File(["audio"], "meeting.wav", { type: "audio/wav" })
+    vi.mocked(api.createSampleProcessingJob).mockRejectedValue(new Error("Local processor unavailable."))
+    const { result } = renderTranscriptWorkflow()
+
+    act(() => result.current.handleSourceFileSelect(sourceFile))
+    await act(async () => result.current.handleStartTranscription())
+
+    expect(result.current.status).toBe("error")
+    expect(result.current.error).toBe("Local processor unavailable.")
+    expect(result.current.timingDiagnostic).toMatchObject({
+      sourceExtension: "wav",
+      workflowStatus: "error",
+    })
+    expect(result.current.timingDiagnostic?.actualElapsedMs).toBeGreaterThanOrEqual(0)
   })
 
   it("disables transcription when local diarization is unavailable", () => {
@@ -190,6 +429,15 @@ describe("useTranscriptWorkflow", () => {
 
   it("clears a stale latest job pointer when restoration fails", async () => {
     window.localStorage.setItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY, "missing-job")
+    const diagnostic = startTranscriptTimingDiagnostic({
+      createId: () => "timing-missing",
+      estimate: { minSeconds: 40, maxSeconds: 115 },
+      sourceFile: new File(["audio"], "missing.flac", { type: "audio/flac" }),
+    })
+    window.localStorage.setItem(
+      LATEST_TRANSCRIPT_SESSION_STORAGE_KEY,
+      JSON.stringify({ jobId: "missing-job", timingDiagnosticId: diagnostic.id })
+    )
     vi.mocked(api.fetchSampleProcessingJob).mockRejectedValue(new Error("Sample processing job not found."))
     const { result } = renderTranscriptWorkflow()
 
@@ -197,6 +445,77 @@ describe("useTranscriptWorkflow", () => {
     expect(result.current.job).toBeNull()
     expect(result.current.error).toBeNull()
     expect(window.localStorage.getItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY)).toBeNull()
+    expect(result.current.timingDiagnostic?.workflowStatus).toBe("incomplete")
+  })
+
+  it("marks an orphaned local diagnostic incomplete when no restorable job remains", async () => {
+    startTranscriptTimingDiagnostic({
+      createId: () => "timing-orphaned",
+      estimate: { minSeconds: 40, maxSeconds: 115 },
+      sourceFile: new File(["audio"], "orphaned.ogg", { type: "audio/ogg" }),
+    })
+
+    const { result } = renderTranscriptWorkflow()
+
+    await waitFor(() => expect(result.current.timingDiagnostic?.workflowStatus).toBe("incomplete"))
+    expect(readTranscriptTimingDiagnostics()[0]?.actualElapsedMs).toBeNull()
+  })
+
+  it("reconciles every pre-job diagnostic when concurrent tabs close before either job is persisted", async () => {
+    const firstDiagnostic = startTranscriptTimingDiagnostic({
+      createId: () => "timing-first-pre-job",
+      estimate: { minSeconds: 40, maxSeconds: 115 },
+      sourceFile: new File(["first"], "first.mp3", { type: "audio/mpeg" }),
+    })
+    const secondDiagnostic = startTranscriptTimingDiagnostic({
+      createId: () => "timing-second-pre-job",
+      estimate: { minSeconds: 40, maxSeconds: 115 },
+      sourceFile: new File(["second"], "second.mp3", { type: "audio/mpeg" }),
+    })
+
+    const { result } = renderTranscriptWorkflow()
+
+    await waitFor(() => expect(result.current.status).toBe("idle"))
+    expect(readTranscriptTimingDiagnostics()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: firstDiagnostic.id, workflowStatus: "incomplete", actualElapsedMs: null }),
+        expect.objectContaining({ id: secondDiagnostic.id, workflowStatus: "incomplete", actualElapsedMs: null }),
+      ])
+    )
+  })
+
+  it("retains diagnostics paired with another persisted transcript session while reconciling orphans", async () => {
+    const pairedDiagnostic = startTranscriptTimingDiagnostic({
+      createId: () => "timing-paired-session",
+      estimate: { minSeconds: 40, maxSeconds: 115 },
+      sourceFile: new File(["paired"], "paired.mp3", { type: "audio/mpeg" }),
+    })
+    const orphanDiagnostic = startTranscriptTimingDiagnostic({
+      createId: () => "timing-unpaired-session",
+      estimate: { minSeconds: 40, maxSeconds: 115 },
+      sourceFile: new File(["orphan"], "orphan.mp3", { type: "audio/mpeg" }),
+    })
+    const pairedJob = buildJob("running", { id: "transcript-job-paired" })
+    window.localStorage.setItem(
+      ACTIVE_TRANSCRIPT_SESSIONS_STORAGE_KEY,
+      JSON.stringify([{ jobId: pairedJob.id, timingDiagnosticId: pairedDiagnostic.id }])
+    )
+    window.localStorage.setItem(
+      LATEST_TRANSCRIPT_SESSION_STORAGE_KEY,
+      JSON.stringify({ jobId: pairedJob.id, timingDiagnosticId: pairedDiagnostic.id })
+    )
+    vi.mocked(api.fetchSampleProcessingJob).mockResolvedValue({ job: pairedJob })
+
+    const { result, unmount } = renderTranscriptWorkflow()
+
+    await waitFor(() => expect(result.current.status).toBe("processing"))
+    expect(readTranscriptTimingDiagnostics()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: pairedDiagnostic.id, workflowStatus: "processing" }),
+        expect.objectContaining({ id: orphanDiagnostic.id, workflowStatus: "incomplete", actualElapsedMs: null }),
+      ])
+    )
+    unmount()
   })
 
   it("keeps an initially unrestorable stored job active until polling recovers", async () => {
