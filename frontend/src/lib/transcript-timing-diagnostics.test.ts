@@ -143,6 +143,38 @@ describe("transcript timing diagnostics", () => {
     ])
   })
 
+  it("does not let a later missing-job result replace a successful diagnostic", () => {
+    const started = startTranscriptTimingDiagnostic({
+      createId: () => "timing-success-before-missing-job",
+      estimate: { minSeconds: 40, maxSeconds: 115 },
+      now: NOW,
+      sourceFile: new File(["audio"], "source.mp3", { type: "audio/mpeg" }),
+    })
+    const completed = updateTranscriptTimingDiagnostic(
+      started.id,
+      { workflowStatus: "success", actualElapsedMs: 352_000 },
+      localStorage,
+      NOW.getTime() + 352_000
+    )
+
+    const missingJobUpdate = updateTranscriptTimingDiagnostic(
+      started.id,
+      { workflowStatus: "incomplete", actualElapsedMs: null, completedAt: null },
+      localStorage,
+      NOW.getTime() + 353_000
+    )
+
+    expect(missingJobUpdate).toEqual(completed)
+    expect(readTranscriptTimingDiagnostics(localStorage, NOW.getTime() + 353_000)).toEqual([
+      expect.objectContaining({
+        id: started.id,
+        workflowStatus: "success",
+        actualElapsedMs: 352_000,
+        completedAt: "2026-08-06T12:05:52.000Z",
+      }),
+    ])
+  })
+
   it("keeps concurrent lifecycle updates bound to the diagnostic that started them", () => {
     const first = startTranscriptTimingDiagnostic({
       createId: () => "timing-first",

@@ -183,9 +183,9 @@ export function updateTranscriptTimingDiagnostic(
     }
     const isTerminal = TERMINAL_STATUSES.has(update.workflowStatus)
     // Late polling/lifecycle writes can arrive after another tab has already
-    // recorded the terminal outcome. Preserve that outcome instead of making
-    // the calibration record look active again.
-    if (TERMINAL_STATUSES.has(activeRecord.workflowStatus) && !isTerminal) {
+    // recorded the terminal outcome. A server 404 after success, for example,
+    // must not replace a usable calibration result with `incomplete`.
+    if (TERMINAL_STATUSES.has(activeRecord.workflowStatus)) {
       return activeRecord
     }
     const updatedRecord: TranscriptTimingDiagnosticRecord = {
