@@ -526,12 +526,15 @@ function TranscriptExportCard({
         <CardTitle className="text-sm">Transcript Export</CardTitle>
         <CardDescription>Download the complete labeled dialogue in chronological order.</CardDescription>
       </CardHeader>
-      <CardContent className="grid gap-3 sm:grid-cols-2">
+      <CardContent className="grid gap-3 sm:grid-cols-2" role="group" aria-labelledby="transcript-export-settings-label">
+        <p className="text-sm font-medium sm:col-span-2" id="transcript-export-settings-label">
+          Export Settings
+        </p>
         <Field>
           <FieldLabel id="transcript-export-format-label">Document Format</FieldLabel>
           <ToggleGroup
             aria-labelledby="transcript-export-format-label"
-            className="w-full"
+            className="grid w-full grid-cols-2 rounded-md border border-border bg-background/60 p-1"
             onValueChange={(value) => {
               if (value === "markdown" || value === "text") {
                 onExportFormatChange(value)
@@ -539,20 +542,25 @@ function TranscriptExportCard({
             }}
             type="single"
             value={exportFormat}
-            variant="outline"
+            variant="default"
           >
-            <ToggleGroupItem className="flex-1" value="markdown">
+            <ToggleGroupItem
+              className="h-10 min-w-0 rounded border border-transparent px-3 text-center text-sm font-medium text-muted-foreground aria-checked:border-primary/60 aria-checked:bg-primary/10 aria-checked:text-foreground aria-checked:shadow-sm aria-checked:ring-1 aria-checked:ring-primary/30 aria-checked:hover:bg-primary/10"
+              value="markdown"
+            >
               Markdown
             </ToggleGroupItem>
-            <ToggleGroupItem className="flex-1" value="text">
+            <ToggleGroupItem
+              className="h-10 min-w-0 rounded border border-transparent px-3 text-center text-sm font-medium text-muted-foreground aria-checked:border-primary/60 aria-checked:bg-primary/10 aria-checked:text-foreground aria-checked:shadow-sm aria-checked:ring-1 aria-checked:ring-primary/30 aria-checked:hover:bg-primary/10"
+              value="text"
+            >
               TXT
             </ToggleGroupItem>
           </ToggleGroup>
         </Field>
         <Field>
-          <FieldLabel>Start Times</FieldLabel>
           <label
-            className="flex min-h-9 items-center gap-2 rounded-md border border-border bg-card/70 px-3 text-sm"
+            className="flex h-10 items-center gap-2 rounded-md border border-border bg-background/60 px-3 text-sm"
             htmlFor="transcript-export-start-times"
           >
             <Checkbox
@@ -560,7 +568,7 @@ function TranscriptExportCard({
               id="transcript-export-start-times"
               onCheckedChange={(checked) => onIncludeStartTimesChange(checked === true)}
             />
-            Include Start Times
+            Include Timestamps
           </label>
         </Field>
       </CardContent>

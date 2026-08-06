@@ -3306,10 +3306,10 @@ describe("App", () => {
 
     await user.keyboard("{Escape}")
     await user.click(transcriptPanel().getByRole("radio", { name: "TXT" }))
-    await user.click(transcriptPanel().getByRole("checkbox", { name: "Include Start Times" }))
+    await user.click(transcriptPanel().getByRole("checkbox", { name: "Include Timestamps" }))
     await user.click(exportButton)
     await user.click(transcriptPanel().getByRole("radio", { name: "Markdown" }))
-    await user.click(transcriptPanel().getByRole("checkbox", { name: "Include Start Times" }))
+    await user.click(transcriptPanel().getByRole("checkbox", { name: "Include Timestamps" }))
     await user.click(exportButton)
     expect(clickDownload).toHaveBeenCalledTimes(2)
 
