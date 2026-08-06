@@ -121,7 +121,12 @@ export function TranscriptPanel({ transcript, voicePresets }: TranscriptPanelPro
             ) : null}
 
             {transcript.error ? (
-              <Alert role="alert" variant={transcript.status === "error" ? "destructive" : "default"}>
+              <Alert
+                className={cn(
+                  transcript.status === "error" && "border-destructive/40 bg-destructive/10 text-destructive"
+                )}
+                role="alert"
+              >
                 <AlertTitle>
                   {transcript.status === "error" ? "Transcript Processing Failed" : "Transcript Processing Notice"}
                 </AlertTitle>
