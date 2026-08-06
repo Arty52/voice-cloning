@@ -27,7 +27,10 @@ export function TranscriptProcessingTiming({
         {isProcessing ? "Elapsed" : "Finished In"} {formatElapsedTime(elapsedMs)}
       </span>
       {isProcessing && estimateRange ? (
-        <Badge aria-label="Transcript Processing Estimated Time" variant="secondary">
+        <Badge
+          aria-label={`Transcript Processing Estimated Time: ${formatSampleProcessingDurationRange(estimateRange)}`}
+          variant="secondary"
+        >
           Estimated {formatSampleProcessingDurationRange(estimateRange)}
         </Badge>
       ) : null}

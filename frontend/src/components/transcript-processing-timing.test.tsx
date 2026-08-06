@@ -14,7 +14,7 @@ describe("TranscriptProcessingTiming", () => {
     )
 
     expect(screen.getByLabelText("Transcript Processing Elapsed Time")).toHaveTextContent("Elapsed 5m 50s")
-    expect(screen.getByLabelText("Transcript Processing Estimated Time")).toHaveTextContent(
+    expect(screen.getByLabelText("Transcript Processing Estimated Time: 40s to 1m 55s")).toHaveTextContent(
       "Estimated 40s to 1m 55s"
     )
   })
@@ -29,7 +29,7 @@ describe("TranscriptProcessingTiming", () => {
     )
 
     expect(screen.getByLabelText("Transcript Processing Elapsed Time")).toHaveTextContent("Finished In 12s")
-    expect(screen.queryByLabelText("Transcript Processing Estimated Time")).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/Transcript Processing Estimated Time/)).not.toBeInTheDocument()
   })
 
   it("omits unavailable timing without rendering an empty status", () => {
