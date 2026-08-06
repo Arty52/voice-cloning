@@ -131,6 +131,58 @@ describe("useSpeakerTranscript", () => {
     expect(result.current.transcriptSaveError).toBe("Transcript text is required.")
   })
 
+  it("preserves edits made during a save and prevents overlapping correction requests", async () => {
+    let resolveUpdate: (payload: { job: SampleProcessingJob }) => void = () => undefined
+    const response = new Promise<{ job: SampleProcessingJob }>((resolve) => {
+      resolveUpdate = resolve
+    })
+    const updateTranscript = vi.spyOn(api, "updateSampleProcessingTranscriptItems").mockReturnValue(response)
+    const correctedJob: SampleProcessingJob = {
+      ...job,
+      result: {
+        ...speakerResult,
+        transcript: {
+          items: [
+            { ...speakerResult.transcript.items[0], text: "Submitted correction." },
+            speakerResult.transcript.items[1],
+          ],
+        },
+      },
+    }
+    const { result } = renderHook(() =>
+      useSpeakerTranscript({ job, onJobUpdate: vi.fn(), onVoiceSaved: vi.fn() })
+    )
+    await waitFor(() => expect(result.current.transcriptTextDrafts["item-1"]).toBe("Hello."))
+    act(() => result.current.handleTranscriptTextChange("item-1", "Submitted correction."))
+
+    let savePromise: Promise<void> = Promise.resolve()
+    act(() => {
+      savePromise = result.current.saveTranscriptItems(["item-1"])
+    })
+    await waitFor(() => expect(result.current.transcriptSaveStatus).toBe("loading"))
+    act(() => {
+      result.current.handleTranscriptTextChange("item-1", "Edited after submit.")
+      result.current.handleTranscriptTextChange("item-2", "Second draft.")
+    })
+
+    expect(result.current.transcriptSaveStatus).toBe("loading")
+    expect(result.current.canSaveTranscript).toBe(false)
+    await act(async () => {
+      const overlappingSave = result.current.saveTranscriptItems(["item-1"])
+      resolveUpdate({ job: correctedJob })
+      await Promise.all([savePromise, overlappingSave])
+    })
+
+    expect(updateTranscript).toHaveBeenCalledOnce()
+    expect(result.current.transcriptTextDrafts).toEqual({
+      "item-1": "Edited after submit.",
+      "item-2": "Second draft.",
+    })
+    expect(result.current.unsavedTranscriptItemIds).toEqual(["item-1", "item-2"])
+    expect(result.current.canSaveTranscript).toBe(true)
+    expect(result.current.transcriptSaveStatus).toBe("success")
+  })
+
   it("ignores a correction response after the active job changes", async () => {
     let resolveUpdate: (payload: { job: SampleProcessingJob }) => void = () => undefined
     const response = new Promise<{ job: SampleProcessingJob }>((resolve) => {

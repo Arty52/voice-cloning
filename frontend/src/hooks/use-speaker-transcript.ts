@@ -40,6 +40,7 @@ export function useSpeakerTranscript({
   const stateJobIdRef = useRef<string | null>(null)
   const assignmentRequestIdRef = useRef(0)
   const transcriptSaveRequestIdRef = useRef(0)
+  const transcriptSaveInFlightRef = useRef(false)
   const speakerSaveRequestIdRef = useRef(0)
 
   const speakerSeparationResult =
@@ -96,6 +97,7 @@ export function useSpeakerTranscript({
       if (stateJobIdRef.current !== null) {
         assignmentRequestIdRef.current += 1
         transcriptSaveRequestIdRef.current += 1
+        transcriptSaveInFlightRef.current = false
         speakerSaveRequestIdRef.current += 1
         stateJobIdRef.current = null
         setSelectedTranscriptItemIds([])
@@ -117,6 +119,7 @@ export function useSpeakerTranscript({
       return
     }
     stateJobIdRef.current = job.id
+    transcriptSaveInFlightRef.current = false
     setSelectedTranscriptItemIds([])
     setSpeakerNameAssignments(
       Object.fromEntries(
@@ -168,7 +171,7 @@ export function useSpeakerTranscript({
 
   function handleTranscriptTextChange(itemId: string, text: string) {
     setTranscriptTextDrafts((current) => ({ ...current, [itemId]: text }))
-    setTranscriptSaveStatus("idle")
+    setTranscriptSaveStatus((current) => (current === "loading" ? current : "idle"))
     setTranscriptSaveError(null)
   }
 
@@ -234,10 +237,14 @@ export function useSpeakerTranscript({
       setTranscriptSaveError("Transcript text is required.")
       return
     }
+    if (transcriptSaveInFlightRef.current) {
+      return
+    }
 
     const activeJobId = job.id
     const requestId = transcriptSaveRequestIdRef.current + 1
     transcriptSaveRequestIdRef.current = requestId
+    transcriptSaveInFlightRef.current = true
     setTranscriptSaveStatus("loading")
     setTranscriptSaveError(null)
     try {
@@ -247,11 +254,29 @@ export function useSpeakerTranscript({
       }
       onJobUpdate(payload.job)
       if (isSpeakerSeparationResult(payload.job.result)) {
-        const transcriptTexts = Object.fromEntries(
+        const responseTexts = new Map(
           payload.job.result.transcript.items.map((item) => [item.id, item.text])
         )
-        setTranscriptTextDrafts(transcriptTexts)
-        setSavedTranscriptTexts(transcriptTexts)
+        setTranscriptTextDrafts((current) => {
+          const next = { ...current }
+          items.forEach((item) => {
+            const responseText = responseTexts.get(item.itemId)
+            if (responseText !== undefined && current[item.itemId] === item.text) {
+              next[item.itemId] = responseText
+            }
+          })
+          return next
+        })
+        setSavedTranscriptTexts((current) => {
+          const next = { ...current }
+          items.forEach((item) => {
+            const responseText = responseTexts.get(item.itemId)
+            if (responseText !== undefined) {
+              next[item.itemId] = responseText
+            }
+          })
+          return next
+        })
       }
       setTranscriptSaveStatus("success")
     } catch (caught) {
@@ -260,6 +285,10 @@ export function useSpeakerTranscript({
       }
       setTranscriptSaveStatus("error")
       setTranscriptSaveError(caught instanceof Error ? caught.message : "Unable to save transcript corrections.")
+    } finally {
+      if (transcriptSaveRequestIdRef.current === requestId) {
+        transcriptSaveInFlightRef.current = false
+      }
     }
   }
 
