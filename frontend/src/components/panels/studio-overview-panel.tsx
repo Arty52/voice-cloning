@@ -12,7 +12,8 @@ type StudioOverviewPanelProps = {
 }
 
 export function StudioOverviewPanel({ sections }: StudioOverviewPanelProps) {
-  const workflowSections = sections.filter((section) => section.id !== "overview")
+  const workflowSections = sections.filter((section) => section.group === "workflow" && section.id !== "overview")
+  const featureSections = sections.filter((section) => section.group === "features")
 
   return (
     <div className="flex flex-col gap-4">
@@ -46,49 +47,34 @@ export function StudioOverviewPanel({ sections }: StudioOverviewPanelProps) {
       <section className="flex flex-col gap-4">
         <div>
           <h3 className="text-base font-medium">Workflow Map</h3>
-          <p className="mt-1 text-sm text-muted-foreground">Pick a card to jump into that part of the studio.</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Move through the core voice-synthesis workflow or open the setup that supports it.
+          </p>
         </div>
-        <ol aria-label="Voice Studio Workflow" className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
-          {workflowSections.map((section, index) => {
-            const SectionIcon = section.icon
-            const isRequired = !section.optional
-
-            return (
-              <li className="min-w-0" key={section.id}>
-                <Card
-                  className={cn(
-                    "h-full p-0 transition hover:bg-muted/40",
-                    isRequired ? "border-primary/60 bg-primary/5" : "border-border bg-background/50"
-                  )}
-                >
-                  <a
-                    className="flex h-full min-h-44 flex-col gap-4 rounded-lg p-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    href={section.hash}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <Badge variant={isRequired ? "accent" : "secondary"}>{section.stepLabel}</Badge>
-                      <SectionIcon
-                        aria-hidden="true"
-                        className={cn("size-5", isRequired ? "text-primary" : "text-muted-foreground")}
-                      />
-                    </div>
-                    <div className="flex flex-1 flex-col gap-2">
-                      <h3 className="text-base font-medium">{section.label}</h3>
-                      <p className="text-sm leading-6 text-muted-foreground">{section.description}</p>
-                    </div>
-                    <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                      <span>{isRequired ? "Required" : "Optional"}</span>
-                      <span aria-hidden="true" className="inline-flex items-center gap-1">
-                        {index < workflowSections.length - 1 ? "Next" : "Open"}
-                        <ArrowRight className="size-3.5" />
-                      </span>
-                    </div>
-                  </a>
-                </Card>
-              </li>
-            )
-          })}
+        <ol aria-label="Voice Studio Workflow" className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          {workflowSections.map((section, index) => (
+            <OverviewSectionCard
+              actionLabel={index < workflowSections.length - 1 ? "Next" : "Open"}
+              isRequired={!section.optional}
+              key={section.id}
+              section={section}
+            />
+          ))}
         </ol>
+      </section>
+
+      <section className="flex flex-col gap-4">
+        <div>
+          <h3 className="text-base font-medium">Features</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Open standalone tools that sit outside the voice-synthesis workflow.
+          </p>
+        </div>
+        <ul aria-label="Voice Studio Features" className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {featureSections.map((section) => (
+            <OverviewSectionCard actionLabel="Open" key={section.id} section={section} />
+          ))}
+        </ul>
       </section>
 
       <Card>
@@ -127,5 +113,60 @@ export function StudioOverviewPanel({ sections }: StudioOverviewPanelProps) {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+function OverviewSectionCard({
+  actionLabel,
+  isRequired = false,
+  section,
+}: {
+  actionLabel: "Next" | "Open"
+  isRequired?: boolean
+  section: WorkflowSection
+}) {
+  const SectionIcon = section.icon
+  const badgeLabel = section.overviewBadgeLabel
+
+  return (
+    <li className="min-w-0">
+      <Card
+        className={cn(
+          "h-full p-0 transition hover:bg-muted/40",
+          isRequired ? "border-primary/60 bg-primary/5" : "border-border bg-background/50"
+        )}
+      >
+        <a
+          className="flex h-full min-h-44 flex-col gap-4 rounded-lg p-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          href={section.hash}
+        >
+          <div className={cn("flex items-start gap-3", badgeLabel ? "justify-between" : "justify-end")}>
+            {badgeLabel ? (
+              <Badge variant={isRequired ? "accent" : "secondary"}>{badgeLabel}</Badge>
+            ) : null}
+            <SectionIcon
+              aria-hidden="true"
+              className={cn("size-5", isRequired ? "text-primary" : "text-muted-foreground")}
+            />
+          </div>
+          <div className="flex flex-1 flex-col gap-2">
+            <h3 className="text-base font-medium">{section.label}</h3>
+            <p className="text-sm leading-6 text-muted-foreground">{section.description}</p>
+          </div>
+          <div
+            className={cn(
+              "flex items-center gap-3 text-xs text-muted-foreground",
+              isRequired ? "justify-between" : "justify-end"
+            )}
+          >
+            {isRequired ? <span>Required</span> : null}
+            <span aria-hidden="true" className="inline-flex items-center gap-1">
+              {actionLabel}
+              <ArrowRight className="size-3.5" />
+            </span>
+          </div>
+        </a>
+      </Card>
+    </li>
   )
 }

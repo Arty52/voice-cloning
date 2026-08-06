@@ -1,6 +1,6 @@
 # Voice Clone Lab
 
-Voice Clone Lab is a local-first voice studio for experimenting with provider-backed voice cloning from your own browser. It gives you a sidebar workflow for preparing samples, managing voices, generating speech, reviewing generated audio, and keeping provider keys plus usage controls in one local workspace.
+Voice Clone Lab is a local-first voice studio for experimenting with provider-backed voice cloning from your own browser. It gives you grouped sidebar navigation for preparing samples, managing voices, generating speech, reviewing generated audio, using standalone features, and keeping provider keys plus usage controls in one local workspace.
 
 ![Screenshot of the Voice Clone Lab desktop Voice Studio showing the workflow sidebar, the Overview landing section, intro copy, workflow map cards, and local workspace notes.](docs/assets/voice-studio-desktop.png)
 
@@ -10,7 +10,7 @@ Public-safe demo screenshot: this capture uses mocked data and does not include 
 
 - A local development tool for testing provider-backed voice cloning with built-in ElevenLabs support.
 - A Docker Compose app with a React + TypeScript frontend and Python FastAPI backend.
-- A browser workspace for saving named voice samples, choosing a voice, selecting a model, tuning generation settings, checking quota, navigating workflow sections, and downloading generated speech.
+- A browser workspace for saving named voice samples, choosing a voice, selecting a model, tuning generation settings, checking quota, navigating workflow sections and standalone features, and downloading generated speech.
 
 ## What This Is Not
 
@@ -78,14 +78,15 @@ http://localhost:6420
 
 ## Common Workflow
 
-The Voice Studio opens on `Overview`. Use the sidebar to move between stable workflow sections:
+The Voice Studio opens on `Overview`. The sidebar separates the core `Workflow` from standalone `Features`.
 
 1. `Prepare Audio` (`#prepare`, optional step 0): choose Add Voice for ready samples or Process Source Media for cleanup, trimming, and speaker extraction before saving.
-2. `Transcript` (`#transcript`, optional): transcribe a complete local audio file, name or reassign speakers, correct dialogue, export Markdown/TXT, and save selected speakers as voices.
-3. `Voices` (`#voices`, step 1): select, preview, rename, and manage local voice samples, then save default voice tuning for future generations.
-4. `Generate Speech` (`#generate`, step 2): enter text, optionally assign selected text spans to saved voices, generate speech with saved voice defaults, play combined and segment results, and regenerate individual multi-voice segments with contextual overrides.
-5. `Generated Audio` (`#archive`, optional): review, download, remove, clear, server-export, or browser-mirror saved generated audio, including Multi-Voice metadata for combined speech jobs. With backend persistence configured, the archive streams from the server; otherwise it falls back to browser IndexedDB.
-6. `Provider & Usage` (`#provider`): add browser-local provider keys, confirm `.env` fallback, choose models, and review quota/cost metadata.
+2. `Voices` (`#voices`, step 1): select, preview, rename, and manage local voice samples, then save default voice tuning for future generations.
+3. `Generate Speech` (`#generate`, step 2): enter text, optionally assign selected text spans to saved voices, generate speech with saved voice defaults, play combined and segment results, and regenerate individual multi-voice segments with contextual overrides.
+4. `Generated Audio` (`#archive`, optional): review, download, remove, clear, server-export, or browser-mirror saved generated audio, including Multi-Voice metadata for combined speech jobs. With backend persistence configured, the archive streams from the server; otherwise it falls back to browser IndexedDB.
+5. `Provider & Usage` (`#provider`): add browser-local provider keys, confirm `.env` fallback, choose models, and review quota/cost metadata.
+
+`Features` currently contains `Transcript` (`#transcript`), a standalone capability for transcribing a complete local audio file, naming or reassigning speakers, correcting dialogue, exporting Markdown/TXT, and saving selected speakers as voices. It is not a step in the voice-synthesis workflow.
 
 ## Optional Sample Processing
 

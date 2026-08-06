@@ -90,8 +90,11 @@ function WorkflowSidebar({
   sectionStatuses,
   sections,
 }: Omit<VoiceStudioShellProps, "children" | "header">) {
+  const workflowSections = sections.filter((section) => section.group === "workflow")
+  const featureSections = sections.filter((section) => section.group === "features")
+
   return (
-    <Sidebar aria-label="Workflow Sidebar">
+    <Sidebar aria-label="Voice Studio Sidebar">
       <SidebarHeader>
         <div className="flex flex-col gap-1">
           <div className="text-sm font-medium text-sidebar-foreground/70">Voice Clone Lab</div>
@@ -100,17 +103,22 @@ function WorkflowSidebar({
       </SidebarHeader>
       <SidebarSeparator />
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Workflow</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <WorkflowSidebarNav
-              activeSectionId={activeSectionId}
-              onSectionChange={onSectionChange}
-              sectionStatuses={sectionStatuses}
-              sections={sections}
-            />
-          </SidebarGroupContent>
-        </SidebarGroup>
+        <StudioSidebarGroup
+          activeSectionId={activeSectionId}
+          label="Workflow"
+          navigationLabel="Workflow Sections"
+          onSectionChange={onSectionChange}
+          sectionStatuses={sectionStatuses}
+          sections={workflowSections}
+        />
+        <StudioSidebarGroup
+          activeSectionId={activeSectionId}
+          label="Features"
+          navigationLabel="Feature Sections"
+          onSectionChange={onSectionChange}
+          sectionStatuses={sectionStatuses}
+          sections={featureSections}
+        />
       </SidebarContent>
       <SidebarFooter>
         <div className="flex flex-wrap gap-2 px-2">
@@ -122,12 +130,40 @@ function WorkflowSidebar({
   )
 }
 
-function WorkflowSidebarNav({
+function StudioSidebarGroup({
   activeSectionId,
+  label,
+  navigationLabel,
   onSectionChange,
   sectionStatuses,
   sections,
-}: Omit<VoiceStudioShellProps, "children" | "header">) {
+}: Omit<VoiceStudioShellProps, "children" | "header"> & {
+  label: string
+  navigationLabel: string
+}) {
+  return (
+    <SidebarGroup>
+      <SidebarGroupLabel>{label}</SidebarGroupLabel>
+      <SidebarGroupContent>
+        <WorkflowSidebarNav
+          activeSectionId={activeSectionId}
+          navigationLabel={navigationLabel}
+          onSectionChange={onSectionChange}
+          sectionStatuses={sectionStatuses}
+          sections={sections}
+        />
+      </SidebarGroupContent>
+    </SidebarGroup>
+  )
+}
+
+function WorkflowSidebarNav({
+  activeSectionId,
+  navigationLabel,
+  onSectionChange,
+  sectionStatuses,
+  sections,
+}: Omit<VoiceStudioShellProps, "children" | "header"> & { navigationLabel: string }) {
   const { isMobile, setOpenMobile } = useSidebar()
 
   function handleSelect(sectionId: WorkflowSectionId) {
@@ -138,7 +174,7 @@ function WorkflowSidebarNav({
   }
 
   return (
-    <nav aria-label="Workflow Sections">
+    <nav aria-label={navigationLabel}>
       <SidebarMenu>
         {sections.map((section) => {
           const status = sectionStatuses[section.id]
@@ -208,7 +244,9 @@ function ActiveSectionHeader({
     <section className="flex flex-col gap-3 border-b border-border pb-5 sm:flex-row sm:items-end sm:justify-between">
       <div className="min-w-0">
         <div className="mb-2 flex flex-wrap items-center gap-2">
-          <Badge variant={section.optional ? "secondary" : "accent"}>{section.stepLabel}</Badge>
+          <Badge variant={section.group === "features" || section.optional ? "secondary" : "accent"}>
+            {section.stepLabel}
+          </Badge>
           {section.optional ? <Badge>Optional</Badge> : null}
         </div>
         <h2 className="text-2xl font-semibold tracking-normal">{section.label}</h2>

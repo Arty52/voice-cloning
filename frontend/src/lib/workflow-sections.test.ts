@@ -37,17 +37,31 @@ describe("workflow sections", () => {
     expect(WORKFLOW_SECTIONS.map((section) => section.id)).toEqual([
       "overview",
       "prepare",
-      "transcript",
       "voices",
       "generate",
       "archive",
       "provider",
+      "transcript",
     ])
     expect(WORKFLOW_SECTIONS[0]).toMatchObject({
+      group: "workflow",
       id: "overview",
       label: "Overview",
       optional: false,
+      overviewBadgeLabel: "Start",
       stepLabel: "Start",
+    })
+    expect(WORKFLOW_SECTIONS.at(-1)).toMatchObject({
+      group: "features",
+      id: "transcript",
+      label: "Transcript",
+      optional: false,
+      overviewBadgeLabel: null,
+      stepLabel: "Feature",
+    })
+    expect(WORKFLOW_SECTIONS.find((section) => section.id === "archive")).toMatchObject({
+      overviewBadgeLabel: null,
+      stepLabel: "Optional",
     })
     expect(DEFAULT_WORKFLOW_SECTION_ID).toBe("overview")
   })
@@ -73,7 +87,7 @@ describe("workflow sections", () => {
 
     expect(statuses.overview).toMatchObject({ label: "Start Here", tone: "neutral" })
     expect(statuses.prepare).toMatchObject({ label: "Error", tone: "error" })
-    expect(statuses.transcript).toMatchObject({ label: "Optional", tone: "neutral" })
+    expect(statuses.transcript).toMatchObject({ label: "Available", tone: "neutral" })
     expect(statuses.voices).toMatchObject({ label: "Select Voice", tone: "attention" })
     expect(statuses.generate).toMatchObject({ label: "Error", tone: "error" })
     expect(statuses.archive).toMatchObject({ label: "Error", tone: "error" })
@@ -91,7 +105,7 @@ describe("workflow sections", () => {
     })
 
     expect(statusOnlyStatuses.prepare).toMatchObject({ label: "Error", tone: "error" })
-    expect(statusOnlyStatuses.transcript).toMatchObject({ label: "Optional", tone: "neutral" })
+    expect(statusOnlyStatuses.transcript).toMatchObject({ label: "Available", tone: "neutral" })
     expect(statusOnlyStatuses.voices).toMatchObject({ label: "Error", tone: "error" })
     expect(statusOnlyStatuses.generate).toMatchObject({ label: "Error", tone: "error" })
     expect(statusOnlyStatuses.archive).toMatchObject({ label: "Error", tone: "error" })

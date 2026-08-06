@@ -1213,7 +1213,7 @@ describe("App", () => {
     expect(await screen.findByText("default/default-voice.mp3")).toBeInTheDocument()
   })
 
-  it("lands on overview with the desktop workflow sidebar active", async () => {
+  it("lands on overview with grouped desktop studio navigation", async () => {
     renderApp()
 
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument()
@@ -1221,14 +1221,32 @@ describe("App", () => {
       screen.getByText("Choose a voice, generate a short preview, and manage local setup from one workspace.")
     ).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Overview" })).toHaveAttribute("aria-current", "page")
-    expect(screen.getByRole("complementary", { name: "Workflow Sidebar" })).toBeInTheDocument()
+    expect(screen.getByRole("complementary", { name: "Voice Studio Sidebar" })).toBeInTheDocument()
     expect(screen.queryByText("Friend-Friendly Tour")).not.toBeInTheDocument()
     const workflowNav = within(screen.getByRole("navigation", { name: "Workflow Sections" }))
     expect(await workflowNav.findByText("Start Here")).toBeInTheDocument()
     expect((await workflowNav.findAllByText("Ready")).length).toBeGreaterThan(0)
+    expect(workflowNav.queryByRole("button", { name: "Transcript" })).not.toBeInTheDocument()
+    const featureNav = within(screen.getByRole("navigation", { name: "Feature Sections" }))
+    expect(featureNav.getByRole("button", { name: "Transcript" })).toBeInTheDocument()
+    expect(await featureNav.findByText("Unavailable")).toBeInTheDocument()
     expect(document.querySelector('[data-section-id="overview"]')).not.toHaveClass("hidden")
     expect(document.querySelector('[data-section-id="voices"]')).toHaveClass("hidden")
     expect(document.querySelector('[data-section-id="provider"]')).toHaveClass("hidden")
+  })
+
+  it("separates standalone features and omits redundant Optional overview labels", async () => {
+    renderApp()
+
+    const workflowMap = await screen.findByRole("list", { name: "Voice Studio Workflow" })
+    const featureMap = screen.getByRole("list", { name: "Voice Studio Features" })
+
+    expect(within(workflowMap).queryByRole("link", { name: /Transcript/ })).not.toBeInTheDocument()
+    expect(workflowCardLink(featureMap, "#transcript")).toHaveTextContent("Transcript")
+    expect(within(workflowCardLink(featureMap, "#transcript")).queryByText("Optional")).not.toBeInTheDocument()
+    expect(within(workflowCardLink(workflowMap, "#prepare")).queryByText("Optional")).not.toBeInTheDocument()
+    expect(within(workflowCardLink(workflowMap, "#archive")).queryByText("Optional")).not.toBeInTheDocument()
+    expect(within(workflowCardLink(workflowMap, "#voices")).getByText("Required")).toBeInTheDocument()
   })
 
   it("navigates from overview workflow cards to active sections", async () => {
@@ -2114,22 +2132,24 @@ describe("App", () => {
     expect(preparePanel.queryByRole("form", { name: "Add Voice" })).not.toBeInTheDocument()
   })
 
-  it("closes mobile workflow navigation after selecting a section", async () => {
+  it("closes mobile studio navigation after selecting a standalone feature", async () => {
     mockWorkflowViewport(true)
     const user = userEvent.setup()
     renderApp()
 
-    await user.click(screen.getByRole("button", { name: "Toggle Workflow Navigation" }))
+    await user.click(screen.getByRole("button", { name: "Toggle Voice Studio Navigation" }))
 
-    expect(await screen.findByRole("dialog", { name: "Workflow Navigation" })).toBeInTheDocument()
+    const navigation = await screen.findByRole("dialog", { name: "Voice Studio Navigation" })
+    expect(within(navigation).getByText("Features")).toBeInTheDocument()
+    expect(within(navigation).getByRole("navigation", { name: "Feature Sections" })).toBeInTheDocument()
 
-    await user.click(screen.getByRole("button", { name: "Provider & Usage" }))
+    await user.click(within(navigation).getByRole("button", { name: "Transcript" }))
 
     await waitFor(() =>
-      expect(screen.queryByRole("dialog", { name: "Workflow Navigation" })).not.toBeInTheDocument()
+      expect(screen.queryByRole("dialog", { name: "Voice Studio Navigation" })).not.toBeInTheDocument()
     )
-    expect(window.location.hash).toBe("#provider")
-    expect(screen.getByRole("heading", { level: 2, name: "Provider & Usage" })).toBeInTheDocument()
+    expect(window.location.hash).toBe("#transcript")
+    expect(screen.getByRole("heading", { level: 2, name: "Transcript" })).toBeInTheDocument()
   })
 
   it("shows missing key state and uses a saved browser key for provider requests", async () => {
@@ -3231,14 +3251,20 @@ describe("App", () => {
     const user = userEvent.setup({ applyAccept: false })
     renderApp()
 
-    expect(await screen.findByRole("heading", { level: 2, name: "Transcript" })).toBeInTheDocument()
-    const transcriptNavButton = screen.getByRole("button", { name: "Transcript" })
+    const transcriptHeading = await screen.findByRole("heading", { level: 2, name: "Transcript" })
+    const transcriptHeader = transcriptHeading.closest("section")
+    expect(transcriptHeader).not.toBeNull()
+    expect(within(transcriptHeader as HTMLElement).getByText("Feature")).toBeInTheDocument()
+    expect(within(transcriptHeader as HTMLElement).queryByText("Optional")).not.toBeInTheDocument()
+    const featureNav = within(screen.getByRole("navigation", { name: "Feature Sections" }))
+    const transcriptNavButton = featureNav.getByRole("button", { name: "Transcript" })
     expect(transcriptNavButton).toHaveAttribute("aria-current", "page")
     const sourceInput = document.querySelector("#transcript-source-audio") as HTMLInputElement
     await user.upload(sourceInput, new File(["video"], "planning-session.mp4", { type: "video/mp4" }))
     expect(transcriptPanel().getByText("Unsupported Audio File")).toBeInTheDocument()
     expect(transcriptPanel().queryByText("Transcript Processing Failed")).not.toBeInTheDocument()
-    expect(within(transcriptNavButton.closest("li") as HTMLElement).getByText("Optional")).toBeInTheDocument()
+    expect(await within(transcriptNavButton.closest("li") as HTMLElement).findByText("Available")).toBeInTheDocument()
+    expect(transcriptPanel().queryByText("Optional")).not.toBeInTheDocument()
     const sourceFile = new File(["complete meeting audio"], "planning-session.m4a", { type: "audio/mp4" })
     await user.upload(sourceInput, sourceFile)
     expect(transcriptPanel().queryByText("Unsupported Audio File")).not.toBeInTheDocument()

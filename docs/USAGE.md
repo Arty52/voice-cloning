@@ -101,14 +101,15 @@ Open the UI:
 http://localhost:4340
 ```
 
-The UI opens on `Overview`. The sidebar is the top-level workflow map:
+The UI opens on `Overview`. The sidebar separates the core `Workflow` from standalone `Features`:
 
 1. `Prepare Audio` (`#prepare`, optional step 0): choose Add Voice for ready samples or Process Source Media for cleanup, trimming, and speaker extraction before saving.
-2. `Transcript` (`#transcript`, optional): transcribe a complete local audio file, name or reassign speakers, correct dialogue, export Markdown/TXT, and save selected speakers as voices.
-3. `Voices` (`#voices`, step 1): select, preview, rename, and manage local voice samples, then save default voice tuning for future generations.
-4. `Generate Speech` (`#generate`, step 2): enter text, optionally assign selected text spans to saved voices, review the latest result, play combined and segment results, and regenerate multi-voice segments with contextual voice or tuning overrides. Selecting a saved voice uses that voice's saved tuning for the active provider when present, otherwise its mapped voice preset or provider defaults.
-5. `Generated Audio` (`#archive`, optional): play, download, remove, clear, server-export, or browser-mirror saved generated MP3s. With backend persistence configured, the archive streams from the server; otherwise it falls back to browser IndexedDB. Multi-Voice archive metadata is preserved in both modes.
-6. `Provider & Usage` (`#provider`): add an ElevenLabs key if `.env` does not provide one, confirm `.env` fallback, check Cost & Quota, and choose a model if model metadata is available.
+2. `Voices` (`#voices`, step 1): select, preview, rename, and manage local voice samples, then save default voice tuning for future generations.
+3. `Generate Speech` (`#generate`, step 2): enter text, optionally assign selected text spans to saved voices, review the latest result, play combined and segment results, and regenerate multi-voice segments with contextual voice or tuning overrides. Selecting a saved voice uses that voice's saved tuning for the active provider when present, otherwise its mapped voice preset or provider defaults.
+4. `Generated Audio` (`#archive`, optional): play, download, remove, clear, server-export, or browser-mirror saved generated MP3s. With backend persistence configured, the archive streams from the server; otherwise it falls back to browser IndexedDB. Multi-Voice archive metadata is preserved in both modes.
+5. `Provider & Usage` (`#provider`): add an ElevenLabs key if `.env` does not provide one, confirm `.env` fallback, check Cost & Quota, and choose a model if model metadata is available.
+
+`Features` currently contains `Transcript` (`#transcript`), a standalone capability for transcribing complete local audio, editing the result, exporting text, and saving selected speakers as voices. It is not a voice-synthesis workflow step.
 
 The API is available at:
 
@@ -212,7 +213,7 @@ If the browser cannot decode the selected file type, choose a shorter browser-de
 
 ### Transcript Workspace
 
-Open `#transcript` to process a complete MP3, WAV, M4A, M4B, AAC, OGG, or FLAC file with the local Speaker Separation pipeline. Unlike the range-oriented Process Source Media flow, Transcript sends the selected file directly to the job and does not apply the 120-second source-range default. Language and speaker count are detected automatically. The latest job id is retained in browser local storage, so a running job resumes after reload and the latest terminal result is restored while the backend still has that job.
+Open `#transcript` from the standalone `Features` group to process a complete MP3, WAV, M4A, M4B, AAC, OGG, or FLAC file with the local Speaker Separation pipeline. Unlike the range-oriented Process Source Media flow, Transcript sends the selected file directly to the job and does not apply the 120-second source-range default. Language and speaker count are detected automatically. The latest job id is retained in browser local storage, so a running job resumes after reload and the latest terminal result is restored while the backend still has that job.
 
 After processing, use Voice Name to replace placeholder labels, select one or more dialogue turns to reassign them, and edit Dialogue Text for persistent corrections. Export is disabled until corrected text is saved. Markdown and TXT exports include every turn in chronological order and can optionally prefix each turn with `[HH:MM:SS]`. Add Selected Voices saves any chosen speakers through the same atomic, provider-safe speaker save path used by Prepare Audio; long streams are reduced to the best speech-dense excerpt only when required by provider limits.
 

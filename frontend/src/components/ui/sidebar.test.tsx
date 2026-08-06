@@ -33,17 +33,17 @@ describe("Sidebar", () => {
     expect(screen.getByRole("main")).toHaveTextContent("Main Content")
   })
 
-  it("opens workflow navigation in a mobile sheet", async () => {
+  it("opens studio navigation in an accessible mobile sheet", async () => {
     mockViewport(true)
     const user = userEvent.setup()
 
     render(<SidebarFixture />)
 
-    expect(screen.queryByRole("dialog", { name: "Workflow Navigation" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("dialog", { name: "Voice Studio Navigation" })).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole("button", { name: "Toggle Workflow Navigation" }))
+    await user.click(screen.getByRole("button", { name: "Toggle Voice Studio Navigation" }))
 
-    expect(screen.getByRole("dialog", { name: "Workflow Navigation" })).toBeInTheDocument()
+    expect(screen.getByRole("dialog", { name: "Voice Studio Navigation" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Voices" })).toHaveAttribute("aria-current", "page")
   })
 })
