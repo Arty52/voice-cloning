@@ -4,6 +4,7 @@ import * as api from "@/lib/api"
 import { estimateSampleProcessingDurationRangeSeconds } from "@/lib/sample-processing-estimate"
 import {
   readActiveTranscriptTimingDiagnostic,
+  readTranscriptTimingDiagnostics,
   startTranscriptTimingDiagnostic,
   type TranscriptTimingDiagnosticRecord,
   type TranscriptTimingDiagnosticStatus,
@@ -32,6 +33,7 @@ type UseTranscriptWorkflowOptions = {
 const POLL_INTERVAL_MS = 1500
 const TIMER_INTERVAL_MS = 250
 export const LATEST_TRANSCRIPT_JOB_STORAGE_KEY = "voice-cloning.latestTranscriptJobId.v1"
+export const LATEST_TRANSCRIPT_SESSION_STORAGE_KEY = "voice-cloning.latestTranscriptSession.v1"
 export const TRANSCRIPT_AUDIO_ACCEPT = ".mp3,.wav,.m4a,.m4b,.aac,.ogg,.flac,audio/*"
 const SUPPORTED_AUDIO_EXTENSIONS = new Set(["aac", "flac", "m4a", "m4b", "mp3", "ogg", "wav"])
 
@@ -41,7 +43,10 @@ export function useTranscriptWorkflow({
   diarizationAvailable,
   onVoiceSaved,
 }: UseTranscriptWorkflowOptions) {
-  const [initialStoredJobId] = useState(readStoredLatestTranscriptJobId)
+  const [initialStoredTranscriptSession] = useState(readStoredLatestTranscriptSession)
+  const [initialStoredJobId] = useState(
+    () => initialStoredTranscriptSession?.jobId ?? readStoredLatestTranscriptJobId()
+  )
   const [sourceFile, setSourceFile] = useState<File | null>(null)
   const [job, setJob] = useState<SampleProcessingJob | null>(null)
   const [status, setStatus] = useState<TranscriptWorkflowStatus>(() =>
@@ -51,7 +56,7 @@ export function useTranscriptWorkflow({
   const [validationError, setValidationError] = useState<string | null>(null)
   const [processingElapsedMs, setProcessingElapsedMs] = useState<number | null>(null)
   const [timingDiagnostic, setTimingDiagnostic] = useState<TranscriptTimingDiagnosticRecord | null>(() =>
-    readInitialTimingDiagnostic(initialStoredJobId)
+    readInitialTimingDiagnostic(initialStoredJobId, initialStoredTranscriptSession?.timingDiagnosticId ?? null)
   )
   const timingDiagnosticIdRef = useRef<string | null>(timingDiagnostic?.id ?? null)
   const mountedRef = useRef(true)
@@ -213,7 +218,7 @@ export function useTranscriptWorkflow({
       }
       if (payload.job.operationId !== "separateSpeakers") {
         finishTimingDiagnostic("incomplete", null)
-        clearStoredLatestTranscriptJobId()
+        clearStoredLatestTranscriptJob(jobId)
         setStatus("idle")
         return
       }
@@ -227,11 +232,11 @@ export function useTranscriptWorkflow({
         return
       }
       if (isMissingTranscriptJobError(caught)) {
-        resetMissingJob()
+        resetMissingJob(jobId)
         return
       }
       activeJobIdRef.current = jobId
-      writeStoredLatestTranscriptJobId(jobId)
+      writeStoredLatestTranscriptJob(jobId, timingDiagnosticIdRef.current)
       updateTimingDiagnostic("processing")
       setStatus("processing")
       const detail = caught instanceof Error ? caught.message : "Unable to restore the latest transcript job."
@@ -259,7 +264,7 @@ export function useTranscriptWorkflow({
           return
         }
         if (isMissingTranscriptJobError(caught)) {
-          resetMissingJob()
+          resetMissingJob(jobId)
           return
         }
         setStatus("processing")
@@ -269,10 +274,10 @@ export function useTranscriptWorkflow({
     }
   }
 
-  function resetMissingJob() {
+  function resetMissingJob(jobId: string | null = activeJobIdRef.current) {
     finishTimingDiagnostic("incomplete", null)
     activeJobIdRef.current = null
-    clearStoredLatestTranscriptJobId()
+    clearStoredLatestTranscriptJob(jobId)
     setJob(null)
     setStatus("idle")
     setError(null)
@@ -308,7 +313,7 @@ export function useTranscriptWorkflow({
 
   function updateJob(nextJob: SampleProcessingJob) {
     activeJobIdRef.current = nextJob.id
-    writeStoredLatestTranscriptJobId(nextJob.id)
+    writeStoredLatestTranscriptJob(nextJob.id, timingDiagnosticIdRef.current)
     setJob(nextJob)
   }
 
@@ -405,7 +410,10 @@ function readStoredLatestTranscriptJobId() {
   }
 }
 
-function readInitialTimingDiagnostic(initialStoredJobId: string | null) {
+function readInitialTimingDiagnostic(initialStoredJobId: string | null, timingDiagnosticId: string | null) {
+  if (timingDiagnosticId) {
+    return readTranscriptTimingDiagnostics().find(({ id }) => id === timingDiagnosticId) ?? null
+  }
   const activeDiagnostic = readActiveTranscriptTimingDiagnostic()
   if (!initialStoredJobId && activeDiagnostic) {
     return (
@@ -415,20 +423,73 @@ function readInitialTimingDiagnostic(initialStoredJobId: string | null) {
       }) ?? activeDiagnostic
     )
   }
-  return activeDiagnostic
+  return initialStoredJobId ? null : activeDiagnostic
 }
 
-function writeStoredLatestTranscriptJobId(jobId: string) {
+type StoredTranscriptSession = {
+  jobId: string
+  timingDiagnosticId: string | null
+}
+
+function readStoredLatestTranscriptSession(): StoredTranscriptSession | null {
+  try {
+    const rawValue = window.localStorage.getItem(LATEST_TRANSCRIPT_SESSION_STORAGE_KEY)
+    if (!rawValue) {
+      return null
+    }
+    const parsed = JSON.parse(rawValue) as unknown
+    if (
+      !isStoredTranscriptSession(parsed) ||
+      parsed.jobId.length === 0 ||
+      parsed.jobId.length > 128 ||
+      (parsed.timingDiagnosticId !== null &&
+        (parsed.timingDiagnosticId.length === 0 || parsed.timingDiagnosticId.length > 128))
+    ) {
+      window.localStorage.removeItem(LATEST_TRANSCRIPT_SESSION_STORAGE_KEY)
+      return null
+    }
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+function isStoredTranscriptSession(value: unknown): value is StoredTranscriptSession {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "jobId" in value &&
+    typeof value.jobId === "string" &&
+    "timingDiagnosticId" in value &&
+    (typeof value.timingDiagnosticId === "string" || value.timingDiagnosticId === null)
+  )
+}
+
+function writeStoredLatestTranscriptJob(jobId: string, timingDiagnosticId: string | null) {
   try {
     window.localStorage.setItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY, jobId)
+    window.localStorage.setItem(
+      LATEST_TRANSCRIPT_SESSION_STORAGE_KEY,
+      JSON.stringify({ jobId, timingDiagnosticId } satisfies StoredTranscriptSession)
+    )
   } catch {
     // Browser storage is optional; the active mounted workflow still works.
   }
 }
 
-function clearStoredLatestTranscriptJobId() {
+function clearStoredLatestTranscriptJob(jobId: string | null) {
   try {
-    window.localStorage.removeItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY)
+    const storedSession = readStoredLatestTranscriptSession()
+    if (storedSession) {
+      if (storedSession.jobId === jobId) {
+        window.localStorage.removeItem(LATEST_TRANSCRIPT_SESSION_STORAGE_KEY)
+        window.localStorage.removeItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY)
+      }
+      return
+    }
+    if (window.localStorage.getItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY) === jobId) {
+      window.localStorage.removeItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY)
+    }
   } catch {
     // Ignore browser storage cleanup failures.
   }

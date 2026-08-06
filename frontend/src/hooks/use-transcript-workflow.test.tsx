@@ -8,7 +8,11 @@ import {
 } from "@/lib/transcript-timing-diagnostics"
 import type { SampleProcessingJob, SpeakerSeparationResult } from "@/types"
 
-import { LATEST_TRANSCRIPT_JOB_STORAGE_KEY, useTranscriptWorkflow } from "./use-transcript-workflow"
+import {
+  LATEST_TRANSCRIPT_JOB_STORAGE_KEY,
+  LATEST_TRANSCRIPT_SESSION_STORAGE_KEY,
+  useTranscriptWorkflow,
+} from "./use-transcript-workflow"
 
 vi.mock("@/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api")>()
@@ -153,11 +157,15 @@ describe("useTranscriptWorkflow", () => {
 
   it("restores and resumes a running latest transcript job", async () => {
     window.localStorage.setItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY, "transcript-job-1")
-    startTranscriptTimingDiagnostic({
+    const diagnostic = startTranscriptTimingDiagnostic({
       createId: () => "timing-1",
       estimate: { minSeconds: 40, maxSeconds: 115 },
       sourceFile: new File(["audio"], "private-name.mp3", { type: "audio/mpeg" }),
     })
+    window.localStorage.setItem(
+      LATEST_TRANSCRIPT_SESSION_STORAGE_KEY,
+      JSON.stringify({ jobId: "transcript-job-1", timingDiagnosticId: diagnostic.id })
+    )
     vi.mocked(api.fetchSampleProcessingJob).mockResolvedValue({ job: buildJob("running") })
     const { result, unmount } = renderTranscriptWorkflow()
 
@@ -168,6 +176,43 @@ describe("useTranscriptWorkflow", () => {
     expect(result.current.timingDiagnostic?.workflowStatus).toBe("processing")
 
     unmount()
+  })
+
+  it("restores the diagnostic paired with its stored job instead of another tab's active diagnostic", async () => {
+    const firstJob = buildJob("success", { id: "transcript-job-first" })
+    const firstDiagnostic = startTranscriptTimingDiagnostic({
+      createId: () => "timing-first",
+      estimate: { minSeconds: 40, maxSeconds: 115 },
+      sourceFile: new File(["first"], "first.mp3", { type: "audio/mpeg" }),
+    })
+    const secondDiagnostic = startTranscriptTimingDiagnostic({
+      createId: () => "timing-second",
+      estimate: { minSeconds: 40, maxSeconds: 115 },
+      sourceFile: new File(["second"], "second.mp3", { type: "audio/mpeg" }),
+    })
+    // A second tab may have most recently written the legacy job pointer, but
+    // the paired session remains the only safe restoration source.
+    window.localStorage.setItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY, "transcript-job-second")
+    window.localStorage.setItem(
+      LATEST_TRANSCRIPT_SESSION_STORAGE_KEY,
+      JSON.stringify({ jobId: firstJob.id, timingDiagnosticId: firstDiagnostic.id })
+    )
+    vi.mocked(api.fetchSampleProcessingJob).mockResolvedValue({ job: firstJob })
+
+    const { result } = renderTranscriptWorkflow()
+
+    await waitFor(() => expect(result.current.status).toBe("success"))
+    expect(result.current.timingDiagnostic).toMatchObject({
+      id: firstDiagnostic.id,
+      workflowStatus: "success",
+      actualElapsedMs: 5_000,
+    })
+    expect(readTranscriptTimingDiagnostics()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: firstDiagnostic.id, workflowStatus: "success" }),
+        expect.objectContaining({ id: secondDiagnostic.id, workflowStatus: "starting", actualElapsedMs: null }),
+      ])
+    )
   })
 
   it("restores a completed transcript result and retains the latest pointer", async () => {
@@ -259,11 +304,15 @@ describe("useTranscriptWorkflow", () => {
 
   it("clears a stale latest job pointer when restoration fails", async () => {
     window.localStorage.setItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY, "missing-job")
-    startTranscriptTimingDiagnostic({
+    const diagnostic = startTranscriptTimingDiagnostic({
       createId: () => "timing-missing",
       estimate: { minSeconds: 40, maxSeconds: 115 },
       sourceFile: new File(["audio"], "missing.flac", { type: "audio/flac" }),
     })
+    window.localStorage.setItem(
+      LATEST_TRANSCRIPT_SESSION_STORAGE_KEY,
+      JSON.stringify({ jobId: "missing-job", timingDiagnosticId: diagnostic.id })
+    )
     vi.mocked(api.fetchSampleProcessingJob).mockRejectedValue(new Error("Sample processing job not found."))
     const { result } = renderTranscriptWorkflow()
 
