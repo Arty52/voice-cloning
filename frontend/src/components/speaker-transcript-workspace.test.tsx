@@ -136,6 +136,6 @@ describe("SpeakerTranscriptWorkspace", () => {
     const anchor = append.mock.calls.find(([node]) => node instanceof HTMLAnchorElement)?.[0] as HTMLAnchorElement
     expect(anchor.download).toBe("planning-session-transcript.txt")
     expect(anchor.isConnected).toBe(false)
-    expect(revokeObjectUrl).toHaveBeenCalledWith("blob:transcript")
+    await waitFor(() => expect(revokeObjectUrl).toHaveBeenCalledWith("blob:transcript"))
   })
 })

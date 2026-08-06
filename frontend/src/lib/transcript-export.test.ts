@@ -81,11 +81,13 @@ describe("transcript export formatting", () => {
 
 describe("downloadTranscript", () => {
   afterEach(() => {
+    vi.useRealTimers()
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
   })
 
   it("clicks a temporary download and cleans up its object URL and anchor", () => {
+    vi.useFakeTimers()
     const createObjectUrl = vi.fn(() => "blob:transcript")
     const revokeObjectUrl = vi.fn()
     vi.stubGlobal("URL", { createObjectURL: createObjectUrl, revokeObjectURL: revokeObjectUrl })
@@ -101,6 +103,8 @@ describe("downloadTranscript", () => {
     const anchor = append.mock.calls[0][0] as HTMLAnchorElement
     expect(anchor.download).toBe(filename)
     expect(anchor.isConnected).toBe(false)
+    expect(revokeObjectUrl).not.toHaveBeenCalled()
+    vi.runAllTimers()
     expect(revokeObjectUrl).toHaveBeenCalledWith("blob:transcript")
   })
 })
