@@ -4,7 +4,7 @@ This project is a local-first, public-safe voice cloning lab with built-in Eleve
 
 ## Architecture Standards
 
-Follow the project architecture standard in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for new implementation work. Provider additions should also follow [docs/ADDING_PROVIDER.md](docs/ADDING_PROVIDER.md).
+Follow the project architecture standard in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for new implementation work. Voice-specific UI and shared media-control changes must also follow the [Voice UI Design-System Extension Policy](docs/VOICE_UI_DESIGN_SYSTEM_POLICY.md). Provider additions should follow [docs/ADDING_PROVIDER.md](docs/ADDING_PROVIDER.md).
 
 Architecture checklist for non-trivial changes:
 
@@ -14,6 +14,9 @@ Architecture checklist for non-trivial changes:
 - Keep provider keys out of git and API responses. `.env` keys stay on the backend; browser-entered developer keys may live in localStorage, browser code should send them only to the local API through explicit request helpers, and the backend may use them per request to authenticate provider calls.
 - Keep provider-specific HTTP payloads, error parsing, key resolution, and tuning semantics inside provider adapters.
 - Expose provider-specific tuning controls, presets, defaults, and links through provider metadata instead of hardcoding them in frontend constants.
+- For voice UI capability gaps, use the required escalation path: compose Voice Studio first, then evaluate a structurally compatible AI Elements pattern, then a selective ElevenLabs UI or public product-pattern adaptation, and build custom only with documented prior-level failures and maintainer approval.
+- Keep Voice Studio's Geist typography, semantic tokens, shadcn/Radix primitives, accessibility contract, normalized provider boundary, and component/state ownership as the system of record. Do not introduce a second visual system or copied branding.
+- Record the exact upstream source snapshot, license, local contract owner, browser/accessibility analysis, and test plan for every external component adaptation.
 - Split files by responsibility before they become monolithic workflow files.
 - Preserve public API routes, payloads, headers, ports, and public-repo safety rules unless the change explicitly updates those contracts.
 

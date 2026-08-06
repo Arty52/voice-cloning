@@ -130,6 +130,7 @@ The Docker build uses CPU-only PyTorch, Torchaudio, and TorchCodec wheels when `
 - [Troubleshooting](docs/TROUBLESHOOTING.md): missing keys, scoped permissions, ports, quota errors, and cleanup.
 - [Public Media Guidelines](docs/PUBLIC_MEDIA.md): public-safe screenshot and documentation media rules.
 - [Architecture Standards](docs/ARCHITECTURE.md): backend/frontend boundaries for implementation work.
+- [Voice UI Design-System Extension Policy](docs/VOICE_UI_DESIGN_SYSTEM_POLICY.md): Voice Studio UI authority, component discovery inventory, external adaptation ladder, shared media contracts, and adoption gates.
 - [How To Add A Provider](docs/ADDING_PROVIDER.md): provider adapter responsibilities and validation.
 - [Persistence Rollout](docs/PERSISTENCE_ROLLOUT.md): PostgreSQL, storage roots, consistency rules, and PR validation gates.
 - [Video Source Media Rollout Notes](docs/VIDEO_SOURCE_MEDIA_ROLLOUT.md): draft PR stack, validation evidence, and Ready gates for local video source media.
