@@ -104,9 +104,17 @@ export function readTranscriptTimingDiagnostics(
     }
     const parsed = JSON.parse(rawValue) as unknown
     if (!Array.isArray(parsed)) {
+      storage.removeItem(TRANSCRIPT_TIMING_DIAGNOSTICS_STORAGE_KEY)
       return []
     }
-    return retainRecords(parsed.map(normalizeRecord).filter(isPresent), nowMs)
+    const retainedRecords = retainRecords(parsed.map(normalizeRecord).filter(isPresent), nowMs)
+    const retainedValue = JSON.stringify(retainedRecords)
+    if (retainedRecords.length === 0) {
+      storage.removeItem(TRANSCRIPT_TIMING_DIAGNOSTICS_STORAGE_KEY)
+    } else if (retainedValue !== rawValue) {
+      storage.setItem(TRANSCRIPT_TIMING_DIAGNOSTICS_STORAGE_KEY, retainedValue)
+    }
+    return retainedRecords
   } catch {
     return []
   }

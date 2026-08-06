@@ -111,6 +111,7 @@ describe("transcript timing diagnostics", () => {
     )
 
     expect(readTranscriptTimingDiagnostics()).toEqual([])
+    expect(localStorage.getItem(TRANSCRIPT_TIMING_DIAGNOSTICS_STORAGE_KEY)).toBeNull()
   })
 
   it("keeps at most 50 recent records for 30 days", () => {
@@ -135,6 +136,9 @@ describe("transcript timing diagnostics", () => {
     expect(records).toHaveLength(TRANSCRIPT_TIMING_DIAGNOSTIC_MAX_RECORDS)
     expect(records[0]?.id).toBe("timing-0")
     expect(records.some(({ id }) => id === "expired")).toBe(false)
+    expect(JSON.parse(localStorage.getItem(TRANSCRIPT_TIMING_DIAGNOSTICS_STORAGE_KEY) ?? "[]")).toHaveLength(
+      TRANSCRIPT_TIMING_DIAGNOSTIC_MAX_RECORDS
+    )
   })
 
   it("clears both diagnostic records and the active pointer", () => {

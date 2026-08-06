@@ -37,7 +37,7 @@ Browser storage is optional. Blocked, unavailable, corrupt, or cleared storage n
 
 ## Retention And Clearing
 
-The store keeps at most 50 records and drops records older than 30 days. This bounded, short-lived default is used because the app has no existing diagnostics-view convention and no in-product diagnostics viewer.
+The store keeps at most 50 records and drops records older than 30 days on the next diagnostics access. This bounded, short-lived default is used because the app has no existing diagnostics-view convention and no in-product diagnostics viewer.
 
 Users can clear the records with their browser's site-data controls. Code that later adds a diagnostics viewer or settings surface must use `clearTranscriptTimingDiagnostics()` so the record store and active diagnostic pointer are removed together.
 
