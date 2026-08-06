@@ -20,13 +20,17 @@ import type { TranscriptWorkflowStatus } from "@/hooks/use-transcript-workflow"
 
 export type WorkflowSectionId = "overview" | "prepare" | "transcript" | "voices" | "generate" | "archive" | "provider"
 
+export type WorkflowSectionGroup = "features" | "workflow"
+
 export type WorkflowSection = {
   description: string
+  group: WorkflowSectionGroup
   hash: `#${WorkflowSectionId}`
   icon: LucideIcon
   id: WorkflowSectionId
   label: string
   optional: boolean
+  overviewBadgeLabel: string | null
   stepLabel: string
 }
 
@@ -66,66 +70,80 @@ export const DEFAULT_WORKFLOW_SECTION_ID: WorkflowSectionId = "overview"
 export const WORKFLOW_SECTIONS: WorkflowSection[] = [
   {
     description: "Choose a voice, generate a short preview, and manage local setup from one workspace.",
+    group: "workflow",
     hash: "#overview",
     icon: Compass,
     id: "overview",
     label: "Overview",
     optional: false,
+    overviewBadgeLabel: "Start",
     stepLabel: "Start",
   },
   {
     description: "Choose whether to add a ready voice sample or process source audio first.",
+    group: "workflow",
     hash: "#prepare",
     icon: Wand2,
     id: "prepare",
     label: "Prepare Audio",
     optional: true,
+    overviewBadgeLabel: "0",
     stepLabel: "0",
   },
   {
-    description: "Transcribe complete audio, name speakers, correct dialogue, export text, and save selected voices.",
-    hash: "#transcript",
-    icon: MessageSquareText,
-    id: "transcript",
-    label: "Transcript",
-    optional: true,
-    stepLabel: "Optional",
-  },
-  {
     description: "Select, preview, tune, rename, and manage local voice samples.",
+    group: "workflow",
     hash: "#voices",
     icon: FileAudio,
     id: "voices",
     label: "Voices",
     optional: false,
+    overviewBadgeLabel: "1",
     stepLabel: "1",
   },
   {
     description: "Enter text, assign voices, and generate speech with contextual overrides.",
+    group: "workflow",
     hash: "#generate",
     icon: Sparkles,
     id: "generate",
     label: "Generate Speech",
     optional: false,
+    overviewBadgeLabel: "2",
     stepLabel: "2",
   },
   {
     description: "Review browser-local generated speech history.",
+    group: "workflow",
     hash: "#archive",
     icon: Archive,
     id: "archive",
     label: "Generated Audio",
     optional: true,
+    overviewBadgeLabel: null,
     stepLabel: "Optional",
   },
   {
     description: "Manage provider keys, models, cost, and quota.",
+    group: "workflow",
     hash: "#provider",
     icon: KeyRound,
     id: "provider",
     label: "Provider & Usage",
     optional: false,
+    overviewBadgeLabel: "Config",
     stepLabel: "Config",
+  },
+  {
+    description: "Transcribe complete audio, name speakers, correct dialogue, export text, and save selected voices.",
+    group: "features",
+    hash: "#transcript",
+    icon: MessageSquareText,
+    id: "transcript",
+    label: "Transcript",
+    optional: false,
+    overviewBadgeLabel: null,
+    stepLabel: "Feature",
   },
 ]
 
@@ -173,7 +191,7 @@ function transcriptStatus(input: WorkflowSectionStatusInput): WorkflowSectionSta
   if (input.processingOptionsStatus === "idle" || input.processingOptionsStatus === "loading") {
     return busyStatus("Loading")
   }
-  return neutralStatus("Optional")
+  return neutralStatus("Available")
 }
 
 function overviewStatus(): WorkflowSectionStatus {

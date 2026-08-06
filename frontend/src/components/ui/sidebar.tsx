@@ -129,8 +129,8 @@ export function Sidebar({ children, className, side = "left", ...props }: Compon
           side={side}
         >
           <SheetHeader className="sr-only">
-            <SheetTitle>Workflow Navigation</SheetTitle>
-            <SheetDescription>Navigate between Voice Clone Lab workflow sections.</SheetDescription>
+            <SheetTitle>Voice Studio Navigation</SheetTitle>
+            <SheetDescription>Navigate between Voice Clone Lab workflow sections and standalone features.</SheetDescription>
           </SheetHeader>
           <div className="flex min-h-0 flex-1 flex-col">{children}</div>
         </SheetContent>
@@ -163,7 +163,7 @@ export function SidebarTrigger({ className, onClick, ...props }: ComponentProps<
 
   return (
     <Button
-      aria-label="Toggle Workflow Navigation"
+      aria-label="Toggle Voice Studio Navigation"
       className={cn("shrink-0", className)}
       onClick={(event) => {
         onClick?.(event)

@@ -34,7 +34,6 @@ export function TranscriptPanel({ transcript, voicePresets }: TranscriptPanelPro
       <Card aria-busy={transcript.isProcessing}>
         <CardHeader>
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="secondary">Optional</Badge>
             <Badge
               className={cn(
                 transcript.status === "error" && "border-destructive/40 bg-destructive/10 text-destructive"
