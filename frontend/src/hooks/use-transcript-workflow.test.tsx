@@ -176,6 +176,7 @@ describe("useTranscriptWorkflow", () => {
     expect(result.current.job?.id).toBe("transcript-job-1")
     expect(result.current.processingElapsedMs).not.toBeNull()
     expect(result.current.timingDiagnostic?.workflowStatus).toBe("processing")
+    expect(result.current.processingEstimateRangeSeconds).toEqual({ minSeconds: 40, maxSeconds: 115 })
 
     unmount()
   })
@@ -370,6 +371,7 @@ describe("useTranscriptWorkflow", () => {
       actualElapsedMs: 5_000,
       workflowStatus: "canceled",
     })
+    expect(result.current.processingEstimateRangeSeconds).toBeNull()
   })
 
   it("keeps timing lifecycle updates attached to each concurrently mounted transcript workflow", async () => {
@@ -415,6 +417,7 @@ describe("useTranscriptWorkflow", () => {
       workflowStatus: "error",
     })
     expect(result.current.timingDiagnostic?.actualElapsedMs).toBeGreaterThanOrEqual(0)
+    expect(result.current.processingEstimateRangeSeconds).toBeNull()
   })
 
   it("disables transcription when local diarization is unavailable", () => {
