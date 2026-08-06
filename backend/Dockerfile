@@ -20,7 +20,7 @@ RUN apt-get update \
 
 RUN if [ "$INSTALL_SAMPLE_PROCESSING" = "1" ]; then \
       apt-get update \
-      && apt-get install -y --no-install-recommends cargo gcc; \
+      && apt-get install -y --no-install-recommends cargo gcc libopus-dev pkg-config; \
     fi \
     && python -m pip install --no-cache-dir --upgrade pip \
     && if [ "$INSTALL_SAMPLE_PROCESSING" = "1" ] || [ "$INSTALL_DIARIZATION" = "1" ]; then \
@@ -36,7 +36,7 @@ RUN if [ "$INSTALL_SAMPLE_PROCESSING" = "1" ]; then \
       python -m pip install --no-cache-dir -e /app/backend; \
     fi \
     && if [ "$INSTALL_SAMPLE_PROCESSING" = "1" ]; then \
-      apt-get purge -y --auto-remove cargo gcc; \
+      apt-get purge -y --auto-remove cargo gcc libopus-dev pkg-config; \
     fi \
     && rm -rf /var/lib/apt/lists/*
 
