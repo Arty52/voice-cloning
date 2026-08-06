@@ -7,6 +7,7 @@ import {
   readTranscriptTimingDiagnostics,
   startTranscriptTimingDiagnostic,
   TRANSCRIPT_TIMING_DIAGNOSTIC_MAX_RECORDS,
+  TRANSCRIPT_TIMING_DIAGNOSTIC_RECORD_STORAGE_PREFIX,
   TRANSCRIPT_TIMING_DIAGNOSTIC_RETENTION_MS,
   TRANSCRIPT_TIMING_DIAGNOSTICS_STORAGE_KEY,
   updateActiveTranscriptTimingDiagnostic,
@@ -50,7 +51,7 @@ describe("transcript timing diagnostics", () => {
         trimCandidates: false,
       },
     })
-    const storedValue = localStorage.getItem(TRANSCRIPT_TIMING_DIAGNOSTICS_STORAGE_KEY) ?? ""
+    const storedValue = readStoredDiagnosticValues().join("\n")
     expect(storedValue).not.toContain(sourceFile.name)
     expect(storedValue).not.toContain("private audio bytes")
     expect(storedValue).not.toContain("filename")
@@ -148,6 +149,47 @@ describe("transcript timing diagnostics", () => {
     expect(localStorage.getItem(ACTIVE_TRANSCRIPT_TIMING_DIAGNOSTIC_STORAGE_KEY)).toBe(second.id)
   })
 
+  it("preserves simultaneous starts and updates from separate tabs", () => {
+    const firstTab = localStorage
+    const secondTab = localStorage
+    const first = startTranscriptTimingDiagnostic({
+      createId: () => "timing-tab-one",
+      estimate: { minSeconds: 40, maxSeconds: 115 },
+      now: NOW,
+      sourceFile: new File(["first"], "first.mp3", { type: "audio/mpeg" }),
+      storage: firstTab,
+    })
+    const second = startTranscriptTimingDiagnostic({
+      createId: () => "timing-tab-two",
+      estimate: { minSeconds: 44, maxSeconds: 132 },
+      now: new Date(NOW.getTime() + 1),
+      sourceFile: new File(["second"], "second.m4a", { type: "audio/mp4" }),
+      storage: secondTab,
+    })
+
+    updateTranscriptTimingDiagnostic(
+      first.id,
+      { workflowStatus: "success", actualElapsedMs: 1_000 },
+      firstTab,
+      NOW.getTime() + 1_000
+    )
+    updateTranscriptTimingDiagnostic(
+      second.id,
+      { workflowStatus: "error", actualElapsedMs: 2_000 },
+      secondTab,
+      NOW.getTime() + 2_000
+    )
+
+    expect(readTranscriptTimingDiagnostics(localStorage, NOW.getTime() + 2_000)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: first.id, workflowStatus: "success", actualElapsedMs: 1_000 }),
+        expect.objectContaining({ id: second.id, workflowStatus: "error", actualElapsedMs: 2_000 }),
+      ])
+    )
+    expect(localStorage.getItem(TRANSCRIPT_TIMING_DIAGNOSTICS_STORAGE_KEY)).toBeNull()
+    expect(readStoredDiagnosticValues()).toHaveLength(2)
+  })
+
   it("does not throw when browser policy blocks the default localStorage lookup", () => {
     const descriptor = Object.getOwnPropertyDescriptor(window, "localStorage")
     Object.defineProperty(window, "localStorage", {
@@ -204,6 +246,34 @@ describe("transcript timing diagnostics", () => {
     expect(localStorage.getItem(TRANSCRIPT_TIMING_DIAGNOSTICS_STORAGE_KEY)).toBeNull()
   })
 
+  it("migrates the legacy shared-array representation to independent record keys", () => {
+    localStorage.setItem(
+      TRANSCRIPT_TIMING_DIAGNOSTICS_STORAGE_KEY,
+      JSON.stringify([
+        {
+          schemaVersion: 1,
+          id: "legacy-timing",
+          createdAt: NOW.toISOString(),
+          completedAt: null,
+          estimateMinSeconds: 40,
+          estimateMaxSeconds: 115,
+          actualElapsedMs: null,
+          sourceSizeBytes: 1024,
+          sourceMediaType: "audio/mpeg",
+          sourceExtension: "mp3",
+          workflowStatus: "processing",
+          estimateSettings: { cleanVoice: false, detectSpeakers: true, trimCandidates: false },
+        },
+      ])
+    )
+
+    expect(readTranscriptTimingDiagnostics(localStorage, NOW.getTime())).toEqual([
+      expect.objectContaining({ id: "legacy-timing", workflowStatus: "processing" }),
+    ])
+    expect(localStorage.getItem(TRANSCRIPT_TIMING_DIAGNOSTICS_STORAGE_KEY)).toBeNull()
+    expect(readStoredDiagnosticValues()).toHaveLength(1)
+  })
+
   it("keeps at most 50 recent records for 30 days", () => {
     for (let index = 0; index < TRANSCRIPT_TIMING_DIAGNOSTIC_MAX_RECORDS + 5; index += 1) {
       const createdAt = new Date(NOW.getTime() - index * 1_000)
@@ -226,9 +296,7 @@ describe("transcript timing diagnostics", () => {
     expect(records).toHaveLength(TRANSCRIPT_TIMING_DIAGNOSTIC_MAX_RECORDS)
     expect(records[0]?.id).toBe("timing-0")
     expect(records.some(({ id }) => id === "expired")).toBe(false)
-    expect(JSON.parse(localStorage.getItem(TRANSCRIPT_TIMING_DIAGNOSTICS_STORAGE_KEY) ?? "[]")).toHaveLength(
-      TRANSCRIPT_TIMING_DIAGNOSTIC_MAX_RECORDS
-    )
+    expect(readStoredDiagnosticValues()).toHaveLength(TRANSCRIPT_TIMING_DIAGNOSTIC_MAX_RECORDS)
   })
 
   it("clears both diagnostic records and the active pointer", () => {
@@ -246,3 +314,9 @@ describe("transcript timing diagnostics", () => {
     expect(localStorage.getItem(ACTIVE_TRANSCRIPT_TIMING_DIAGNOSTIC_STORAGE_KEY)).toBeNull()
   })
 })
+
+function readStoredDiagnosticValues() {
+  return Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index))
+    .filter((key): key is string => key?.startsWith(TRANSCRIPT_TIMING_DIAGNOSTIC_RECORD_STORAGE_PREFIX) ?? false)
+    .map((key) => localStorage.getItem(key) ?? "")
+}

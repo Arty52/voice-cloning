@@ -6,6 +6,8 @@ export const ACTIVE_TRANSCRIPT_TIMING_DIAGNOSTIC_STORAGE_KEY =
   "voice-cloning.activeTranscriptTimingDiagnosticId.v1"
 export const ACTIVE_TRANSCRIPT_TIMING_DIAGNOSTIC_IDS_STORAGE_KEY =
   "voice-cloning.activeTranscriptTimingDiagnosticIds.v1"
+export const TRANSCRIPT_TIMING_DIAGNOSTIC_RECORD_STORAGE_PREFIX =
+  "voice-cloning.transcriptTimingDiagnostics.v1.record."
 export const TRANSCRIPT_TIMING_DIAGNOSTIC_SCHEMA_VERSION = 1
 export const TRANSCRIPT_TIMING_DIAGNOSTIC_MAX_RECORDS = 50
 export const TRANSCRIPT_TIMING_DIAGNOSTIC_RETENTION_MS = 30 * 24 * 60 * 60 * 1000
@@ -90,12 +92,7 @@ export function startTranscriptTimingDiagnostic({
     if (!resolvedStorage) {
       return record
     }
-    const records = readTranscriptTimingDiagnostics(resolvedStorage, now.getTime())
-    writeRecords([record, ...records], resolvedStorage, now.getTime())
-    writeActiveDiagnosticIds(
-      [...readActiveDiagnosticIds(resolvedStorage), record.id],
-      resolvedStorage
-    )
+    writeRecord(record, resolvedStorage, now.getTime())
     resolvedStorage.setItem(ACTIVE_TRANSCRIPT_TIMING_DIAGNOSTIC_STORAGE_KEY, record.id)
   } catch {
     // Timing diagnostics are optional and must never block transcript processing.
@@ -112,23 +109,8 @@ export function readTranscriptTimingDiagnostics(
     if (!resolvedStorage) {
       return []
     }
-    const rawValue = resolvedStorage.getItem(TRANSCRIPT_TIMING_DIAGNOSTICS_STORAGE_KEY)
-    if (!rawValue) {
-      return []
-    }
-    const parsed = JSON.parse(rawValue) as unknown
-    if (!Array.isArray(parsed)) {
-      resolvedStorage.removeItem(TRANSCRIPT_TIMING_DIAGNOSTICS_STORAGE_KEY)
-      return []
-    }
-    const retainedRecords = retainRecords(parsed.map(normalizeRecord).filter(isPresent), nowMs)
-    const retainedValue = JSON.stringify(retainedRecords)
-    if (retainedRecords.length === 0) {
-      resolvedStorage.removeItem(TRANSCRIPT_TIMING_DIAGNOSTICS_STORAGE_KEY)
-    } else if (retainedValue !== rawValue) {
-      resolvedStorage.setItem(TRANSCRIPT_TIMING_DIAGNOSTICS_STORAGE_KEY, retainedValue)
-    }
-    return retainedRecords
+    migrateLegacyRecords(resolvedStorage, nowMs)
+    return pruneRecords(readRecordEntries(resolvedStorage), resolvedStorage, nowMs)
   } catch {
     return []
   }
@@ -143,17 +125,7 @@ export function readActiveTranscriptTimingDiagnostic(
     if (!resolvedStorage) {
       return null
     }
-    const activeId = readActiveDiagnosticIds(resolvedStorage).at(-1)
-      ?? resolvedStorage.getItem(ACTIVE_TRANSCRIPT_TIMING_DIAGNOSTIC_STORAGE_KEY)
-    if (!activeId) {
-      return null
-    }
-    const record = readTranscriptTimingDiagnostics(resolvedStorage, nowMs).find(({ id }) => id === activeId) ?? null
-    if (!record || TERMINAL_STATUSES.has(record.workflowStatus)) {
-      removeActiveDiagnosticId(activeId, resolvedStorage)
-      return null
-    }
-    return record
+    return readActiveTranscriptTimingDiagnostics(resolvedStorage, nowMs).at(0) ?? null
   } catch {
     return null
   }
@@ -168,17 +140,9 @@ export function readActiveTranscriptTimingDiagnostics(
     if (!resolvedStorage) {
       return []
     }
-    const recordsById = new Map(
-      readTranscriptTimingDiagnostics(resolvedStorage, nowMs).map((record) => [record.id, record])
+    return readTranscriptTimingDiagnostics(resolvedStorage, nowMs).filter(
+      (record) => !TERMINAL_STATUSES.has(record.workflowStatus)
     )
-    const activeIds = readActiveDiagnosticIds(resolvedStorage)
-    const activeRecords = activeIds
-      .map((id) => recordsById.get(id))
-      .filter((record): record is TranscriptTimingDiagnosticRecord =>
-        record !== undefined && !TERMINAL_STATUSES.has(record.workflowStatus)
-      )
-    writeActiveDiagnosticIds(activeRecords.map(({ id }) => id), resolvedStorage)
-    return activeRecords
   } catch {
     return []
   }
@@ -213,8 +177,7 @@ export function updateTranscriptTimingDiagnostic(
     if (!resolvedStorage) {
       return null
     }
-    const records = readTranscriptTimingDiagnostics(resolvedStorage, nowMs)
-    const activeRecord = records.find(({ id }) => id === diagnosticId)
+    const activeRecord = readRecord(diagnosticId, resolvedStorage)
     if (!activeRecord) {
       return null
     }
@@ -230,20 +193,14 @@ export function updateTranscriptTimingDiagnostic(
           : new Date(nowMs).toISOString()
         : null,
     }
-    writeRecords(
-      records.map((record) => (record.id === diagnosticId ? updatedRecord : record)),
-      resolvedStorage,
-      nowMs
-    )
+    writeRecord(updatedRecord, resolvedStorage, nowMs)
     if (
       isTerminal &&
       resolvedStorage.getItem(ACTIVE_TRANSCRIPT_TIMING_DIAGNOSTIC_STORAGE_KEY) === diagnosticId
     ) {
       resolvedStorage.removeItem(ACTIVE_TRANSCRIPT_TIMING_DIAGNOSTIC_STORAGE_KEY)
     }
-    if (isTerminal) {
-      removeActiveDiagnosticId(diagnosticId, resolvedStorage)
-    }
+    if (isTerminal) removeActiveDiagnosticId(diagnosticId, resolvedStorage)
     return updatedRecord
   } catch {
     return null
@@ -273,6 +230,7 @@ export function clearTranscriptTimingDiagnostics(storage?: Storage) {
     resolvedStorage.removeItem(TRANSCRIPT_TIMING_DIAGNOSTICS_STORAGE_KEY)
     resolvedStorage.removeItem(ACTIVE_TRANSCRIPT_TIMING_DIAGNOSTIC_STORAGE_KEY)
     resolvedStorage.removeItem(ACTIVE_TRANSCRIPT_TIMING_DIAGNOSTIC_IDS_STORAGE_KEY)
+    recordStorageKeys(resolvedStorage).forEach((key) => resolvedStorage.removeItem(key))
   } catch {
     // Browser storage is optional.
   }
@@ -324,13 +282,76 @@ function resolveStorage(storage?: Storage): Storage | null {
   }
 }
 
-function writeRecords(records: TranscriptTimingDiagnosticRecord[], storage: Storage, nowMs: number) {
-  const retainedRecords = retainRecords(records, nowMs)
-  if (retainedRecords.length === 0) {
-    storage.removeItem(TRANSCRIPT_TIMING_DIAGNOSTICS_STORAGE_KEY)
-    return
+function writeRecord(record: TranscriptTimingDiagnosticRecord, storage: Storage, nowMs: number) {
+  storage.setItem(recordStorageKey(record.id), JSON.stringify(record))
+  pruneRecords(readRecordEntries(storage), storage, nowMs)
+}
+
+function readRecord(diagnosticId: string, storage: Storage) {
+  const rawValue = storage.getItem(recordStorageKey(diagnosticId))
+  if (!rawValue) {
+    return null
   }
-  storage.setItem(TRANSCRIPT_TIMING_DIAGNOSTICS_STORAGE_KEY, JSON.stringify(retainedRecords))
+  try {
+    return normalizeRecord(JSON.parse(rawValue) as unknown)
+  } catch {
+    storage.removeItem(recordStorageKey(diagnosticId))
+    return null
+  }
+}
+
+function readRecordEntries(storage: Storage) {
+  return recordStorageKeys(storage)
+    .map((key) => {
+      const rawValue = storage.getItem(key)
+      if (!rawValue) return null
+      try {
+        const record = normalizeRecord(JSON.parse(rawValue) as unknown)
+        if (!record) storage.removeItem(key)
+        return record
+      } catch {
+        storage.removeItem(key)
+        return null
+      }
+    })
+    .filter(isPresent)
+}
+
+function recordStorageKeys(storage: Storage) {
+  return Array.from({ length: storage.length }, (_, index) => storage.key(index))
+    .filter((key): key is string => key?.startsWith(TRANSCRIPT_TIMING_DIAGNOSTIC_RECORD_STORAGE_PREFIX) ?? false)
+}
+
+function recordStorageKey(diagnosticId: string) {
+  return `${TRANSCRIPT_TIMING_DIAGNOSTIC_RECORD_STORAGE_PREFIX}${diagnosticId}`
+}
+
+function migrateLegacyRecords(storage: Storage, nowMs: number) {
+  const rawValue = storage.getItem(TRANSCRIPT_TIMING_DIAGNOSTICS_STORAGE_KEY)
+  if (!rawValue) return
+  try {
+    const parsed = JSON.parse(rawValue) as unknown
+    if (!Array.isArray(parsed)) {
+      storage.removeItem(TRANSCRIPT_TIMING_DIAGNOSTICS_STORAGE_KEY)
+      return
+    }
+    retainRecords(parsed.map(normalizeRecord).filter(isPresent), nowMs).forEach((record) => {
+      if (!storage.getItem(recordStorageKey(record.id))) {
+        storage.setItem(recordStorageKey(record.id), JSON.stringify(record))
+      }
+    })
+  } finally {
+    storage.removeItem(TRANSCRIPT_TIMING_DIAGNOSTICS_STORAGE_KEY)
+  }
+}
+
+function pruneRecords(records: TranscriptTimingDiagnosticRecord[], storage: Storage, nowMs: number) {
+  const retainedRecords = retainRecords(records, nowMs)
+  const retainedIds = new Set(retainedRecords.map(({ id }) => id))
+  records.forEach(({ id }) => {
+    if (!retainedIds.has(id)) storage.removeItem(recordStorageKey(id))
+  })
+  return retainedRecords
 }
 
 function retainRecords(records: TranscriptTimingDiagnosticRecord[], nowMs: number) {
