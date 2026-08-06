@@ -101,6 +101,13 @@ export function useTranscriptWorkflow({
     !isProcessing
   const canCancel =
     (status === "starting" || status === "processing") && activeJobIdRef.current !== null
+  const processingEstimateRangeSeconds =
+    isProcessing && timingDiagnostic
+      ? {
+          minSeconds: timingDiagnostic.estimateMinSeconds,
+          maxSeconds: timingDiagnostic.estimateMaxSeconds,
+        }
+      : null
   const unavailableReason =
     availabilityStatus === "error"
       ? availabilityError || "Transcript processing options are unavailable."
@@ -378,6 +385,7 @@ export function useTranscriptWorkflow({
     job,
     preStartEstimateRangeSeconds,
     processingElapsedMs,
+    processingEstimateRangeSeconds,
     sourceFile,
     speakerTranscript,
     status,

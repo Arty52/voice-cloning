@@ -172,7 +172,42 @@ audio {
 
 @media (prefers-reduced-motion: reduce) {
   .pending-work-status,
-  .pending-work-status__shine {
+  .pending-work-status__shine,
+  .transcript-pipeline-activity__sweep {
+    animation: none;
+  }
+}
+
+.transcript-pipeline-activity__sweep {
+  position: absolute;
+  inset-block: 0;
+  left: -38%;
+  width: 34%;
+  background: linear-gradient(
+    100deg,
+    transparent,
+    color-mix(in oklch, var(--primary) 14%, transparent) 38%,
+    color-mix(in oklch, var(--primary) 28%, transparent) 50%,
+    transparent 64%
+  );
+  animation: transcript-pipeline-activity-sweep 2.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes transcript-pipeline-activity-sweep {
+  0%,
+  24% {
+    transform: translateX(0);
+  }
+
+  76%,
+  100% {
+    transform: translateX(430%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .transcript-pipeline-activity__sweep {
     animation: none;
   }
 }

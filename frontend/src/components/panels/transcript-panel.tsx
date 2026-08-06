@@ -3,6 +3,8 @@ import { Ban, FileAudio, MessageSquareText, Sparkles } from "lucide-react"
 import { MediaFileDropZone } from "@/components/media-file-drop-zone"
 import { ProcessingTimeEstimate } from "@/components/processing-time-estimate"
 import { SpeakerTranscriptWorkspace } from "@/components/speaker-transcript-workspace"
+import { TranscriptPipelineActivity } from "@/components/transcript-pipeline-activity"
+import { TranscriptProcessingTiming } from "@/components/transcript-processing-timing"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -11,7 +13,6 @@ import { FieldDescription, FieldGroup } from "@/components/ui/field"
 import { Loading } from "@/components/ui/loading"
 import type { TranscriptWorkflowController } from "@/hooks/use-transcript-workflow"
 import { TRANSCRIPT_AUDIO_ACCEPT } from "@/hooks/use-transcript-workflow"
-import { formatElapsedTime } from "@/lib/formatters"
 import { cn } from "@/lib/utils"
 import type { VoicePresetId } from "@/types"
 
@@ -31,7 +32,7 @@ export function TranscriptPanel({ transcript, voicePresets }: TranscriptPanelPro
 
   return (
     <div className="flex flex-col gap-4">
-      <Card aria-busy={transcript.isProcessing}>
+      <Card>
         <CardHeader>
           <div className="flex flex-wrap items-center gap-2">
             <Badge
@@ -41,14 +42,11 @@ export function TranscriptPanel({ transcript, voicePresets }: TranscriptPanelPro
             >
               {statusLabel}
             </Badge>
-            {transcript.processingElapsedMs !== null ? (
-              <span
-                aria-label="Transcript Processing Elapsed Time"
-                className="text-xs tabular-nums text-muted-foreground"
-              >
-                {transcript.isProcessing ? "Elapsed" : "Finished In"} {formatElapsedTime(transcript.processingElapsedMs)}
-              </span>
-            ) : null}
+            <TranscriptProcessingTiming
+              elapsedMs={transcript.processingElapsedMs}
+              estimateRange={transcript.processingEstimateRangeSeconds}
+              isProcessing={transcript.isProcessing}
+            />
           </div>
           <CardTitle>Transcript Workspace</CardTitle>
           <CardDescription>
@@ -65,7 +63,7 @@ export function TranscriptPanel({ transcript, voicePresets }: TranscriptPanelPro
           ) : null}
 
           <form className="flex flex-col gap-4" onSubmit={transcript.handleStartTranscription}>
-            <FieldGroup>
+            <FieldGroup aria-busy={transcript.isProcessing}>
               <MediaFileDropZone
                 accept={TRANSCRIPT_AUDIO_ACCEPT}
                 ariaLabel="Transcript Audio Drop Zone"
@@ -110,7 +108,12 @@ export function TranscriptPanel({ transcript, voicePresets }: TranscriptPanelPro
                   <FileAudio aria-hidden="true" className="size-5 shrink-0 text-primary" />
                 </CardHeader>
                 <CardContent className="flex flex-wrap gap-2">
-                  <Badge variant="secondary">{transcript.job.engine || "Local Processor"}</Badge>
+                  <TranscriptPipelineActivity
+                    className="basis-full"
+                    engine={transcript.job.engine || "Local Processor"}
+                    isProcessing={transcript.isProcessing}
+                    jobStatus={transcript.job.status}
+                  />
                   {activePhase ? <Badge variant="accent">{activePhase.label}</Badge> : null}
                   {transcript.job.result && "kind" in transcript.job.result && transcript.job.result.kind === "speakerSeparation" ? (
                     <Badge variant="secondary">{transcript.job.result.speakers.length} Speakers</Badge>

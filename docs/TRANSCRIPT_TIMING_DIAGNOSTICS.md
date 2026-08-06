@@ -8,6 +8,12 @@ The Transcript estimate is an uncalibrated, file-size-based planning range. It i
 
 Diagnostics retain the original low and high estimate alongside actual elapsed time so future calibration work can measure heuristic error instead of inferring it from isolated observations. Changing the heuristic requires separate product and engineering review; diagnostic collection does not silently retune the range.
 
+## Running Status Presentation
+
+While a Transcript job is starting or processing, the status row reads the active local record and presents the original range as `Estimated <range>` beside live `Elapsed <time>`. It does not recompute the estimate from elapsed time, narrow the range as the job runs, or imply a new duration-derived forecast. A restored job uses the same persisted pre-start range when its matching local record is available.
+
+Terminal states keep the existing `Finished In <time>` treatment without a stale estimate. Jobs without an accessible diagnostic record continue to show elapsed time alone. The normal status UI stays concise; this document carries the heuristic uncertainty and calibration rationale until a separate UX decision calls for additional product copy.
+
 ## Local Record Contract
 
 Each version 1 record contains only:
