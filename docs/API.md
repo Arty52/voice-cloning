@@ -26,6 +26,7 @@ The FastAPI service is available at `http://localhost:6420` when the Docker stac
 - `GET /api/sample-processing/jobs/{jobId}/source`
 - `GET /api/sample-processing/jobs/{jobId}/speakers/{speakerId}/result`
 - `PATCH /api/sample-processing/jobs/{jobId}/speaker-assignments`
+- `PATCH /api/sample-processing/jobs/{jobId}/transcript-items`
 - `POST /api/sample-processing/jobs/{jobId}/voice`
 - `POST /api/sample-processing/jobs/{jobId}/speaker-voices`
 - `POST /api/speech`
@@ -769,6 +770,18 @@ Speaker Separation jobs return a structured result instead of a single audio fil
 
 The response is `200` with `{ "job": { ... } }` and the updated Speaker Separation result. Unknown speaker ids, unknown transcript item ids, duplicate item assignments, and blank assigned names are rejected.
 
+`PATCH /api/sample-processing/jobs/{jobId}/transcript-items` corrects the text of one or more existing transcript items without changing timestamps, speaker assignments, or generated speaker audio:
+
+```json
+{
+  "items": [
+    { "itemId": "item-2", "text": "Corrected dialogue." }
+  ]
+}
+```
+
+The response is `200` with `{ "job": { ... } }` and the corrected text in the existing Speaker Separation result. The backend trims outer whitespace while preserving internal whitespace. Empty update lists, unknown item ids, duplicate item updates, and blank corrected text are rejected. Corrections are stored with the sample-processing job snapshot when database persistence is configured.
+
 `POST /api/sample-processing/jobs/{jobId}/speaker-voices` saves any subset of generated speakers to the local Voice Library:
 
 ```json
@@ -780,7 +793,9 @@ The response is `200` with `{ "job": { ... } }` and the updated Speaker Separati
 }
 ```
 
-The response is `201` with `{ "voices": [ ... ] }`. Each saved voice receives a normal `voicePresetId` and `processingSteps` entries for prior stack steps plus speaker-specific split/trim metadata with optional `speakerId` and `speakerLabel` fields. The available `voicePresetId` values are the top-level `/api/providers.voicePresets` values used by normal uploads. Provider authors should map provider-specific tuning controls and presets to those shared semantic presets in [How To Add A Provider](ADDING_PROVIDER.md).
+The response is `201` with `{ "voices": [ ... ] }`. The endpoint prepares every selected speaker asynchronously before writing any Voice Library entries, so a preparation failure leaves the entire requested batch unsaved. A speaker stream is saved in full when FFprobe reports at most 120 seconds (or duration metadata is unavailable) and the file is within `MAX_UPLOAD_BYTES`. Longer or larger streams reuse Prepare Voice speech-density ranking, select rank 1, and write a mono 16 kHz PCM WAV excerpt capped at 120 seconds and at a conservative duration derived from `MAX_UPLOAD_BYTES`. The added `prepareVoice` processing step records the full speaker stream hash as its source and the excerpt hash as its result.
+
+Each saved voice receives a normal `voicePresetId` and `processingSteps` entries for prior stack steps plus speaker-specific split/trim metadata with optional `speakerId` and `speakerLabel` fields. The available `voicePresetId` values are the top-level `/api/providers.voicePresets` values used by normal uploads. Provider authors should map provider-specific tuning controls and presets to those shared semantic presets in [How To Add A Provider](ADDING_PROVIDER.md).
 
 ## Speech
 

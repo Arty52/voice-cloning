@@ -14,11 +14,13 @@ from ...services.sample_processing import (
     SpeakerNameAssignment,
     SpeakerTranscriptAssignment,
     SpeakerVoiceSelection,
+    TranscriptTextUpdate,
 )
 from ..schemas import (
     SavePreparedCandidateVoicesRequest,
     SaveProcessedVoiceRequest,
     SaveSpeakerVoicesRequest,
+    UpdateTranscriptItemsRequest,
     UpdateSpeakerAssignmentsRequest,
 )
 from ..serializers import (
@@ -147,6 +149,23 @@ def create_sample_processing_router(sample_processing: SampleProcessingService) 
             raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
         return {"job": sample_processing_job_payload(job)}
 
+    @router.patch("/api/sample-processing/jobs/{job_id}/transcript-items")
+    def update_sample_processing_transcript_items(
+        job_id: str,
+        request: UpdateTranscriptItemsRequest,
+    ) -> dict[str, object]:
+        try:
+            job = sample_processing.update_transcript_items(
+                job_id,
+                items=tuple(
+                    TranscriptTextUpdate(item_id=item.itemId, text=item.text)
+                    for item in request.items
+                ),
+            )
+        except SampleProcessingServiceError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+        return {"job": sample_processing_job_payload(job)}
+
     @router.post("/api/sample-processing/jobs/{job_id}/voice", status_code=201)
     def save_sample_processing_result(job_id: str, request: SaveProcessedVoiceRequest) -> dict[str, object]:
         try:
@@ -160,9 +179,12 @@ def create_sample_processing_router(sample_processing: SampleProcessingService) 
         return {"voice": voice_asset_payload(voice)}
 
     @router.post("/api/sample-processing/jobs/{job_id}/speaker-voices", status_code=201)
-    def save_sample_processing_speaker_results(job_id: str, request: SaveSpeakerVoicesRequest) -> dict[str, object]:
+    async def save_sample_processing_speaker_results(
+        job_id: str,
+        request: SaveSpeakerVoicesRequest,
+    ) -> dict[str, object]:
         try:
-            voices = sample_processing.save_speaker_results_as_voices(
+            voices = await sample_processing.save_speaker_results_as_voices(
                 job_id,
                 voices=tuple(
                     SpeakerVoiceSelection(

@@ -275,7 +275,12 @@ class DiarizationSampleProcessor:
                 speaker_names=request.speaker_names,
                 transcript_assignments=request.transcript_assignments,
             )
-            return await self._attach_speaker_streams(normalized_path, request.job_dir, updated)
+            return await self._attach_speaker_streams(
+                normalized_path,
+                request.job_dir,
+                updated,
+                max_output_bytes=self.settings.max_source_upload_bytes,
+            )
 
     def _diarize(self, normalized_path: Path) -> tuple["_DiarizationTurn", ...]:
         if not self.settings.sample_processing_hf_token:
