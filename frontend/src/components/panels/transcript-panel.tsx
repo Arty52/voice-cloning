@@ -3,6 +3,7 @@ import { Ban, FileAudio, MessageSquareText, Sparkles } from "lucide-react"
 import { MediaFileDropZone } from "@/components/media-file-drop-zone"
 import { ProcessingTimeEstimate } from "@/components/processing-time-estimate"
 import { SpeakerTranscriptWorkspace } from "@/components/speaker-transcript-workspace"
+import { TranscriptPipelineActivity } from "@/components/transcript-pipeline-activity"
 import { TranscriptProcessingTiming } from "@/components/transcript-processing-timing"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -107,7 +108,11 @@ export function TranscriptPanel({ transcript, voicePresets }: TranscriptPanelPro
                   <FileAudio aria-hidden="true" className="size-5 shrink-0 text-primary" />
                 </CardHeader>
                 <CardContent className="flex flex-wrap gap-2">
-                  <Badge variant="secondary">{transcript.job.engine || "Local Processor"}</Badge>
+                  <TranscriptPipelineActivity
+                    className="basis-full"
+                    engine={transcript.job.engine || "Local Processor"}
+                    isProcessing={transcript.isProcessing}
+                  />
                   {activePhase ? <Badge variant="accent">{activePhase.label}</Badge> : null}
                   {transcript.job.result && "kind" in transcript.job.result && transcript.job.result.kind === "speakerSeparation" ? (
                     <Badge variant="secondary">{transcript.job.result.speakers.length} Speakers</Badge>

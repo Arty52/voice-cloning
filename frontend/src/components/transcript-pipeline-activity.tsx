@@ -1,0 +1,30 @@
+import { Badge } from "@/components/ui/badge"
+import { cn } from "@/lib/utils"
+
+type TranscriptPipelineActivityProps = {
+  className?: string
+  engine: string
+  isProcessing: boolean
+}
+
+/**
+ * An intentionally indeterminate activity treatment for a running Transcript job.
+ * Backend job progress is not yet granular enough to represent completion honestly.
+ */
+export function TranscriptPipelineActivity({ className, engine, isProcessing }: TranscriptPipelineActivityProps) {
+  if (!isProcessing) {
+    return <Badge variant="secondary">{engine}</Badge>
+  }
+
+  return (
+    <div
+      aria-label="Transcript is processing. Progress percentage is unavailable."
+      className={cn("transcript-pipeline-activity relative min-w-0 overflow-hidden rounded-md border border-border bg-muted/40", className)}
+      role="status"
+    >
+      {/* Activity-only until backend transcript phase/progress instrumentation supplies truthful progress. */}
+      <span aria-hidden="true" className="transcript-pipeline-activity__sweep" />
+      <span className="relative block truncate px-2.5 py-1 text-xs text-muted-foreground">{engine}</span>
+    </div>
+  )
+}
