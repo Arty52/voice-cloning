@@ -182,6 +182,12 @@ export function updateTranscriptTimingDiagnostic(
       return null
     }
     const isTerminal = TERMINAL_STATUSES.has(update.workflowStatus)
+    // Late polling/lifecycle writes can arrive after another tab has already
+    // recorded the terminal outcome. Preserve that outcome instead of making
+    // the calibration record look active again.
+    if (TERMINAL_STATUSES.has(activeRecord.workflowStatus) && !isTerminal) {
+      return activeRecord
+    }
     const updatedRecord: TranscriptTimingDiagnosticRecord = {
       ...activeRecord,
       workflowStatus: update.workflowStatus,

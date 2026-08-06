@@ -111,6 +111,38 @@ describe("transcript timing diagnostics", () => {
     })
   })
 
+  it("does not let a stale nonterminal update regress a terminal diagnostic", () => {
+    const started = startTranscriptTimingDiagnostic({
+      createId: () => "timing-terminal-monotonic",
+      estimate: { minSeconds: 40, maxSeconds: 115 },
+      now: NOW,
+      sourceFile: new File(["audio"], "source.mp3", { type: "audio/mpeg" }),
+    })
+    const completed = updateTranscriptTimingDiagnostic(
+      started.id,
+      { workflowStatus: "success", actualElapsedMs: 352_000 },
+      localStorage,
+      NOW.getTime() + 352_000
+    )
+
+    const staleUpdate = updateTranscriptTimingDiagnostic(
+      started.id,
+      { workflowStatus: "processing" },
+      localStorage,
+      NOW.getTime() + 353_000
+    )
+
+    expect(staleUpdate).toEqual(completed)
+    expect(readTranscriptTimingDiagnostics(localStorage, NOW.getTime() + 353_000)).toEqual([
+      expect.objectContaining({
+        id: started.id,
+        workflowStatus: "success",
+        actualElapsedMs: 352_000,
+        completedAt: "2026-08-06T12:05:52.000Z",
+      }),
+    ])
+  })
+
   it("keeps concurrent lifecycle updates bound to the diagnostic that started them", () => {
     const first = startTranscriptTimingDiagnostic({
       createId: () => "timing-first",
