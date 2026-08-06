@@ -19,7 +19,8 @@ dev = [
   "pytest>=9.0.0",
 ]
 sample-processing = [
-  "demucs==4.0.1",
+  "demucs==4.1.0",
+  "numpy>=2.3.2",
   "torchcodec>=0.14.0",
 ]
 diarization = [
