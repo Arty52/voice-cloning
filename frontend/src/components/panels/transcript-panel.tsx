@@ -3,6 +3,7 @@ import { Ban, FileAudio, MessageSquareText, Sparkles } from "lucide-react"
 import { MediaFileDropZone } from "@/components/media-file-drop-zone"
 import { ProcessingTimeEstimate } from "@/components/processing-time-estimate"
 import { SpeakerTranscriptWorkspace } from "@/components/speaker-transcript-workspace"
+import { TranscriptProcessingTiming } from "@/components/transcript-processing-timing"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -11,7 +12,6 @@ import { FieldDescription, FieldGroup } from "@/components/ui/field"
 import { Loading } from "@/components/ui/loading"
 import type { TranscriptWorkflowController } from "@/hooks/use-transcript-workflow"
 import { TRANSCRIPT_AUDIO_ACCEPT } from "@/hooks/use-transcript-workflow"
-import { formatElapsedTime } from "@/lib/formatters"
 import { cn } from "@/lib/utils"
 import type { VoicePresetId } from "@/types"
 
@@ -41,14 +41,11 @@ export function TranscriptPanel({ transcript, voicePresets }: TranscriptPanelPro
             >
               {statusLabel}
             </Badge>
-            {transcript.processingElapsedMs !== null ? (
-              <span
-                aria-label="Transcript Processing Elapsed Time"
-                className="text-xs tabular-nums text-muted-foreground"
-              >
-                {transcript.isProcessing ? "Elapsed" : "Finished In"} {formatElapsedTime(transcript.processingElapsedMs)}
-              </span>
-            ) : null}
+            <TranscriptProcessingTiming
+              elapsedMs={transcript.processingElapsedMs}
+              estimateRange={transcript.processingEstimateRangeSeconds}
+              isProcessing={transcript.isProcessing}
+            />
           </div>
           <CardTitle>Transcript Workspace</CardTitle>
           <CardDescription>
