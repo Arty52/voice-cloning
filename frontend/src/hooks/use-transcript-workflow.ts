@@ -7,7 +7,7 @@ import {
   startTranscriptTimingDiagnostic,
   type TranscriptTimingDiagnosticRecord,
   type TranscriptTimingDiagnosticStatus,
-  updateActiveTranscriptTimingDiagnostic,
+  updateTranscriptTimingDiagnostic,
 } from "@/lib/transcript-timing-diagnostics"
 import type { AsyncStatus, SampleProcessingJob, VoiceAsset } from "@/types"
 
@@ -53,6 +53,7 @@ export function useTranscriptWorkflow({
   const [timingDiagnostic, setTimingDiagnostic] = useState<TranscriptTimingDiagnosticRecord | null>(() =>
     readInitialTimingDiagnostic(initialStoredJobId)
   )
+  const timingDiagnosticIdRef = useRef<string | null>(timingDiagnostic?.id ?? null)
   const mountedRef = useRef(true)
   const runIdRef = useRef(0)
   const activeJobIdRef = useRef<string | null>(null)
@@ -151,6 +152,7 @@ export function useTranscriptWorkflow({
       estimate: preStartEstimateRangeSeconds,
       sourceFile,
     })
+    timingDiagnosticIdRef.current = startedTimingDiagnostic.id
     setTimingDiagnostic(startedTimingDiagnostic)
     setStatus("starting")
     setError(null)
@@ -315,7 +317,10 @@ export function useTranscriptWorkflow({
   }
 
   function updateTimingDiagnostic(workflowStatus: TranscriptTimingDiagnosticStatus) {
-    const updatedDiagnostic = updateActiveTranscriptTimingDiagnostic({ workflowStatus })
+    const diagnosticId = timingDiagnosticIdRef.current
+    const updatedDiagnostic = diagnosticId
+      ? updateTranscriptTimingDiagnostic(diagnosticId, { workflowStatus })
+      : null
     if (updatedDiagnostic) {
       setTimingDiagnostic(updatedDiagnostic)
     }
@@ -326,11 +331,14 @@ export function useTranscriptWorkflow({
     actualElapsedMs: number | null,
     completedAt?: string | null
   ) {
-    const updatedDiagnostic = updateActiveTranscriptTimingDiagnostic({
-      workflowStatus,
-      actualElapsedMs,
-      completedAt,
-    })
+    const diagnosticId = timingDiagnosticIdRef.current
+    const updatedDiagnostic = diagnosticId
+      ? updateTranscriptTimingDiagnostic(diagnosticId, {
+          workflowStatus,
+          actualElapsedMs,
+          completedAt,
+        })
+      : null
     if (updatedDiagnostic) {
       setTimingDiagnostic(updatedDiagnostic)
     }
@@ -400,10 +408,12 @@ function readStoredLatestTranscriptJobId() {
 function readInitialTimingDiagnostic(initialStoredJobId: string | null) {
   const activeDiagnostic = readActiveTranscriptTimingDiagnostic()
   if (!initialStoredJobId && activeDiagnostic) {
-    return updateActiveTranscriptTimingDiagnostic({
-      workflowStatus: "incomplete",
-      actualElapsedMs: null,
-    }) ?? activeDiagnostic
+    return (
+      updateTranscriptTimingDiagnostic(activeDiagnostic.id, {
+        workflowStatus: "incomplete",
+        actualElapsedMs: null,
+      }) ?? activeDiagnostic
+    )
   }
   return activeDiagnostic
 }

@@ -202,6 +202,34 @@ describe("useTranscriptWorkflow", () => {
     })
   })
 
+  it("keeps timing lifecycle updates attached to each concurrently mounted transcript workflow", async () => {
+    const firstRunningJob = buildJob("running", { id: "transcript-job-first" })
+    const secondRunningJob = buildJob("running", { id: "transcript-job-second" })
+    const firstCanceledJob = buildJob("canceled", { id: "transcript-job-first" })
+    vi.mocked(api.createSampleProcessingJob)
+      .mockResolvedValueOnce({ job: firstRunningJob })
+      .mockResolvedValueOnce({ job: secondRunningJob })
+    vi.mocked(api.cancelSampleProcessingJob).mockResolvedValue({ job: firstCanceledJob })
+    const first = renderTranscriptWorkflow()
+    const second = renderTranscriptWorkflow()
+
+    act(() => first.result.current.handleSourceFileSelect(new File(["first"], "first.mp3", { type: "audio/mpeg" })))
+    await act(async () => first.result.current.handleStartTranscription())
+    act(() => second.result.current.handleSourceFileSelect(new File(["second"], "second.mp3", { type: "audio/mpeg" })))
+    await act(async () => second.result.current.handleStartTranscription())
+    await act(async () => first.result.current.handleCancelTranscription())
+
+    const records = readTranscriptTimingDiagnostics()
+    expect(records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ sourceExtension: "mp3", workflowStatus: "canceled" }),
+        expect.objectContaining({ sourceExtension: "mp3", workflowStatus: "processing" }),
+      ])
+    )
+    expect(first.result.current.timingDiagnostic?.workflowStatus).toBe("canceled")
+    expect(second.result.current.timingDiagnostic?.workflowStatus).toBe("processing")
+  })
+
   it("records a terminal error when a transcript cannot be started", async () => {
     const sourceFile = new File(["audio"], "meeting.wav", { type: "audio/wav" })
     vi.mocked(api.createSampleProcessingJob).mockRejectedValue(new Error("Local processor unavailable."))
