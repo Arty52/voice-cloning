@@ -112,6 +112,7 @@ export function TranscriptPanel({ transcript, voicePresets }: TranscriptPanelPro
                     className="basis-full"
                     engine={transcript.job.engine || "Local Processor"}
                     isProcessing={transcript.isProcessing}
+                    jobStatus={transcript.job.status}
                   />
                   {activePhase ? <Badge variant="accent">{activePhase.label}</Badge> : null}
                   {transcript.job.result && "kind" in transcript.job.result && transcript.job.result.kind === "speakerSeparation" ? (

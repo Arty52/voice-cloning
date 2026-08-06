@@ -1,18 +1,27 @@
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
+import type { SampleProcessingJob } from "@/types"
 
 type TranscriptPipelineActivityProps = {
   className?: string
   engine: string
   isProcessing: boolean
+  jobStatus: SampleProcessingJob["status"] | undefined
 }
 
 /**
  * An intentionally indeterminate activity treatment for a running Transcript job.
  * Backend job progress is not yet granular enough to represent completion honestly.
  */
-export function TranscriptPipelineActivity({ className, engine, isProcessing }: TranscriptPipelineActivityProps) {
-  if (!isProcessing) {
+export function TranscriptPipelineActivity({
+  className,
+  engine,
+  isProcessing,
+  jobStatus,
+}: TranscriptPipelineActivityProps) {
+  const isActiveJob = isProcessing && (jobStatus === "pending" || jobStatus === "running")
+
+  if (!isActiveJob) {
     return <Badge variant="secondary">{engine}</Badge>
   }
 
