@@ -88,6 +88,18 @@ SAMPLE_PROCESSING_FFMPEG_COMMAND=/path/to/ffmpeg
 
 The backend invokes external tools with argument arrays and no shell, so shell aliases and interactive-only PATH changes may not apply.
 
+Demucs 4.1 requires NumPy at runtime, but its Linux package metadata does not declare that dependency. The `sample-processing` extra installs `numpy>=2.3.2`, the first NumPy patch release with Python 3.14 wheels. If Demucs fails to import NumPy after an upgrade, rebuild the Docker API image.
+
+For host installs, `sphn` may need to compile when no wheel exists for the platform. Install Cargo, a C compiler, pkg-config, and the Opus development headers before reinstalling the sample-processing extra. On Debian or Ubuntu:
+
+```sh
+sudo apt-get update
+sudo apt-get install cargo gcc pkg-config libopus-dev
+.venv/bin/python -m pip install -e "backend[sample-processing]"
+```
+
+Use the equivalent native packages on other Linux distributions. These tools are build prerequisites only; the Docker image installs and removes them automatically.
+
 ## Speaker Diarization Dependencies Are Missing
 
 Speaker Separation requires the optional backend `diarization` extra. For Docker, set `INSTALL_DIARIZATION=1` and rebuild with `make recycle`. For host development, install the extra in the backend environment:
