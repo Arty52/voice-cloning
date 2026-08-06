@@ -173,7 +173,7 @@ export function updateTranscriptTimingDiagnostic(
       ...activeRecord,
       workflowStatus: update.workflowStatus,
       actualElapsedMs:
-        "actualElapsedMs" in update ? update.actualElapsedMs : activeRecord.actualElapsedMs,
+        update.actualElapsedMs === undefined ? activeRecord.actualElapsedMs : update.actualElapsedMs,
       completedAt: isTerminal
         ? "completedAt" in update
           ? update.completedAt ?? null
@@ -205,7 +205,7 @@ export function updateActiveTranscriptTimingDiagnostic(
   try {
     const resolvedStorage = resolveStorage(storage)
     const activeId = resolvedStorage?.getItem(ACTIVE_TRANSCRIPT_TIMING_DIAGNOSTIC_STORAGE_KEY)
-    return activeId ? updateTranscriptTimingDiagnostic(activeId, update, resolvedStorage, nowMs) : null
+    return activeId ? updateTranscriptTimingDiagnostic(activeId, update, resolvedStorage!, nowMs) : null
   } catch {
     return null
   }
