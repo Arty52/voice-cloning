@@ -106,7 +106,11 @@ export function useTranscriptWorkflow({
       return
     }
     updateElapsedTime(job)
-    const intervalId = window.setInterval(() => updateElapsedTime(job), TIMER_INTERVAL_MS)
+    const intervalId = window.setInterval(() => {
+      if (activeJobIdRef.current === job.id) {
+        updateElapsedTime(job)
+      }
+    }, TIMER_INTERVAL_MS)
     return () => window.clearInterval(intervalId)
   }, [job])
 
@@ -201,12 +205,7 @@ export function useTranscriptWorkflow({
         return
       }
       if (isMissingTranscriptJobError(caught)) {
-        activeJobIdRef.current = null
-        clearStoredLatestTranscriptJobId()
-        setJob(null)
-        setStatus("idle")
-        setError(null)
-        setProcessingElapsedMs(null)
+        resetMissingJob()
         return
       }
       setStatus("error")
@@ -232,11 +231,24 @@ export function useTranscriptWorkflow({
         if (!isActiveRun(runId)) {
           return
         }
-        setStatus("error")
-        setError(caught instanceof Error ? caught.message : "Unable to poll transcript processing job.")
-        return
+        if (isMissingTranscriptJobError(caught)) {
+          resetMissingJob()
+          return
+        }
+        setStatus("processing")
+        const detail = caught instanceof Error ? caught.message : "Unable to poll transcript processing job."
+        setError(`${detail} Retrying.`)
       }
     }
+  }
+
+  function resetMissingJob() {
+    activeJobIdRef.current = null
+    clearStoredLatestTranscriptJobId()
+    setJob(null)
+    setStatus("idle")
+    setError(null)
+    setProcessingElapsedMs(null)
   }
 
   function applyJob(nextJob: SampleProcessingJob) {
@@ -257,6 +269,7 @@ export function useTranscriptWorkflow({
       setError(nextJob.error || "Transcript processing failed.")
       return true
     }
+    setError(null)
     return false
   }
 

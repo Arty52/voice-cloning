@@ -108,6 +108,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.restoreAllMocks()
 })
 
@@ -196,6 +197,53 @@ describe("useTranscriptWorkflow", () => {
     expect(result.current.job).toBeNull()
     expect(result.current.error).toBeNull()
     expect(window.localStorage.getItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY)).toBeNull()
+  })
+
+  it("clears a running job that disappears while polling", async () => {
+    vi.useFakeTimers()
+    const runningJob = buildJob("running")
+    vi.mocked(api.createSampleProcessingJob).mockResolvedValue({ job: runningJob })
+    vi.mocked(api.fetchSampleProcessingJob).mockRejectedValue(new Error("Sample processing job not found."))
+    const { result } = renderTranscriptWorkflow()
+
+    act(() => result.current.handleSourceFileSelect(new File(["audio"], "meeting.mp3", { type: "audio/mpeg" })))
+    await act(async () => result.current.handleStartTranscription())
+    expect(result.current.status).toBe("processing")
+
+    await act(async () => vi.advanceTimersByTimeAsync(1_500))
+
+    expect(result.current.status).toBe("idle")
+    expect(result.current.job).toBeNull()
+    expect(result.current.error).toBeNull()
+    expect(result.current.processingElapsedMs).toBeNull()
+    expect(window.localStorage.getItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY)).toBeNull()
+  })
+
+  it("keeps a running job recoverable across transient polling errors", async () => {
+    vi.useFakeTimers()
+    const runningJob = buildJob("running")
+    const completedJob = buildJob("success")
+    vi.mocked(api.createSampleProcessingJob).mockResolvedValue({ job: runningJob })
+    vi.mocked(api.fetchSampleProcessingJob)
+      .mockRejectedValueOnce(new Error("Local API temporarily unavailable."))
+      .mockResolvedValueOnce({ job: completedJob })
+    const { result } = renderTranscriptWorkflow()
+
+    act(() => result.current.handleSourceFileSelect(new File(["audio"], "meeting.mp3", { type: "audio/mpeg" })))
+    await act(async () => result.current.handleStartTranscription())
+    await act(async () => vi.advanceTimersByTimeAsync(1_500))
+
+    expect(result.current.status).toBe("processing")
+    expect(result.current.canCancel).toBe(true)
+    expect(result.current.canStart).toBe(false)
+    expect(result.current.error).toBe("Local API temporarily unavailable. Retrying.")
+    expect(window.localStorage.getItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY)).toBe(runningJob.id)
+
+    await act(async () => vi.advanceTimersByTimeAsync(1_500))
+
+    expect(result.current.status).toBe("success")
+    expect(result.current.job).toEqual(completedJob)
+    expect(result.current.error).toBeNull()
   })
 
   it("rejects unsupported non-audio uploads before starting", () => {
