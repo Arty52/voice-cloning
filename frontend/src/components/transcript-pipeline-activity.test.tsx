@@ -15,7 +15,9 @@ describe("TranscriptPipelineActivity", () => {
 
     const activity = screen.getByRole("status")
 
-    expect(activity).toHaveAccessibleName("Transcript is processing. Progress percentage is unavailable.")
+    expect(activity).toHaveAccessibleName(
+      "Transcript is processing with pyannote-community-1 + faster-whisper. Progress percentage is unavailable."
+    )
     expect(activity).toHaveTextContent("pyannote-community-1 + faster-whisper")
     expect(activity.querySelector(".transcript-pipeline-activity__sweep")).toBeInTheDocument()
   })

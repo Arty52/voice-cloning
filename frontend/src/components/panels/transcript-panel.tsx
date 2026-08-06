@@ -32,7 +32,7 @@ export function TranscriptPanel({ transcript, voicePresets }: TranscriptPanelPro
 
   return (
     <div className="flex flex-col gap-4">
-      <Card aria-busy={transcript.isProcessing}>
+      <Card>
         <CardHeader>
           <div className="flex flex-wrap items-center gap-2">
             <Badge
@@ -63,7 +63,7 @@ export function TranscriptPanel({ transcript, voicePresets }: TranscriptPanelPro
           ) : null}
 
           <form className="flex flex-col gap-4" onSubmit={transcript.handleStartTranscription}>
-            <FieldGroup>
+            <FieldGroup aria-busy={transcript.isProcessing}>
               <MediaFileDropZone
                 accept={TRANSCRIPT_AUDIO_ACCEPT}
                 ariaLabel="Transcript Audio Drop Zone"

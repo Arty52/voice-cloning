@@ -27,7 +27,7 @@ export function TranscriptPipelineActivity({
 
   return (
     <div
-      aria-label="Transcript is processing. Progress percentage is unavailable."
+      aria-label={`Transcript is processing with ${engine}. Progress percentage is unavailable.`}
       className={cn("transcript-pipeline-activity relative min-w-0 overflow-hidden rounded-md border border-border bg-muted/40", className)}
       role="status"
     >
