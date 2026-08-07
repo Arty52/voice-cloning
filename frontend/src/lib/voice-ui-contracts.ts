@@ -31,10 +31,13 @@ export type PlaybackSnapshot = {
 }
 
 export type PlaybackIntent =
+  | { type: "clear" }
   | { type: "pause" }
   | { type: "play" }
   | { source: PlaybackSource | null; type: "replaceSource" }
   | { positionSeconds: number; type: "seek" }
+  | { seconds: number; type: "skip" }
+  | { type: "toggle" }
   | { endSeconds: number; startSeconds: number; type: "playRange" }
 
 export type PlaybackController = {
