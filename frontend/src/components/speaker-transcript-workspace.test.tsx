@@ -149,4 +149,17 @@ describe("SpeakerTranscriptWorkspace", () => {
     expect(anchor.isConnected).toBe(false)
     await waitFor(() => expect(revokeObjectUrl).toHaveBeenCalledWith("blob:transcript"))
   })
+
+  it("clears a transcript selection when the user clicks away", async () => {
+    const user = userEvent.setup()
+
+    render(<TestWorkspace />)
+
+    await user.click(screen.getByRole("button", { name: "Hello there." }))
+    expect(screen.getByText("1 Selected")).toBeInTheDocument()
+
+    await user.click(screen.getByRole("heading", { name: "Transcript" }))
+
+    await waitFor(() => expect(screen.queryByText("1 Selected")).not.toBeInTheDocument())
+  })
 })

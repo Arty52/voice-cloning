@@ -84,6 +84,26 @@ export function SpeakerTranscriptWorkspace({
     return () => audioElement.removeEventListener("timeupdate", handleTimeUpdate)
   }, [controller.speakerSourceUrl])
 
+  useEffect(() => {
+    if (controller.selectedTranscriptItemIds.length === 0) {
+      return
+    }
+
+    function clearTranscriptSelectionOnPointerDown(event: PointerEvent) {
+      const target = event.target
+      if (
+        target instanceof Element &&
+        target.closest("[data-transcript-item], [data-transcript-selection-surface]")
+      ) {
+        return
+      }
+      controller.handleTranscriptSelectionChange([])
+    }
+
+    document.addEventListener("pointerdown", clearTranscriptSelectionOnPointerDown, true)
+    return () => document.removeEventListener("pointerdown", clearTranscriptSelectionOnPointerDown, true)
+  }, [controller, controller.selectedTranscriptItemIds.length])
+
   if (!speakerResult || !job) {
     return null
   }
@@ -270,13 +290,18 @@ export function SpeakerTranscriptWorkspace({
                               }
                             }}
                             onPointerUp={() => setDragStartItemId(null)}
+                            data-transcript-item
                             style={speakerStyle(speakerIndex)}
                             type="button"
                           >
                             {draftText}
                           </button>
                         </PopoverTrigger>
-                        <PopoverContent align="start" className="w-96 max-w-[calc(100vw-2rem)]">
+                        <PopoverContent
+                          align="start"
+                          className="w-96 max-w-[calc(100vw-2rem)]"
+                          data-transcript-selection-surface
+                        >
                           <PopoverHeader>
                             <PopoverTitle>{speaker?.label ?? "Speaker"}</PopoverTitle>
                           </PopoverHeader>
