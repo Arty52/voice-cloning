@@ -8,7 +8,7 @@ This guide covers local setup, provider key handling, and the sidebar workflow f
 - An ElevenLabs API key for the built-in provider
 - Optional for host development:
   - Python 3.14+
-  - Node.js 24+
+  - Node.js 24.15+
   - FFmpeg for multi-voice speech job assembly
 - Optional for local sample processing:
   - Demucs, when `SAMPLE_PROCESSING_ENGINE=demucs`
