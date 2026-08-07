@@ -200,10 +200,19 @@ Status meanings:
 
 These are planning and ownership constraints, not APIs introduced by this documentation PR. A later implementation may choose different type or hook names, but it must preserve the responsibility split.
 
+### Synchronization And Presentation Amendment
+
+The shared contracts must describe synchronization without making a provider payload or a single UI surface the source of truth:
+
+- A transcript document has one canonical ordered segment presentation for the editor, read-only viewer, export flow, and future timeline. Surfaces may select or highlight differently, but they do not create competing copies of speaker, segment, or text state.
+- Word alignment is optional, provider-neutral timing data attached to a segment. A viewer must remain correct when it is absent, partial, or invalidated; it must fall back to segment synchronization rather than inventing word timings.
+- A persisted text correction increments the local transcript presentation revision and invalidates any previously derived word alignment for the corrected segment until a trusted local or provider-neutral alignment source replaces it. Corrections remain owned by the existing transcript workflow and API boundary.
+- App-level playback ownership is explicit: a feature obtains a controlled playback context and publishes time, source, and lifecycle state to its local consumers. A presentational viewer, picker, waveform, or scrub bar never creates a second app-wide media owner or reaches into another feature's media element.
+
 | Contract | Owned Data And Actions | Consumers | Boundary Rules |
 | --- | --- | --- | --- |
 | Shared playback | Stable source/item id, playable local URL, media ref or adapter, load state, play/pause state, current time, duration, seek, bounded segment play, active preview, error, and cleanup. | Audio controls, voice previews, synchronized transcripts, waveforms, and future timeline cursors. | One owner per playback context; all time-based consumers are controlled from it. The contract contains no provider client, archive persistence, component-library type, or vendor media service. |
-| Normalized transcript | Document id, speakers, ordered segments, start/end times, text, optional word alignment, selected/current segment, and provider-neutral editing commands where the surface is editable. | Read-only synchronized viewer, editable diarized workspace, export flow, and timeline presentation. | Read-only views receive playback time and emit seek intent. `useTranscriptWorkflow` and `useSpeakerTranscript` remain the workflow/mutation owners for the current editor. Upstream AI SDK or ElevenLabs transcript types are normalized at an adapter boundary and do not become reusable UI props. |
+| Normalized transcript | Document id, revision, speakers, one ordered segment presentation, start/end times, text, optional word alignment, selected/current segment, and provider-neutral editing commands where the surface is editable. | Read-only synchronized viewer, editable diarized workspace, export flow, and timeline presentation. | Read-only views receive playback time and emit seek intent. Text corrections invalidate the affected derived word alignment and advance the presentation revision. `useTranscriptWorkflow` and `useSpeakerTranscript` remain the workflow/mutation owners for the current editor. Upstream AI SDK or ElevenLabs transcript types are normalized at an adapter boundary and do not become reusable UI props. |
 | Voice selection | Stable local voice id, display name, optional description and neutral metadata, selected state, preview availability/state, search/group data, and select/preview intent. | Voice picker, generation workflows, library actions, and contextual voice assignment. | The feature hook or container owns loading, provider metadata normalization, selection, and preview coordination. The picker is presentational and does not fetch voices, interpret provider ids, persist defaults, or create its own player. Preview uses the shared playback contract. |
 
 The contracts meet at explicit events rather than shared vendor state: a voice option requests preview through shared playback; a transcript segment requests a seek through shared playback; playback publishes controlled time to transcript and waveform views; transcript edits flow through the local transcript controller and API helpers. This prevents an adapted component from becoming an accidental state store.
@@ -242,7 +251,7 @@ Validation: search/group/empty/loading/error states, controlled selection, one-p
 
 ### Phase 2B: Read-Only Synchronized Transcript
 
-- Start with segment synchronization through the local transcript contract; add word alignment only for a demonstrated requirement.
+- Start with segment synchronization through the local transcript contract; add word alignment only for a demonstrated requirement, with segment fallback for missing or invalidated words.
 - Connect highlight and click-to-seek behavior to the Phase 1 playback contract.
 - Keep editing and persistence out of the read-only viewer.
 - Exit when a long transcript remains readable, seekable, and synchronized without rerendering or announcing every time update.
