@@ -43,7 +43,7 @@ export function Loading({
 }: LoadingProps) {
   return (
     <div
-      aria-label={text ? ariaLabel : ariaLabel || "Loading"}
+      aria-label={ariaLabel || text || "Loading"}
       aria-live="polite"
       className={cn("inline-flex items-center", gapClasses[size], textClasses[size], variantClasses[variant], className)}
       role={role ?? "status"}
