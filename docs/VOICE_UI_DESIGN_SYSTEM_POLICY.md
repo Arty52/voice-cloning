@@ -217,6 +217,8 @@ The shared contracts must describe synchronization without making a provider pay
 
 The contracts meet at explicit events rather than shared vendor state: a voice option requests preview through shared playback; a transcript segment requests a seek through shared playback; playback publishes controlled time to transcript and waveform views; transcript edits flow through the local transcript controller and API helpers. This prevents an adapted component from becoming an accidental state store.
 
+The implementation-level ownership, cleanup, correction invalidation, and external-reference record lives in [Voice UI Contract Ownership](VOICE_UI_CONTRACTS.md).
+
 ## Phased Adoption And Test Plan
 
 This inventory does not authorize implementation. Each phase begins only when a concrete product need is approved, and each non-trivial phase uses its own reviewable Draft PR or PR stack under the repository planning standards.
