@@ -250,6 +250,38 @@ describe("usePlaybackController", () => {
     })
   })
 
+  it("keeps the empty snapshot after clear despite late media events", () => {
+    const { result } = renderHook(() => usePlaybackController(), { wrapper })
+    const audio = document.querySelector("audio")
+    if (!audio) {
+      throw new Error("Expected the shared media element.")
+    }
+
+    act(() => {
+      result.current.dispatch({ source: firstSource, type: "replaceSource" })
+      result.current.dispatch({ type: "clear" })
+    })
+    Object.defineProperty(audio, "duration", { configurable: true, value: 45 })
+    Object.defineProperty(audio, "currentTime", { configurable: true, value: 12, writable: true })
+    fireEvent.canPlay(audio)
+    fireEvent.durationChange(audio)
+    fireEvent.loadedMetadata(audio)
+    fireEvent.play(audio)
+    fireEvent.timeUpdate(audio)
+    fireEvent.pause(audio)
+    fireEvent.ended(audio)
+
+    expect(audio.getAttribute("src")).toBeNull()
+    expect(result.current.snapshot).toEqual({
+      currentTimeSeconds: 0,
+      durationSeconds: null,
+      error: null,
+      loadState: "idle",
+      source: null,
+      status: "idle",
+    })
+  })
+
   it("resets and reloads when a new source identity reuses the same URL", () => {
     const sourceWithSharedUrl = { ...secondSource, id: "preview-2", url: firstSource.url }
     const { result } = renderHook(() => usePlaybackController(), { wrapper })

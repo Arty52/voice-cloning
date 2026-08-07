@@ -57,6 +57,8 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
     sourceGenerationRef.current += 1
     if (audio) {
       audio.pause()
+      audio.removeAttribute("src")
+      audio.load()
     }
     snapshotRef.current = EMPTY_SNAPSHOT
     setSnapshot(EMPTY_SNAPSHOT)
@@ -241,10 +243,14 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
         }
         onDurationChange={(event) => {
           const duration = event.currentTarget.duration
-          updateSnapshot((current) => ({
-            ...current,
-            durationSeconds: Number.isFinite(duration) && duration >= 0 ? duration : null,
-          }))
+          updateSnapshot((current) =>
+            current.source
+              ? {
+                  ...current,
+                  durationSeconds: Number.isFinite(duration) && duration >= 0 ? duration : null,
+                }
+              : current
+          )
         }}
         onEnded={() => {
           rangeRef.current = null
@@ -265,11 +271,15 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
         }}
         onLoadedMetadata={(event) => {
           const duration = event.currentTarget.duration
-          updateSnapshot((current) => ({
-            ...current,
-            durationSeconds: Number.isFinite(duration) && duration >= 0 ? duration : null,
-            loadState: "ready",
-          }))
+          updateSnapshot((current) =>
+            current.source
+              ? {
+                  ...current,
+                  durationSeconds: Number.isFinite(duration) && duration >= 0 ? duration : null,
+                  loadState: "ready",
+                }
+              : current
+          )
         }}
         onPause={() =>
           updateSnapshot((current) =>
@@ -282,6 +292,9 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
         onTimeUpdate={(event) => {
           const currentTimeSeconds = event.currentTarget.currentTime
           const range = rangeRef.current
+          if (!snapshotRef.current.source) {
+            return
+          }
           if (range && currentTimeSeconds >= range.endSeconds) {
             event.currentTarget.currentTime = range.endSeconds
             event.currentTarget.pause()
