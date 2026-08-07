@@ -51,6 +51,19 @@ describe("voice UI contracts", () => {
     ).toBe(false)
   })
 
+  it("rejects malformed word alignment so synchronized views can fall back to segment timing", () => {
+    const validWords = document.segments[0].words ?? []
+
+    for (const words of [
+      [{ ...validWords[0], id: "" }, validWords[1]],
+      [{ ...validWords[0] }, { ...validWords[1], id: validWords[0].id }],
+      [{ ...validWords[0] }, { ...validWords[1], startSeconds: 0.4 }],
+      [{ ...validWords[0], endSeconds: 1.3 }, validWords[1]],
+    ]) {
+      expect(validateTranscriptDocument({ ...document, segments: [{ ...document.segments[0], words }] })).toBe(false)
+    }
+  })
+
   it("identifies only browser-owned object URLs for later cleanup", () => {
     expect(hasBrowserObjectUrl({ id: "preview-1", kind: "voicePreview", label: "Preview", url: "blob:preview" })).toBe(
       true

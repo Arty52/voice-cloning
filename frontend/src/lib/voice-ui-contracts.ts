@@ -125,6 +125,7 @@ export function hasBrowserObjectUrl(source: PlaybackSource | null) {
 export function validateTranscriptDocument(document: TranscriptDocument) {
   const speakerIds = new Set<string>()
   const segmentIds = new Set<string>()
+  const wordIds = new Set<string>()
   let previousStartSeconds = -1
   for (const speaker of document.speakers) {
     if (!speaker.id || speakerIds.has(speaker.id)) {
@@ -144,9 +145,27 @@ export function validateTranscriptDocument(document: TranscriptDocument) {
     }
     segmentIds.add(segment.id)
     previousStartSeconds = segment.startSeconds
-    if (segment.words?.some((word) => !isValidRange(word.startSeconds, word.endSeconds))) {
+    if (!hasValidWordAlignment(segment, wordIds)) {
       return false
     }
+  }
+  return true
+}
+
+function hasValidWordAlignment(segment: TranscriptSegment, wordIds: Set<string>) {
+  let previousEndSeconds = segment.startSeconds
+  for (const word of segment.words ?? []) {
+    if (
+      !word.id.trim() ||
+      wordIds.has(word.id) ||
+      !isValidRange(word.startSeconds, word.endSeconds) ||
+      word.startSeconds < previousEndSeconds ||
+      word.endSeconds > segment.endSeconds
+    ) {
+      return false
+    }
+    wordIds.add(word.id)
+    previousEndSeconds = word.endSeconds
   }
   return true
 }
