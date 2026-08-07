@@ -1,11 +1,11 @@
 import { Pause, Play, RotateCcw, RotateCw } from "lucide-react"
-import { useId, useMemo } from "react"
+import { useEffect, useId, useMemo } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Loading } from "@/components/ui/loading"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Slider } from "@/components/ui/slider"
-import { usePlaybackOwner } from "@/hooks/use-playback-controller"
+import { PlaybackControllerProvider, useHasPlaybackController, usePlaybackOwner } from "@/hooks/use-playback-controller"
 import type { PlaybackSourceKind } from "@/lib/voice-ui-contracts"
 import { formatRecordingDuration } from "@/lib/formatters"
 import { cn } from "@/lib/utils"
@@ -17,6 +17,11 @@ type AudioPlayerProps = {
   src: string
 }
 
+type AudioPlayerControlsProps = AudioPlayerProps & {
+  loadOnMount?: boolean
+  sourceKind: PlaybackSourceKind
+}
+
 const PLAYBACK_RATES = [0.5, 1, 1.25, 1.5, 2] as const
 const SEEK_STEP_SECONDS = 10
 
@@ -26,6 +31,20 @@ const SEEK_STEP_SECONDS = 10
  * in their own surface PRs.
  */
 export function AudioPlayer({ ariaLabel, className, sourceKind = "generatedAudio", src }: AudioPlayerProps) {
+  const hasPlaybackController = useHasPlaybackController()
+
+  if (!hasPlaybackController) {
+    return (
+      <PlaybackControllerProvider>
+        <AudioPlayerControls ariaLabel={ariaLabel} className={className} loadOnMount sourceKind={sourceKind} src={src} />
+      </PlaybackControllerProvider>
+    )
+  }
+
+  return <AudioPlayerControls ariaLabel={ariaLabel} className={className} sourceKind={sourceKind} src={src} />
+}
+
+function AudioPlayerControls({ ariaLabel, className, loadOnMount = false, sourceKind, src }: AudioPlayerControlsProps) {
   const ownerId = useId()
   const controller = usePlaybackOwner(`generic-audio-player:${ownerId}`)
   const source = useMemo(
@@ -41,6 +60,13 @@ export function AudioPlayer({ ariaLabel, className, sourceKind = "generatedAudio
   const isLoading = isCurrentSource && controller.snapshot.loadState === "loading"
   const error = isCurrentSource ? controller.snapshot.error : null
   const displayedDuration = canSeek ? formatRecordingDuration(duration) : "--:--"
+  const replaceSource = controller.replaceSource
+
+  useEffect(() => {
+    if (loadOnMount) {
+      replaceSource(source)
+    }
+  }, [loadOnMount, replaceSource, source])
 
   function handlePlayToggle() {
     if (!isCurrentSource) {
@@ -60,7 +86,7 @@ export function AudioPlayer({ ariaLabel, className, sourceKind = "generatedAudio
 
   return (
     <div aria-label={ariaLabel} className={cn("flex flex-col gap-2", className)} role="group">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button aria-label={isPlaying ? "Pause Audio" : "Play Audio"} onClick={handlePlayToggle} size="icon" type="button">
           {isPlaying ? <Pause aria-hidden="true" data-icon="inline-start" /> : <Play aria-hidden="true" data-icon="inline-start" />}
         </Button>

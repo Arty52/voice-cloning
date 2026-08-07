@@ -371,6 +371,11 @@ export function usePlaybackController(): PlaybackController {
   return context.controller
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
+export function useHasPlaybackController() {
+  return useContext(PlaybackControllerContext) !== null
+}
+
 /**
  * Registers a workflow as the source owner. Replacing or unmounting that
  * workflow clears only its active playback source, leaving other owners alone.
@@ -385,6 +390,11 @@ export function usePlaybackOwner(ownerId: string): PlaybackOwnerController {
 
   useEffect(() => () => clearOwner(ownerId), [clearOwner, ownerId])
 
+  const replaceSource = useCallback(
+    (source: PlaybackSource | null) => replaceOwnerSource(ownerId, source),
+    [ownerId, replaceOwnerSource]
+  )
+
   return useMemo(
     () => ({
       ...controller,
@@ -395,9 +405,9 @@ export function usePlaybackOwner(ownerId: string): PlaybackOwnerController {
         }
         controller.dispatch(intent)
       },
-      replaceSource: (source: PlaybackSource | null) => replaceOwnerSource(ownerId, source),
+      replaceSource,
     }),
-    [controller, ownerId, replaceOwnerSource]
+    [controller, ownerId, replaceOwnerSource, replaceSource]
   )
 }
 

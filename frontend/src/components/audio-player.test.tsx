@@ -50,6 +50,13 @@ describe("AudioPlayer", () => {
     expect(document.querySelectorAll("audio")).toHaveLength(1)
   })
 
+  it("preserves standalone compatibility when a legacy consumer has no app controller", () => {
+    render(<AudioPlayer ariaLabel="Standalone preview" src="blob:standalone" />)
+
+    expect(screen.getByRole("group", { name: "Standalone preview" })).toBeInTheDocument()
+    expect(document.querySelectorAll("audio")).toHaveLength(1)
+  })
+
   it("plays and pauses the selected audio through the shared controller", async () => {
     renderPlayer(<AudioPlayer ariaLabel="Generated voice playback" src="blob:generated-audio" />)
     const audio = getSharedAudio()
