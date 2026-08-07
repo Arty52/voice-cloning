@@ -123,6 +123,9 @@ export function hasBrowserObjectUrl(source: PlaybackSource | null) {
 }
 
 export function validateTranscriptDocument(document: TranscriptDocument) {
+  if (!Number.isSafeInteger(document.revision) || document.revision < 0) {
+    return false
+  }
   const speakerIds = new Set<string>()
   const segmentIds = new Set<string>()
   const wordIds = new Set<string>()

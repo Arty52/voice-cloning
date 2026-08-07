@@ -43,6 +43,9 @@ describe("voice UI contracts", () => {
 
   it("validates ordered segments and provider-neutral speaker references", () => {
     expect(validateTranscriptDocument(document)).toBe(true)
+    expect(validateTranscriptDocument({ ...document, revision: Number.NaN })).toBe(false)
+    expect(validateTranscriptDocument({ ...document, revision: -1 })).toBe(false)
+    expect(validateTranscriptDocument({ ...document, revision: 0.5 })).toBe(false)
     expect(
       validateTranscriptDocument({
         ...document,
