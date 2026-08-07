@@ -38,19 +38,25 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const activeOwnerIdRef = useRef<string | null>(null)
   const rangeRef = useRef<PlaybackRange | null>(null)
+  const sourceGenerationRef = useRef(0)
+  const snapshotRef = useRef<PlaybackSnapshot>(EMPTY_SNAPSHOT)
   const [snapshot, setSnapshot] = useState<PlaybackSnapshot>(EMPTY_SNAPSHOT)
 
   const updateSnapshot = useCallback((update: (current: PlaybackSnapshot) => PlaybackSnapshot) => {
-    setSnapshot((current) => update(current))
+    const nextSnapshot = update(snapshotRef.current)
+    snapshotRef.current = nextSnapshot
+    setSnapshot(nextSnapshot)
   }, [])
 
   const clear = useCallback(() => {
     const audio = audioRef.current
     rangeRef.current = null
     activeOwnerIdRef.current = null
+    sourceGenerationRef.current += 1
     if (audio) {
       audio.pause()
     }
+    snapshotRef.current = EMPTY_SNAPSHOT
     setSnapshot(EMPTY_SNAPSHOT)
   }, [])
 
@@ -66,15 +72,20 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
       }
       rangeRef.current = null
       activeOwnerIdRef.current = ownerId
+      sourceGenerationRef.current += 1
       audio.pause()
-      setSnapshot({
+      audio.src = source.url
+      audio.load()
+      const nextSnapshot: PlaybackSnapshot = {
         currentTimeSeconds: 0,
         durationSeconds: null,
         error: null,
         loadState: "loading",
         source,
         status: "paused",
-      })
+      }
+      snapshotRef.current = nextSnapshot
+      setSnapshot(nextSnapshot)
     },
     [clear]
   )
@@ -85,34 +96,39 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
 
   const play = useCallback(async () => {
     const audio = audioRef.current
-    if (!audio || !snapshot.source) {
+    const source = snapshotRef.current.source
+    if (!audio || !source) {
       return
     }
+    const sourceGeneration = sourceGenerationRef.current
     updateSnapshot((current) => ({ ...current, error: null }))
     try {
       await audio.play()
     } catch {
-      rangeRef.current = null
-      updateSnapshot((current) => ({
-        ...current,
-        error: "Unable to play this audio in the browser.",
-        status: "error",
-      }))
+      if (sourceGeneration === sourceGenerationRef.current && snapshotRef.current.source?.id === source.id) {
+        rangeRef.current = null
+        updateSnapshot((current) => ({
+          ...current,
+          error: "Unable to play this audio in the browser.",
+          status: "error",
+        }))
+      }
     }
-  }, [snapshot.source, updateSnapshot])
+  }, [updateSnapshot])
 
   const seek = useCallback(
     (positionSeconds: number) => {
       const audio = audioRef.current
-      if (!audio || !snapshot.source || !Number.isFinite(positionSeconds)) {
+      const currentSnapshot = snapshotRef.current
+      if (!audio || !currentSnapshot.source || !Number.isFinite(positionSeconds)) {
         return
       }
-      const duration = snapshot.durationSeconds
+      const duration = currentSnapshot.durationSeconds
       const nextPosition = duration === null ? Math.max(0, positionSeconds) : clamp(positionSeconds, 0, duration)
       audio.currentTime = nextPosition
       updateSnapshot((current) => ({ ...current, currentTimeSeconds: nextPosition }))
     },
-    [snapshot.durationSeconds, snapshot.source, updateSnapshot]
+    [updateSnapshot]
   )
 
   const playRange = useCallback(
@@ -120,7 +136,7 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
       if (!Number.isFinite(startSeconds) || !Number.isFinite(endSeconds) || endSeconds <= startSeconds) {
         return
       }
-      const duration = snapshot.durationSeconds
+      const duration = snapshotRef.current.durationSeconds
       const start = duration === null ? Math.max(0, startSeconds) : clamp(startSeconds, 0, duration)
       const end = duration === null ? Math.max(0, endSeconds) : clamp(endSeconds, 0, duration)
       if (end <= start) {
@@ -130,7 +146,7 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
       seek(start)
       void play()
     },
-    [play, seek, snapshot.durationSeconds]
+    [play, seek]
   )
 
   const dispatch = useCallback(
@@ -152,10 +168,10 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
           seek(intent.positionSeconds)
           return
         case "skip":
-          seek(snapshot.currentTimeSeconds + intent.seconds)
+          seek((audioRef.current?.currentTime ?? snapshotRef.current.currentTimeSeconds) + intent.seconds)
           return
         case "toggle":
-          if (snapshot.status === "playing") {
+          if (audioRef.current?.paused === false) {
             pause()
           } else {
             void play()
@@ -165,7 +181,7 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
           playRange(intent.startSeconds, intent.endSeconds)
       }
     },
-    [clear, pause, play, playRange, replaceSource, seek, snapshot.currentTimeSeconds, snapshot.status]
+    [clear, pause, play, playRange, replaceSource, seek]
   )
 
   const clearOwner = useCallback(
@@ -187,10 +203,6 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
     },
     [clearOwner, replaceSource]
   )
-
-  useEffect(() => {
-    audioRef.current?.load()
-  }, [snapshot.source?.url])
 
   useEffect(() => {
     const audio = audioRef.current
@@ -226,16 +238,20 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
         }}
         onEnded={() => {
           rangeRef.current = null
-          updateSnapshot((current) => ({ ...current, status: "ended" }))
+          updateSnapshot((current) => (current.source ? { ...current, status: "ended" } : current))
         }}
         onError={() => {
           rangeRef.current = null
-          updateSnapshot((current) => ({
-            ...current,
-            error: "Unable to load this audio.",
-            loadState: "error",
-            status: "error",
-          }))
+          updateSnapshot((current) =>
+            current.source
+              ? {
+                  ...current,
+                  error: "Unable to load this audio.",
+                  loadState: "error",
+                  status: "error",
+                }
+              : current
+          )
         }}
         onLoadedMetadata={(event) => {
           const duration = event.currentTarget.duration
@@ -247,7 +263,9 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
         }}
         onPause={() =>
           updateSnapshot((current) =>
-            current.status === "ended" || !current.source ? current : { ...current, status: "paused" }
+            current.status === "ended" || current.status === "error" || !current.source
+              ? current
+              : { ...current, status: "paused" }
           )
         }
         onPlay={() => updateSnapshot((current) => ({ ...current, status: "playing" }))}

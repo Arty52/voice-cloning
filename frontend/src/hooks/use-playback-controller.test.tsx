@@ -18,6 +18,14 @@ const secondSource: PlaybackSource = {
   url: "/api/voices/preview/audio",
 }
 
+function deferred<T>() {
+  let reject: (reason?: unknown) => void = () => undefined
+  const promise = new Promise<T>((_, rejectPromise) => {
+    reject = rejectPromise
+  })
+  return { promise, reject }
+}
+
 function wrapper({ children }: { children: React.ReactNode }) {
   return <PlaybackControllerProvider>{children}</PlaybackControllerProvider>
 }
@@ -82,6 +90,30 @@ describe("usePlaybackController", () => {
     expect(result.current.snapshot).toMatchObject({ currentTimeSeconds: 0, source: secondSource, status: "paused" })
   })
 
+  it("uses current media time for rapid skips and plays a replacement selected in the same event", async () => {
+    const { result } = renderHook(() => usePlaybackController(), { wrapper })
+    const audio = document.querySelector("audio")
+    if (!audio) {
+      throw new Error("Expected the shared media element.")
+    }
+    Object.defineProperty(audio, "duration", { configurable: true, value: 60 })
+    Object.defineProperty(audio, "currentTime", { configurable: true, value: 10, writable: true })
+
+    act(() => {
+      result.current.dispatch({ source: firstSource, type: "replaceSource" })
+      result.current.dispatch({ type: "play" })
+    })
+    await waitFor(() => expect(HTMLMediaElement.prototype.play).toHaveBeenCalled())
+    expect(result.current.snapshot.source).toEqual(firstSource)
+
+    Object.defineProperty(audio, "currentTime", { configurable: true, value: 10, writable: true })
+    act(() => {
+      result.current.dispatch({ seconds: 5, type: "skip" })
+      result.current.dispatch({ seconds: 5, type: "skip" })
+    })
+    expect(audio.currentTime).toBe(20)
+  })
+
   it("pauses at the end of a bounded segment", async () => {
     const { result } = renderHook(() => usePlaybackController(), { wrapper })
     const audio = document.querySelector("audio")
@@ -116,6 +148,60 @@ describe("usePlaybackController", () => {
 
     fireEvent.error(audio)
     expect(result.current.snapshot).toMatchObject({ error: "Unable to load this audio.", loadState: "error", status: "error" })
+
+    fireEvent.pause(audio)
+    expect(result.current.snapshot).toMatchObject({ error: "Unable to load this audio.", status: "error" })
+  })
+
+  it("ignores a stale play rejection after replacement or clear", async () => {
+    const firstPlay = deferred<void>()
+    const secondPlay = deferred<void>()
+    vi.mocked(HTMLMediaElement.prototype.play)
+      .mockReturnValueOnce(firstPlay.promise)
+      .mockReturnValueOnce(secondPlay.promise)
+    const { result } = renderHook(() => usePlaybackController(), { wrapper })
+
+    act(() => {
+      result.current.dispatch({ source: firstSource, type: "replaceSource" })
+      result.current.dispatch({ type: "play" })
+      result.current.dispatch({ source: secondSource, type: "replaceSource" })
+    })
+    await act(async () => firstPlay.reject(new Error("Blocked")))
+    expect(result.current.snapshot).toMatchObject({ error: null, source: secondSource, status: "paused" })
+
+    act(() => result.current.dispatch({ type: "play" }))
+    act(() => result.current.dispatch({ type: "clear" }))
+    await act(async () => secondPlay.reject(new Error("Blocked")))
+    expect(result.current.snapshot).toEqual({
+      currentTimeSeconds: 0,
+      durationSeconds: null,
+      error: null,
+      loadState: "idle",
+      source: null,
+      status: "idle",
+    })
+  })
+
+  it("resets and reloads when a new source identity reuses the same URL", () => {
+    const sourceWithSharedUrl = { ...secondSource, id: "preview-2", url: firstSource.url }
+    const { result } = renderHook(() => usePlaybackController(), { wrapper })
+    const audio = document.querySelector("audio")
+    if (!audio) {
+      throw new Error("Expected the shared media element.")
+    }
+    Object.defineProperty(audio, "duration", { configurable: true, value: 30 })
+
+    act(() => result.current.dispatch({ source: firstSource, type: "replaceSource" }))
+    fireEvent.loadedMetadata(audio)
+    act(() => result.current.dispatch({ source: sourceWithSharedUrl, type: "replaceSource" }))
+
+    expect(HTMLMediaElement.prototype.load).toHaveBeenCalledTimes(2)
+    expect(result.current.snapshot).toMatchObject({
+      currentTimeSeconds: 0,
+      durationSeconds: null,
+      loadState: "loading",
+      source: sourceWithSharedUrl,
+    })
   })
 
   it("clears active playback when its owning workflow unmounts without clearing another owner", () => {
