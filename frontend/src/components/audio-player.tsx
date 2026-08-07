@@ -51,8 +51,8 @@ function AudioPlayerControls({ ariaLabel, className, loadOnMount = false, source
     () => ({ id: `generic-audio-player:${ownerId}`, kind: sourceKind, label: ariaLabel, url: src }),
     [ariaLabel, ownerId, sourceKind, src]
   )
-  const isCurrentSource =
-    controller.snapshot.source?.id === source.id && controller.snapshot.source.url === source.url
+  const activeSource = controller.snapshot.source
+  const isCurrentSource = activeSource?.id === source.id && activeSource.url === source.url
   const duration = isCurrentSource ? controller.snapshot.durationSeconds : null
   const currentTime = isCurrentSource ? controller.snapshot.currentTimeSeconds : 0
   const canSeek = duration !== null && duration > 0
@@ -63,10 +63,13 @@ function AudioPlayerControls({ ariaLabel, className, loadOnMount = false, source
   const replaceSource = controller.replaceSource
 
   useEffect(() => {
-    if (loadOnMount) {
-      replaceSource(source)
+    const ownsActiveSource = activeSource?.id === source.id
+    const sourceChanged =
+      activeSource?.url !== source.url || activeSource.label !== source.label || activeSource.kind !== source.kind
+    if (loadOnMount || (ownsActiveSource && sourceChanged)) {
+      replaceSource(source.url ? source : null)
     }
-  }, [loadOnMount, replaceSource, source])
+  }, [activeSource?.id, activeSource?.kind, activeSource?.label, activeSource?.url, loadOnMount, replaceSource, source])
 
   function handlePlayToggle() {
     if (!isCurrentSource) {

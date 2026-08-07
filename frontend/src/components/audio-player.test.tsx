@@ -125,4 +125,29 @@ describe("AudioPlayer", () => {
     expect(secondPlayer.getByRole("button", { name: /pause audio/i })).toBeInTheDocument()
     expect(document.querySelectorAll("audio")).toHaveLength(1)
   })
+
+  it("replaces an active app-hosted source when its source props change", async () => {
+    const { rerender } = render(
+      <PlaybackControllerProvider>
+        <AudioPlayer ariaLabel="First audio" src="blob:first" />
+      </PlaybackControllerProvider>
+    )
+    const audio = getSharedAudio()
+
+    fireEvent.click(screen.getByRole("button", { name: /play audio/i }))
+    await waitFor(() => expect(audio.src).toContain("blob:first"))
+    fireEvent.play(audio)
+    expect(screen.getByRole("button", { name: /pause audio/i })).toBeInTheDocument()
+
+    rerender(
+      <PlaybackControllerProvider>
+        <AudioPlayer ariaLabel="Replacement audio" src="blob:replacement" />
+      </PlaybackControllerProvider>
+    )
+
+    expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled()
+    expect(audio.src).toContain("blob:replacement")
+    expect(screen.getByRole("group", { name: "Replacement audio" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /play audio/i })).toBeInTheDocument()
+  })
 })
