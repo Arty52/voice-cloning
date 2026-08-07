@@ -239,7 +239,10 @@ export function SpeakerTranscriptWorkspace({
             </CardHeader>
             <CardContent className="min-h-0 flex-1">
               <ScrollArea className="min-h-72 flex-1 rounded-md border border-border bg-card/70 p-3 lg:min-h-0">
-                <div className="flex flex-wrap gap-2 py-1" onPointerLeave={() => setDragStartItemId(null)}>
+                <div
+                  className="flex flex-wrap gap-2 py-1"
+                  onPointerLeave={() => setDragStartItemId(null)}
+                >
                   {speakerResult.transcript.items.map((item) => {
                     const speakerIndex = speakerIndexForItem(speakerResult, item)
                     const speaker = speakerResult.speakers[speakerIndex]
@@ -270,13 +273,19 @@ export function SpeakerTranscriptWorkspace({
                               }
                             }}
                             onPointerUp={() => setDragStartItemId(null)}
+                            data-transcript-item
+                            data-transcript-selection-workspace={controller.transcriptSelectionSurfaceId}
                             style={speakerStyle(speakerIndex)}
                             type="button"
                           >
                             {draftText}
                           </button>
                         </PopoverTrigger>
-                        <PopoverContent align="start" className="w-96 max-w-[calc(100vw-2rem)]">
+                        <PopoverContent
+                          align="start"
+                          className="w-96 max-w-[calc(100vw-2rem)]"
+                          data-transcript-selection-workspace={controller.transcriptSelectionSurfaceId}
+                        >
                           <PopoverHeader>
                             <PopoverTitle>{speaker?.label ?? "Speaker"}</PopoverTitle>
                           </PopoverHeader>
