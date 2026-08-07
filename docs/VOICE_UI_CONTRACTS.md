@@ -23,6 +23,30 @@ single active source; an owner unmounting clears playback only when it still
 owns that source. This prevents an unmounted workflow from stopping another
 workflow's newer source.
 
+## Playback Lifecycle Invariants
+
+The controller maintains one synchronous current snapshot alongside React's
+rendered snapshot so consecutive intents in one event use the actual current
+source and media time. These invariants apply to every new playback surface:
+
+- Source replacement is the only operation that assigns and reloads the media
+  element. A replacement is identified by its source ID as well as its URL, so
+  a new identity using the same URL still resets duration, position, and load
+  state exactly once.
+- Each `play` request has its own token; pause, clear, and source replacement
+  invalidate earlier requests. A late autoplay rejection cannot put a newer
+  source, retry, or cleared controller into an error state.
+- Clear pauses and detaches the source before publishing the empty snapshot.
+  All media event handlers require a current source, so queued metadata, time,
+  play, pause, and terminal events cannot repopulate a cleared controller.
+- Owner-aware replacement applies both to `replaceSource` and the standard
+  replacement dispatch intent. Owner cleanup only clears the source it still
+  owns.
+
+The controller's race-matrix tests exercise these rules as a set. New playback
+behavior must add a matrix case when it creates another asynchronous media
+ordering or ownership transition.
+
 ## Transcript Corrections And Synchronization
 
 The normalized transcript document is the canonical ordered presentation for
