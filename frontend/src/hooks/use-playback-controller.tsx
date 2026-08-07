@@ -12,6 +12,7 @@ const EMPTY_SNAPSHOT: PlaybackSnapshot = {
   durationSeconds: null,
   error: null,
   loadState: "idle",
+  playbackRate: 1,
   source: null,
   status: "idle",
 }
@@ -85,6 +86,7 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
     sourceGenerationRef.current += 1
     if (audio) {
       audio.pause()
+      audio.playbackRate = EMPTY_SNAPSHOT.playbackRate
       audio.removeAttribute("src")
       audio.load()
     }
@@ -107,6 +109,7 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
       playRequestRef.current += 1
       sourceGenerationRef.current += 1
       audio.pause()
+      audio.playbackRate = snapshotRef.current.playbackRate
       audio.src = source.url
       audio.load()
       const nextSnapshot: PlaybackSnapshot = {
@@ -114,6 +117,7 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
         durationSeconds: null,
         error: null,
         loadState: "loading",
+        playbackRate: snapshotRef.current.playbackRate,
         source,
         status: "paused",
       }
@@ -176,6 +180,21 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
     [updateSnapshot]
   )
 
+  const setPlaybackRate = useCallback(
+    (playbackRate: number) => {
+      if (!Number.isFinite(playbackRate)) {
+        return
+      }
+      const nextPlaybackRate = clamp(playbackRate, 0.5, 2)
+      const audio = audioRef.current
+      if (audio) {
+        audio.playbackRate = nextPlaybackRate
+      }
+      updateSnapshot((current) => ({ ...current, playbackRate: nextPlaybackRate }))
+    },
+    [updateSnapshot]
+  )
+
   const playRange = useCallback(
     (startSeconds: number, endSeconds: number) => {
       if (!Number.isFinite(startSeconds) || !Number.isFinite(endSeconds) || endSeconds <= startSeconds) {
@@ -212,6 +231,9 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
         case "seek":
           seek(intent.positionSeconds)
           return
+        case "setPlaybackRate":
+          setPlaybackRate(intent.playbackRate)
+          return
         case "skip":
           seek((audioRef.current?.currentTime ?? snapshotRef.current.currentTimeSeconds) + intent.seconds)
           return
@@ -226,7 +248,7 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
           playRange(intent.startSeconds, intent.endSeconds)
       }
     },
-    [clear, pause, play, playRange, replaceSource, seek]
+    [clear, pause, play, playRange, replaceSource, seek, setPlaybackRate]
   )
 
   const clearOwner = useCallback(
@@ -310,6 +332,12 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
           )
         }
         onPlay={() => updateCurrentSource((current) => ({ ...current, status: "playing" }))}
+        onRateChange={(event) => {
+          const playbackRate = event.currentTarget.playbackRate
+          if (Number.isFinite(playbackRate)) {
+            updateCurrentSource((current) => ({ ...current, playbackRate: clamp(playbackRate, 0.5, 2) }))
+          }
+        }}
         onTimeUpdate={(event) => {
           const currentTimeSeconds = event.currentTarget.currentTime
           const range = rangeRef.current

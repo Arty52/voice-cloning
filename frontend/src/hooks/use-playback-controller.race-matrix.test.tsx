@@ -45,6 +45,7 @@ function expectEmptySnapshot(snapshot: ReturnType<typeof usePlaybackController>[
     durationSeconds: null,
     error: null,
     loadState: "idle",
+    playbackRate: 1,
     source: null,
     status: "idle",
   })
