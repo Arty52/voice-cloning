@@ -17,6 +17,7 @@ const EMPTY_SNAPSHOT: PlaybackSnapshot = {
 }
 
 type PlaybackRange = { endSeconds: number; startSeconds: number }
+type PlaybackRequest = { request: number; sourceGeneration: number; sourceId: string }
 
 type PlaybackControllerContextValue = {
   clearOwner: (ownerId: string) => void
@@ -29,6 +30,26 @@ type PlaybackOwnerController = PlaybackController & {
 }
 
 const PlaybackControllerContext = createContext<PlaybackControllerContextValue | null>(null)
+
+function hasCurrentSource(snapshot: PlaybackSnapshot): snapshot is PlaybackSnapshot & { source: PlaybackSource } {
+  return snapshot.source !== null
+}
+
+function isCurrentPlaybackRequest({ request, sourceGeneration, sourceId }: PlaybackRequest, {
+  playRequest,
+  snapshot,
+  sourceGeneration: currentSourceGeneration,
+}: {
+  playRequest: number
+  snapshot: PlaybackSnapshot
+  sourceGeneration: number
+}) {
+  return (
+    request === playRequest &&
+    sourceGeneration === currentSourceGeneration &&
+    snapshot.source?.id === sourceId
+  )
+}
 
 /**
  * Owns Voice Studio's single active HTML media element. Feature hooks retain
@@ -48,6 +69,13 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
     snapshotRef.current = nextSnapshot
     setSnapshot(nextSnapshot)
   }, [])
+
+  const updateCurrentSource = useCallback(
+    (update: (current: PlaybackSnapshot & { source: PlaybackSource }) => PlaybackSnapshot) => {
+      updateSnapshot((current) => (hasCurrentSource(current) ? update(current) : current))
+    },
+    [updateSnapshot]
+  )
 
   const clear = useCallback(() => {
     const audio = audioRef.current
@@ -106,17 +134,22 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
     if (!audio || !source) {
       return
     }
-    const sourceGeneration = sourceGenerationRef.current
-    const playRequest = playRequestRef.current + 1
-    playRequestRef.current = playRequest
+    const request: PlaybackRequest = {
+      request: playRequestRef.current + 1,
+      sourceGeneration: sourceGenerationRef.current,
+      sourceId: source.id,
+    }
+    playRequestRef.current = request.request
     updateSnapshot((current) => ({ ...current, error: null }))
     try {
       await audio.play()
     } catch {
       if (
-        sourceGeneration === sourceGenerationRef.current &&
-        playRequest === playRequestRef.current &&
-        snapshotRef.current.source?.id === source.id
+        isCurrentPlaybackRequest(request, {
+          playRequest: playRequestRef.current,
+          snapshot: snapshotRef.current,
+          sourceGeneration: sourceGenerationRef.current,
+        })
       ) {
         rangeRef.current = null
         updateSnapshot((current) => ({
@@ -237,72 +270,60 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
       <audio
         aria-hidden="true"
         onCanPlay={() =>
-          updateSnapshot((current) =>
+          updateCurrentSource((current) =>
             current.loadState === "loading" ? { ...current, loadState: "ready" } : current
           )
         }
         onDurationChange={(event) => {
           const duration = event.currentTarget.duration
-          updateSnapshot((current) =>
-            current.source
-              ? {
-                  ...current,
-                  durationSeconds: Number.isFinite(duration) && duration >= 0 ? duration : null,
-                }
-              : current
-          )
+          updateCurrentSource((current) => ({
+            ...current,
+            durationSeconds: Number.isFinite(duration) && duration >= 0 ? duration : null,
+          }))
         }}
         onEnded={() => {
           rangeRef.current = null
-          updateSnapshot((current) => (current.source ? { ...current, status: "ended" } : current))
+          updateCurrentSource((current) => ({ ...current, status: "ended" }))
         }}
         onError={() => {
           rangeRef.current = null
-          updateSnapshot((current) =>
-            current.source
-              ? {
-                  ...current,
-                  error: "Unable to load this audio.",
-                  loadState: "error",
-                  status: "error",
-                }
-              : current
-          )
+          updateCurrentSource((current) => ({
+            ...current,
+            error: "Unable to load this audio.",
+            loadState: "error",
+            status: "error",
+          }))
         }}
         onLoadedMetadata={(event) => {
           const duration = event.currentTarget.duration
-          updateSnapshot((current) =>
-            current.source
-              ? {
-                  ...current,
-                  durationSeconds: Number.isFinite(duration) && duration >= 0 ? duration : null,
-                  loadState: "ready",
-                }
-              : current
-          )
+          updateCurrentSource((current) => ({
+            ...current,
+            durationSeconds: Number.isFinite(duration) && duration >= 0 ? duration : null,
+            loadState: "ready",
+          }))
         }}
         onPause={() =>
-          updateSnapshot((current) =>
-            current.status === "ended" || current.status === "error" || !current.source
+          updateCurrentSource((current) =>
+            current.status === "ended" || current.status === "error"
               ? current
               : { ...current, status: "paused" }
           )
         }
-        onPlay={() => updateSnapshot((current) => (current.source ? { ...current, status: "playing" } : current))}
+        onPlay={() => updateCurrentSource((current) => ({ ...current, status: "playing" }))}
         onTimeUpdate={(event) => {
           const currentTimeSeconds = event.currentTarget.currentTime
           const range = rangeRef.current
-          if (!snapshotRef.current.source) {
+          if (!hasCurrentSource(snapshotRef.current)) {
             return
           }
           if (range && currentTimeSeconds >= range.endSeconds) {
             event.currentTarget.currentTime = range.endSeconds
             event.currentTarget.pause()
             rangeRef.current = null
-            updateSnapshot((current) => ({ ...current, currentTimeSeconds: range.endSeconds, status: "paused" }))
+            updateCurrentSource((current) => ({ ...current, currentTimeSeconds: range.endSeconds, status: "paused" }))
             return
           }
-          updateSnapshot((current) => ({ ...current, currentTimeSeconds }))
+          updateCurrentSource((current) => ({ ...current, currentTimeSeconds }))
         }}
         preload="metadata"
         ref={audioRef}
