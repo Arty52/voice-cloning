@@ -293,7 +293,6 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
         }}
         preload="metadata"
         ref={audioRef}
-        src={snapshot.source?.url}
       />
       {children}
     </PlaybackControllerContext.Provider>
@@ -327,6 +326,13 @@ export function usePlaybackOwner(ownerId: string): PlaybackOwnerController {
   return useMemo(
     () => ({
       ...controller,
+      dispatch: (intent: PlaybackIntent) => {
+        if (intent.type === "replaceSource") {
+          replaceOwnerSource(ownerId, intent.source)
+          return
+        }
+        controller.dispatch(intent)
+      },
       replaceSource: (source: PlaybackSource | null) => replaceOwnerSource(ownerId, source),
     }),
     [controller, ownerId, replaceOwnerSource]

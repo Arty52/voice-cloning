@@ -37,6 +37,7 @@ function Owner({ ownerId, source }: { ownerId: string; source: PlaybackSource })
   return (
     <>
       <button onClick={() => controller.replaceSource(source)}>{ownerId}</button>
+      <button onClick={() => controller.dispatch({ source, type: "replaceSource" })}>Dispatch {ownerId}</button>
       <button onClick={() => controller.replaceSource(null)}>Clear {ownerId}</button>
     </>
   )
@@ -114,6 +115,20 @@ describe("usePlaybackController", () => {
       result.current.dispatch({ seconds: 5, type: "skip" })
     })
     expect(audio.currentTime).toBe(20)
+  })
+
+  it("loads a replacement once when replacement and play happen in the same event", async () => {
+    const { result } = renderHook(() => usePlaybackController(), { wrapper })
+    vi.mocked(HTMLMediaElement.prototype.load).mockClear()
+
+    act(() => {
+      result.current.dispatch({ source: firstSource, type: "replaceSource" })
+      result.current.dispatch({ type: "play" })
+    })
+
+    await waitFor(() => expect(HTMLMediaElement.prototype.play).toHaveBeenCalled())
+    expect(HTMLMediaElement.prototype.load).toHaveBeenCalledTimes(1)
+    expect(result.current.snapshot.source).toEqual(firstSource)
   })
 
   it("pauses at the end of a bounded segment", async () => {
@@ -278,6 +293,25 @@ describe("usePlaybackController", () => {
         <Owner key="transcript" ownerId="transcript" source={secondSource} />
       </PlaybackControllerProvider>
     )
+    expect(screen.getByTestId("active-source")).toHaveTextContent(secondSource.id)
+
+    rerender(
+      <PlaybackControllerProvider>
+        <ActiveSource />
+      </PlaybackControllerProvider>
+    )
+    expect(screen.getByTestId("active-source")).toHaveTextContent("none")
+  })
+
+  it("clears an owner source dispatched through the standard playback controller on unmount", () => {
+    const { rerender } = render(
+      <PlaybackControllerProvider>
+        <ActiveSource />
+        <Owner ownerId="transcript" source={secondSource} />
+      </PlaybackControllerProvider>
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "Dispatch transcript" }))
     expect(screen.getByTestId("active-source")).toHaveTextContent(secondSource.id)
 
     rerender(
