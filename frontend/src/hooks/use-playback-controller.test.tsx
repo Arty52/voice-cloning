@@ -20,10 +20,12 @@ const secondSource: PlaybackSource = {
 
 function deferred<T>() {
   let reject: (reason?: unknown) => void = () => undefined
-  const promise = new Promise<T>((_, rejectPromise) => {
+  let resolve: (value: T | PromiseLike<T>) => void = () => undefined
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
     reject = rejectPromise
   })
-  return { promise, reject }
+  return { promise, reject, resolve }
 }
 
 function wrapper({ children }: { children: React.ReactNode }) {
@@ -172,6 +174,57 @@ describe("usePlaybackController", () => {
     act(() => result.current.dispatch({ type: "play" }))
     act(() => result.current.dispatch({ type: "clear" }))
     await act(async () => secondPlay.reject(new Error("Blocked")))
+    expect(result.current.snapshot).toEqual({
+      currentTimeSeconds: 0,
+      durationSeconds: null,
+      error: null,
+      loadState: "idle",
+      source: null,
+      status: "idle",
+    })
+  })
+
+  it("invalidates an earlier play request after pause and retry on the same source", async () => {
+    const firstPlay = deferred<void>()
+    const retryPlay = deferred<void>()
+    vi.mocked(HTMLMediaElement.prototype.play)
+      .mockReturnValueOnce(firstPlay.promise)
+      .mockReturnValueOnce(retryPlay.promise)
+    const { result } = renderHook(() => usePlaybackController(), { wrapper })
+
+    act(() => {
+      result.current.dispatch({ source: firstSource, type: "replaceSource" })
+      result.current.dispatch({ type: "play" })
+      result.current.dispatch({ type: "pause" })
+      result.current.dispatch({ type: "play" })
+    })
+    await act(async () => firstPlay.reject(new Error("Blocked")))
+    expect(result.current.snapshot).toMatchObject({ error: null, source: firstSource, status: "paused" })
+
+    await act(async () => retryPlay.reject(new Error("Blocked")))
+    expect(result.current.snapshot).toMatchObject({
+      error: "Unable to play this audio in the browser.",
+      source: firstSource,
+      status: "error",
+    })
+  })
+
+  it("does not publish playing after a queued play is cleared", async () => {
+    const queuedPlay = deferred<void>()
+    vi.mocked(HTMLMediaElement.prototype.play).mockReturnValueOnce(queuedPlay.promise)
+    const { result } = renderHook(() => usePlaybackController(), { wrapper })
+    const audio = document.querySelector("audio")
+    if (!audio) {
+      throw new Error("Expected the shared media element.")
+    }
+
+    act(() => {
+      result.current.dispatch({ source: firstSource, type: "replaceSource" })
+      result.current.dispatch({ type: "play" })
+      result.current.dispatch({ type: "clear" })
+    })
+    fireEvent.play(audio)
+    await act(async () => queuedPlay.resolve())
     expect(result.current.snapshot).toEqual({
       currentTimeSeconds: 0,
       durationSeconds: null,

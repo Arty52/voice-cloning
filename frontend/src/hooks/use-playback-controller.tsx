@@ -38,6 +38,7 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const activeOwnerIdRef = useRef<string | null>(null)
   const rangeRef = useRef<PlaybackRange | null>(null)
+  const playRequestRef = useRef(0)
   const sourceGenerationRef = useRef(0)
   const snapshotRef = useRef<PlaybackSnapshot>(EMPTY_SNAPSHOT)
   const [snapshot, setSnapshot] = useState<PlaybackSnapshot>(EMPTY_SNAPSHOT)
@@ -52,6 +53,7 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
     const audio = audioRef.current
     rangeRef.current = null
     activeOwnerIdRef.current = null
+    playRequestRef.current += 1
     sourceGenerationRef.current += 1
     if (audio) {
       audio.pause()
@@ -72,6 +74,7 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
       }
       rangeRef.current = null
       activeOwnerIdRef.current = ownerId
+      playRequestRef.current += 1
       sourceGenerationRef.current += 1
       audio.pause()
       audio.src = source.url
@@ -91,6 +94,7 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
   )
 
   const pause = useCallback(() => {
+    playRequestRef.current += 1
     audioRef.current?.pause()
   }, [])
 
@@ -101,11 +105,17 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
       return
     }
     const sourceGeneration = sourceGenerationRef.current
+    const playRequest = playRequestRef.current + 1
+    playRequestRef.current = playRequest
     updateSnapshot((current) => ({ ...current, error: null }))
     try {
       await audio.play()
     } catch {
-      if (sourceGeneration === sourceGenerationRef.current && snapshotRef.current.source?.id === source.id) {
+      if (
+        sourceGeneration === sourceGenerationRef.current &&
+        playRequest === playRequestRef.current &&
+        snapshotRef.current.source?.id === source.id
+      ) {
         rangeRef.current = null
         updateSnapshot((current) => ({
           ...current,
@@ -268,7 +278,7 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
               : { ...current, status: "paused" }
           )
         }
-        onPlay={() => updateSnapshot((current) => ({ ...current, status: "playing" }))}
+        onPlay={() => updateSnapshot((current) => (current.source ? { ...current, status: "playing" } : current))}
         onTimeUpdate={(event) => {
           const currentTimeSeconds = event.currentTarget.currentTime
           const range = rangeRef.current
