@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { useState } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -74,6 +74,19 @@ function TestWorkspace() {
     <TooltipProvider>
       <SpeakerTranscriptWorkspace controller={controller} job={activeJob} voicePresets={voicePresets} />
     </TooltipProvider>
+  )
+}
+
+function TestWorkspacePair() {
+  return (
+    <>
+      <div data-testid="workspace-one">
+        <TestWorkspace />
+      </div>
+      <div data-testid="workspace-two">
+        <TestWorkspace />
+      </div>
+    </>
   )
 }
 
@@ -161,5 +174,21 @@ describe("SpeakerTranscriptWorkspace", () => {
     await user.click(screen.getByRole("heading", { name: "Transcript" }))
 
     await waitFor(() => expect(screen.queryByText("1 Selected")).not.toBeInTheDocument())
+  })
+
+  it("clears another workspace's selection when a transcript paragraph is selected", async () => {
+    const user = userEvent.setup()
+
+    render(<TestWorkspacePair />)
+
+    const firstWorkspace = within(screen.getByTestId("workspace-one"))
+    const secondWorkspace = within(screen.getByTestId("workspace-two"))
+    await user.click(firstWorkspace.getByRole("button", { name: "Hello there." }))
+    expect(firstWorkspace.getByText("1 Selected")).toBeInTheDocument()
+
+    await user.click(secondWorkspace.getByRole("button", { name: "Hello there." }))
+
+    await waitFor(() => expect(firstWorkspace.queryByText("1 Selected")).not.toBeInTheDocument())
+    expect(secondWorkspace.getByText("1 Selected")).toBeInTheDocument()
   })
 })

@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useMemo, useRef, useState } from "react"
+import { type FormEvent, useEffect, useId, useMemo, useRef, useState } from "react"
 
 import * as api from "@/lib/api"
 import { DEFAULT_VOICE_PRESET_ID } from "@/lib/voice-presets"
@@ -35,6 +35,7 @@ export function useSpeakerTranscript({
   const [transcriptSaveError, setTranscriptSaveError] = useState<string | null>(null)
   const [speakerSaveStatus, setSpeakerSaveStatus] = useState<AsyncStatus>("idle")
   const [speakerSaveError, setSpeakerSaveError] = useState<string | null>(null)
+  const transcriptSelectionSurfaceId = useId()
   const mountedRef = useRef(true)
   const activeJobIdRef = useRef<string | null>(job?.id ?? null)
   const stateJobIdRef = useRef<string | null>(null)
@@ -91,6 +92,27 @@ export function useSpeakerTranscript({
   useEffect(() => {
     activeJobIdRef.current = job?.id ?? null
   }, [job?.id])
+
+  useEffect(() => {
+    if (selectedTranscriptItemIds.length === 0) {
+      return
+    }
+
+    function handleDocumentPointerDown(event: PointerEvent) {
+      const target = event.target
+      const element =
+        target instanceof Element ? target : target instanceof Node ? target.parentElement : null
+      const selectionSurface = element?.closest("[data-transcript-selection-workspace]")
+      const isCurrentWorkspaceSurface =
+        selectionSurface?.getAttribute("data-transcript-selection-workspace") === transcriptSelectionSurfaceId
+      if (!isCurrentWorkspaceSurface) {
+        setSelectedTranscriptItemIds([])
+      }
+    }
+
+    document.addEventListener("pointerdown", handleDocumentPointerDown, true)
+    return () => document.removeEventListener("pointerdown", handleDocumentPointerDown, true)
+  }, [selectedTranscriptItemIds.length, transcriptSelectionSurfaceId])
 
   useEffect(() => {
     if (!job || speakerSeparationResult === null) {
@@ -373,6 +395,7 @@ export function useSpeakerTranscript({
     speakerVoicePresetIds,
     transcriptSaveError,
     transcriptSaveStatus,
+    transcriptSelectionSurfaceId,
     transcriptTextDrafts,
     unsavedTranscriptItemIds,
   }
