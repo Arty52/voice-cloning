@@ -128,7 +128,7 @@ export function validateTranscriptDocument(document: TranscriptDocument) {
   const wordIds = new Set<string>()
   let previousStartSeconds = -1
   for (const speaker of document.speakers) {
-    if (!speaker.id || speakerIds.has(speaker.id)) {
+    if (!speaker.id || !speaker.label.trim() || speakerIds.has(speaker.id)) {
       return false
     }
     speakerIds.add(speaker.id)

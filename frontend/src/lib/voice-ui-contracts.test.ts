@@ -49,6 +49,12 @@ describe("voice UI contracts", () => {
         segments: [{ ...document.segments[0], speakerId: "provider-voice-id" }],
       })
     ).toBe(false)
+    expect(
+      validateTranscriptDocument({
+        ...document,
+        speakers: [{ ...document.speakers[0], label: "   " }],
+      })
+    ).toBe(false)
   })
 
   it("rejects malformed word alignment so synchronized views can fall back to segment timing", () => {
