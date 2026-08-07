@@ -8,18 +8,20 @@ not a new playback implementation.
 ## Interaction Ownership
 
 Each feature hook or smart container owns its own API requests, selected source,
-browser media element, lifecycle effects, and persistence. It exposes a
-controlled `PlaybackSnapshot` plus `PlaybackIntent` dispatch to its local
+object-URL lifecycle effects, and persistence. The app-level
+`PlaybackControllerProvider` owns the single active browser media element and
+exposes a controlled `PlaybackSnapshot` plus `PlaybackIntent` dispatch to local
 presentational controls. Presentational controls may request `play`, `pause`,
-`seek`, source replacement, or a bounded segment range; they must not create a
-hidden audio element, fetch a provider payload, or persist playback state.
+`seek`, skipping, source replacement, clearing, or a bounded segment range;
+they must not create a hidden audio element, fetch a provider payload, or
+persist playback state.
 
-When a feature gains a shared playback controller, that controller is the one
-clock for its player, preview controls, waveform, scrub bar, and transcript
-highlighting. Starting a different source follows the controller's explicit
-competition policy; a future app-level coordinator may pause another feature's
-active source, but it must be introduced as its own reviewed owner rather than
-through cross-feature component access.
+The shared controller is the one clock for a feature's player, preview
+controls, waveform, scrub bar, and transcript highlighting. A feature registers
+an owner before replacing a source. Starting a different owner replaces the
+single active source; an owner unmounting clears playback only when it still
+owns that source. This prevents an unmounted workflow from stopping another
+workflow's newer source.
 
 ## Transcript Corrections And Synchronization
 
@@ -37,8 +39,9 @@ adapter supplies replacement words.
 
 ## Browser Resource Cleanup
 
-The playback owner releases browser resources when its source is replaced or it
-unmounts:
+The playback controller pauses and detaches its media element when its source is
+replaced, cleared, or unmounted. The feature source owner releases its own
+browser resources when its source is replaced or it unmounts:
 
 - pause the owned media element and remove event listeners;
 - cancel animation frames, observers, and pending source-specific work;
