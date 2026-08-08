@@ -14,7 +14,7 @@ import {
   Volume2,
 } from "lucide-react"
 
-import { AudioPlayer } from "@/components/audio-player"
+import { PlaybackControls } from "@/components/audio-player"
 import { ActionMenu } from "@/components/ui/action-menu"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -25,6 +25,7 @@ import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { VoicePresetToggleGroup } from "@/components/voice-preset-toggle-group"
 import { VoiceTuningControls } from "@/components/voice-tuning-controls"
+import type { useVoiceLibraryPlayback } from "@/hooks/use-voice-library-playback"
 import {
   CUSTOM_TUNING_PRESET_ID,
   presetValues,
@@ -59,13 +60,13 @@ type VoiceLibraryPanelProps = {
   isSettingDefault: boolean
   isUpdatingVoice: boolean
   onDeleteRequest: (voice: VoiceAsset) => void
-  onPlayVoice: (voice: VoiceAsset) => void
   onRenameRequest: (voice: VoiceAsset) => void
   onSaveVoiceTuningRequest: (request: VoiceTuningSaveRequest) => void
   onSelectVoice: (voiceId: string) => void
   onSetDefault: (voice: VoiceAsset) => void
   onUserTuningPresetApply: (preset: UserTuningPreset) => void
   onUserTuningPresetClear: () => void
+  playback: ReturnType<typeof useVoiceLibraryPlayback>
   providerTuning: ProviderTuningMetadata
   selectedVoiceId: string
   selectedUserTuningPreset: UserTuningPreset | null
@@ -91,13 +92,13 @@ export function VoiceLibraryPanel({
   isSettingDefault,
   isUpdatingVoice,
   onDeleteRequest,
-  onPlayVoice,
   onRenameRequest,
   onSaveVoiceTuningRequest,
   onSelectVoice,
   onSetDefault,
   onUserTuningPresetApply,
   onUserTuningPresetClear,
+  playback,
   providerTuning,
   selectedVoiceId,
   selectedUserTuningPreset,
@@ -107,6 +108,8 @@ export function VoiceLibraryPanel({
   voices,
   voiceStatus,
 }: VoiceLibraryPanelProps) {
+  const unselectedPreview = playback.activePreview?.voiceId !== selectedVoiceId ? playback.activePreview : null
+
   return (
     <section aria-busy={voiceStatus === "loading"} className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5">
       <div className="mb-4 flex items-center justify-between gap-3">
@@ -125,6 +128,17 @@ export function VoiceLibraryPanel({
       {voiceError ? (
         <div className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm" role="alert">
           {voiceError}
+        </div>
+      ) : null}
+
+      {unselectedPreview ? (
+        <div className="mb-4 flex flex-col gap-1 rounded-md border border-border bg-muted/40 p-3 text-sm" role="status">
+          <span>{unselectedPreview.isLoading ? `Loading ${unselectedPreview.label}.` : `Previewing ${unselectedPreview.label}.`}</span>
+          {unselectedPreview.error ? (
+            <span className="text-destructive" role="alert">
+              {unselectedPreview.error}
+            </span>
+          ) : null}
         </div>
       ) : null}
 
@@ -190,7 +204,8 @@ export function VoiceLibraryPanel({
                     {
                       icon: <Volume2 aria-hidden="true" className="size-4" />,
                       label: "Play",
-                      onSelect: () => onPlayVoice(voice),
+                      disabled: playback.previewSources.get(voice.id) === null,
+                      onSelect: () => playback.playVoice(voice.id),
                     },
                     {
                       disabled: isDefault || isSettingDefault,
@@ -216,10 +231,18 @@ export function VoiceLibraryPanel({
               {isSelected ? (
                 <div className="flex flex-col gap-3 px-2 pb-2 pt-1">
                   <Separator className="bg-border/70" />
-                  <AudioPlayer
-                    ariaLabel={`Voice sample preview for ${voice.name}`}
-                    src={`/api/voices/${encodeURIComponent(voice.id)}/sample`}
-                  />
+                  {playback.previewSources.get(voice.id) ? (
+                    <PlaybackControls
+                      ariaLabel={`Voice sample preview for ${voice.name}`}
+                      controller={playback.controller}
+                      onActivate={() => playback.activateVoice(voice.id)}
+                      source={playback.previewSources.get(voice.id)!}
+                    />
+                  ) : (
+                    <p className="text-xs text-muted-foreground" role="status">
+                      Preview unavailable for this voice.
+                    </p>
+                  )}
                   <SelectedVoiceTuning
                     activeProviderId={activeProviderId}
                     disabled={isGenerating || isUpdatingVoice}

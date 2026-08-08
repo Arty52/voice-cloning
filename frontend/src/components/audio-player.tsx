@@ -6,7 +6,7 @@ import { Loading } from "@/components/ui/loading"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Slider } from "@/components/ui/slider"
 import { PlaybackControllerProvider, useHasPlaybackController, usePlaybackOwner } from "@/hooks/use-playback-controller"
-import type { PlaybackSourceKind } from "@/lib/voice-ui-contracts"
+import type { PlaybackController, PlaybackSource, PlaybackSourceKind } from "@/lib/voice-ui-contracts"
 import { formatRecordingDuration } from "@/lib/formatters"
 import { cn } from "@/lib/utils"
 
@@ -20,6 +20,14 @@ type AudioPlayerProps = {
 type AudioPlayerControlsProps = AudioPlayerProps & {
   loadOnMount?: boolean
   sourceKind: PlaybackSourceKind
+}
+
+type PlaybackControlsProps = {
+  ariaLabel: string
+  className?: string
+  controller: PlaybackController
+  onActivate: () => void
+  source: PlaybackSource
 }
 
 const PLAYBACK_RATES = [0.5, 1, 1.25, 1.5, 2] as const
@@ -53,13 +61,6 @@ function AudioPlayerControls({ ariaLabel, className, loadOnMount = false, source
   )
   const activeSource = controller.snapshot.source
   const isCurrentSource = activeSource?.id === source.id && activeSource.url === source.url
-  const duration = isCurrentSource ? controller.snapshot.durationSeconds : null
-  const currentTime = isCurrentSource ? controller.snapshot.currentTimeSeconds : 0
-  const canSeek = duration !== null && duration > 0
-  const isPlaying = isCurrentSource && controller.snapshot.status === "playing"
-  const isLoading = isCurrentSource && controller.snapshot.loadState === "loading"
-  const error = isCurrentSource ? controller.snapshot.error : null
-  const displayedDuration = canSeek ? formatRecordingDuration(duration) : "--:--"
   const replaceSource = controller.replaceSource
 
   useEffect(() => {
@@ -73,9 +74,27 @@ function AudioPlayerControls({ ariaLabel, className, loadOnMount = false, source
     }
   }, [activeSource?.id, activeSource?.kind, activeSource?.label, activeSource?.url, isCurrentSource, loadOnMount, replaceSource, source])
 
+  return <PlaybackControls ariaLabel={ariaLabel} className={className} controller={controller} onActivate={() => controller.replaceSource(source)} source={source} />
+}
+
+/**
+ * Shared, presentational controls for a source owned by a feature hook. The
+ * owner decides how to activate a source; the controls never create media.
+ */
+export function PlaybackControls({ ariaLabel, className, controller, onActivate, source }: PlaybackControlsProps) {
+  const activeSource = controller.snapshot.source
+  const isCurrentSource = activeSource?.id === source.id && activeSource.url === source.url
+  const duration = isCurrentSource ? controller.snapshot.durationSeconds : null
+  const currentTime = isCurrentSource ? controller.snapshot.currentTimeSeconds : 0
+  const canSeek = duration !== null && duration > 0
+  const isPlaying = isCurrentSource && controller.snapshot.status === "playing"
+  const isLoading = isCurrentSource && controller.snapshot.loadState === "loading"
+  const error = isCurrentSource ? controller.snapshot.error : null
+  const displayedDuration = canSeek ? formatRecordingDuration(duration) : "--:--"
+
   function handlePlayToggle() {
     if (!isCurrentSource) {
-      controller.replaceSource(source)
+      onActivate()
       controller.dispatch({ type: "play" })
       return
     }

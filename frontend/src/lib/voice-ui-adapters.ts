@@ -34,6 +34,25 @@ export function voiceAssetToPickerOption(
   }
 }
 
+/**
+ * Produces the stable local sample endpoint used by Voice Library playback.
+ * A malformed or missing voice id has no preview source; callers must not
+ * manufacture a browser media request for it.
+ */
+export function voiceAssetToPreviewSource(voice: Pick<VoiceAsset, "id" | "name">): PlaybackSource | null {
+  const id = voice.id.trim()
+  if (!id) {
+    return null
+  }
+  const name = voice.name.trim() || "Voice"
+  return {
+    id: `voice-library:${id}:preview`,
+    kind: "voicePreview",
+    label: `${name} Preview`,
+    url: `/api/voices/${encodeURIComponent(id)}/sample`,
+  }
+}
+
 export function speakerSeparationToTranscriptDocument(
   result: SpeakerSeparationResult,
   { documentId }: TranscriptDocumentAdapterOptions
