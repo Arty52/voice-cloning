@@ -4,6 +4,7 @@ import {
   speakerSeparationToTranscriptDocument,
   transcriptSourceToPlaybackSource,
   voiceAssetToPickerOption,
+  voiceAssetToPreviewSource,
 } from "@/lib/voice-ui-adapters"
 import { validateTranscriptDocument } from "@/lib/voice-ui-contracts"
 import type { SpeakerSeparationResult, VoiceAsset } from "@/types"
@@ -94,5 +95,15 @@ describe("voice UI adapters", () => {
       label: "Interview Source",
       url: "/api/sample-processing/jobs/job-local-1/source",
     })
+  })
+
+  it("builds a stable local preview source without leaking a voice file path", () => {
+    expect(voiceAssetToPreviewSource(voiceFixture)).toEqual({
+      id: "voice-library:voice-local-1:preview",
+      kind: "voicePreview",
+      label: "Morgan Preview",
+      url: "/api/voices/voice-local-1/sample",
+    })
+    expect(voiceAssetToPreviewSource({ id: "  ", name: "Morgan" })).toBeNull()
   })
 })
