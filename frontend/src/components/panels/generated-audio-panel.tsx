@@ -2,6 +2,7 @@ import { CircleHelp, FolderUp, HardDrive, RefreshCw, Trash2, Upload } from "luci
 import { useState } from "react"
 
 import { GeneratedAudioItem } from "@/components/generated-audio-item"
+import type { useGeneratedAudioPlayback } from "@/hooks/use-generated-audio-playback"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { MenuSelect } from "@/components/ui/menu-select"
@@ -54,6 +55,7 @@ type GeneratedAudioPanelProps = {
   onStorageLimitChange: (limitBytes: number) => void
   onViewScriptSnapshot?: (item: GeneratedResult) => void
   persistenceMode: GeneratedAudioPersistenceMode
+  playback?: ReturnType<typeof useGeneratedAudioPlayback>
   serverExportError: string | null
   serverExportMutation: GeneratedAudioServerExportMutation | null
   serverExportStatus: GeneratedAudioServerExportStatus | null
@@ -87,6 +89,7 @@ export function GeneratedAudioPanel({
   onStorageLimitChange,
   onViewScriptSnapshot,
   persistenceMode,
+  playback,
   serverExportError,
   serverExportMutation,
   serverExportStatus,
@@ -101,9 +104,10 @@ export function GeneratedAudioPanel({
     usedBytes: 0,
   }
   const usagePercent =
-    resolvedUsage.limitBytes > 0 ? Math.min(100, Math.round((resolvedUsage.usedBytes / resolvedUsage.limitBytes) * 100)) : 0
-  const savedItemCount =
-    usage?.itemCount ?? allItems.filter((item) => !isTemporaryGeneratedAudioId(item.id)).length
+    resolvedUsage.limitBytes > 0
+      ? Math.min(100, Math.round((resolvedUsage.usedBytes / resolvedUsage.limitBytes) * 100))
+      : 0
+  const savedItemCount = usage?.itemCount ?? allItems.filter((item) => !isTemporaryGeneratedAudioId(item.id)).length
   const temporaryItemCount = Math.max(0, allItems.length - savedItemCount)
   const itemCountBadge = formatGeneratedAudioCountBadge(savedItemCount, temporaryItemCount)
   const isLibraryLoading = libraryStatus === "idle" || libraryStatus === "loading"
@@ -185,7 +189,11 @@ export function GeneratedAudioPanel({
         </div>
       </div>
 
-      <div aria-label="Server Export" className="mb-4 rounded-md border border-border bg-background/60 p-3" role="group">
+      <div
+        aria-label="Server Export"
+        className="mb-4 rounded-md border border-border bg-background/60 p-3"
+        role="group"
+      >
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-sm font-medium">
@@ -252,7 +260,12 @@ export function GeneratedAudioPanel({
               />
             </div>
             <div className="mt-1 text-xs text-muted-foreground">
-              {browserExportSummary(browserExportSupported, browserExportTarget, browserExportPermission, browserExportLedger)}
+              {browserExportSummary(
+                browserExportSupported,
+                browserExportTarget,
+                browserExportPermission,
+                browserExportLedger,
+              )}
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -310,7 +323,13 @@ export function GeneratedAudioPanel({
         <div className="flex flex-col gap-3">
           {hasGeneratedAudio ? (
             <div className="flex justify-end">
-              <Button disabled={mutationStatus === "clear"} onClick={onClear} size="sm" type="button" variant="secondary">
+              <Button
+                disabled={mutationStatus === "clear"}
+                onClick={onClear}
+                size="sm"
+                type="button"
+                variant="secondary"
+              >
                 <Trash2 aria-hidden="true" className="size-4" />
                 Clear All
               </Button>
@@ -334,6 +353,7 @@ export function GeneratedAudioPanel({
                 onServerExport={serverArchiveMode ? onServerExport : undefined}
                 onViewScriptSnapshot={onViewScriptSnapshot}
                 openMetadataPopoverId={openMetadataPopoverId}
+                playback={playback}
                 serverExportStatus={findServerExportStatus(item, serverExportStatus)}
               />
             ))
@@ -350,7 +370,7 @@ export function GeneratedAudioPanel({
 
 function findServerExportStatus(
   item: GeneratedResult,
-  serverExportStatus: GeneratedAudioServerExportStatus | null
+  serverExportStatus: GeneratedAudioServerExportStatus | null,
 ): GeneratedAudioServerExportItem | null {
   if (!serverExportStatus) {
     return null
@@ -369,13 +389,13 @@ function findServerExportStatus(
 function findBrowserExportStatus(
   item: GeneratedResult,
   browserExportLedger: BrowserArchiveExportLedgerEntry[],
-  target: BrowserArchiveExportTargetRecord | null
+  target: BrowserArchiveExportTargetRecord | null,
 ): BrowserArchiveExportLedgerEntry | null {
   if (!target) {
     return null
   }
   const itemStatuses = browserExportLedger.filter(
-    (status) => status.targetHandleId === target.handleId && status.audioId === item.id
+    (status) => status.targetHandleId === target.handleId && status.audioId === item.id,
   )
   if (item.sha256) {
     return itemStatuses.find((status) => status.sha256 === item.sha256) ?? null
@@ -385,7 +405,7 @@ function findBrowserExportStatus(
 
 function serverExportBadgeLabel(
   persistenceMode: GeneratedAudioPersistenceMode,
-  status: GeneratedAudioServerExportStatus | null
+  status: GeneratedAudioServerExportStatus | null,
 ) {
   if (persistenceMode !== "server") {
     return "Server Archive Off"
@@ -398,7 +418,7 @@ function serverExportBadgeLabel(
 
 function serverExportSummary(
   persistenceMode: GeneratedAudioPersistenceMode,
-  status: GeneratedAudioServerExportStatus | null
+  status: GeneratedAudioServerExportStatus | null,
 ) {
   if (persistenceMode !== "server") {
     return "Server export requires the server archive."
@@ -419,7 +439,7 @@ function serverExportSummary(
 
 function serverExportWriteTiming(
   persistenceMode: GeneratedAudioPersistenceMode,
-  status: GeneratedAudioServerExportStatus | null
+  status: GeneratedAudioServerExportStatus | null,
 ) {
   if (persistenceMode !== "server") {
     return "Generated audio stays in browser storage until the server archive is available."
@@ -454,7 +474,7 @@ function ExportTimingTooltip({ label, text }: { label: string; text: string }) {
 function browserExportBadgeLabel(
   supported: boolean,
   target: BrowserArchiveExportTargetRecord | null,
-  permission: BrowserArchiveExportPermissionState | null
+  permission: BrowserArchiveExportPermissionState | null,
 ) {
   if (!supported) {
     return "Unsupported"
@@ -472,7 +492,7 @@ function browserExportSummary(
   supported: boolean,
   target: BrowserArchiveExportTargetRecord | null,
   permission: BrowserArchiveExportPermissionState | null,
-  ledger: BrowserArchiveExportLedgerEntry[]
+  ledger: BrowserArchiveExportLedgerEntry[],
 ) {
   if (!supported) {
     return "Browser folder export requires File System Access support."
@@ -483,8 +503,12 @@ function browserExportSummary(
   if (permission === "denied") {
     return "Permission is needed before mirroring generated audio."
   }
-  const exportedCount = ledger.filter((item) => item.targetHandleId === target.handleId && item.status === "exported").length
-  const failedCount = ledger.filter((item) => item.targetHandleId === target.handleId && item.status === "failed").length
+  const exportedCount = ledger.filter(
+    (item) => item.targetHandleId === target.handleId && item.status === "exported",
+  ).length
+  const failedCount = ledger.filter(
+    (item) => item.targetHandleId === target.handleId && item.status === "failed",
+  ).length
   const targetLabel = target.name || "Selected Folder"
   if (failedCount > 0) {
     return `${targetLabel}: ${exportedCount} mirrored, ${failedCount} failed.`
