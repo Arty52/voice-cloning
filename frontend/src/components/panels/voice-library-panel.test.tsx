@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { PlaybackControllerProvider } from "@/hooks/use-playback-controller"
+import { useVoiceLibraryPlayback } from "@/hooks/use-voice-library-playback"
 import type { ProviderTuningMetadata, UserTuningPreset, VoiceAsset, VoicePreset } from "@/types"
 
 import { VoiceLibraryPanel } from "./voice-library-panel"
@@ -262,6 +263,24 @@ describe("VoiceLibraryPanel voice tuning", () => {
     expect(document.querySelector("audio")?.src).toContain("/api/voices/default/sample")
   })
 
+  it("shows loading and failures for an action-menu preview that is not selected", async () => {
+    const user = userEvent.setup()
+    const otherVoice = { ...selectedVoice, id: "other", name: "Other Voice" }
+
+    renderVoiceLibraryPanel({ selectedVoiceId: selectedVoice.id, voices: [selectedVoice, otherVoice] })
+    await user.click(screen.getByRole("button", { name: "Open actions for Other Voice" }))
+    await user.click(screen.getByRole("menuitem", { name: "Play" }))
+
+    expect(screen.getByText("Loading Other Voice Preview.")).toBeInTheDocument()
+    const audio = document.querySelector("audio")
+    if (!audio) {
+      throw new Error("Expected the shared audio element.")
+    }
+    fireEvent.error(audio)
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Unable to load this audio.")
+  })
+
   it("clears a deleted voice preview", async () => {
     const { rerender } = renderVoiceLibraryPanel()
     const audio = document.querySelector("audio")
@@ -275,7 +294,7 @@ describe("VoiceLibraryPanel voice tuning", () => {
     rerender(
       <PlaybackControllerProvider>
         <TooltipProvider>
-          <VoiceLibraryPanel {...voiceLibraryProps({ selectedVoiceId: "", voices: [] })} />
+          <VoiceLibraryPanelHarness {...voiceLibraryProps({ selectedVoiceId: "", voices: [] })} />
         </TooltipProvider>
       </PlaybackControllerProvider>
     )
@@ -293,7 +312,7 @@ describe("VoiceLibraryPanel voice tuning", () => {
     rerender(
       <PlaybackControllerProvider>
         <TooltipProvider>
-          <VoiceLibraryPanel {...voiceLibraryProps({ isActive: false })} />
+          <VoiceLibraryPanelHarness {...voiceLibraryProps({ isActive: false })} />
         </TooltipProvider>
       </PlaybackControllerProvider>
     )
@@ -302,7 +321,7 @@ describe("VoiceLibraryPanel voice tuning", () => {
     rerender(
       <PlaybackControllerProvider>
         <TooltipProvider>
-          <VoiceLibraryPanel {...voiceLibraryProps()} />
+          <VoiceLibraryPanelHarness {...voiceLibraryProps()} />
         </TooltipProvider>
       </PlaybackControllerProvider>
     )
@@ -338,20 +357,26 @@ describe("VoiceLibraryPanel voice tuning", () => {
 })
 
 type VoiceLibraryPanelProps = ComponentProps<typeof VoiceLibraryPanel>
+type VoiceLibraryPanelHarnessProps = Omit<VoiceLibraryPanelProps, "playback"> & { isActive: boolean }
 
-function renderVoiceLibraryPanel(overrides: Partial<VoiceLibraryPanelProps> = {}) {
+function renderVoiceLibraryPanel(overrides: Partial<VoiceLibraryPanelHarnessProps> = {}) {
   const props = voiceLibraryProps(overrides)
 
   return render(
     <PlaybackControllerProvider>
       <TooltipProvider>
-        <VoiceLibraryPanel {...props} />
+        <VoiceLibraryPanelHarness {...props} />
       </TooltipProvider>
     </PlaybackControllerProvider>
   )
 }
 
-function voiceLibraryProps(overrides: Partial<VoiceLibraryPanelProps> = {}): VoiceLibraryPanelProps {
+function VoiceLibraryPanelHarness({ isActive, ...props }: VoiceLibraryPanelHarnessProps) {
+  const playback = useVoiceLibraryPlayback({ isActive, voices: props.voices })
+  return <VoiceLibraryPanel {...props} playback={playback} />
+}
+
+function voiceLibraryProps(overrides: Partial<VoiceLibraryPanelHarnessProps> = {}): VoiceLibraryPanelHarnessProps {
   return {
     activeProviderId: "elevenlabs",
     defaultVoiceId: "default",

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import {
   ArrowRight,
   Check,
@@ -25,8 +25,7 @@ import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { VoicePresetToggleGroup } from "@/components/voice-preset-toggle-group"
 import { VoiceTuningControls } from "@/components/voice-tuning-controls"
-import { PlaybackControllerProvider, useHasPlaybackController, usePlaybackOwner } from "@/hooks/use-playback-controller"
-import { voiceAssetToPreviewSource } from "@/lib/voice-ui-adapters"
+import type { useVoiceLibraryPlayback } from "@/hooks/use-voice-library-playback"
 import {
   CUSTOM_TUNING_PRESET_ID,
   presetValues,
@@ -56,7 +55,6 @@ import type {
 type VoiceLibraryPanelProps = {
   activeProviderId: string | null
   defaultVoiceId: string
-  isActive: boolean
   isGenerating: boolean
   isProviderTuningLoading: boolean
   isSettingDefault: boolean
@@ -68,6 +66,7 @@ type VoiceLibraryPanelProps = {
   onSetDefault: (voice: VoiceAsset) => void
   onUserTuningPresetApply: (preset: UserTuningPreset) => void
   onUserTuningPresetClear: () => void
+  playback: ReturnType<typeof useVoiceLibraryPlayback>
   providerTuning: ProviderTuningMetadata
   selectedVoiceId: string
   selectedUserTuningPreset: UserTuningPreset | null
@@ -85,24 +84,9 @@ type VoiceLibraryPanelProps = {
   voiceStatus: AsyncStatus
 }
 
-export function VoiceLibraryPanel(props: VoiceLibraryPanelProps) {
-  const hasPlaybackController = useHasPlaybackController()
-
-  if (!hasPlaybackController) {
-    return (
-      <PlaybackControllerProvider>
-        <VoiceLibraryPanelContents {...props} />
-      </PlaybackControllerProvider>
-    )
-  }
-
-  return <VoiceLibraryPanelContents {...props} />
-}
-
-function VoiceLibraryPanelContents({
+export function VoiceLibraryPanel({
   activeProviderId,
   defaultVoiceId,
-  isActive,
   isGenerating,
   isProviderTuningLoading,
   isSettingDefault,
@@ -114,6 +98,7 @@ function VoiceLibraryPanelContents({
   onSetDefault,
   onUserTuningPresetApply,
   onUserTuningPresetClear,
+  playback,
   providerTuning,
   selectedVoiceId,
   selectedUserTuningPreset,
@@ -123,38 +108,7 @@ function VoiceLibraryPanelContents({
   voices,
   voiceStatus,
 }: VoiceLibraryPanelProps) {
-  const playback = usePlaybackOwner("voice-library")
-  const { dispatch: dispatchPlayback, replaceSource, snapshot: playbackSnapshot } = playback
-  const previewSources = useMemo(
-    () => new Map(voices.map((voice) => [voice.id, voiceAssetToPreviewSource(voice)])),
-    [voices]
-  )
-
-  useEffect(() => {
-    if (!isActive) {
-      replaceSource(null)
-    }
-  }, [isActive, replaceSource])
-
-  useEffect(() => {
-    const activeSource = playbackSnapshot.source
-    if (
-      activeSource?.kind === "voicePreview" &&
-      activeSource.id.startsWith("voice-library:") &&
-      !Array.from(previewSources.values()).some((source) => source?.id === activeSource.id)
-    ) {
-      replaceSource(null)
-    }
-  }, [playbackSnapshot.source, previewSources, replaceSource])
-
-  function handlePlayVoice(voice: VoiceAsset) {
-    const source = previewSources.get(voice.id)
-    if (!source) {
-      return
-    }
-    replaceSource(source)
-    dispatchPlayback({ type: "play" })
-  }
+  const unselectedPreview = playback.activePreview?.voiceId !== selectedVoiceId ? playback.activePreview : null
 
   return (
     <section aria-busy={voiceStatus === "loading"} className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5">
@@ -174,6 +128,17 @@ function VoiceLibraryPanelContents({
       {voiceError ? (
         <div className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm" role="alert">
           {voiceError}
+        </div>
+      ) : null}
+
+      {unselectedPreview ? (
+        <div className="mb-4 flex flex-col gap-1 rounded-md border border-border bg-muted/40 p-3 text-sm" role="status">
+          <span>{unselectedPreview.isLoading ? `Loading ${unselectedPreview.label}.` : `Previewing ${unselectedPreview.label}.`}</span>
+          {unselectedPreview.error ? (
+            <span className="text-destructive" role="alert">
+              {unselectedPreview.error}
+            </span>
+          ) : null}
         </div>
       ) : null}
 
@@ -239,8 +204,8 @@ function VoiceLibraryPanelContents({
                     {
                       icon: <Volume2 aria-hidden="true" className="size-4" />,
                       label: "Play",
-                      disabled: previewSources.get(voice.id) === null,
-                      onSelect: () => handlePlayVoice(voice),
+                      disabled: playback.previewSources.get(voice.id) === null,
+                      onSelect: () => playback.playVoice(voice.id),
                     },
                     {
                       disabled: isDefault || isSettingDefault,
@@ -266,12 +231,12 @@ function VoiceLibraryPanelContents({
               {isSelected ? (
                 <div className="flex flex-col gap-3 px-2 pb-2 pt-1">
                   <Separator className="bg-border/70" />
-                  {previewSources.get(voice.id) ? (
+                  {playback.previewSources.get(voice.id) ? (
                     <PlaybackControls
                       ariaLabel={`Voice sample preview for ${voice.name}`}
-                      controller={playback}
-                      onActivate={() => replaceSource(previewSources.get(voice.id)!)}
-                      source={previewSources.get(voice.id)!}
+                      controller={playback.controller}
+                      onActivate={() => playback.activateVoice(voice.id)}
+                      source={playback.previewSources.get(voice.id)!}
                     />
                   ) : (
                     <p className="text-xs text-muted-foreground" role="status">

@@ -19,11 +19,27 @@ import { SpeechInputPanel } from "@/components/panels/speech-input-panel"
 import { StudioOverviewPanel } from "@/components/panels/studio-overview-panel"
 import { TranscriptPanel } from "@/components/panels/transcript-panel"
 import { VoiceLibraryPanel } from "@/components/panels/voice-library-panel"
+import { PlaybackControllerProvider, useHasPlaybackController } from "@/hooks/use-playback-controller"
 import { useScrollIntoViewOnSignal } from "@/hooks/use-scroll-into-view-on-signal"
+import { useVoiceLibraryPlayback } from "@/hooks/use-voice-library-playback"
 import { useVoiceStudioController } from "@/hooks/use-voice-studio-controller"
 import type { GeneratedAudioScriptSnapshot } from "@/types"
 
 function App() {
+  const hasPlaybackController = useHasPlaybackController()
+
+  if (!hasPlaybackController) {
+    return (
+      <PlaybackControllerProvider>
+        <AppContents />
+      </PlaybackControllerProvider>
+    )
+  }
+
+  return <AppContents />
+}
+
+function AppContents() {
   const [scriptSnapshotDialog, setScriptSnapshotDialog] = useState<GeneratedAudioScriptSnapshot | null>(null)
   const [prepareAudioWorkflow, setPrepareAudioWorkflow] = useState<PrepareAudioWorkflow | null>(null)
   const [generatedAudioAttentionSignal, setGeneratedAudioAttentionSignal] = useState(0)
@@ -96,6 +112,10 @@ function App() {
     voiceLibrary,
     workflowSections,
   } = useVoiceStudioController()
+  const voiceLibraryPlayback = useVoiceLibraryPlayback({
+    isActive: activeSectionId === "voices",
+    voices: voiceLibrary.voices,
+  })
   const isPrepareWorkflowSwitchDisabled =
     voiceInput.isUploading || voiceInput.isPreparingSample || voiceInput.isRecorderBusy || sampleProcessing.isProcessing
   const visiblePrepareAudioWorkflow = prepareAudioWorkflow ?? (sampleProcessing.job ? "processAudio" : null)
@@ -202,7 +222,6 @@ function App() {
           <VoiceLibraryPanel
             activeProviderId={providerKeys.activeProviderId || null}
             defaultVoiceId={voiceLibrary.defaultVoiceId}
-            isActive={activeSectionId === "voices"}
             isGenerating={speech.isGenerating}
             isProviderTuningLoading={providerKeys.providerStatus === "idle" || providerKeys.providerStatus === "loading"}
             isSettingDefault={voiceLibrary.isSettingDefault}
@@ -214,6 +233,7 @@ function App() {
             onSetDefault={(voice) => void voiceLibrary.setDefault(voice.id)}
             onUserTuningPresetApply={applyUserTuningPreset}
             onUserTuningPresetClear={clearUserTuningPresetSelection}
+            playback={voiceLibraryPlayback}
             providerTuning={providerTuning}
             selectedVoiceId={voiceLibrary.selectedVoiceId}
             selectedUserTuningPreset={selectedUserTuningPreset}
