@@ -23,6 +23,7 @@ const Slider = React.forwardRef<
 
   return (
     <SliderPrimitive.Root
+      aria-label={ariaLabel}
       data-slot="slider"
       ref={ref}
       defaultValue={defaultValue}

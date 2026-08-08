@@ -335,7 +335,11 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
         onRateChange={(event) => {
           const playbackRate = event.currentTarget.playbackRate
           if (Number.isFinite(playbackRate)) {
-            updateCurrentSource((current) => ({ ...current, playbackRate: clamp(playbackRate, 0.5, 2) }))
+            const clampedPlaybackRate = clamp(playbackRate, 0.5, 2)
+            // Browsers can change this value outside of a controller intent.
+            // Keep the media element and the exposed snapshot in lockstep.
+            event.currentTarget.playbackRate = clampedPlaybackRate
+            updateCurrentSource((current) => ({ ...current, playbackRate: clampedPlaybackRate }))
           }
         }}
         onTimeUpdate={(event) => {

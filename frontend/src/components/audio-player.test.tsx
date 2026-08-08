@@ -57,6 +57,13 @@ describe("AudioPlayer", () => {
     expect(document.querySelectorAll("audio")).toHaveLength(1)
   })
 
+  it("loads a standalone source only once on mount", async () => {
+    render(<AudioPlayer ariaLabel="Standalone preview" src="blob:standalone" />)
+
+    await waitFor(() => expect(HTMLMediaElement.prototype.load).toHaveBeenCalled())
+    expect(HTMLMediaElement.prototype.load).toHaveBeenCalledTimes(1)
+  })
+
   it("plays and pauses the selected audio through the shared controller", async () => {
     renderPlayer(<AudioPlayer ariaLabel="Generated voice playback" src="blob:generated-audio" />)
     const audio = getSharedAudio()
@@ -99,6 +106,14 @@ describe("AudioPlayer", () => {
     await user.click(screen.getByRole("combobox", { name: /playback rate/i }))
     await user.click(screen.getByRole("option", { name: "1.5x" }))
     expect(audio.playbackRate).toBe(1.5)
+  })
+
+  it("labels both the slider root and thumb, while keeping elapsed time out of live announcements", () => {
+    const { container } = renderPlayer(<AudioPlayer ariaLabel="Generated voice playback" src="blob:generated-audio" />)
+
+    expect(container.querySelector('[data-slot="slider"]')).toHaveAttribute("aria-label", "Audio Position")
+    expect(screen.getByRole("slider", { name: "Audio Position" })).toBeInTheDocument()
+    expect(screen.getByRole("status", { name: /elapsed 0:00 of unknown duration/i })).toHaveAttribute("aria-live", "off")
   })
 
   it("makes two generic controls contend through the single shared media element", async () => {

@@ -137,6 +137,21 @@ describe("usePlaybackController", () => {
     expect(result.current.snapshot.playbackRate).toBe(1)
   })
 
+  it("clamps externally changed playback rates back onto the media element", () => {
+    const { result } = renderHook(() => usePlaybackController(), { wrapper })
+    const audio = document.querySelector("audio")
+    if (!audio) {
+      throw new Error("Expected the shared media element.")
+    }
+
+    act(() => result.current.dispatch({ source: firstSource, type: "replaceSource" }))
+    audio.playbackRate = 8
+    fireEvent.rateChange(audio)
+
+    expect(audio.playbackRate).toBe(2)
+    expect(result.current.snapshot.playbackRate).toBe(2)
+  })
+
   it("loads a replacement once when replacement and play happen in the same event", async () => {
     const { result } = renderHook(() => usePlaybackController(), { wrapper })
     vi.mocked(HTMLMediaElement.prototype.load).mockClear()

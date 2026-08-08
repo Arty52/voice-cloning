@@ -66,10 +66,12 @@ function AudioPlayerControls({ ariaLabel, className, loadOnMount = false, source
     const ownsActiveSource = activeSource?.id === source.id
     const sourceChanged =
       activeSource?.url !== source.url || activeSource.label !== source.label || activeSource.kind !== source.kind
-    if (loadOnMount || (ownsActiveSource && sourceChanged)) {
+    // A standalone player owns its provider, so it loads once on mount. Do
+    // not replace the same source again after that load updates the snapshot.
+    if ((loadOnMount && !isCurrentSource) || (ownsActiveSource && sourceChanged)) {
       replaceSource(source.url ? source : null)
     }
-  }, [activeSource?.id, activeSource?.kind, activeSource?.label, activeSource?.url, loadOnMount, replaceSource, source])
+  }, [activeSource?.id, activeSource?.kind, activeSource?.label, activeSource?.url, isCurrentSource, loadOnMount, replaceSource, source])
 
   function handlePlayToggle() {
     if (!isCurrentSource) {
@@ -143,7 +145,7 @@ function AudioPlayerControls({ ariaLabel, className, loadOnMount = false, source
         </Select>
         <output
           aria-label={`Elapsed ${formatRecordingDuration(currentTime)} of ${canSeek ? displayedDuration : "Unknown Duration"}`}
-          aria-live="polite"
+          aria-live="off"
           className="min-w-20 text-right font-mono text-xs tabular-nums text-muted-foreground"
         >
           {formatRecordingDuration(currentTime)} / {displayedDuration}
