@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import {
   ArrowRight,
   Check,
@@ -14,7 +14,7 @@ import {
   Volume2,
 } from "lucide-react"
 
-import { AudioPlayer } from "@/components/audio-player"
+import { PlaybackControls } from "@/components/audio-player"
 import { ActionMenu } from "@/components/ui/action-menu"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -25,6 +25,8 @@ import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { VoicePresetToggleGroup } from "@/components/voice-preset-toggle-group"
 import { VoiceTuningControls } from "@/components/voice-tuning-controls"
+import { PlaybackControllerProvider, useHasPlaybackController, usePlaybackOwner } from "@/hooks/use-playback-controller"
+import { voiceAssetToPreviewSource } from "@/lib/voice-ui-adapters"
 import {
   CUSTOM_TUNING_PRESET_ID,
   presetValues,
@@ -54,12 +56,12 @@ import type {
 type VoiceLibraryPanelProps = {
   activeProviderId: string | null
   defaultVoiceId: string
+  isActive: boolean
   isGenerating: boolean
   isProviderTuningLoading: boolean
   isSettingDefault: boolean
   isUpdatingVoice: boolean
   onDeleteRequest: (voice: VoiceAsset) => void
-  onPlayVoice: (voice: VoiceAsset) => void
   onRenameRequest: (voice: VoiceAsset) => void
   onSaveVoiceTuningRequest: (request: VoiceTuningSaveRequest) => void
   onSelectVoice: (voiceId: string) => void
@@ -83,15 +85,29 @@ type VoiceLibraryPanelProps = {
   voiceStatus: AsyncStatus
 }
 
-export function VoiceLibraryPanel({
+export function VoiceLibraryPanel(props: VoiceLibraryPanelProps) {
+  const hasPlaybackController = useHasPlaybackController()
+
+  if (!hasPlaybackController) {
+    return (
+      <PlaybackControllerProvider>
+        <VoiceLibraryPanelContents {...props} />
+      </PlaybackControllerProvider>
+    )
+  }
+
+  return <VoiceLibraryPanelContents {...props} />
+}
+
+function VoiceLibraryPanelContents({
   activeProviderId,
   defaultVoiceId,
+  isActive,
   isGenerating,
   isProviderTuningLoading,
   isSettingDefault,
   isUpdatingVoice,
   onDeleteRequest,
-  onPlayVoice,
   onRenameRequest,
   onSaveVoiceTuningRequest,
   onSelectVoice,
@@ -107,6 +123,39 @@ export function VoiceLibraryPanel({
   voices,
   voiceStatus,
 }: VoiceLibraryPanelProps) {
+  const playback = usePlaybackOwner("voice-library")
+  const { dispatch: dispatchPlayback, replaceSource, snapshot: playbackSnapshot } = playback
+  const previewSources = useMemo(
+    () => new Map(voices.map((voice) => [voice.id, voiceAssetToPreviewSource(voice)])),
+    [voices]
+  )
+
+  useEffect(() => {
+    if (!isActive) {
+      replaceSource(null)
+    }
+  }, [isActive, replaceSource])
+
+  useEffect(() => {
+    const activeSource = playbackSnapshot.source
+    if (
+      activeSource?.kind === "voicePreview" &&
+      activeSource.id.startsWith("voice-library:") &&
+      !Array.from(previewSources.values()).some((source) => source?.id === activeSource.id)
+    ) {
+      replaceSource(null)
+    }
+  }, [playbackSnapshot.source, previewSources, replaceSource])
+
+  function handlePlayVoice(voice: VoiceAsset) {
+    const source = previewSources.get(voice.id)
+    if (!source) {
+      return
+    }
+    replaceSource(source)
+    dispatchPlayback({ type: "play" })
+  }
+
   return (
     <section aria-busy={voiceStatus === "loading"} className="rounded-lg border border-border bg-card/90 p-4 shadow-sm sm:p-5">
       <div className="mb-4 flex items-center justify-between gap-3">
@@ -190,7 +239,8 @@ export function VoiceLibraryPanel({
                     {
                       icon: <Volume2 aria-hidden="true" className="size-4" />,
                       label: "Play",
-                      onSelect: () => onPlayVoice(voice),
+                      disabled: previewSources.get(voice.id) === null,
+                      onSelect: () => handlePlayVoice(voice),
                     },
                     {
                       disabled: isDefault || isSettingDefault,
@@ -216,10 +266,18 @@ export function VoiceLibraryPanel({
               {isSelected ? (
                 <div className="flex flex-col gap-3 px-2 pb-2 pt-1">
                   <Separator className="bg-border/70" />
-                  <AudioPlayer
-                    ariaLabel={`Voice sample preview for ${voice.name}`}
-                    src={`/api/voices/${encodeURIComponent(voice.id)}/sample`}
-                  />
+                  {previewSources.get(voice.id) ? (
+                    <PlaybackControls
+                      ariaLabel={`Voice sample preview for ${voice.name}`}
+                      controller={playback}
+                      onActivate={() => replaceSource(previewSources.get(voice.id)!)}
+                      source={previewSources.get(voice.id)!}
+                    />
+                  ) : (
+                    <p className="text-xs text-muted-foreground" role="status">
+                      Preview unavailable for this voice.
+                    </p>
+                  )}
                   <SelectedVoiceTuning
                     activeProviderId={activeProviderId}
                     disabled={isGenerating || isUpdatingVoice}

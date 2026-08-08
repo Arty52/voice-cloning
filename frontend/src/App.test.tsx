@@ -4363,12 +4363,6 @@ describe("App", () => {
   })
 
   it("plays a voice from the action menu", async () => {
-    const play = vi.fn().mockResolvedValue(undefined)
-    const pause = vi.fn()
-    const AudioMock = vi.fn(function (this: HTMLAudioElement, src: string) {
-      Object.assign(this, { pause, play, src })
-    })
-    vi.stubGlobal("Audio", AudioMock)
     vi.stubGlobal(
       "fetch",
       vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -4388,9 +4382,8 @@ describe("App", () => {
     await user.click(await screen.findByRole("button", { name: /open actions for voice_clone_01/i }))
     await user.click(screen.getByRole("menuitem", { name: /play/i }))
 
-    expect(AudioMock).toHaveBeenCalledWith("/api/voices/voice-clone-01/sample")
-    expect(play).toHaveBeenCalled()
-    expect(screen.getByRole("combobox", { name: "Source Voice" })).toHaveTextContent("Voice_Clone_01")
+    expect(document.querySelector("audio")?.src).toContain("/api/voices/voice-clone-01/sample")
+    expect(screen.getByRole("combobox", { name: "Source Voice" })).toHaveTextContent("Default voice")
   })
 
   it("renames a voice from the action menu", async () => {

@@ -1,9 +1,10 @@
-import { fireEvent, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { ComponentProps } from "react"
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { PlaybackControllerProvider } from "@/hooks/use-playback-controller"
 import type { ProviderTuningMetadata, UserTuningPreset, VoiceAsset, VoicePreset } from "@/types"
 
 import { VoiceLibraryPanel } from "./voice-library-panel"
@@ -67,6 +68,17 @@ const providerTuning: ProviderTuningMetadata = {
 }
 
 describe("VoiceLibraryPanel voice tuning", () => {
+  beforeEach(() => {
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined)
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined)
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined)
+  })
+
+  afterEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+  })
+
   it("renders expanded tuning loading with the pending work surface", async () => {
     const user = userEvent.setup()
 
@@ -221,20 +233,134 @@ describe("VoiceLibraryPanel voice tuning", () => {
     expect(screen.getByPlaceholderText("Preset name")).toBeDisabled()
     expect(screen.getByRole("button", { name: "Save As Preset" })).toBeDisabled()
   })
+
+  it("plays from an action menu without selecting the voice and closes the menu", async () => {
+    const user = userEvent.setup()
+    const otherVoice = { ...selectedVoice, id: "other", name: "Other Voice" }
+    const onSelectVoice = vi.fn()
+
+    renderVoiceLibraryPanel({ onSelectVoice, selectedVoiceId: selectedVoice.id, voices: [selectedVoice, otherVoice] })
+
+    await user.click(screen.getByRole("button", { name: "Open actions for Other Voice" }))
+    await user.click(screen.getByRole("menuitem", { name: "Play" }))
+
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument()
+    expect(onSelectVoice).not.toHaveBeenCalled()
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalled()
+    expect(document.querySelector("audio")?.src).toContain("/api/voices/other/sample")
+  })
+
+  it("switches the shared preview source from the selected detail controls", async () => {
+    const user = userEvent.setup()
+    const otherVoice = { ...selectedVoice, id: "other", name: "Other Voice" }
+
+    renderVoiceLibraryPanel({ selectedVoiceId: selectedVoice.id, voices: [selectedVoice, otherVoice] })
+    await user.click(screen.getByRole("button", { name: "Open actions for Other Voice" }))
+    await user.click(screen.getByRole("menuitem", { name: "Play" }))
+    await user.click(screen.getByRole("button", { name: "Play Audio" }))
+
+    expect(document.querySelector("audio")?.src).toContain("/api/voices/default/sample")
+  })
+
+  it("clears a deleted voice preview", async () => {
+    const { rerender } = renderVoiceLibraryPanel()
+    const audio = document.querySelector("audio")
+    if (!audio) {
+      throw new Error("Expected the shared audio element.")
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: "Play Audio" }))
+    expect(audio.src).toContain("/api/voices/default/sample")
+
+    rerender(
+      <PlaybackControllerProvider>
+        <TooltipProvider>
+          <VoiceLibraryPanel {...voiceLibraryProps({ selectedVoiceId: "", voices: [] })} />
+        </TooltipProvider>
+      </PlaybackControllerProvider>
+    )
+    await waitFor(() => expect(audio.getAttribute("src")).toBeNull())
+  })
+
+  it("clears the owned preview when navigating away or unmounting", async () => {
+    const { rerender, unmount } = renderVoiceLibraryPanel()
+    const audio = document.querySelector("audio")
+    if (!audio) {
+      throw new Error("Expected the shared audio element.")
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: "Play Audio" }))
+    rerender(
+      <PlaybackControllerProvider>
+        <TooltipProvider>
+          <VoiceLibraryPanel {...voiceLibraryProps({ isActive: false })} />
+        </TooltipProvider>
+      </PlaybackControllerProvider>
+    )
+    await waitFor(() => expect(audio.getAttribute("src")).toBeNull())
+
+    rerender(
+      <PlaybackControllerProvider>
+        <TooltipProvider>
+          <VoiceLibraryPanel {...voiceLibraryProps()} />
+        </TooltipProvider>
+      </PlaybackControllerProvider>
+    )
+    fireEvent.click(screen.getByRole("button", { name: "Play Audio" }))
+    unmount()
+    expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled()
+  })
+
+  it("exposes a failed preview source through the selected detail controls", async () => {
+    renderVoiceLibraryPanel()
+    const audio = document.querySelector("audio")
+    if (!audio) {
+      throw new Error("Expected the shared audio element.")
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: "Play Audio" }))
+    fireEvent.error(audio)
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Unable to load this audio.")
+  })
+
+  it("reports an unavailable preview without making a media request", async () => {
+    const user = userEvent.setup()
+    const unavailableVoice = { ...selectedVoice, id: "   ", name: "Unavailable Voice" }
+
+    renderVoiceLibraryPanel({ selectedVoiceId: unavailableVoice.id, voices: [unavailableVoice] })
+
+    expect(screen.getByRole("status")).toHaveTextContent("Preview unavailable for this voice.")
+    await user.click(screen.getByRole("button", { name: "Open actions for Unavailable Voice" }))
+    expect(screen.getByRole("menuitem", { name: "Play" })).toBeDisabled()
+    expect(document.querySelector("audio")?.getAttribute("src")).toBeNull()
+  })
 })
 
 type VoiceLibraryPanelProps = ComponentProps<typeof VoiceLibraryPanel>
 
 function renderVoiceLibraryPanel(overrides: Partial<VoiceLibraryPanelProps> = {}) {
-  const props: VoiceLibraryPanelProps = {
+  const props = voiceLibraryProps(overrides)
+
+  return render(
+    <PlaybackControllerProvider>
+      <TooltipProvider>
+        <VoiceLibraryPanel {...props} />
+      </TooltipProvider>
+    </PlaybackControllerProvider>
+  )
+}
+
+function voiceLibraryProps(overrides: Partial<VoiceLibraryPanelProps> = {}): VoiceLibraryPanelProps {
+  return {
     activeProviderId: "elevenlabs",
     defaultVoiceId: "default",
+    isActive: true,
     isGenerating: false,
     isProviderTuningLoading: false,
     isSettingDefault: false,
     isUpdatingVoice: false,
     onDeleteRequest: vi.fn(),
-    onPlayVoice: vi.fn(),
     onRenameRequest: vi.fn(),
     onSaveVoiceTuningRequest: vi.fn(),
     onSelectVoice: vi.fn(),
@@ -251,12 +377,6 @@ function renderVoiceLibraryPanel(overrides: Partial<VoiceLibraryPanelProps> = {}
     voiceStatus: "success",
     ...overrides,
   }
-
-  return render(
-    <TooltipProvider>
-      <VoiceLibraryPanel {...props} />
-    </TooltipProvider>
-  )
 }
 
 function userTuningPresetState(

@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useRef, useState } from "react"
+import { type FormEvent, useEffect, useState } from "react"
 
 import * as voiceApi from "@/lib/api"
 import type { VoiceUpdate } from "@/lib/api"
@@ -15,7 +15,6 @@ export function useVoiceLibrary() {
   const [renameError, setRenameError] = useState<string | null>(null)
   const [voiceActionStatus, setVoiceActionStatus] = useState<AsyncStatus>("idle")
   const [defaultStatus, setDefaultStatus] = useState<AsyncStatus>("idle")
-  const voicePlaybackRef = useRef<HTMLAudioElement | null>(null)
 
   const selectedVoice = voices.find((voice) => voice.id === selectedVoiceId) ?? null
   const isUpdatingVoice = voiceActionStatus === "loading"
@@ -38,12 +37,6 @@ export function useVoiceLibrary() {
     void loadVoices()
   }, [])
 
-  useEffect(() => {
-    return () => {
-      voicePlaybackRef.current?.pause()
-    }
-  }, [])
-
   function applyVoicePayload(payload: VoicesResponse) {
     setVoices(payload.voices)
     setDefaultVoiceId(payload.defaultVoiceId)
@@ -59,17 +52,6 @@ export function useVoiceLibrary() {
     setVoices((current) => [...current, voice])
     setSelectedVoiceId(voice.id)
     setDefaultVoiceId((current) => current || voice.id)
-  }
-
-  function playVoice(voice: VoiceAsset) {
-    setSelectedVoiceId(voice.id)
-    setVoiceError(null)
-    voicePlaybackRef.current?.pause()
-    const audio = new Audio(`/api/voices/${encodeURIComponent(voice.id)}/sample`)
-    voicePlaybackRef.current = audio
-    void audio.play().catch(() => {
-      setVoiceError("Unable to play voice sample.")
-    })
   }
 
   function requestRename(voice: VoiceAsset) {
@@ -115,10 +97,6 @@ export function useVoiceLibrary() {
     try {
       const payload = await voiceApi.deleteVoice(voice.id)
       applyVoicePayload(payload)
-      if (voicePlaybackRef.current) {
-        voicePlaybackRef.current.pause()
-        voicePlaybackRef.current = null
-      }
       setVoiceActionStatus("success")
     } catch (caught) {
       setVoiceActionStatus("error")
@@ -175,7 +153,6 @@ export function useVoiceLibrary() {
     deleteVoice,
     isSettingDefault,
     isUpdatingVoice,
-    playVoice,
     renameError,
     renameName,
     renameVoice,
