@@ -117,6 +117,41 @@ describe("usePlaybackController", () => {
     expect(audio.currentTime).toBe(20)
   })
 
+  it("keeps the requested playback rate in the controlled snapshot", () => {
+    const { result } = renderHook(() => usePlaybackController(), { wrapper })
+    const audio = document.querySelector("audio")
+    if (!audio) {
+      throw new Error("Expected the shared media element.")
+    }
+
+    act(() => result.current.dispatch({ playbackRate: 1.5, type: "setPlaybackRate" }))
+    expect(audio.playbackRate).toBe(1.5)
+    expect(result.current.snapshot.playbackRate).toBe(1.5)
+
+    act(() => result.current.dispatch({ playbackRate: 8, type: "setPlaybackRate" }))
+    expect(audio.playbackRate).toBe(2)
+    expect(result.current.snapshot.playbackRate).toBe(2)
+
+    act(() => result.current.dispatch({ type: "clear" }))
+    expect(audio.playbackRate).toBe(1)
+    expect(result.current.snapshot.playbackRate).toBe(1)
+  })
+
+  it("clamps externally changed playback rates back onto the media element", () => {
+    const { result } = renderHook(() => usePlaybackController(), { wrapper })
+    const audio = document.querySelector("audio")
+    if (!audio) {
+      throw new Error("Expected the shared media element.")
+    }
+
+    act(() => result.current.dispatch({ source: firstSource, type: "replaceSource" }))
+    audio.playbackRate = 8
+    fireEvent.rateChange(audio)
+
+    expect(audio.playbackRate).toBe(2)
+    expect(result.current.snapshot.playbackRate).toBe(2)
+  })
+
   it("loads a replacement once when replacement and play happen in the same event", async () => {
     const { result } = renderHook(() => usePlaybackController(), { wrapper })
     vi.mocked(HTMLMediaElement.prototype.load).mockClear()
@@ -194,6 +229,7 @@ describe("usePlaybackController", () => {
       durationSeconds: null,
       error: null,
       loadState: "idle",
+      playbackRate: 1,
       source: null,
       status: "idle",
     })
@@ -245,6 +281,7 @@ describe("usePlaybackController", () => {
       durationSeconds: null,
       error: null,
       loadState: "idle",
+      playbackRate: 1,
       source: null,
       status: "idle",
     })
@@ -277,6 +314,7 @@ describe("usePlaybackController", () => {
       durationSeconds: null,
       error: null,
       loadState: "idle",
+      playbackRate: 1,
       source: null,
       status: "idle",
     })

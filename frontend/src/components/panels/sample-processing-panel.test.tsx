@@ -237,7 +237,7 @@ describe("SampleProcessingPanel ranked candidates", () => {
 
     const candidatePreview = screen.getByRole("group", { name: "Speaker 1 candidate 1 preview" })
     expect(within(candidatePreview).getByRole("button", { name: "Play Audio" })).toBeInTheDocument()
-    expect(candidatePreview.querySelector("audio")?.getAttribute("src")).toBe(
+    expect(document.querySelector("audio")?.getAttribute("src")).toBe(
       "/api/sample-processing/jobs/job-prepare/candidates/candidate-1/result"
     )
   })

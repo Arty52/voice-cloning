@@ -3,10 +3,14 @@ import * as SliderPrimitive from "@radix-ui/react-slider"
 
 import { cn } from "@/lib/utils"
 
+type SliderProps = React.ComponentPropsWithoutRef<typeof SliderPrimitive.Root> & {
+  "aria-label"?: string
+}
+
 const Slider = React.forwardRef<
   React.ComponentRef<typeof SliderPrimitive.Root>,
-  React.ComponentPropsWithoutRef<typeof SliderPrimitive.Root>
->(function Slider({ className, defaultValue, value, min = 0, max = 100, ...props }, ref) {
+  SliderProps
+>(function Slider({ "aria-label": ariaLabel, className, defaultValue, value, min = 0, max = 100, ...props }, ref) {
   const _values = React.useMemo(
     () =>
       Array.isArray(value)
@@ -19,6 +23,7 @@ const Slider = React.forwardRef<
 
   return (
     <SliderPrimitive.Root
+      aria-label={ariaLabel}
       data-slot="slider"
       ref={ref}
       defaultValue={defaultValue}
@@ -46,6 +51,7 @@ const Slider = React.forwardRef<
       </SliderPrimitive.Track>
       {Array.from({ length: _values.length }, (_, index) => (
         <SliderPrimitive.Thumb
+          aria-label={ariaLabel}
           data-slot="slider-thumb"
           key={index}
           className="block size-4 shrink-0 rounded-full border border-primary bg-background shadow-sm ring-ring/50 transition-[color,box-shadow] hover:ring-4 focus-visible:ring-4 focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50"

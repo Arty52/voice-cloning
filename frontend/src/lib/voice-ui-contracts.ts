@@ -26,6 +26,7 @@ export type PlaybackSnapshot = {
   durationSeconds: number | null
   error: string | null
   loadState: PlaybackLoadState
+  playbackRate: number
   source: PlaybackSource | null
   status: PlaybackStatus
 }
@@ -36,6 +37,7 @@ export type PlaybackIntent =
   | { type: "play" }
   | { source: PlaybackSource | null; type: "replaceSource" }
   | { positionSeconds: number; type: "seek" }
+  | { playbackRate: number; type: "setPlaybackRate" }
   | { seconds: number; type: "skip" }
   | { type: "toggle" }
   | { endSeconds: number; startSeconds: number; type: "playRange" }
