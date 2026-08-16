@@ -1,7 +1,7 @@
-import { type CSSProperties, useEffect, useRef, useState } from "react"
+import { type CSSProperties, useMemo, useState } from "react"
 import { Download, Play, Save } from "lucide-react"
 
-import { AudioPlayer } from "@/components/audio-player"
+import { PlaybackControls } from "@/components/audio-player"
 import { VoicePresetToggleGroup } from "@/components/voice-preset-toggle-group"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -26,6 +26,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Textarea } from "@/components/ui/textarea"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import type { SpeakerTranscriptController } from "@/hooks/use-speaker-transcript"
+import { useTranscriptPlayback } from "@/hooks/use-transcript-playback"
 import { downloadTranscript, type TranscriptExportFormat } from "@/lib/transcript-export"
 import { cn } from "@/lib/utils"
 import type {
@@ -56,51 +57,32 @@ export function SpeakerTranscriptWorkspace({
   job,
   voicePresets,
 }: SpeakerTranscriptWorkspaceProps) {
-  const sourceAudioRef = useRef<HTMLAudioElement | null>(null)
-  const playbackEndRef = useRef<number | null>(null)
   const [dragStartItemId, setDragStartItemId] = useState<string | null>(null)
   const [hoveredSpeakerId, setHoveredSpeakerId] = useState<string | null>(null)
   const [isSpeakerSaveDialogOpen, setSpeakerSaveDialogOpen] = useState(false)
   const [exportFormat, setExportFormat] = useState<TranscriptExportFormat>("markdown")
   const [includeStartTimes, setIncludeStartTimes] = useState(false)
   const speakerResult = controller.speakerSeparationResult
+  const speakerLabels = useMemo(
+    () => Object.fromEntries((speakerResult?.speakers ?? []).map((speaker) => [speaker.id, speaker.label])),
+    [speakerResult],
+  )
+  const playback = useTranscriptPlayback({
+    isActive: speakerResult !== null && job !== null,
+    jobId: job?.id ?? null,
+    sourceLabel: job?.sourceFilename || job?.sourceName || "Transcript",
+    sourceUrl: controller.speakerSourceUrl,
+    speakerLabels,
+    speakerResultUrls: controller.speakerResultUrls,
+  })
   const selectedSpeakers =
     speakerResult?.speakers.filter((speaker) => controller.selectedSpeakerIds.includes(speaker.id)) ?? []
-
-  useEffect(() => {
-    const audio = sourceAudioRef.current
-    if (!audio) {
-      return
-    }
-    const audioElement = audio
-    function handleTimeUpdate() {
-      const endSeconds = playbackEndRef.current
-      if (endSeconds !== null && audioElement.currentTime >= endSeconds) {
-        audioElement.pause()
-        playbackEndRef.current = null
-      }
-    }
-    audioElement.addEventListener("timeupdate", handleTimeUpdate)
-    return () => audioElement.removeEventListener("timeupdate", handleTimeUpdate)
-  }, [controller.speakerSourceUrl])
 
   if (!speakerResult || !job) {
     return null
   }
   const activeJob = job
   const activeSpeakerResult = speakerResult
-
-  function playTranscriptItem(item: SpeakerTranscriptItem) {
-    const audio = sourceAudioRef.current
-    if (!audio || !controller.speakerSourceUrl) {
-      return
-    }
-    playbackEndRef.current = item.endSeconds
-    audio.currentTime = item.startSeconds
-    void audio.play().catch(() => {
-      playbackEndRef.current = null
-    })
-  }
 
   function updateTranscriptSelectionThrough(itemId: string) {
     if (!speakerResult || !dragStartItemId) {
@@ -143,7 +125,6 @@ export function SpeakerTranscriptWorkspace({
 
   return (
     <Card aria-label="Speaker Transcript Workspace" className="p-3 shadow-none sm:p-3">
-      <audio aria-hidden="true" ref={sourceAudioRef} src={controller.speakerSourceUrl ?? undefined} />
       <CardHeader className="flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <CardTitle>Speaker Streams</CardTitle>
@@ -193,10 +174,12 @@ export function SpeakerTranscriptWorkspace({
                       <Badge variant="secondary">{speaker.transcriptItemIds.length} Segments</Badge>
                     </CardHeader>
                     <CardContent className="gap-3">
-                      {controller.speakerResultUrls[speaker.id] ? (
-                        <AudioPlayer
+                      {playback.sources.get(`speaker:${speaker.id}`) ? (
+                        <PlaybackControls
                           ariaLabel={`${speaker.label} preview`}
-                          src={controller.speakerResultUrls[speaker.id]}
+                          controller={playback.controller}
+                          onActivate={() => playback.activate(`speaker:${speaker.id}`)}
+                          source={playback.sources.get(`speaker:${speaker.id}`)!}
                         />
                       ) : null}
                       <FieldGroup>
@@ -290,7 +273,7 @@ export function SpeakerTranscriptWorkspace({
                             <PopoverTitle>{speaker?.label ?? "Speaker"}</PopoverTitle>
                           </PopoverHeader>
                           <div className="mt-3 flex flex-col gap-3">
-                            <Button onClick={() => playTranscriptItem(item)} size="sm" type="button" variant="secondary">
+                            <Button onClick={() => playback.playTranscriptItem(item)} size="sm" type="button" variant="secondary">
                               <Play aria-hidden="true" className="size-4" />
                               Play
                             </Button>

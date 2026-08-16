@@ -4,6 +4,7 @@ import { useState } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { useSpeakerTranscript } from "@/hooks/use-speaker-transcript"
+import { PlaybackControllerProvider } from "@/hooks/use-playback-controller"
 import * as api from "@/lib/api"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import type { SampleProcessingJob, SpeakerSeparationResult } from "@/types"
@@ -63,7 +64,7 @@ const voicePresets = [
   { id: "animatedDialogue" as const, label: "Animated Dialogue", description: "Expressive dialogue." },
 ]
 
-function TestWorkspace() {
+function Workspace() {
   const [activeJob, setActiveJob] = useState(job)
   const controller = useSpeakerTranscript({
     job: activeJob,
@@ -77,16 +78,24 @@ function TestWorkspace() {
   )
 }
 
+function TestWorkspace() {
+  return (
+    <PlaybackControllerProvider>
+      <Workspace />
+    </PlaybackControllerProvider>
+  )
+}
+
 function TestWorkspacePair() {
   return (
-    <>
+    <PlaybackControllerProvider>
       <div data-testid="workspace-one">
-        <TestWorkspace />
+        <Workspace />
       </div>
       <div data-testid="workspace-two">
-        <TestWorkspace />
+        <Workspace />
       </div>
-    </>
+    </PlaybackControllerProvider>
   )
 }
 
@@ -190,5 +199,23 @@ describe("SpeakerTranscriptWorkspace", () => {
 
     await waitFor(() => expect(firstWorkspace.queryByText("1 Selected")).not.toBeInTheDocument())
     expect(secondWorkspace.getByText("1 Selected")).toBeInTheDocument()
+  })
+
+  it("routes speaker previews and dialogue ranges through the single shared media element", async () => {
+    const user = userEvent.setup()
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined)
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined)
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined)
+
+    render(<TestWorkspace />)
+
+    expect(document.querySelectorAll("audio")).toHaveLength(1)
+    const morganPreview = screen.getByRole("group", { name: "Speaker 1 preview" })
+    await user.click(within(morganPreview).getByRole("button", { name: "Play Audio" }))
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalledOnce()
+
+    await user.click(screen.getByRole("button", { name: "Hello there." }))
+    await user.click(screen.getByRole("button", { name: "Play" }))
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(2)
   })
 })
