@@ -1,5 +1,5 @@
 import { Check, Pause, Play, Volume2 } from "lucide-react"
-import { useMemo, useState, type ReactNode } from "react"
+import { useId, useMemo, useState, type ReactNode } from "react"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -147,13 +147,14 @@ function VoicePickerOptions({
   selectedVoiceId,
 }: Pick<VoicePickerProps, "onSelect" | "options" | "preview" | "selectedVoiceId">) {
   const [query, setQuery] = useState("")
-  const normalizedQuery = query.trim().toLocaleLowerCase()
+  const searchInputId = useId()
+  const normalizedQuery = query.trim().toLowerCase()
   const filteredOptions = useMemo(
     () =>
       options.filter((option) =>
         [option.name, option.description ?? "", ...option.metadata]
           .join(" ")
-          .toLocaleLowerCase()
+          .toLowerCase()
           .includes(normalizedQuery),
       ),
     [normalizedQuery, options],
@@ -163,11 +164,11 @@ function VoicePickerOptions({
   return (
     <div className="flex min-h-0 flex-col gap-3">
       <Field>
-        <FieldLabel className="sr-only" htmlFor="voice-picker-search">
+        <FieldLabel className="sr-only" htmlFor={searchInputId}>
           Search voices
         </FieldLabel>
         <Input
-          id="voice-picker-search"
+          id={searchInputId}
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Search voices"
           type="search"
