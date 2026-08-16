@@ -43,8 +43,11 @@ export function AudioWindowCropper({
   const activeSource = playbackController.snapshot.source
   const isCurrentSource = activeSource?.id === source.id && activeSource.url === source.url
   const activeRange = playbackController.snapshot.activeRange
-  const isSelectionActive =
-    activeRange?.startSeconds === window.startSeconds && activeRange.endSeconds === windowEndSeconds
+  const expectedRange = clampToPlaybackDuration(
+    { endSeconds: windowEndSeconds, startSeconds: window.startSeconds },
+    playbackController.snapshot.durationSeconds
+  )
+  const isSelectionActive = activeRange !== null && rangesMatch(activeRange, expectedRange)
   const isPreviewing = isCurrentSource && isSelectionActive && playbackController.snapshot.status === "playing"
 
   useEffect(() => {
@@ -138,5 +141,22 @@ export function AudioWindowCropper({
         </Button>
       </div>
     </div>
+  )
+}
+
+const RANGE_TOLERANCE_SECONDS = 0.01
+
+function clampToPlaybackDuration(range: { endSeconds: number; startSeconds: number }, durationSeconds: number | null) {
+  const clamp = (seconds: number) => (durationSeconds === null ? Math.max(0, seconds) : Math.min(Math.max(0, seconds), durationSeconds))
+  return { endSeconds: clamp(range.endSeconds), startSeconds: clamp(range.startSeconds) }
+}
+
+function rangesMatch(
+  activeRange: { endSeconds: number; startSeconds: number },
+  expectedRange: { endSeconds: number; startSeconds: number }
+) {
+  return (
+    Math.abs(activeRange.startSeconds - expectedRange.startSeconds) <= RANGE_TOLERANCE_SECONDS &&
+    Math.abs(activeRange.endSeconds - expectedRange.endSeconds) <= RANGE_TOLERANCE_SECONDS
   )
 }

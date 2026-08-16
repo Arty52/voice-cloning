@@ -134,15 +134,22 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
     audioRef.current?.pause()
   }, [])
 
+  const clearRange = useCallback(() => {
+    if (!rangeRef.current) {
+      return
+    }
+    rangeRef.current = null
+    updateSnapshot((current) => ({ ...current, activeRange: null }))
+  }, [updateSnapshot])
+
   const play = useCallback(async (preserveRange = false) => {
     const audio = audioRef.current
     const source = snapshotRef.current.source
     if (!audio || !source) {
       return
     }
-    if (!preserveRange && rangeRef.current) {
-      rangeRef.current = null
-      updateSnapshot((current) => ({ ...current, activeRange: null }))
+    if (!preserveRange) {
+      clearRange()
     }
     const request: PlaybackRequest = {
       request: playRequestRef.current + 1,
@@ -170,7 +177,7 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
         }))
       }
     }
-  }, [updateSnapshot])
+  }, [clearRange, updateSnapshot])
 
   const seek = useCallback(
     (positionSeconds: number) => {
@@ -230,6 +237,9 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
         case "clear":
           clear()
           return
+        case "clearRange":
+          clearRange()
+          return
         case "pause":
           pause()
           return
@@ -259,7 +269,7 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
           playRange(intent.startSeconds, intent.endSeconds)
       }
     },
-    [clear, pause, play, playRange, replaceSource, seek, setPlaybackRate]
+    [clear, clearRange, pause, play, playRange, replaceSource, seek, setPlaybackRate]
   )
 
   const clearOwner = useCallback(

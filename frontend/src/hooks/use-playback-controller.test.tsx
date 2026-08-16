@@ -208,6 +208,25 @@ describe("usePlaybackController", () => {
     expect(result.current.snapshot).toMatchObject({ currentTimeSeconds: 12, status: "paused" })
   })
 
+  it("clears a selection endpoint before a full-source seek or skip", () => {
+    const { result } = renderHook(() => usePlaybackController(), { wrapper })
+    const audio = document.querySelector("audio")
+    if (!audio) {
+      throw new Error("Expected the shared media element.")
+    }
+    Object.defineProperty(audio, "duration", { configurable: true, value: 30 })
+
+    act(() => {
+      result.current.dispatch({ source: firstSource, type: "replaceSource" })
+      result.current.dispatch({ endSeconds: 12, startSeconds: 8, type: "playRange" })
+      result.current.dispatch({ type: "clearRange" })
+      result.current.dispatch({ seconds: 10, type: "skip" })
+    })
+
+    expect(result.current.snapshot.activeRange).toBeNull()
+    expect(audio.currentTime).toBe(18)
+  })
+
   it("reports autoplay rejection and media loading errors as controlled state", async () => {
     vi.mocked(HTMLMediaElement.prototype.play).mockRejectedValueOnce(new Error("Blocked"))
     const { result } = renderHook(() => usePlaybackController(), { wrapper })

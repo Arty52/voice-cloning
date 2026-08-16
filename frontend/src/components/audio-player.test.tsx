@@ -3,8 +3,16 @@ import userEvent from "@testing-library/user-event"
 import type { ReactNode } from "react"
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { PlaybackControllerProvider } from "@/hooks/use-playback-controller"
-import { AudioPlayer } from "./audio-player"
+import { PlaybackControllerProvider, usePlaybackController } from "@/hooks/use-playback-controller"
+import type { PlaybackSource } from "@/lib/voice-ui-contracts"
+import { AudioPlayer, PlaybackControls } from "./audio-player"
+
+const controlledSource: PlaybackSource = {
+  id: "controlled-source",
+  kind: "voicePreview",
+  label: "Controlled preview",
+  url: "blob:controlled-preview",
+}
 
 function renderPlayer(player: ReactNode) {
   return render(<PlaybackControllerProvider>{player}</PlaybackControllerProvider>)
@@ -16,6 +24,24 @@ function getSharedAudio() {
     throw new Error("Expected the shared media element.")
   }
   return audio
+}
+
+function ControlledPlayback({ onBeforeSeek }: { onBeforeSeek: () => void }) {
+  const controller = usePlaybackController()
+  return (
+    <>
+      <button onClick={() => controller.dispatch({ source: controlledSource, type: "replaceSource" })} type="button">
+        Load Controlled Source
+      </button>
+      <PlaybackControls
+        ariaLabel="Controlled preview"
+        controller={controller}
+        onActivate={() => controller.dispatch({ source: controlledSource, type: "replaceSource" })}
+        onBeforeSeek={onBeforeSeek}
+        source={controlledSource}
+      />
+    </>
+  )
 }
 
 describe("AudioPlayer", () => {
@@ -75,6 +101,19 @@ describe("AudioPlayer", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /pause audio/i }))
     expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled()
+  })
+
+  it("runs a surface-specific transition before full-preview seek controls", () => {
+    const onBeforeSeek = vi.fn()
+    renderPlayer(<ControlledPlayback onBeforeSeek={onBeforeSeek} />)
+    const audio = getSharedAudio()
+    fireEvent.click(screen.getByRole("button", { name: "Load Controlled Source" }))
+    Object.defineProperty(audio, "duration", { configurable: true, value: 30 })
+    fireEvent.loadedMetadata(audio)
+
+    fireEvent.click(screen.getByRole("button", { name: "Forward 10 Seconds" }))
+
+    expect(onBeforeSeek).toHaveBeenCalledOnce()
   })
 
   it("announces controlled loading and errors for the active source", () => {

@@ -210,6 +210,7 @@ export function AddVoicePanel({
                 ariaLabel={voiceSampleInputMode === "record" ? "Recorded voice sample preview" : "Uploaded voice sample preview"}
                 controller={playback.controller}
                 onActivate={playback.activate}
+                onBeforeSeek={() => playback.controller.dispatch({ type: "clearRange" })}
                 source={playback.source}
               />
             </div>

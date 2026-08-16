@@ -40,6 +40,7 @@ export type PlaybackRange = {
 
 export type PlaybackIntent =
   | { type: "clear" }
+  | { type: "clearRange" }
   | { type: "pause" }
   | { type: "play" }
   | { source: PlaybackSource | null; type: "replaceSource" }

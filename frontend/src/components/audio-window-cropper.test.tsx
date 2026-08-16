@@ -107,6 +107,7 @@ describe("AudioWindowCropper", () => {
     const { rerender } = render(
       <PlaybackControllerProvider>
         <CropperWithWindow window={{ durationSeconds: 10, startSeconds: 4 }} />
+        <SourceActivator />
         <SelectionPreviewActivator />
       </PlaybackControllerProvider>
     )
@@ -115,6 +116,7 @@ describe("AudioWindowCropper", () => {
       throw new Error("Expected the shared media controller.")
     }
 
+    fireEvent.click(screen.getByRole("button", { name: "Load Preview Source" }))
     fireEvent.click(screen.getByRole("button", { name: "Start Selection Preview" }))
     fireEvent.play(audio)
     vi.mocked(HTMLMediaElement.prototype.pause).mockClear()
@@ -128,6 +130,30 @@ describe("AudioWindowCropper", () => {
 
     await waitFor(() => expect(HTMLMediaElement.prototype.pause).toHaveBeenCalledOnce())
     expect(screen.getByRole("button", { name: "Play Selection" })).toBeInTheDocument()
+  })
+
+  it("keeps a selection active when browser metadata clamps its end", async () => {
+    render(
+      <PlaybackControllerProvider>
+        <CropperHarness />
+        <SourceActivator />
+        <SelectionPreviewActivator />
+      </PlaybackControllerProvider>
+    )
+    const audio = document.querySelector("audio")
+    if (!audio) {
+      throw new Error("Expected the shared media controller.")
+    }
+    fireEvent.click(screen.getByRole("button", { name: "Load Preview Source" }))
+    Object.defineProperty(audio, "duration", { configurable: true, value: 9.995 })
+    fireEvent.loadedMetadata(audio)
+    vi.mocked(HTMLMediaElement.prototype.pause).mockClear()
+
+    fireEvent.click(screen.getByRole("button", { name: "Start Selection Preview" }))
+    fireEvent.play(audio)
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Pause Selection" })).toBeInTheDocument())
+    expect(HTMLMediaElement.prototype.pause).not.toHaveBeenCalled()
   })
 })
 
@@ -151,12 +177,20 @@ function SelectionPreviewActivator() {
   return (
     <button
       onClick={() => {
-        controller.dispatch({ source, type: "replaceSource" })
         controller.dispatch({ endSeconds: 14, startSeconds: 4, type: "playRange" })
       }}
       type="button"
     >
       Start Selection Preview
+    </button>
+  )
+}
+
+function SourceActivator() {
+  const controller = usePlaybackController()
+  return (
+    <button onClick={() => controller.dispatch({ source, type: "replaceSource" })} type="button">
+      Load Preview Source
     </button>
   )
 }
