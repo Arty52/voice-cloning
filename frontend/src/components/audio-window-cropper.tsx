@@ -1,3 +1,4 @@
+import { useEffect } from "react"
 import { Pause, Play } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -46,6 +47,15 @@ export function AudioWindowCropper({
     activeRange?.startSeconds === window.startSeconds && activeRange.endSeconds === windowEndSeconds
   const isPreviewing = isCurrentSource && isSelectionActive && playbackController.snapshot.status === "playing"
 
+  useEffect(() => {
+    // A changed crop window must never leave the old bounded preview playing.
+    // The controller has no intent for updating a running range; cancellation
+    // keeps the media and visible selection coherent.
+    if (isCurrentSource && activeRange && playbackController.snapshot.status === "playing" && !isSelectionActive) {
+      playbackController.dispatch({ type: "pause" })
+    }
+  }, [activeRange, isCurrentSource, isSelectionActive, playbackController])
+
   function handlePreviewToggle() {
     if (isPreviewing) {
       playbackController.dispatch({ type: "pause" })
@@ -55,6 +65,17 @@ export function AudioWindowCropper({
       return
     }
     playbackController.dispatch({ endSeconds: windowEndSeconds, startSeconds: window.startSeconds, type: "playRange" })
+  }
+
+  function handleWindowChange(range: number[]) {
+    const nextWindow = normalizeAudioWindowRange(range, durationSeconds, maxWindowSeconds)
+    if (
+      isPreviewing &&
+      (nextWindow.startSeconds !== window.startSeconds || audioWindowEndSeconds(nextWindow) !== windowEndSeconds)
+    ) {
+      playbackController.dispatch({ type: "pause" })
+    }
+    onWindowChange(nextWindow)
   }
 
   return (
@@ -84,7 +105,7 @@ export function AudioWindowCropper({
           max={durationSeconds}
           min={0}
           minStepsBetweenThumbs={1}
-          onValueChange={(range) => onWindowChange(normalizeAudioWindowRange(range, durationSeconds, maxWindowSeconds))}
+          onValueChange={handleWindowChange}
           step={0.1}
           value={[window.startSeconds, windowEndSeconds]}
         />

@@ -26,7 +26,15 @@ function CropperHarness({ onActivate = vi.fn() }: { onActivate?: () => void }) {
   )
 }
 
-function Cropper({ controller, onActivate }: { controller: PlaybackController; onActivate: () => boolean }) {
+function Cropper({
+  controller,
+  onActivate,
+  window = { durationSeconds: 10, startSeconds: 4 },
+}: {
+  controller: PlaybackController
+  onActivate: () => boolean
+  window?: { durationSeconds: number; startSeconds: number }
+}) {
   return (
     <AudioWindowCropper
       durationSeconds={30}
@@ -39,7 +47,7 @@ function Cropper({ controller, onActivate }: { controller: PlaybackController; o
       recommendedMinSeconds={5}
       sampleMode="excerpt"
       source={source}
-      window={{ durationSeconds: 10, startSeconds: 4 }}
+      window={window}
     />
   )
 }
@@ -94,6 +102,33 @@ describe("AudioWindowCropper", () => {
     expect(audio.currentTime).toBe(4)
     expect(screen.getByRole("button", { name: "Pause Selection" })).toBeInTheDocument()
   })
+
+  it("pauses a stale selection preview when its window changes", async () => {
+    const { rerender } = render(
+      <PlaybackControllerProvider>
+        <CropperWithWindow window={{ durationSeconds: 10, startSeconds: 4 }} />
+        <SelectionPreviewActivator />
+      </PlaybackControllerProvider>
+    )
+    const audio = document.querySelector("audio")
+    if (!audio) {
+      throw new Error("Expected the shared media controller.")
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: "Start Selection Preview" }))
+    fireEvent.play(audio)
+    vi.mocked(HTMLMediaElement.prototype.pause).mockClear()
+
+    rerender(
+      <PlaybackControllerProvider>
+        <CropperWithWindow window={{ durationSeconds: 10, startSeconds: 5 }} />
+        <SelectionPreviewActivator />
+      </PlaybackControllerProvider>
+    )
+
+    await waitFor(() => expect(HTMLMediaElement.prototype.pause).toHaveBeenCalledOnce())
+    expect(screen.getByRole("button", { name: "Play Selection" })).toBeInTheDocument()
+  })
 })
 
 function FullPreviewActivator() {
@@ -109,4 +144,24 @@ function FullPreviewActivator() {
       Start Full Preview
     </button>
   )
+}
+
+function SelectionPreviewActivator() {
+  const controller = usePlaybackController()
+  return (
+    <button
+      onClick={() => {
+        controller.dispatch({ source, type: "replaceSource" })
+        controller.dispatch({ endSeconds: 14, startSeconds: 4, type: "playRange" })
+      }}
+      type="button"
+    >
+      Start Selection Preview
+    </button>
+  )
+}
+
+function CropperWithWindow({ window }: { window: { durationSeconds: number; startSeconds: number } }) {
+  const controller = usePlaybackController()
+  return <Cropper controller={controller} onActivate={() => true} window={window} />
 }
