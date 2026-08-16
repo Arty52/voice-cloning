@@ -3,6 +3,7 @@ import type { ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { PlaybackControllerProvider } from "@/hooks/use-playback-controller"
+import { generatedSegmentToPlaybackSource } from "@/lib/voice-ui-adapters"
 import { useGeneratedAudioPlayback } from "./use-generated-audio-playback"
 import type { GeneratedResult } from "@/types"
 
@@ -58,10 +59,34 @@ describe("useGeneratedAudioPlayback", () => {
       id: "generated-audio:generated-1",
       url: item.url,
     })
-    expect(result.current.itemSources.get(item.id)).toBe(result.current.itemSources.get(item.id))
+    const firstItemSources = result.current.itemSources
+    rerender(initialProps)
+    expect(result.current.itemSources).toBe(firstItemSources)
 
     rerender({ items: [], latestItem: null })
     await waitFor(() => expect(result.current.controller.snapshot.source).toBeNull())
+  })
+
+  it("refreshes an active generated result when archive storage rotates its object URL", async () => {
+    const initialProps: { items: GeneratedResult[]; latestItem: GeneratedResult | null } = {
+      items: [item],
+      latestItem: null,
+    }
+    const { result, rerender } = renderHook(
+      ({ items, latestItem }: { items: GeneratedResult[]; latestItem: GeneratedResult | null }) =>
+        useGeneratedAudioPlayback({ items, latestItem, segmentResultUrls: {} }),
+      { initialProps, wrapper },
+    )
+
+    act(() => expect(result.current.activateItem(item.id)).toBe(true))
+    rerender({ items: [{ ...item, url: "blob:generated-1-refreshed" }], latestItem: null })
+
+    await waitFor(() =>
+      expect(result.current.controller.snapshot.source).toMatchObject({
+        id: "generated-audio:generated-1",
+        url: "blob:generated-1-refreshed",
+      }),
+    )
   })
 
   it("uses a distinct stable source for the latest dialogue segment", () => {
@@ -100,6 +125,22 @@ describe("useGeneratedAudioPlayback", () => {
     act(() => expect(result.current.activateSegment("segment-1")).toBe(true))
     expect(result.current.controller.snapshot.source).toMatchObject({
       id: "generated-audio:generated-1:segment:segment-1",
+      url: "blob:segment-1",
+    })
+  })
+
+  it("normalizes generated segment source identifiers and URLs", () => {
+    expect(
+      generatedSegmentToPlaybackSource({
+        generatedAudioId: " generated-1 ",
+        label: " Segment 1 ",
+        segmentId: " segment-1 ",
+        url: " blob:segment-1 ",
+      }),
+    ).toEqual({
+      id: "generated-audio:generated-1:segment:segment-1",
+      kind: "generatedAudio",
+      label: "Segment 1",
       url: "blob:segment-1",
     })
   })

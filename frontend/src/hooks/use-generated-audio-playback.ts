@@ -44,14 +44,18 @@ export function useGeneratedAudioPlayback({ items, latestItem, segmentResultUrls
 
   useEffect(() => {
     const activeSource = snapshot.source
-    if (
-      activeSource?.kind === "generatedAudio" &&
-      activeSource.id.startsWith("generated-audio:") &&
-      ![...itemSources.values(), ...segmentSources.values()].some(
-        (source) => source?.id === activeSource.id && source.url === activeSource.url,
-      )
-    ) {
+    if (activeSource?.kind !== "generatedAudio" || !activeSource.id.startsWith("generated-audio:")) {
+      return
+    }
+    const currentSource = [...itemSources.values(), ...segmentSources.values()].find(
+      (source) => source?.id === activeSource.id,
+    )
+    if (!currentSource) {
       replaceSource(null)
+      return
+    }
+    if (currentSource.url !== activeSource.url) {
+      replaceSource(currentSource)
     }
   }, [itemSources, replaceSource, segmentSources, snapshot.source])
 

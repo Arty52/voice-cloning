@@ -81,14 +81,18 @@ export function generatedSegmentToPlaybackSource({
   segmentId: string
   url: string
 }): PlaybackSource | null {
-  if (!generatedAudioId.trim() || !segmentId.trim() || !url.trim()) {
+  const normalizedGeneratedAudioId = generatedAudioId.trim()
+  const normalizedSegmentId = segmentId.trim()
+  const normalizedLabel = label.trim()
+  const normalizedUrl = url.trim()
+  if (!normalizedGeneratedAudioId || !normalizedSegmentId || !normalizedUrl) {
     return null
   }
   return {
-    id: `generated-audio:${generatedAudioId}:segment:${segmentId}`,
+    id: `generated-audio:${normalizedGeneratedAudioId}:segment:${normalizedSegmentId}`,
     kind: "generatedAudio",
-    label,
-    url,
+    label: normalizedLabel || "Generated Segment Playback",
+    url: normalizedUrl,
   }
 }
 
