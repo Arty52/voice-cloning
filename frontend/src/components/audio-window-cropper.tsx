@@ -1,5 +1,4 @@
 import { Pause, Play } from "lucide-react"
-import { useRef, useState } from "react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -7,18 +6,21 @@ import { Slider } from "@/components/ui/slider"
 import { audioWindowEndSeconds, normalizeAudioWindowRange, type AudioWindow } from "@/lib/audio-window"
 import { formatRecordingDuration } from "@/lib/formatters"
 import { cn } from "@/lib/utils"
+import type { PlaybackController, PlaybackSource } from "@/lib/voice-ui-contracts"
 import type { VoiceSampleMode } from "@/types"
 
 type AudioWindowCropperProps = {
   disabled?: boolean
   durationSeconds: number
   maxWindowSeconds: number
+  playbackController: PlaybackController
+  onActivatePlayback: () => boolean
   onSampleModeChange: (mode: VoiceSampleMode) => void
   onWindowChange: (window: AudioWindow) => void
   recommendedMaxSeconds: number
   recommendedMinSeconds: number
   sampleMode: VoiceSampleMode
-  sourceUrl: string
+  source: PlaybackSource
   window: AudioWindow
 }
 
@@ -26,60 +28,34 @@ export function AudioWindowCropper({
   disabled = false,
   durationSeconds,
   maxWindowSeconds,
+  playbackController,
+  onActivatePlayback,
   onSampleModeChange,
   onWindowChange,
   recommendedMaxSeconds,
   recommendedMinSeconds,
   sampleMode,
-  sourceUrl,
+  source,
   window,
 }: AudioWindowCropperProps) {
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-  const [isPreviewing, setIsPreviewing] = useState(false)
   const windowEndSeconds = audioWindowEndSeconds(window)
+  const activeSource = playbackController.snapshot.source
+  const isCurrentSource = activeSource?.id === source.id && activeSource.url === source.url
+  const isPreviewing = isCurrentSource && playbackController.snapshot.status === "playing"
 
-  async function handlePreviewToggle() {
-    const audio = audioRef.current
-    if (!audio) {
-      return
-    }
+  function handlePreviewToggle() {
     if (isPreviewing) {
-      audio.pause()
-      setIsPreviewing(false)
+      playbackController.dispatch({ type: "pause" })
       return
     }
-    audio.currentTime = window.startSeconds
-    try {
-      await audio.play()
-      setIsPreviewing(true)
-    } catch {
-      setIsPreviewing(false)
-    }
-  }
-
-  function handleTimeUpdate() {
-    const audio = audioRef.current
-    if (!audio) {
+    if (!isCurrentSource && !onActivatePlayback()) {
       return
     }
-    if (audio.currentTime >= windowEndSeconds) {
-      audio.pause()
-      audio.currentTime = window.startSeconds
-      setIsPreviewing(false)
-    }
+    playbackController.dispatch({ endSeconds: windowEndSeconds, startSeconds: window.startSeconds, type: "playRange" })
   }
 
   return (
     <div className="flex flex-col gap-3 rounded-md border border-border bg-background/60 p-3">
-      <audio
-        onEnded={() => setIsPreviewing(false)}
-        onPause={() => setIsPreviewing(false)}
-        onPlay={() => setIsPreviewing(true)}
-        onTimeUpdate={handleTimeUpdate}
-        preload="metadata"
-        ref={audioRef}
-        src={sourceUrl}
-      />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap gap-2">
           <Badge>{formatRecordingDuration(window.durationSeconds)} Selected</Badge>

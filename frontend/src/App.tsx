@@ -21,6 +21,7 @@ import { useScrollIntoViewOnSignal } from "@/hooks/use-scroll-into-view-on-signa
 import { useVoiceLibraryPlayback } from "@/hooks/use-voice-library-playback"
 import { useGeneratedAudioPlayback } from "@/hooks/use-generated-audio-playback"
 import { usePrepareAudioPlayback } from "@/hooks/use-prepare-audio-playback"
+import { useAddVoicePlayback } from "@/hooks/use-add-voice-playback"
 import { useVoiceStudioController } from "@/hooks/use-voice-studio-controller"
 import type { GeneratedAudioScriptSnapshot } from "@/types"
 
@@ -132,6 +133,11 @@ function AppContents() {
     sourcePreview: sampleProcessing.mediaSource.preview,
     voices: sampleProcessing.sourceVoices,
   })
+  const addVoicePlayback = useAddVoicePlayback({
+    isActive: activeSectionId === "prepare" && visiblePrepareAudioWorkflow === "addVoice",
+    sourceLabel: voiceInput.voiceSampleInputMode === "record" ? "Recorded Voice Sample Preview" : "Uploaded Voice Sample Preview",
+    sourceUrl: voiceInput.uploadPreviewUrl,
+  })
   const generatedAudioAttentionRef = useScrollIntoViewOnSignal<HTMLElement>(generatedAudioAttentionSignal)
   const sampleProcessingAttentionRef = useScrollIntoViewOnSignal<HTMLDivElement>(sampleProcessingAttentionSignal)
 
@@ -184,6 +190,7 @@ function AppContents() {
           {visiblePrepareAudioWorkflow === "addVoice" ? (
             <AddVoicePanel
               canUpload={voiceInput.canUpload}
+              playback={addVoicePlayback}
               handleDiscardRecording={() => void voiceInput.handleDiscardRecording()}
               handleStartRecording={() => void voiceInput.handleStartRecording()}
               handleStopRecording={() => void voiceInput.handleStopRecording()}
