@@ -1,11 +1,29 @@
+import type { ComponentProps } from "react"
+
 import { fireEvent, render, screen, within } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { PlaybackControllerProvider } from "@/hooks/use-playback-controller"
+import { usePrepareAudioPlayback } from "@/hooks/use-prepare-audio-playback"
 import type { SampleProcessingController } from "@/hooks/use-sample-processing"
 import type { PreparedSamplesResult, SampleProcessingJob, VoicePreset } from "@/types"
 
 import { SampleProcessingPanel } from "./sample-processing-panel"
+
+function SampleProcessingPanelHarness(props: Omit<ComponentProps<typeof SampleProcessingPanel>, "playback">) {
+  const { processing } = props
+  const playback = usePrepareAudioPlayback({
+    candidateResultUrls: processing.candidateResultUrls,
+    isActive: true,
+    isEnabled: !processing.isProcessing,
+    jobId: processing.job?.id ?? null,
+    processedResultUrl: processing.resultUrl,
+    sourcePreview: processing.mediaSource.preview,
+    voices: processing.sourceVoices,
+  })
+  return <SampleProcessingPanel {...props} playback={playback} />
+}
 
 const voicePresets: VoicePreset[] = [
   {
@@ -207,15 +225,17 @@ describe("SampleProcessingPanel ranked candidates", () => {
     } as unknown as SampleProcessingController
 
     render(
-      <TooltipProvider>
-        <SampleProcessingPanel
+      <PlaybackControllerProvider>
+        <TooltipProvider>
+          <SampleProcessingPanelHarness
           isCollapsible={false}
           isExpanded={true}
           onToggleExpanded={vi.fn()}
           processing={processing}
           voicePresets={voicePresets}
-        />
-      </TooltipProvider>
+          />
+        </TooltipProvider>
+      </PlaybackControllerProvider>
     )
 
     expect(screen.getByText("Ranked Candidates")).toBeInTheDocument()
@@ -236,7 +256,7 @@ describe("SampleProcessingPanel ranked candidates", () => {
     expect(screen.getByText("Unable to add prepared voices.")).toBeInTheDocument()
 
     const candidatePreview = screen.getByRole("group", { name: "Speaker 1 candidate 1 preview" })
-    expect(within(candidatePreview).getByRole("button", { name: "Play Audio" })).toBeInTheDocument()
+    fireEvent.click(within(candidatePreview).getByRole("button", { name: "Play Audio" }))
     expect(document.querySelector("audio")?.getAttribute("src")).toBe(
       "/api/sample-processing/jobs/job-prepare/candidates/candidate-1/result"
     )
@@ -355,15 +375,17 @@ describe("SampleProcessingPanel ranked candidates", () => {
     } as unknown as SampleProcessingController
 
     render(
-      <TooltipProvider>
-        <SampleProcessingPanel
+      <PlaybackControllerProvider>
+        <TooltipProvider>
+          <SampleProcessingPanelHarness
           isCollapsible={false}
           isExpanded={true}
           onToggleExpanded={vi.fn()}
           processing={processing}
           voicePresets={voicePresets}
-        />
-      </TooltipProvider>
+          />
+        </TooltipProvider>
+      </PlaybackControllerProvider>
     )
 
     const chapterList = screen.getByRole("region", { name: "Chapter List" })
@@ -462,15 +484,17 @@ describe("SampleProcessingPanel ranked candidates", () => {
     } as unknown as SampleProcessingController
 
     render(
-      <TooltipProvider>
-        <SampleProcessingPanel
+      <PlaybackControllerProvider>
+        <TooltipProvider>
+          <SampleProcessingPanelHarness
           isCollapsible={false}
           isExpanded={true}
           onToggleExpanded={vi.fn()}
           processing={processing}
           voicePresets={voicePresets}
-        />
-      </TooltipProvider>
+          />
+        </TooltipProvider>
+      </PlaybackControllerProvider>
     )
 
     const inspectionText = screen.getByText("Inspecting Source")
@@ -598,15 +622,17 @@ describe("SampleProcessingPanel ranked candidates", () => {
     } as unknown as SampleProcessingController
 
     render(
-      <TooltipProvider>
-        <SampleProcessingPanel
+      <PlaybackControllerProvider>
+        <TooltipProvider>
+          <SampleProcessingPanelHarness
           isCollapsible={false}
           isExpanded={true}
           onToggleExpanded={vi.fn()}
           processing={processing}
           voicePresets={voicePresets}
-        />
-      </TooltipProvider>
+          />
+        </TooltipProvider>
+      </PlaybackControllerProvider>
     )
 
     const video = screen.getByLabelText("clip.mp4 Video Preview")

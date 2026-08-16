@@ -3,7 +3,6 @@ import {
   type FormEvent,
   type ReactNode,
   type RefObject,
-  useCallback,
   useEffect,
   useRef,
   useState,
@@ -31,7 +30,7 @@ import {
 } from "lucide-react"
 
 import { MediaFileDropZone } from "@/components/media-file-drop-zone"
-import { AudioPlayer } from "@/components/audio-player"
+import { PlaybackControls } from "@/components/audio-player"
 import { ProcessingTimeEstimate } from "@/components/processing-time-estimate"
 import { SpeakerTranscriptWorkspace } from "@/components/speaker-transcript-workspace"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -49,6 +48,7 @@ import { Slider } from "@/components/ui/slider"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { VoicePresetToggleGroup } from "@/components/voice-preset-toggle-group"
+import type { PrepareAudioPlayback } from "@/hooks/use-prepare-audio-playback"
 import type { SampleProcessingController } from "@/hooks/use-sample-processing"
 import { formatCompactBytes, formatElapsedTime, formatMediaDuration } from "@/lib/formatters"
 import { cn } from "@/lib/utils"
@@ -68,6 +68,7 @@ type SampleProcessingPanelProps = {
   isExpanded: boolean
   onAttentionRequest?: () => void
   onToggleExpanded: () => void
+  playback: PrepareAudioPlayback
   processing: SampleProcessingController
   voicePresets: { id: VoicePresetId; label: string; description: string }[]
 }
@@ -102,6 +103,7 @@ export function SampleProcessingPanel({
   isExpanded,
   onAttentionRequest = noopAttentionRequest,
   onToggleExpanded,
+  playback,
   processing,
   voicePresets,
 }: SampleProcessingPanelProps) {
@@ -112,7 +114,6 @@ export function SampleProcessingPanel({
   const statusLabel = panelStatusLabel(processing)
   const elapsedTimeLabel = panelElapsedTimeLabel(processing)
   const isDetailsVisible = isExpanded || !isCollapsible
-
   function handleStartProcessing(event: FormEvent<HTMLFormElement>) {
     if (processing.canStart) {
       onAttentionRequest()
@@ -178,7 +179,7 @@ export function SampleProcessingPanel({
 
           <form className="flex flex-col gap-3" onSubmit={handleStartProcessing}>
             <FieldGroup>
-              <SourceSelection processing={processing} voicePresets={voicePresets} />
+              <SourceSelection playback={playback} processing={processing} voicePresets={voicePresets} />
               <WorkflowStackSelection processing={processing} />
               <PrepareAdvancedOptions processing={processing} />
             </FieldGroup>
@@ -219,8 +220,8 @@ export function SampleProcessingPanel({
             </div>
           </form>
 
-          <SingleResultSave processing={processing} voicePresets={voicePresets} />
-          <PreparedCandidateResultSave processing={processing} voicePresets={voicePresets} />
+          <SingleResultSave playback={playback} processing={processing} voicePresets={voicePresets} />
+          <PreparedCandidateResultSave playback={playback} processing={processing} voicePresets={voicePresets} />
           <SpeakerTranscriptWorkspace controller={processing} job={processing.job} voicePresets={voicePresets} />
         </div>
       ) : null}
@@ -489,9 +490,11 @@ function PrepareToggle({
 }
 
 function SourceSelection({
+  playback,
   processing,
   voicePresets,
 }: {
+  playback: PrepareAudioPlayback
   processing: SampleProcessingController
   voicePresets: { id: VoicePresetId; label: string; description: string }[]
 }) {
@@ -551,6 +554,7 @@ function SourceSelection({
               disabled={processing.isProcessing}
               onSelectVoice={processing.setSourceVoiceId}
               onUseAudioFile={() => processing.handleSourceModeChange("upload")}
+              playback={playback}
               selectedVoiceId={processing.sourceVoiceId}
               voicePresets={voicePresets}
               voices={processing.sourceVoices}
@@ -573,7 +577,7 @@ function SourceSelection({
             selectedFileName={processing.sourceFile?.name ?? processing.mediaSource.source?.filename ?? null}
             selectedLabel={uploadCopy.selectedLabel}
           />
-          <MediaSourceSelection processing={processing} />
+          <MediaSourceSelection playback={playback} processing={processing} />
         </>
       )}
     </>
@@ -603,7 +607,13 @@ function sourceUploadCopy(kind: "audio" | "video") {
   }
 }
 
-function MediaSourceSelection({ processing }: { processing: SampleProcessingController }) {
+function MediaSourceSelection({
+  playback,
+  processing,
+}: {
+  playback: PrepareAudioPlayback
+  processing: SampleProcessingController
+}) {
   const media = processing.mediaSource
   const source = media.source
   const [failedVideoSourceId, setFailedVideoSourceId] = useState<string | null>(null)
@@ -686,7 +696,14 @@ function MediaSourceSelection({ processing }: { processing: SampleProcessingCont
           {media.preview ? (
             <div className="rounded-md border border-border bg-background/60 p-3">
               <div className="mb-2 text-sm font-medium">{media.preview.label} Preview</div>
-              <AudioPlayer ariaLabel={`${media.preview.label} preview`} src={media.preview.src} />
+              {playback.sources.get("source-preview") ? (
+                <PlaybackControls
+                  ariaLabel={`${media.preview.label} preview`}
+                  controller={playback.controller}
+                  onActivate={() => playback.activate("source-preview")}
+                  source={playback.sources.get("source-preview")!}
+                />
+              ) : null}
             </div>
           ) : null}
         </>
@@ -952,6 +969,7 @@ function SavedVoiceCarousel({
   disabled,
   onSelectVoice,
   onUseAudioFile,
+  playback,
   selectedVoiceId,
   voicePresets,
   voices,
@@ -959,20 +977,12 @@ function SavedVoiceCarousel({
   disabled: boolean
   onSelectVoice: (voiceId: string) => void
   onUseAudioFile: () => void
+  playback: PrepareAudioPlayback
   selectedVoiceId: string
   voicePresets: { id: VoicePresetId; label: string; description: string }[]
   voices: VoiceAsset[]
 }) {
   const carouselRef = useRef<HTMLDivElement | null>(null)
-  const [activePreviewVoiceId, setActivePreviewVoiceId] = useState<string | null>(null)
-  const handlePreviewStart = useCallback((voiceId: string) => {
-    setActivePreviewVoiceId(voiceId)
-  }, [])
-  const handlePreviewStop = useCallback((voiceId: string) => {
-    setActivePreviewVoiceId((currentVoiceId) => (currentVoiceId === voiceId ? null : currentVoiceId))
-  }, [])
-  const visibleActivePreviewVoiceId = disabled ? null : activePreviewVoiceId
-
   useEffect(() => {
     const carousel = carouselRef.current
     if (!carousel) {
@@ -998,10 +1008,8 @@ function SavedVoiceCarousel({
           disabled={disabled}
           isSelected={voice.id === selectedVoiceId}
           key={voice.id}
-          activePreviewVoiceId={visibleActivePreviewVoiceId}
-          onPreviewStart={handlePreviewStart}
-          onPreviewStop={handlePreviewStop}
           onSelectVoice={onSelectVoice}
+          playback={playback}
           voice={voice}
           voicePreset={voicePresetLabel(voicePresets, voice.voicePresetId)}
         />
@@ -1081,21 +1089,17 @@ function SavedVoiceEmptyCard() {
 }
 
 function SavedVoiceSourceCard({
-  activePreviewVoiceId,
   disabled,
   isSelected,
-  onPreviewStart,
-  onPreviewStop,
   onSelectVoice,
+  playback,
   voice,
   voicePreset,
 }: {
-  activePreviewVoiceId: string | null
   disabled: boolean
   isSelected: boolean
-  onPreviewStart: (voiceId: string) => void
-  onPreviewStop: (voiceId: string) => void
   onSelectVoice: (voiceId: string) => void
+  playback: PrepareAudioPlayback
   voice: VoiceAsset
   voicePreset: string
 }) {
@@ -1141,13 +1145,7 @@ function SavedVoiceSourceCard({
         ) : null}
         {isSelected ? <Check aria-label="Selected voice" className="absolute right-3 top-3 size-4 text-primary" /> : null}
       </button>
-      <CompactVoicePreviewButton
-        activePreviewVoiceId={activePreviewVoiceId}
-        disabled={disabled}
-        onPreviewStart={onPreviewStart}
-        onPreviewStop={onPreviewStop}
-        voice={voice}
-      />
+      <CompactVoicePreviewButton disabled={disabled} playback={playback} voice={voice} />
     </div>
   )
 }
@@ -1171,109 +1169,40 @@ function IncludedVoiceIndicator() {
 }
 
 function CompactVoicePreviewButton({
-  activePreviewVoiceId,
   disabled,
-  onPreviewStart,
-  onPreviewStop,
+  playback,
   voice,
 }: {
-  activePreviewVoiceId: string | null
   disabled: boolean
-  onPreviewStart: (voiceId: string) => void
-  onPreviewStop: (voiceId: string) => void
+  playback: PrepareAudioPlayback
   voice: VoiceAsset
 }) {
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-  const hasActivePlaybackRef = useRef(false)
-  const isPlaying = activePreviewVoiceId === voice.id
+  const voiceId = voice.id.trim()
+  const source = playback.sources.get(`voice:${voiceId}`)
+  const isCurrentSource =
+    source !== undefined &&
+    source.id === playback.controller.snapshot.source?.id &&
+    source.url === playback.controller.snapshot.source?.url
+  const isPlaying = isCurrentSource && playback.controller.snapshot.status === "playing"
 
-  const stopPreview = useCallback(
-    ({ reset = false, updateActive = true }: { reset?: boolean; updateActive?: boolean } = {}) => {
-      const audio = audioRef.current
-      if (audio && hasActivePlaybackRef.current) {
-        audio.pause()
-        if (reset) {
-          audio.currentTime = 0
-        }
-      }
-      hasActivePlaybackRef.current = false
-      if (updateActive) {
-        onPreviewStop(voice.id)
-      }
-    },
-    [onPreviewStop, voice.id]
-  )
-
-  useEffect(() => {
-    if (disabled && hasActivePlaybackRef.current) {
-      stopPreview({ reset: true })
-    }
-  }, [disabled, stopPreview])
-
-  useEffect(() => {
-    if (!isPlaying && hasActivePlaybackRef.current) {
-      stopPreview({ reset: true, updateActive: false })
-    }
-  }, [isPlaying, stopPreview])
-
-  useEffect(
-    () => {
-      const audio = audioRef.current
-      return () => {
-        if (audio && hasActivePlaybackRef.current) {
-          audio.pause()
-          audio.currentTime = 0
-          hasActivePlaybackRef.current = false
-        }
-      }
-    },
-    []
-  )
-
-  async function handlePreviewToggle() {
-    const audio = audioRef.current
-    if (!audio) {
+  function handlePreviewToggle() {
+    if (!source || disabled) {
       return
     }
-
-    if (isPlaying) {
-      stopPreview()
+    if (!isCurrentSource) {
+      playback.activate(`voice:${voiceId}`)
+      playback.controller.dispatch({ type: "play" })
       return
     }
-
-    try {
-      onPreviewStart(voice.id)
-      hasActivePlaybackRef.current = true
-      await audio.play()
-    } catch {
-      hasActivePlaybackRef.current = false
-      onPreviewStop(voice.id)
-    }
+    playback.controller.dispatch({ type: isPlaying ? "pause" : "play" })
   }
 
   return (
-    <>
-      <audio
-        onEnded={() => {
-          hasActivePlaybackRef.current = false
-          onPreviewStop(voice.id)
-        }}
-        onPause={() => {
-          hasActivePlaybackRef.current = false
-          onPreviewStop(voice.id)
-        }}
-        onPlay={() => {
-          hasActivePlaybackRef.current = true
-          onPreviewStart(voice.id)
-        }}
-        preload="none"
-        ref={audioRef}
-        src={`/api/voices/${encodeURIComponent(voice.id)}/sample`}
-      />
+    <div className="absolute bottom-3 right-3">
       <Button
         aria-label={`${isPlaying ? "Pause" : "Play"} ${voice.name} Preview`}
-        className="absolute bottom-3 right-3 size-8"
-        disabled={disabled}
+        className="size-8"
+        disabled={disabled || !source}
         onClick={handlePreviewToggle}
         size="icon"
         type="button"
@@ -1281,7 +1210,10 @@ function CompactVoicePreviewButton({
       >
         {isPlaying ? <Pause aria-hidden="true" data-icon="inline-start" /> : <Play aria-hidden="true" data-icon="inline-start" />}
       </Button>
-    </>
+      {isCurrentSource && playback.controller.snapshot.error ? (
+        <span className="sr-only" role="alert">{playback.controller.snapshot.error}</span>
+      ) : null}
+    </div>
   )
 }
 
@@ -1423,9 +1355,11 @@ function ProcessingProgressSurface({
 }
 
 function SingleResultSave({
+  playback,
   processing,
   voicePresets,
 }: {
+  playback: PrepareAudioPlayback
   processing: SampleProcessingController
   voicePresets: { id: VoicePresetId; label: string; description: string }[]
 }) {
@@ -1439,7 +1373,14 @@ function SingleResultSave({
         <div className="text-sm font-medium">Processed Preview</div>
         <AudioLines aria-hidden="true" className="size-4 text-primary" />
       </div>
-      <AudioPlayer ariaLabel="Processed sample preview" src={processing.resultUrl} />
+      {playback.sources.get("processed-result") ? (
+        <PlaybackControls
+          ariaLabel="Processed sample preview"
+          controller={playback.controller}
+          onActivate={() => playback.activate("processed-result")}
+          source={playback.sources.get("processed-result")!}
+        />
+      ) : null}
       <label className="flex flex-col gap-2 text-sm font-medium" htmlFor="processed-voice-name">
         <span>Voice Name</span>
         <Input
@@ -1479,9 +1420,11 @@ function SingleResultSave({
 }
 
 function PreparedCandidateResultSave({
+  playback,
   processing,
   voicePresets,
 }: {
+  playback: PrepareAudioPlayback
   processing: SampleProcessingController
   voicePresets: { id: VoicePresetId; label: string; description: string }[]
 }) {
@@ -1537,10 +1480,12 @@ function PreparedCandidateResultSave({
                         </label>
                         <CandidateQualityBadges candidate={candidate} />
                       </div>
-                      {processing.candidateResultUrls[candidate.candidateId] ? (
-                        <AudioPlayer
+                      {playback.sources.get(`candidate:${candidate.candidateId}`) ? (
+                        <PlaybackControls
                           ariaLabel={`${candidate.speakerLabel} candidate ${candidate.rank} preview`}
-                          src={processing.candidateResultUrls[candidate.candidateId]}
+                          controller={playback.controller}
+                          onActivate={() => playback.activate(`candidate:${candidate.candidateId}`)}
+                          source={playback.sources.get(`candidate:${candidate.candidateId}`)!}
                         />
                       ) : null}
                       {candidate.warnings.length > 0 ? (

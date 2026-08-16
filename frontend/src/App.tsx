@@ -20,6 +20,7 @@ import { PlaybackControllerProvider, useHasPlaybackController } from "@/hooks/us
 import { useScrollIntoViewOnSignal } from "@/hooks/use-scroll-into-view-on-signal"
 import { useVoiceLibraryPlayback } from "@/hooks/use-voice-library-playback"
 import { useGeneratedAudioPlayback } from "@/hooks/use-generated-audio-playback"
+import { usePrepareAudioPlayback } from "@/hooks/use-prepare-audio-playback"
 import { useVoiceStudioController } from "@/hooks/use-voice-studio-controller"
 import type { GeneratedAudioScriptSnapshot } from "@/types"
 
@@ -122,6 +123,15 @@ function AppContents() {
   const isPrepareWorkflowSwitchDisabled =
     voiceInput.isUploading || voiceInput.isPreparingSample || voiceInput.isRecorderBusy || sampleProcessing.isProcessing
   const visiblePrepareAudioWorkflow = prepareAudioWorkflow ?? (sampleProcessing.job ? "processAudio" : null)
+  const prepareAudioPlayback = usePrepareAudioPlayback({
+    candidateResultUrls: sampleProcessing.candidateResultUrls,
+    isActive: activeSectionId === "prepare" && visiblePrepareAudioWorkflow === "processAudio",
+    isEnabled: !sampleProcessing.isProcessing,
+    jobId: sampleProcessing.job?.id ?? null,
+    processedResultUrl: sampleProcessing.resultUrl,
+    sourcePreview: sampleProcessing.mediaSource.preview,
+    voices: sampleProcessing.sourceVoices,
+  })
   const generatedAudioAttentionRef = useScrollIntoViewOnSignal<HTMLElement>(generatedAudioAttentionSignal)
   const sampleProcessingAttentionRef = useScrollIntoViewOnSignal<HTMLDivElement>(sampleProcessingAttentionSignal)
 
@@ -211,6 +221,7 @@ function AppContents() {
               isExpanded
               onAttentionRequest={requestSampleProcessingAttention}
               onToggleExpanded={() => undefined}
+              playback={prepareAudioPlayback}
               processing={sampleProcessing}
               voicePresets={providerKeys.voicePresets}
             />
