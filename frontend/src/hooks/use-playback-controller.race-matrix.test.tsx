@@ -41,6 +41,7 @@ function ActiveSource() {
 
 function expectEmptySnapshot(snapshot: ReturnType<typeof usePlaybackController>["snapshot"]) {
   expect(snapshot).toEqual({
+    activeRange: null,
     currentTimeSeconds: 0,
     durationSeconds: null,
     error: null,

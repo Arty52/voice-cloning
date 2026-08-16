@@ -41,7 +41,10 @@ export function AudioWindowCropper({
   const windowEndSeconds = audioWindowEndSeconds(window)
   const activeSource = playbackController.snapshot.source
   const isCurrentSource = activeSource?.id === source.id && activeSource.url === source.url
-  const isPreviewing = isCurrentSource && playbackController.snapshot.status === "playing"
+  const activeRange = playbackController.snapshot.activeRange
+  const isSelectionActive =
+    activeRange?.startSeconds === window.startSeconds && activeRange.endSeconds === windowEndSeconds
+  const isPreviewing = isCurrentSource && isSelectionActive && playbackController.snapshot.status === "playing"
 
   function handlePreviewToggle() {
     if (isPreviewing) {

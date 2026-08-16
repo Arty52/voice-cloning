@@ -22,6 +22,7 @@ export type PlaybackSource = {
 }
 
 export type PlaybackSnapshot = {
+  activeRange: PlaybackRange | null
   currentTimeSeconds: number
   durationSeconds: number | null
   error: string | null
@@ -29,6 +30,12 @@ export type PlaybackSnapshot = {
   playbackRate: number
   source: PlaybackSource | null
   status: PlaybackStatus
+}
+
+/** A bounded portion of the active source being previewed. */
+export type PlaybackRange = {
+  endSeconds: number
+  startSeconds: number
 }
 
 export type PlaybackIntent =

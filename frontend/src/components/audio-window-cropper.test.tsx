@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { PlaybackControllerProvider, usePlaybackController } from "@/hooks/use-playback-controller"
@@ -70,4 +70,43 @@ describe("AudioWindowCropper", () => {
     expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1)
     expect(document.querySelectorAll("audio")).toHaveLength(1)
   })
+
+  it("switches an active full preview to the selected window", async () => {
+    render(
+      <PlaybackControllerProvider>
+        <CropperHarness />
+        <FullPreviewActivator />
+      </PlaybackControllerProvider>
+    )
+    const audio = document.querySelector("audio")
+    if (!audio) {
+      throw new Error("Expected the shared media controller.")
+    }
+    Object.defineProperty(audio, "duration", { configurable: true, value: 30 })
+
+    fireEvent.click(screen.getByRole("button", { name: "Start Full Preview" }))
+    fireEvent.play(audio)
+    expect(screen.getByRole("button", { name: "Play Selection" })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Play Selection" }))
+
+    await waitFor(() => expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(2))
+    expect(audio.currentTime).toBe(4)
+    expect(screen.getByRole("button", { name: "Pause Selection" })).toBeInTheDocument()
+  })
 })
+
+function FullPreviewActivator() {
+  const controller = usePlaybackController()
+  return (
+    <button
+      onClick={() => {
+        controller.dispatch({ source, type: "replaceSource" })
+        controller.dispatch({ type: "play" })
+      }}
+      type="button"
+    >
+      Start Full Preview
+    </button>
+  )
+}
