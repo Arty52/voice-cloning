@@ -279,6 +279,7 @@ function AppContents() {
             dialogue={dialogue}
             dialogueSpeechSegmentCount={dialogueSpeechSegmentCount}
             effectiveVoiceSettingsByVoiceId={effectiveVoiceSettingsByVoiceId}
+            isActive={activeSectionId === "generate"}
             isGenerating={isSpeechGenerating}
             onAssignVoice={assignVoiceToSelection}
             onCancelGeneration={cancelGeneration}

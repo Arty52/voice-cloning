@@ -92,6 +92,7 @@ function renderPanel(overrides: Partial<Parameters<typeof SpeechInputPanel>[0]> 
     characterCount: 19,
     dialogue: dialogueController(),
     dialogueSpeechSegmentCount: null,
+    isActive: true,
     isGenerating: false,
     naturalHandoffsEnabled: true,
     onAssignVoice: vi.fn(),

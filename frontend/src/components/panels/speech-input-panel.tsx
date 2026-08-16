@@ -47,6 +47,7 @@ type SpeechInputPanelProps = {
   dialogue: DialogueScriptController
   dialogueSpeechSegmentCount: number | null
   effectiveVoiceSettingsByVoiceId?: Record<string, VoiceTuningValues>
+  isActive: boolean
   isGenerating: boolean
   naturalHandoffsEnabled: boolean
   naturalHandoffsSaveError?: string | null
@@ -85,6 +86,7 @@ export function SpeechInputPanel({
   dialogue,
   dialogueSpeechSegmentCount,
   effectiveVoiceSettingsByVoiceId = EMPTY_VOICE_SETTINGS_BY_VOICE_ID,
+  isActive,
   isGenerating,
   naturalHandoffsEnabled,
   naturalHandoffsSaveError = null,
@@ -121,7 +123,7 @@ export function SpeechInputPanel({
   })
   const quickAssignmentVoices = assignedVoices(assignments, voices)
   const showNaturalHandoffs = assignments.length > 0 || (isDialogueMode && dialogue.segmentBuild.segments.length > 0)
-  const voicePickerPreview = useVoicePickerPreview({ isActive: !isGenerating, voices })
+  const voicePickerPreview = useVoicePickerPreview({ isActive: isActive && !isGenerating, voices })
 
   return (
     <form

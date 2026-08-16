@@ -51,7 +51,7 @@ describe("useVoicePickerPreview", () => {
     })
   })
 
-  it("clears a preview when Speech Input becomes inactive or removes that voice", () => {
+  it("clears a preview when the Generate Speech section becomes inactive or removes that voice", () => {
     const { result, rerender } = renderHook((options) => useHarness(options), {
       initialProps: { isActive: true, voices: [narrator, villain] },
       wrapper,
