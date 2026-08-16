@@ -35,6 +35,7 @@ type VoicePickerPreview = {
     isPlaying: boolean
     voiceId: string
   } | null
+  clearPreview: () => void
   togglePreview: (voiceId: string) => boolean
 }
 
@@ -77,6 +78,7 @@ export function VoicePicker({
   )
 
   function handleSelect(voiceId: string) {
+    preview.clearPreview()
     onSelect(voiceId)
     setOpen(false)
   }

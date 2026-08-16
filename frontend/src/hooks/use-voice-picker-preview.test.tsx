@@ -70,6 +70,22 @@ describe("useVoicePickerPreview", () => {
     rerender({ isActive: true, voices: [villain] })
     expect(result.current.controller.snapshot.source).toBeNull()
   })
+
+  it("clears its active preview when a picker selection closes its controls", () => {
+    const { result } = renderHook((options) => useHarness(options), {
+      initialProps: { isActive: true, voices: [narrator, villain] },
+      wrapper,
+    })
+
+    act(() => {
+      result.current.preview.togglePreview(narrator.id)
+    })
+    act(() => {
+      result.current.preview.clearPreview()
+    })
+
+    expect(result.current.controller.snapshot.source).toBeNull()
+  })
 })
 
 function voice(id: string, name: string): VoiceAsset {

@@ -86,5 +86,12 @@ export function useVoicePickerPreview({ isActive, voices }: VoicePickerPreviewOp
     return true
   }
 
-  return { activePreview, options, togglePreview }
+  function clearPreview() {
+    const source = snapshot.source
+    if (source?.kind === "voicePreview" && source.id.startsWith("voice-picker:")) {
+      replaceSource(null)
+    }
+  }
+
+  return { activePreview, clearPreview, options, togglePreview }
 }

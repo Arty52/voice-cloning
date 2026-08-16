@@ -7,6 +7,7 @@ import { VoicePicker } from "./voice-picker"
 
 const preview = {
   activePreview: null,
+  clearPreview: vi.fn(),
   togglePreview: vi.fn(() => true),
 }
 
@@ -56,5 +57,28 @@ describe("VoicePicker", () => {
     const secondSearchId = screen.getByRole("searchbox", { name: "Search voices" }).id
 
     expect(firstSearchId).not.toBe(secondSearchId)
+  })
+
+  it("clears preview playback before closing after a selection", async () => {
+    const user = userEvent.setup()
+    const selection = vi.fn()
+    render(
+      <VoicePicker
+        description="Select a voice."
+        disabled={false}
+        onSelect={selection}
+        options={options}
+        preview={preview}
+        title="Voice"
+        triggerIcon={<Volume2 />}
+        triggerLabel="Choose voice"
+      />,
+    )
+
+    await user.click(screen.getByRole("button", { name: "Choose voice" }))
+    await user.click(screen.getByRole("button", { name: "Narrator" }))
+
+    expect(preview.clearPreview).toHaveBeenCalledOnce()
+    expect(selection).toHaveBeenCalledWith("narrator")
   })
 })
