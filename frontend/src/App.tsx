@@ -10,10 +10,7 @@ import { CostQuotaPanel } from "@/components/panels/cost-quota-panel"
 import { GeneratedAudioPanel } from "@/components/panels/generated-audio-panel"
 import { LatestGeneratedAudioPanel } from "@/components/panels/latest-generated-audio-panel"
 import { ProviderKeysPanel } from "@/components/panels/provider-keys-panel"
-import {
-  PrepareAudioChoicePanel,
-  type PrepareAudioWorkflow,
-} from "@/components/panels/prepare-audio-choice-panel"
+import { PrepareAudioChoicePanel, type PrepareAudioWorkflow } from "@/components/panels/prepare-audio-choice-panel"
 import { SampleProcessingPanel } from "@/components/panels/sample-processing-panel"
 import { SpeechInputPanel } from "@/components/panels/speech-input-panel"
 import { StudioOverviewPanel } from "@/components/panels/studio-overview-panel"
@@ -22,6 +19,7 @@ import { VoiceLibraryPanel } from "@/components/panels/voice-library-panel"
 import { PlaybackControllerProvider, useHasPlaybackController } from "@/hooks/use-playback-controller"
 import { useScrollIntoViewOnSignal } from "@/hooks/use-scroll-into-view-on-signal"
 import { useVoiceLibraryPlayback } from "@/hooks/use-voice-library-playback"
+import { useGeneratedAudioPlayback } from "@/hooks/use-generated-audio-playback"
 import { useVoiceStudioController } from "@/hooks/use-voice-studio-controller"
 import type { GeneratedAudioScriptSnapshot } from "@/types"
 
@@ -115,6 +113,11 @@ function AppContents() {
   const voiceLibraryPlayback = useVoiceLibraryPlayback({
     isActive: activeSectionId === "voices",
     voices: voiceLibrary.voices,
+  })
+  const generatedAudioPlayback = useGeneratedAudioPlayback({
+    items: generatedAudio.generatedAudioItems,
+    latestItem: latestGeneratedAudioItem,
+    segmentResultUrls: multiVoiceSegmentResultUrls,
   })
   const isPrepareWorkflowSwitchDisabled =
     voiceInput.isUploading || voiceInput.isPreparingSample || voiceInput.isRecorderBusy || sampleProcessing.isProcessing
@@ -223,7 +226,9 @@ function AppContents() {
             activeProviderId={providerKeys.activeProviderId || null}
             defaultVoiceId={voiceLibrary.defaultVoiceId}
             isGenerating={speech.isGenerating}
-            isProviderTuningLoading={providerKeys.providerStatus === "idle" || providerKeys.providerStatus === "loading"}
+            isProviderTuningLoading={
+              providerKeys.providerStatus === "idle" || providerKeys.providerStatus === "loading"
+            }
             isSettingDefault={voiceLibrary.isSettingDefault}
             isUpdatingVoice={voiceLibrary.isUpdatingVoice}
             onDeleteRequest={requestDeleteVoice}
@@ -290,6 +295,7 @@ function AppContents() {
             isDeleteDisabled={generatedAudio.generatedAudioMutation === "delete"}
             isSavingVoiceTuning={voiceLibrary.isUpdatingVoice}
             item={latestGeneratedAudioItem}
+            playback={generatedAudioPlayback}
             onDelete={(id) => void generatedAudio.handleDeleteGeneratedAudio(id)}
             onRegenerateSegment={(segmentId, voiceId, voiceSettings) =>
               void regenerateMultiVoiceSegment(segmentId, voiceId, voiceSettings)
@@ -339,6 +345,7 @@ function AppContents() {
             onStorageLimitChange={handleStorageLimitChange}
             onViewScriptSnapshot={(item) => setScriptSnapshotDialog(item.scriptSnapshot)}
             persistenceMode={generatedAudio.generatedAudioPersistenceMode}
+            playback={generatedAudioPlayback}
             serverExportError={generatedAudio.serverExportError}
             serverExportMutation={generatedAudio.serverExportMutation}
             serverExportStatus={generatedAudio.serverExportStatus}
@@ -348,7 +355,11 @@ function AppContents() {
           />
         </WorkflowSectionPanel>
 
-        <WorkflowSectionPanel activeSectionId={activeSectionId} className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]" id="provider">
+        <WorkflowSectionPanel
+          activeSectionId={activeSectionId}
+          className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"
+          id="provider"
+        >
           <ProviderKeysPanel
             activeProvider={providerKeys.activeProvider}
             activeProviderKey={providerKeys.activeProviderKey}

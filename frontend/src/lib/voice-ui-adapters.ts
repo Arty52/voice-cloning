@@ -1,4 +1,4 @@
-import type { SpeakerSeparationResult, VoiceAsset } from "@/types"
+import type { GeneratedResult, SpeakerSeparationResult, VoiceAsset } from "@/types"
 import type { PlaybackSource, TranscriptDocument, VoicePickerOption } from "@/lib/voice-ui-contracts"
 
 type VoicePickerAdapterOptions = {
@@ -16,7 +16,7 @@ type TranscriptDocumentAdapterOptions = {
  */
 export function voiceAssetToPickerOption(
   voice: VoiceAsset,
-  { previewUrl }: VoicePickerAdapterOptions
+  { previewUrl }: VoicePickerAdapterOptions,
 ): VoicePickerOption {
   return {
     description: voice.sampleMode === "sourceWindow" ? "Selected Source Window" : "Voice Sample",
@@ -53,9 +53,52 @@ export function voiceAssetToPreviewSource(voice: Pick<VoiceAsset, "id" | "name">
   }
 }
 
+/** Maps generated results into stable controller sources without exposing storage details. */
+export function generatedAudioToPlaybackSource(
+  item: Pick<GeneratedResult, "id" | "url" | "voiceName">,
+): PlaybackSource | null {
+  const id = item.id.trim()
+  const url = item.url.trim()
+  if (!id || !url) {
+    return null
+  }
+  return {
+    id: `generated-audio:${id}`,
+    kind: "generatedAudio",
+    label: `${item.voiceName.trim() || "Generated Voice"} Playback`,
+    url,
+  }
+}
+
+export function generatedSegmentToPlaybackSource({
+  generatedAudioId,
+  label,
+  segmentId,
+  url,
+}: {
+  generatedAudioId: string
+  label: string
+  segmentId: string
+  url: string
+}): PlaybackSource | null {
+  const normalizedGeneratedAudioId = generatedAudioId.trim()
+  const normalizedSegmentId = segmentId.trim()
+  const normalizedLabel = label.trim()
+  const normalizedUrl = url.trim()
+  if (!normalizedGeneratedAudioId || !normalizedSegmentId || !normalizedUrl) {
+    return null
+  }
+  return {
+    id: `generated-audio:${normalizedGeneratedAudioId}:segment:${normalizedSegmentId}`,
+    kind: "generatedAudio",
+    label: normalizedLabel || "Generated Segment Playback",
+    url: normalizedUrl,
+  }
+}
+
 export function speakerSeparationToTranscriptDocument(
   result: SpeakerSeparationResult,
-  { documentId }: TranscriptDocumentAdapterOptions
+  { documentId }: TranscriptDocumentAdapterOptions,
 ): TranscriptDocument {
   const speakers = result.speakers.map((speaker, index) => ({
     id: speaker.id,
@@ -67,7 +110,7 @@ export function speakerSeparationToTranscriptDocument(
       (left, right) =>
         left.item.startSeconds - right.item.startSeconds ||
         left.item.endSeconds - right.item.endSeconds ||
-        left.index - right.index
+        left.index - right.index,
     )
     .map(({ item }) => ({
       endSeconds: item.endSeconds,

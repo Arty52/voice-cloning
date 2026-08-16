@@ -1,6 +1,7 @@
 import { Download, FileText, FolderUp, RotateCcw, Trash2, Upload } from "lucide-react"
 
-import { AudioPlayer } from "@/components/audio-player"
+import { AudioPlayer, PlaybackControls } from "@/components/audio-player"
+import type { useGeneratedAudioPlayback } from "@/hooks/use-generated-audio-playback"
 import { GeneratedAudioMetadata } from "@/components/generated-audio-metadata"
 import { GeneratedAudioMultiVoiceBadge } from "@/components/generated-audio-multi-voice-badge"
 import { GeneratedAudioSizeBadge } from "@/components/generated-audio-size-badge"
@@ -32,6 +33,7 @@ type GeneratedAudioItemProps = {
   onServerExport?: (id: string) => void
   onViewScriptSnapshot?: (item: GeneratedResult) => void
   openMetadataPopoverId?: string | null
+  playback?: ReturnType<typeof useGeneratedAudioPlayback>
   serverExportStatus?: GeneratedAudioServerExportItem | null
 }
 
@@ -52,6 +54,7 @@ export function GeneratedAudioItem({
   onServerExport,
   onViewScriptSnapshot,
   openMetadataPopoverId,
+  playback,
   serverExportStatus = null,
 }: GeneratedAudioItemProps) {
   const serverExportLabel = serverExportActionLabel(serverExportStatus)
@@ -113,12 +116,20 @@ export function GeneratedAudioItem({
         onCustomSettingsPopoverOpenChange={onMetadataPopoverOpenChange}
         tuningMetadata={item.tuningMetadata}
       />
-      <AudioPlayer ariaLabel={`Generated voice playback for ${item.voiceName}`} src={item.url} />
+      {playback?.itemSources.get(item.id) ? (
+        <PlaybackControls
+          ariaLabel={`Generated voice playback for ${item.voiceName}`}
+          controller={playback.controller}
+          onActivate={() => playback.activateItem(item.id)}
+          source={playback.itemSources.get(item.id)!}
+        />
+      ) : (
+        <AudioPlayer ariaLabel={`Generated voice playback for ${item.voiceName}`} src={item.url} />
+      )}
       <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
         <span className="truncate font-mono">Model {item.modelId}</span>
         <span>
-          {item.characterCount === null ? "Generated" : `${formatNumber(item.characterCount)} chars`}{" "}
-          {item.generatedAt}
+          {item.characterCount === null ? "Generated" : `${formatNumber(item.characterCount)} chars`} {item.generatedAt}
         </span>
         <GeneratedAudioSizeBadge sizeBytes={item.sizeBytes} />
       </div>

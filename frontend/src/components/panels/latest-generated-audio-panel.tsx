@@ -1,8 +1,18 @@
-import { Ban, CheckCircle2, ChevronDown, Circle, CircleAlert, Loader2, RefreshCw, SlidersHorizontal } from "lucide-react"
+import {
+  Ban,
+  CheckCircle2,
+  ChevronDown,
+  Circle,
+  CircleAlert,
+  Loader2,
+  RefreshCw,
+  SlidersHorizontal,
+} from "lucide-react"
 import { useState, type RefObject } from "react"
 
-import { AudioPlayer } from "@/components/audio-player"
+import { AudioPlayer, PlaybackControls } from "@/components/audio-player"
 import { GeneratedAudioItem } from "@/components/generated-audio-item"
+import type { useGeneratedAudioPlayback } from "@/hooks/use-generated-audio-playback"
 import {
   Popover,
   PopoverContent,
@@ -52,6 +62,7 @@ type LatestGeneratedAudioPanelProps = {
   onViewScriptSnapshot?: (item: GeneratedResult) => void
   providerTuningControls?: ProviderTuningControl[]
   providerTuningDefaultValues?: VoiceTuningValues
+  playback?: ReturnType<typeof useGeneratedAudioPlayback>
   segmentResultUrls: Record<string, string>
   status: RequestStatus
   storageError: string | null
@@ -76,6 +87,7 @@ export function LatestGeneratedAudioPanel({
   onViewScriptSnapshot,
   providerTuningControls = [],
   providerTuningDefaultValues = {},
+  playback,
   segmentResultUrls,
   status,
   storageError,
@@ -84,7 +96,7 @@ export function LatestGeneratedAudioPanel({
 }: LatestGeneratedAudioPanelProps) {
   const isCanceled = status === "canceled"
   const isGenerating = status === "generating"
-  const visiblePendingStatus = isGenerating ? generationPendingStatus ?? fallbackGenerationPendingStatus : null
+  const visiblePendingStatus = isGenerating ? (generationPendingStatus ?? fallbackGenerationPendingStatus) : null
 
   if (!isGenerating && !error && !storageError && !item) {
     return null
@@ -110,7 +122,7 @@ export function LatestGeneratedAudioPanel({
             "mb-4 rounded-md border p-3 text-sm",
             isCanceled
               ? "border-border bg-background/60 text-muted-foreground"
-              : "border-destructive/40 bg-destructive/10 text-foreground"
+              : "border-destructive/40 bg-destructive/10 text-foreground",
           )}
           role={isCanceled ? "status" : "alert"}
         >
@@ -135,6 +147,7 @@ export function LatestGeneratedAudioPanel({
             onDelete={onDelete}
             onRestoreScriptSnapshot={onRestoreScriptSnapshot}
             onViewScriptSnapshot={onViewScriptSnapshot}
+            playback={playback}
           />
           {item.multiVoiceMetadata ? (
             <MultiVoiceSegmentResults
@@ -149,6 +162,7 @@ export function LatestGeneratedAudioPanel({
               onSaveVoiceTuning={onSaveVoiceTuning}
               providerTuningControls={providerTuningControls}
               providerTuningDefaultValues={providerTuningDefaultValues}
+              playback={playback}
               segmentResultUrls={segmentResultUrls}
               segments={item.multiVoiceMetadata.segments}
               tuning={tuning}
@@ -176,7 +190,9 @@ const EMPTY_VOICE_SETTINGS_BY_VOICE_ID: Record<string, VoiceTuningValues> = {}
 function GenerationPendingStatusView({ status }: { status: GenerationPendingStatus }) {
   const meta = (
     <>
-      {status.elapsedMs !== null ? <Badge variant="secondary">Elapsed {formatElapsedTime(status.elapsedMs)}</Badge> : null}
+      {status.elapsedMs !== null ? (
+        <Badge variant="secondary">Elapsed {formatElapsedTime(status.elapsedMs)}</Badge>
+      ) : null}
       {status.meta.map((item) => (
         <Badge key={item} variant="secondary">
           {item}
@@ -207,7 +223,7 @@ function GenerationPendingStatusView({ status }: { status: GenerationPendingStat
               <li
                 className={cn(
                   "flex items-start gap-3 rounded-md border border-border bg-card/70 p-3",
-                  segment.isActive && "border-primary/60 bg-primary/10"
+                  segment.isActive && "border-primary/60 bg-primary/10",
                 )}
                 key={segment.id}
               >
@@ -221,11 +237,14 @@ function GenerationPendingStatusView({ status }: { status: GenerationPendingStat
                       className={cn(
                         "gap-1.5",
                         (segment.status === "error" || segment.status === "canceled") &&
-                          "border-destructive/40 bg-destructive/10 text-destructive"
+                          "border-destructive/40 bg-destructive/10 text-destructive",
                       )}
                       variant={segment.status === "success" ? "accent" : "secondary"}
                     >
-                      <SegmentIcon aria-hidden="true" className={cn("size-3", segment.status === "running" && "animate-spin")} />
+                      <SegmentIcon
+                        aria-hidden="true"
+                        className={cn("size-3", segment.status === "running" && "animate-spin")}
+                      />
                       {generationSegmentStatusLabel(segment.status)}
                     </Badge>
                   </div>
@@ -254,6 +273,7 @@ type MultiVoiceSegmentResultsProps = {
   onSaveVoiceTuning: (voiceId: string, voiceSettings: VoiceTuningValues) => void
   providerTuningControls: ProviderTuningControl[]
   providerTuningDefaultValues: VoiceTuningValues
+  playback?: ReturnType<typeof useGeneratedAudioPlayback>
   segmentResultUrls: Record<string, string>
   segments: GeneratedAudioMultiVoiceSegmentMetadata[]
   tuning: VoiceTuningValues
@@ -303,6 +323,7 @@ function MultiVoiceSegmentResults({
   onSaveVoiceTuning,
   providerTuningControls,
   providerTuningDefaultValues,
+  playback,
   segmentResultUrls,
   segments,
   tuning,
@@ -318,7 +339,7 @@ function MultiVoiceSegmentResults({
   }, {})
 
   function tuningForVoice(voiceId: string) {
-    return voiceId === defaultVoiceId ? tuning : effectiveVoiceSettingsByVoiceId[voiceId] ?? tuning
+    return voiceId === defaultVoiceId ? tuning : (effectiveVoiceSettingsByVoiceId[voiceId] ?? tuning)
   }
 
   function segmentDefaultTuning(segment: GeneratedAudioMultiVoiceSegmentMetadata) {
@@ -336,7 +357,7 @@ function MultiVoiceSegmentResults({
   function handleSegmentTuningValueChange(
     segment: GeneratedAudioMultiVoiceSegmentMetadata,
     control: ProviderTuningControl,
-    value: ProviderTuningValue
+    value: ProviderTuningValue,
   ) {
     setSegmentTuning((current) => {
       const selectedVoiceId = voiceSelections[segment.id] ?? segment.voiceId
@@ -410,11 +431,21 @@ function MultiVoiceSegmentResults({
                     </p>
                   </div>
                   {segmentUrl ? (
-                    <AudioPlayer
-                      ariaLabel={`Generated segment ${segment.index + 1} playback`}
-                      className="rounded-md bg-background/30"
-                      src={segmentUrl}
-                    />
+                    playback?.segmentSources.get(segment.id) ? (
+                      <PlaybackControls
+                        ariaLabel={`Generated segment ${segment.index + 1} playback`}
+                        className="rounded-md bg-background/30"
+                        controller={playback.controller}
+                        onActivate={() => playback.activateSegment(segment.id)}
+                        source={playback.segmentSources.get(segment.id)!}
+                      />
+                    ) : (
+                      <AudioPlayer
+                        ariaLabel={`Generated segment ${segment.index + 1} playback`}
+                        className="rounded-md bg-background/30"
+                        src={segmentUrl}
+                      />
+                    )
                   ) : (
                     <div className="rounded-md border border-dashed border-border bg-background/50 p-3 text-sm text-muted-foreground">
                       Segment audio is available only for the latest active job.
@@ -531,7 +562,10 @@ function formatSegmentExcerpt(value: string) {
 }
 
 function segmentVoiceOptions(voices: VoiceAsset[], segment: GeneratedAudioMultiVoiceSegmentMetadata) {
-  const options = voices.map((voice) => ({ label: voice.name, value: voice.id }))
+  const options = voices.map((voice) => ({
+    label: voice.name,
+    value: voice.id,
+  }))
   if (!options.some((option) => option.value === segment.voiceId)) {
     options.unshift({ label: segment.voiceName, value: segment.voiceId })
   }
