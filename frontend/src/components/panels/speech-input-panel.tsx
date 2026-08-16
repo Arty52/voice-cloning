@@ -1,5 +1,5 @@
 import { Pencil, RefreshCw, Save, SlidersHorizontal, Sparkles, Trash2, UserPlus, X } from "lucide-react"
-import { useState, type FormEvent, type KeyboardEvent, type ReactNode, type RefObject } from "react"
+import { type FormEvent, type KeyboardEvent, type ReactNode, type RefObject } from "react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { ActionMenu } from "@/components/ui/action-menu"
@@ -17,16 +17,6 @@ import {
   PopoverTitle,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import {
-  Sheet,
-  SheetBody,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet"
 import {
   Select,
   SelectContent,
@@ -37,11 +27,11 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { VoicePicker } from "@/components/voice-picker"
 import { VoiceTuningControls } from "@/components/voice-tuning-controls"
 import { MAX_SPEECH_TEXT_LENGTH } from "@/constants"
-import { useIsMobile } from "@/hooks/use-mobile"
 import type { DialogueScriptController } from "@/hooks/use-dialogue-script"
+import { useVoicePickerPreview } from "@/hooks/use-voice-picker-preview"
 import { speakerColorClassName, type MultiVoiceScriptBlock } from "@/lib/dialogue-script"
 import { cn } from "@/lib/utils"
 import type { VoiceTextAssignment } from "@/lib/voice-assignments"
@@ -131,6 +121,7 @@ export function SpeechInputPanel({
   })
   const quickAssignmentVoices = assignedVoices(assignments, voices)
   const showNaturalHandoffs = assignments.length > 0 || (isDialogueMode && dialogue.segmentBuild.segments.length > 0)
+  const voicePickerPreview = useVoicePickerPreview({ isActive: !isGenerating, voices })
 
   return (
     <form
@@ -212,6 +203,7 @@ export function SpeechInputPanel({
           title="Assign Voice"
           triggerLabel="Assign Voice"
           triggerIcon={<UserPlus aria-hidden="true" />}
+          preview={voicePickerPreview}
           voices={voices}
         />
         {quickAssignmentVoices.length > 0 ? (
@@ -315,6 +307,7 @@ export function SpeechInputPanel({
           isGenerating={isGenerating}
           onEditAssignmentVoice={onEditAssignmentVoice}
           onRemoveAssignment={onRemoveAssignment}
+          preview={voicePickerPreview}
           stale={assignmentsStale}
           voices={voices}
         />
@@ -329,6 +322,7 @@ export function SpeechInputPanel({
           isGenerating={isGenerating}
           providerTuningControls={providerTuningControls}
           providerTuningDefaultValues={providerTuningDefaultValues}
+          preview={voicePickerPreview}
           tuning={tuning}
           voices={voices}
         />
@@ -397,6 +391,7 @@ type VoiceAssignmentsListProps = {
   isGenerating: boolean
   onEditAssignmentVoice: (assignmentId: string, voice: VoiceAsset) => void
   onRemoveAssignment: (assignmentId: string) => void
+  preview: ReturnType<typeof useVoicePickerPreview>
   stale: boolean
   voices: VoiceAsset[]
 }
@@ -407,6 +402,7 @@ function VoiceAssignmentsList({
   isGenerating,
   onEditAssignmentVoice,
   onRemoveAssignment,
+  preview,
   stale,
   voices,
 }: VoiceAssignmentsListProps) {
@@ -450,6 +446,7 @@ function VoiceAssignmentsList({
                   title="Edit Voice"
                   triggerLabel="Edit Voice"
                   triggerIcon={<Pencil aria-hidden="true" />}
+                  preview={preview}
                   voices={voices}
                 />
                 <Button
@@ -479,6 +476,7 @@ type DialogueEditorProps = {
   isGenerating: boolean
   providerTuningControls: ProviderTuningControl[]
   providerTuningDefaultValues: VoiceTuningValues
+  preview: ReturnType<typeof useVoicePickerPreview>
   tuning: VoiceTuningValues
   voices: VoiceAsset[]
 }
@@ -491,6 +489,7 @@ function DialogueEditor({
   isGenerating,
   providerTuningControls,
   providerTuningDefaultValues,
+  preview,
   tuning,
   voices,
 }: DialogueEditorProps) {
@@ -532,13 +531,14 @@ function DialogueEditor({
               title="Assign Selected Rows"
               triggerIcon={<UserPlus aria-hidden="true" />}
               triggerLabel="Assign Selected"
+              preview={preview}
               voices={voices}
             />
           </div>
         </div>
 
         {dialogue.speakerLabels.length > 0 ? (
-          <SpeakerMappings dialogue={dialogue} isGenerating={isGenerating} voices={voices} />
+          <SpeakerMappings dialogue={dialogue} isGenerating={isGenerating} preview={preview} voices={voices} />
         ) : null}
       </div>
 
@@ -558,6 +558,7 @@ function DialogueEditor({
               isGenerating={isGenerating}
               providerTuningControls={providerTuningControls}
               providerTuningDefaultValues={providerTuningDefaultValues}
+              preview={preview}
               tuning={tuning}
               key={block.id}
               voices={voices}
@@ -572,10 +573,11 @@ function DialogueEditor({
 type SpeakerMappingsProps = {
   dialogue: DialogueScriptController
   isGenerating: boolean
+  preview: ReturnType<typeof useVoicePickerPreview>
   voices: VoiceAsset[]
 }
 
-function SpeakerMappings({ dialogue, isGenerating, voices }: SpeakerMappingsProps) {
+function SpeakerMappings({ dialogue, isGenerating, preview, voices }: SpeakerMappingsProps) {
   return (
     <section className="flex flex-col gap-2" aria-label="Speaker Voice Mapping">
       <h4 className="text-sm font-medium">Speaker Voice Mapping</h4>
@@ -609,6 +611,7 @@ function SpeakerMappings({ dialogue, isGenerating, voices }: SpeakerMappingsProp
                 title="Map Speaker"
                 triggerIcon={<UserPlus aria-hidden="true" />}
                 triggerLabel={mappedVoice ? "Change Voice" : "Map Voice"}
+                preview={preview}
                 voices={voices}
               />
             </div>
@@ -628,6 +631,7 @@ type DialogueRowProps = {
   isGenerating: boolean
   providerTuningControls: ProviderTuningControl[]
   providerTuningDefaultValues: VoiceTuningValues
+  preview: ReturnType<typeof useVoicePickerPreview>
   tuning: VoiceTuningValues
   voices: VoiceAsset[]
 }
@@ -641,6 +645,7 @@ function DialogueRow({
   isGenerating,
   providerTuningControls,
   providerTuningDefaultValues,
+  preview,
   tuning,
   voices,
 }: DialogueRowProps) {
@@ -789,6 +794,7 @@ function DialogueRow({
               title="Assign Row Voice"
               triggerIcon={<UserPlus aria-hidden="true" />}
               triggerLabel={overrideVoice ? "Change Override" : "Override Voice"}
+              preview={preview}
               voices={voices}
             />
             {overrideVoice ? (
@@ -852,6 +858,7 @@ type VoicePickerControlProps = {
   disabled: boolean
   disabledTooltip?: string | null
   onSelect: (voice: VoiceAsset) => void
+  preview: ReturnType<typeof useVoicePickerPreview>
   selectedVoiceId?: string
   title: string
   triggerIcon: ReactNode
@@ -864,113 +871,31 @@ function VoicePickerControl({
   disabled,
   disabledTooltip,
   onSelect,
+  preview,
   selectedVoiceId,
   title,
   triggerIcon,
   triggerLabel,
   voices,
 }: VoicePickerControlProps) {
-  const [open, setOpen] = useState(false)
-  const isMobile = useIsMobile()
-  function handleSelect(voice: VoiceAsset) {
-    onSelect(voice)
-    setOpen(false)
-  }
-
-  const picker = (
-    <VoicePickerList
-      onSelect={handleSelect}
+  return (
+    <VoicePicker
+      description={description}
+      disabled={disabled}
+      disabledTooltip={disabledTooltip}
+      onSelect={(voiceId) => {
+        const voice = voices.find((candidate) => candidate.id === voiceId)
+        if (voice) {
+          onSelect(voice)
+        }
+      }}
+      options={preview.options}
+      preview={preview}
       selectedVoiceId={selectedVoiceId}
-      voices={voices}
+      title={title}
+      triggerIcon={triggerIcon}
+      triggerLabel={triggerLabel}
     />
-  )
-  const trigger = (
-    <Button disabled={disabled} size="sm" type="button" variant="secondary">
-      {triggerIcon}
-      {triggerLabel}
-    </Button>
-  )
-
-  if (disabled) {
-    if (!disabledTooltip) {
-      return trigger
-    }
-
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            className="inline-flex cursor-not-allowed rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            tabIndex={0}
-          >
-            {trigger}
-          </span>
-        </TooltipTrigger>
-        <TooltipContent side="top" sideOffset={6}>
-          {disabledTooltip}
-        </TooltipContent>
-      </Tooltip>
-    )
-  }
-
-  if (isMobile) {
-    return (
-      <Sheet open={open} onOpenChange={setOpen}>
-        <SheetTrigger asChild>{trigger}</SheetTrigger>
-        <SheetContent className="max-h-[85vh]" side="bottom">
-          <SheetHeader>
-            <SheetTitle>{title}</SheetTitle>
-            <SheetDescription>{description}</SheetDescription>
-          </SheetHeader>
-          <SheetBody>{picker}</SheetBody>
-        </SheetContent>
-      </Sheet>
-    )
-  }
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
-      <PopoverContent align="start" className="w-80">
-        <PopoverHeader className="mb-3">
-          <PopoverTitle>{title}</PopoverTitle>
-          <PopoverDescription>{description}</PopoverDescription>
-        </PopoverHeader>
-        {picker}
-      </PopoverContent>
-    </Popover>
-  )
-}
-
-type VoicePickerListProps = {
-  onSelect: (voice: VoiceAsset) => void
-  selectedVoiceId?: string
-  voices: VoiceAsset[]
-}
-
-function VoicePickerList({ onSelect, selectedVoiceId, voices }: VoicePickerListProps) {
-  const hasScrollableVoiceList = voices.length > 6
-
-  return (
-    <ScrollArea
-      aria-label="Voice List"
-      className={cn("pr-3", hasScrollableVoiceList ? "h-72" : "max-h-72")}
-      role="region"
-    >
-      <div className="flex flex-col gap-2">
-        {voices.map((voice) => (
-          <Button
-            className="h-auto min-h-10 justify-start whitespace-normal px-3 py-2 text-left"
-            key={voice.id}
-            onClick={() => onSelect(voice)}
-            type="button"
-            variant={voice.id === selectedVoiceId ? "secondary" : "ghost"}
-          >
-            <span className="min-w-0 flex-1 truncate">{voice.name}</span>
-          </Button>
-        ))}
-      </div>
-    </ScrollArea>
   )
 }
 

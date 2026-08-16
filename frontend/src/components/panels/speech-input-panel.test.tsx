@@ -4,6 +4,7 @@ import { createRef } from "react"
 import { beforeAll, describe, expect, it, vi } from "vitest"
 
 import type { DialogueScriptController } from "@/hooks/use-dialogue-script"
+import { PlaybackControllerProvider } from "@/hooks/use-playback-controller"
 import { speakerColorClassName, type MultiVoiceScriptBlock } from "@/lib/dialogue-script"
 import type { VoiceTextAssignment } from "@/lib/voice-assignments"
 import type { ProviderTuningControl, VoiceAsset } from "@/types"
@@ -113,9 +114,11 @@ function renderPanel(overrides: Partial<Parameters<typeof SpeechInputPanel>[0]> 
     ...overrides,
   }
   render(
-    <TooltipProvider>
-      <SpeechInputPanel {...props} />
-    </TooltipProvider>
+    <PlaybackControllerProvider>
+      <TooltipProvider>
+        <SpeechInputPanel {...props} />
+      </TooltipProvider>
+    </PlaybackControllerProvider>
   )
   return props
 }
