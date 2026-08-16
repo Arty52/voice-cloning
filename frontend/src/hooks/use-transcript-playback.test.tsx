@@ -25,6 +25,20 @@ function useHarness(options: Parameters<typeof useTranscriptPlayback>[0]) {
   return { controller: usePlaybackController(), playback: useTranscriptPlayback(options) }
 }
 
+function useTwoWorkspaceHarness({
+  first,
+  second,
+}: {
+  first: Parameters<typeof useTranscriptPlayback>[0]
+  second: Parameters<typeof useTranscriptPlayback>[0]
+}) {
+  return {
+    controller: usePlaybackController(),
+    first: useTranscriptPlayback(first),
+    second: useTranscriptPlayback(second),
+  }
+}
+
 describe("useTranscriptPlayback", () => {
   it("owns source and speaker previews through the shared controller", () => {
     const { result } = renderHook((options) => useHarness(options), { initialProps: initialOptions, wrapper })
@@ -59,5 +73,43 @@ describe("useTranscriptPlayback", () => {
     })
     rerender({ ...initialOptions, isActive: false })
     expect(result.current.controller.snapshot.source).toBeNull()
+  })
+
+  it("does not let an inactive mounted workspace clear another transcript workspace", () => {
+    const secondOptions = {
+      ...initialOptions,
+      jobId: "job-2",
+      sourceUrl: "/api/sample-processing/jobs/job-2/source",
+      speakerResultUrls: {
+        "speaker-1": "/api/sample-processing/jobs/job-2/speakers/speaker-1/result",
+      },
+    }
+    const { result, rerender } = renderHook(useTwoWorkspaceHarness, {
+      initialProps: { first: initialOptions, second: secondOptions },
+      wrapper,
+    })
+
+    act(() => {
+      result.current.first.activate("speaker:speaker-1")
+    })
+    expect(result.current.controller.snapshot.source).toMatchObject({ id: "transcript:job-1:speaker:speaker-1" })
+
+    rerender({ first: initialOptions, second: { ...secondOptions, isActive: false } })
+    expect(result.current.controller.snapshot.source).toMatchObject({ id: "transcript:job-1:speaker:speaker-1" })
+  })
+
+  it("preserves an active range when a source label changes", () => {
+    const { result, rerender } = renderHook((options) => useHarness(options), { initialProps: initialOptions, wrapper })
+
+    act(() => {
+      result.current.playback.playTranscriptItem({ endSeconds: 3, startSeconds: 1 })
+    })
+    rerender({ ...initialOptions, sourceLabel: "Renamed Planning Session" })
+
+    expect(result.current.controller.snapshot.source).toMatchObject({
+      id: "transcript:job-1:source",
+      url: initialOptions.sourceUrl,
+    })
+    expect(result.current.controller.snapshot.activeRange).toEqual({ endSeconds: 3, startSeconds: 1 })
   })
 })

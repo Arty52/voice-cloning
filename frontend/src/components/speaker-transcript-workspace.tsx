@@ -148,6 +148,7 @@ export function SpeakerTranscriptWorkspace({
               const checkboxId = `speaker-save-${job.id}-${speaker.id}`
               const nameInputId = `speaker-name-${job.id}-${speaker.id}`
               const isSelected = controller.selectedSpeakerIds.includes(speaker.id)
+              const speakerSource = playback.sources.get(`speaker:${speaker.id}`)
               return (
                 <article
                   key={speaker.id}
@@ -174,12 +175,12 @@ export function SpeakerTranscriptWorkspace({
                       <Badge variant="secondary">{speaker.transcriptItemIds.length} Segments</Badge>
                     </CardHeader>
                     <CardContent className="gap-3">
-                      {playback.sources.get(`speaker:${speaker.id}`) ? (
+                      {speakerSource ? (
                         <PlaybackControls
                           ariaLabel={`${speaker.label} preview`}
                           controller={playback.controller}
                           onActivate={() => playback.activate(`speaker:${speaker.id}`)}
-                          source={playback.sources.get(`speaker:${speaker.id}`)!}
+                          source={speakerSource}
                         />
                       ) : null}
                       <FieldGroup>

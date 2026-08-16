@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react"
+import { useEffect, useId, useMemo } from "react"
 
 import { usePlaybackOwner } from "@/hooks/use-playback-controller"
 import { transcriptSourceToPlaybackSource } from "@/lib/voice-ui-adapters"
@@ -26,7 +26,12 @@ export function useTranscriptPlayback({
   speakerLabels,
   speakerResultUrls,
 }: TranscriptPlaybackOptions) {
-  const controller = usePlaybackOwner("transcript")
+  // A screen can keep more than one Transcript workspace mounted. Ownership
+  // must therefore be per workspace rather than per feature, so an inactive
+  // workspace cannot clear another workspace's active playback.
+  const workspaceId = useId()
+  const ownerId = useMemo(() => `transcript:${jobId?.trim() || "workspace"}:${workspaceId}`, [jobId, workspaceId])
+  const controller = usePlaybackOwner(ownerId)
   const { replaceSource, snapshot } = controller
   const sources = useMemo(() => {
     const normalizedJobId = jobId?.trim()
@@ -68,12 +73,17 @@ export function useTranscriptPlayback({
     if (!activeSource?.id.startsWith("transcript:")) {
       return
     }
-    const currentSource = [...sources.values()].find((source) => source.id === activeSource.id)
+    const currentSource = new Map(
+      [...sources.values()].map((source) => [source.id, source]),
+    ).get(activeSource.id)
     if (!currentSource) {
       replaceSource(null)
       return
     }
-    if (currentSource.url !== activeSource.url || currentSource.label !== activeSource.label) {
+    // Labels can be edited while a range is playing. Updating a label must not
+    // reload media and discard that active range; only a changed URL requires
+    // replacement.
+    if (currentSource.url !== activeSource.url) {
       replaceSource(currentSource)
     }
   }, [isActive, replaceSource, snapshot.source, sources])
