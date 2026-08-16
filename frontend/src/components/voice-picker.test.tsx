@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { Volume2 } from "lucide-react"
-import { describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { VoicePicker } from "./voice-picker"
 
@@ -22,6 +22,11 @@ const options = [
 ]
 
 describe("VoicePicker", () => {
+  beforeEach(() => {
+    preview.clearPreview.mockClear()
+    preview.togglePreview.mockClear()
+  })
+
   it("gives each open picker search field a unique accessible id", async () => {
     const user = userEvent.setup()
     const first = render(
@@ -80,5 +85,27 @@ describe("VoicePicker", () => {
 
     expect(preview.clearPreview).toHaveBeenCalledOnce()
     expect(selection).toHaveBeenCalledWith("narrator")
+  })
+
+  it("clears preview playback when Escape closes the picker", async () => {
+    const user = userEvent.setup()
+    render(
+      <VoicePicker
+        description="Select a voice."
+        disabled={false}
+        onSelect={vi.fn()}
+        options={options}
+        preview={preview}
+        title="Voice"
+        triggerIcon={<Volume2 />}
+        triggerLabel="Choose voice"
+      />,
+    )
+
+    await user.click(screen.getByRole("button", { name: "Choose voice" }))
+    await user.keyboard("{Escape}")
+
+    expect(preview.clearPreview).toHaveBeenCalledOnce()
+    expect(screen.queryByRole("searchbox", { name: "Search voices" })).not.toBeInTheDocument()
   })
 })

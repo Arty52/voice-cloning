@@ -83,6 +83,13 @@ export function VoicePicker({
     setOpen(false)
   }
 
+  function handleOpenChange(nextOpen: boolean) {
+    if (!nextOpen) {
+      preview.clearPreview()
+    }
+    setOpen(nextOpen)
+  }
+
   const picker = (
     <VoicePickerOptions
       onSelect={handleSelect}
@@ -115,7 +122,7 @@ export function VoicePicker({
 
   if (isMobile) {
     return (
-      <Sheet onOpenChange={setOpen} open={open}>
+      <Sheet onOpenChange={handleOpenChange} open={open}>
         <SheetTrigger asChild>{trigger}</SheetTrigger>
         <SheetContent className="max-h-[85vh]" side="bottom">
           <SheetHeader>
@@ -129,7 +136,7 @@ export function VoicePicker({
   }
 
   return (
-    <Popover onOpenChange={setOpen} open={open}>
+    <Popover onOpenChange={handleOpenChange} open={open}>
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
       <PopoverContent align="start" className="w-80">
         <PopoverHeader className="mb-3">
