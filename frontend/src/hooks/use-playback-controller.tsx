@@ -3,11 +3,13 @@ import { createContext, type ReactNode, useCallback, useContext, useEffect, useM
 import type {
   PlaybackController,
   PlaybackIntent,
+  PlaybackRange,
   PlaybackSnapshot,
   PlaybackSource,
 } from "@/lib/voice-ui-contracts"
 
 const EMPTY_SNAPSHOT: PlaybackSnapshot = {
+  activeRange: null,
   currentTimeSeconds: 0,
   durationSeconds: null,
   error: null,
@@ -17,7 +19,6 @@ const EMPTY_SNAPSHOT: PlaybackSnapshot = {
   status: "idle",
 }
 
-type PlaybackRange = { endSeconds: number; startSeconds: number }
 type PlaybackRequest = { request: number; sourceGeneration: number; sourceId: string }
 
 type PlaybackControllerContextValue = {
@@ -113,6 +114,7 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
       audio.src = source.url
       audio.load()
       const nextSnapshot: PlaybackSnapshot = {
+        activeRange: null,
         currentTimeSeconds: 0,
         durationSeconds: null,
         error: null,
@@ -132,11 +134,22 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
     audioRef.current?.pause()
   }, [])
 
-  const play = useCallback(async () => {
+  const clearRange = useCallback(() => {
+    if (!rangeRef.current) {
+      return
+    }
+    rangeRef.current = null
+    updateSnapshot((current) => ({ ...current, activeRange: null }))
+  }, [updateSnapshot])
+
+  const play = useCallback(async (preserveRange = false) => {
     const audio = audioRef.current
     const source = snapshotRef.current.source
     if (!audio || !source) {
       return
+    }
+    if (!preserveRange) {
+      clearRange()
     }
     const request: PlaybackRequest = {
       request: playRequestRef.current + 1,
@@ -158,12 +171,13 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
         rangeRef.current = null
         updateSnapshot((current) => ({
           ...current,
+          activeRange: null,
           error: "Unable to play this audio in the browser.",
           status: "error",
         }))
       }
     }
-  }, [updateSnapshot])
+  }, [clearRange, updateSnapshot])
 
   const seek = useCallback(
     (positionSeconds: number) => {
@@ -208,9 +222,13 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
       }
       rangeRef.current = { endSeconds: end, startSeconds: start }
       seek(start)
-      void play()
+      updateSnapshot((current) => ({
+        ...current,
+        activeRange: { endSeconds: end, startSeconds: start },
+      }))
+      void play(true)
     },
-    [play, seek]
+    [play, seek, updateSnapshot]
   )
 
   const dispatch = useCallback(
@@ -218,6 +236,9 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
       switch (intent.type) {
         case "clear":
           clear()
+          return
+        case "clearRange":
+          clearRange()
           return
         case "pause":
           pause()
@@ -248,7 +269,7 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
           playRange(intent.startSeconds, intent.endSeconds)
       }
     },
-    [clear, pause, play, playRange, replaceSource, seek, setPlaybackRate]
+    [clear, clearRange, pause, play, playRange, replaceSource, seek, setPlaybackRate]
   )
 
   const clearOwner = useCallback(
@@ -305,12 +326,13 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
         }}
         onEnded={() => {
           rangeRef.current = null
-          updateCurrentSource((current) => ({ ...current, status: "ended" }))
+          updateCurrentSource((current) => ({ ...current, activeRange: null, status: "ended" }))
         }}
         onError={() => {
           rangeRef.current = null
           updateCurrentSource((current) => ({
             ...current,
+            activeRange: null,
             error: "Unable to load this audio.",
             loadState: "error",
             status: "error",
@@ -352,7 +374,7 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
             event.currentTarget.currentTime = range.endSeconds
             event.currentTarget.pause()
             rangeRef.current = null
-            updateCurrentSource((current) => ({ ...current, currentTimeSeconds: range.endSeconds, status: "paused" }))
+            updateCurrentSource((current) => ({ ...current, activeRange: null, currentTimeSeconds: range.endSeconds, status: "paused" }))
             return
           }
           updateCurrentSource((current) => ({ ...current, currentTimeSeconds }))

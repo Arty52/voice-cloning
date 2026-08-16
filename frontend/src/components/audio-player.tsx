@@ -26,6 +26,7 @@ type PlaybackControlsProps = {
   ariaLabel: string
   className?: string
   controller: PlaybackController
+  onBeforeSeek?: () => void
   onActivate: () => void
   source: PlaybackSource
 }
@@ -81,7 +82,7 @@ function AudioPlayerControls({ ariaLabel, className, loadOnMount = false, source
  * Shared, presentational controls for a source owned by a feature hook. The
  * owner decides how to activate a source; the controls never create media.
  */
-export function PlaybackControls({ ariaLabel, className, controller, onActivate, source }: PlaybackControlsProps) {
+export function PlaybackControls({ ariaLabel, className, controller, onBeforeSeek, onActivate, source }: PlaybackControlsProps) {
   const activeSource = controller.snapshot.source
   const isCurrentSource = activeSource?.id === source.id && activeSource.url === source.url
   const duration = isCurrentSource ? controller.snapshot.durationSeconds : null
@@ -105,6 +106,7 @@ export function PlaybackControls({ ariaLabel, className, controller, onActivate,
     if (!canSeek) {
       return
     }
+    onBeforeSeek?.()
     controller.dispatch({ positionSeconds: nextTime, type: "seek" })
   }
 
@@ -117,7 +119,10 @@ export function PlaybackControls({ ariaLabel, className, controller, onActivate,
         <Button
           aria-label="Rewind 10 Seconds"
           disabled={!canSeek}
-          onClick={() => controller.dispatch({ seconds: -SEEK_STEP_SECONDS, type: "skip" })}
+          onClick={() => {
+            onBeforeSeek?.()
+            controller.dispatch({ seconds: -SEEK_STEP_SECONDS, type: "skip" })
+          }}
           size="icon"
           type="button"
           variant="secondary"
@@ -127,7 +132,10 @@ export function PlaybackControls({ ariaLabel, className, controller, onActivate,
         <Button
           aria-label="Forward 10 Seconds"
           disabled={!canSeek}
-          onClick={() => controller.dispatch({ seconds: SEEK_STEP_SECONDS, type: "skip" })}
+          onClick={() => {
+            onBeforeSeek?.()
+            controller.dispatch({ seconds: SEEK_STEP_SECONDS, type: "skip" })
+          }}
           size="icon"
           type="button"
           variant="secondary"

@@ -186,6 +186,47 @@ describe("usePlaybackController", () => {
     expect(result.current.snapshot).toMatchObject({ currentTimeSeconds: 12, status: "paused" })
   })
 
+  it("clears a paused range before full-source playback resumes", async () => {
+    const { result } = renderHook(() => usePlaybackController(), { wrapper })
+    const audio = document.querySelector("audio")
+    if (!audio) {
+      throw new Error("Expected the shared media element.")
+    }
+    Object.defineProperty(audio, "duration", { configurable: true, value: 30 })
+
+    act(() => {
+      result.current.dispatch({ source: firstSource, type: "replaceSource" })
+      result.current.dispatch({ endSeconds: 12, startSeconds: 8, type: "playRange" })
+      result.current.dispatch({ type: "pause" })
+      result.current.dispatch({ type: "play" })
+    })
+    await waitFor(() => expect(HTMLMediaElement.prototype.play).toHaveBeenCalled())
+    expect(result.current.snapshot.activeRange).toBeNull()
+
+    Object.defineProperty(audio, "currentTime", { configurable: true, value: 12, writable: true })
+    fireEvent.timeUpdate(audio)
+    expect(result.current.snapshot).toMatchObject({ currentTimeSeconds: 12, status: "paused" })
+  })
+
+  it("clears a selection endpoint before a full-source seek or skip", () => {
+    const { result } = renderHook(() => usePlaybackController(), { wrapper })
+    const audio = document.querySelector("audio")
+    if (!audio) {
+      throw new Error("Expected the shared media element.")
+    }
+    Object.defineProperty(audio, "duration", { configurable: true, value: 30 })
+
+    act(() => {
+      result.current.dispatch({ source: firstSource, type: "replaceSource" })
+      result.current.dispatch({ endSeconds: 12, startSeconds: 8, type: "playRange" })
+      result.current.dispatch({ type: "clearRange" })
+      result.current.dispatch({ seconds: 10, type: "skip" })
+    })
+
+    expect(result.current.snapshot.activeRange).toBeNull()
+    expect(audio.currentTime).toBe(18)
+  })
+
   it("reports autoplay rejection and media loading errors as controlled state", async () => {
     vi.mocked(HTMLMediaElement.prototype.play).mockRejectedValueOnce(new Error("Blocked"))
     const { result } = renderHook(() => usePlaybackController(), { wrapper })
@@ -225,6 +266,7 @@ describe("usePlaybackController", () => {
     act(() => result.current.dispatch({ type: "clear" }))
     await act(async () => secondPlay.reject(new Error("Blocked")))
     expect(result.current.snapshot).toEqual({
+      activeRange: null,
       currentTimeSeconds: 0,
       durationSeconds: null,
       error: null,
@@ -277,6 +319,7 @@ describe("usePlaybackController", () => {
     fireEvent.play(audio)
     await act(async () => queuedPlay.resolve())
     expect(result.current.snapshot).toEqual({
+      activeRange: null,
       currentTimeSeconds: 0,
       durationSeconds: null,
       error: null,
@@ -310,6 +353,7 @@ describe("usePlaybackController", () => {
 
     expect(audio.getAttribute("src")).toBeNull()
     expect(result.current.snapshot).toEqual({
+      activeRange: null,
       currentTimeSeconds: 0,
       durationSeconds: null,
       error: null,

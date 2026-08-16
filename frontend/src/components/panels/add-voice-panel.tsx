@@ -2,6 +2,7 @@ import { Mic, RotateCcw, Save, Square, Upload } from "lucide-react"
 import { type FormEvent } from "react"
 
 import { MediaFileDropZone } from "@/components/media-file-drop-zone"
+import { PlaybackControls } from "@/components/audio-player"
 import { AudioWindowCropper } from "@/components/audio-window-cropper"
 import { Button } from "@/components/ui/button"
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
@@ -9,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Loading } from "@/components/ui/loading"
 import { PendingWorkStatus } from "@/components/ui/pending-work-status"
 import { VoicePresetToggleGroup } from "@/components/voice-preset-toggle-group"
+import type { AddVoicePlayback } from "@/hooks/use-add-voice-playback"
 import type { AudioWindow } from "@/lib/audio-window"
 import { formatRecordingDuration } from "@/lib/formatters"
 import type {
@@ -22,6 +24,7 @@ import type {
 
 type AddVoicePanelProps = {
   canUpload: boolean
+  playback: AddVoicePlayback
   handleDiscardRecording: () => void
   handleSampleModeChange: (mode: VoiceSampleMode) => void
   handleSampleWindowChange: (window: AudioWindow) => void
@@ -53,6 +56,7 @@ type AddVoicePanelProps = {
 
 export function AddVoicePanel({
   canUpload,
+  playback,
   handleDiscardRecording,
   handleSampleModeChange,
   handleSampleWindowChange,
@@ -190,20 +194,24 @@ export function AddVoicePanel({
               recommendedMaxSeconds={sampleLimits.recommendedMaxSeconds}
               recommendedMinSeconds={sampleLimits.recommendedMinSeconds}
               sampleMode={sampleMode}
-              sourceUrl={uploadPreviewUrl}
+              playbackController={playback.controller}
+              onActivatePlayback={playback.activate}
+              source={playback.source!}
               window={uploadWindow}
             />
           ) : null}
 
-          {uploadPreviewUrl ? (
+          {playback.source ? (
             <div className="rounded-md border border-border bg-background/60 p-3">
               <div className="mb-2 text-sm font-medium">
                 {voiceSampleInputMode === "record" ? "Recording Preview" : "Upload Preview"}
               </div>
-              <audio
-                aria-label={voiceSampleInputMode === "record" ? "Recorded voice sample preview" : "Uploaded voice sample preview"}
-                controls
-                src={uploadPreviewUrl}
+              <PlaybackControls
+                ariaLabel={voiceSampleInputMode === "record" ? "Recorded voice sample preview" : "Uploaded voice sample preview"}
+                controller={playback.controller}
+                onActivate={playback.activate}
+                onBeforeSeek={() => playback.controller.dispatch({ type: "clearRange" })}
+                source={playback.source}
               />
             </div>
           ) : null}
