@@ -4,7 +4,7 @@ import { createRef } from "react"
 import { beforeAll, describe, expect, it, vi } from "vitest"
 
 import type { DialogueScriptController } from "@/hooks/use-dialogue-script"
-import { PlaybackControllerProvider } from "@/hooks/use-playback-controller"
+import type { VoicePickerPreview } from "@/hooks/use-voice-picker-preview"
 import { speakerColorClassName, type MultiVoiceScriptBlock } from "@/lib/dialogue-script"
 import type { VoiceTextAssignment } from "@/lib/voice-assignments"
 import type { ProviderTuningControl, VoiceAsset } from "@/types"
@@ -82,6 +82,26 @@ function voice(id: string, name: string): VoiceAsset {
   }
 }
 
+function voicePickerPreview(voices: VoiceAsset[]): VoicePickerPreview {
+  return {
+    activePreview: null,
+    clearPreview: vi.fn(),
+    options: voices.map((voice) => ({
+      description: null,
+      id: voice.id,
+      metadata: [],
+      name: voice.name,
+      preview: {
+        id: `voice-picker:${voice.id}:preview`,
+        kind: "voicePreview",
+        label: `${voice.name} Preview`,
+        url: `/api/voices/${voice.id}/sample`,
+      },
+    })),
+    togglePreview: vi.fn(() => true),
+  }
+}
+
 function renderPanel(overrides: Partial<Parameters<typeof SpeechInputPanel>[0]> = {}) {
   const props = {
     assignmentError: null,
@@ -92,7 +112,6 @@ function renderPanel(overrides: Partial<Parameters<typeof SpeechInputPanel>[0]> 
     characterCount: 19,
     dialogue: dialogueController(),
     dialogueSpeechSegmentCount: null,
-    isActive: true,
     isGenerating: false,
     naturalHandoffsEnabled: true,
     onAssignVoice: vi.fn(),
@@ -114,14 +133,16 @@ function renderPanel(overrides: Partial<Parameters<typeof SpeechInputPanel>[0]> 
     voices: [narrator, villain, skippy],
     ...overrides,
   }
+  const panelProps = {
+    ...props,
+    voicePickerPreview: props.voicePickerPreview ?? voicePickerPreview(props.voices),
+  }
   render(
-    <PlaybackControllerProvider>
-      <TooltipProvider>
-        <SpeechInputPanel {...props} />
-      </TooltipProvider>
-    </PlaybackControllerProvider>
+    <TooltipProvider>
+      <SpeechInputPanel {...panelProps} />
+    </TooltipProvider>,
   )
-  return props
+  return panelProps
 }
 
 function dialogueController(overrides: Partial<DialogueScriptController> = {}): DialogueScriptController {

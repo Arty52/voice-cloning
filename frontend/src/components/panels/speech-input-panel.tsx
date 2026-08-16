@@ -31,7 +31,7 @@ import { VoicePicker } from "@/components/voice-picker"
 import { VoiceTuningControls } from "@/components/voice-tuning-controls"
 import { MAX_SPEECH_TEXT_LENGTH } from "@/constants"
 import type { DialogueScriptController } from "@/hooks/use-dialogue-script"
-import { useVoicePickerPreview } from "@/hooks/use-voice-picker-preview"
+import type { VoicePickerPreview } from "@/hooks/use-voice-picker-preview"
 import { speakerColorClassName, type MultiVoiceScriptBlock } from "@/lib/dialogue-script"
 import { cn } from "@/lib/utils"
 import type { VoiceTextAssignment } from "@/lib/voice-assignments"
@@ -47,7 +47,6 @@ type SpeechInputPanelProps = {
   dialogue: DialogueScriptController
   dialogueSpeechSegmentCount: number | null
   effectiveVoiceSettingsByVoiceId?: Record<string, VoiceTuningValues>
-  isActive: boolean
   isGenerating: boolean
   naturalHandoffsEnabled: boolean
   naturalHandoffsSaveError?: string | null
@@ -72,6 +71,7 @@ type SpeechInputPanelProps = {
   textRef: RefObject<HTMLTextAreaElement | null>
   tuning?: VoiceTuningValues
   voices: VoiceAsset[]
+  voicePickerPreview: VoicePickerPreview
 }
 
 const EMPTY_VOICE_SETTINGS_BY_VOICE_ID: Record<string, VoiceTuningValues> = {}
@@ -86,7 +86,6 @@ export function SpeechInputPanel({
   dialogue,
   dialogueSpeechSegmentCount,
   effectiveVoiceSettingsByVoiceId = EMPTY_VOICE_SETTINGS_BY_VOICE_ID,
-  isActive,
   isGenerating,
   naturalHandoffsEnabled,
   naturalHandoffsSaveError = null,
@@ -111,6 +110,7 @@ export function SpeechInputPanel({
   textRef,
   tuning = {},
   voices,
+  voicePickerPreview,
 }: SpeechInputPanelProps) {
   const isDialogueMode = dialogue.mode === "dialogue"
   const canAssignSelection = selectedText.trim().length > 0 && voices.length > 0 && !isGenerating
@@ -123,8 +123,6 @@ export function SpeechInputPanel({
   })
   const quickAssignmentVoices = assignedVoices(assignments, voices)
   const showNaturalHandoffs = assignments.length > 0 || (isDialogueMode && dialogue.segmentBuild.segments.length > 0)
-  const voicePickerPreview = useVoicePickerPreview({ isActive: isActive && !isGenerating, voices })
-
   return (
     <form
       aria-busy={isGenerating}
@@ -393,7 +391,7 @@ type VoiceAssignmentsListProps = {
   isGenerating: boolean
   onEditAssignmentVoice: (assignmentId: string, voice: VoiceAsset) => void
   onRemoveAssignment: (assignmentId: string) => void
-  preview: ReturnType<typeof useVoicePickerPreview>
+  preview: VoicePickerPreview
   stale: boolean
   voices: VoiceAsset[]
 }
@@ -478,7 +476,7 @@ type DialogueEditorProps = {
   isGenerating: boolean
   providerTuningControls: ProviderTuningControl[]
   providerTuningDefaultValues: VoiceTuningValues
-  preview: ReturnType<typeof useVoicePickerPreview>
+  preview: VoicePickerPreview
   tuning: VoiceTuningValues
   voices: VoiceAsset[]
 }
@@ -575,7 +573,7 @@ function DialogueEditor({
 type SpeakerMappingsProps = {
   dialogue: DialogueScriptController
   isGenerating: boolean
-  preview: ReturnType<typeof useVoicePickerPreview>
+  preview: VoicePickerPreview
   voices: VoiceAsset[]
 }
 
@@ -633,7 +631,7 @@ type DialogueRowProps = {
   isGenerating: boolean
   providerTuningControls: ProviderTuningControl[]
   providerTuningDefaultValues: VoiceTuningValues
-  preview: ReturnType<typeof useVoicePickerPreview>
+  preview: VoicePickerPreview
   tuning: VoiceTuningValues
   voices: VoiceAsset[]
 }
@@ -860,7 +858,7 @@ type VoicePickerControlProps = {
   disabled: boolean
   disabledTooltip?: string | null
   onSelect: (voice: VoiceAsset) => void
-  preview: ReturnType<typeof useVoicePickerPreview>
+  preview: VoicePickerPreview
   selectedVoiceId?: string
   title: string
   triggerIcon: ReactNode

@@ -10,11 +10,18 @@ type VoicePickerPreviewOptions = {
   voices: VoiceAsset[]
 }
 
-type ActiveVoicePreview = {
+export type ActiveVoicePreview = {
   error: string | null
   isLoading: boolean
   isPlaying: boolean
   voiceId: string
+}
+
+export type VoicePickerPreview = {
+  activePreview: ActiveVoicePreview | null
+  clearPreview: () => void
+  options: VoicePickerOption[]
+  togglePreview: (voiceId: string) => boolean
 }
 
 /**
@@ -22,7 +29,7 @@ type ActiveVoicePreview = {
  * surfaces select voices independently, while this hook keeps their preview
  * audio mutually exclusive through the app's shared playback controller.
  */
-export function useVoicePickerPreview({ isActive, voices }: VoicePickerPreviewOptions) {
+export function useVoicePickerPreview({ isActive, voices }: VoicePickerPreviewOptions): VoicePickerPreview {
   const controller = usePlaybackOwner("voice-picker")
   const { dispatch, replaceSource, snapshot } = controller
   const options = useMemo<VoicePickerOption[]>(
