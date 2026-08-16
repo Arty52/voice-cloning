@@ -9,11 +9,14 @@ type PrepareAudioPreview = { label: string; src: string }
 type PrepareAudioPlaybackOptions = {
   candidateResultUrls: Record<string, string>
   isActive: boolean
+  isEnabled: boolean
   jobId: string | null
   processedResultUrl: string | null
   sourcePreview: PrepareAudioPreview | null
   voices: VoiceAsset[]
 }
+
+export type PrepareAudioPlayback = ReturnType<typeof usePrepareAudioPlayback>
 
 /**
  * Feature ownership for Prepare Audio media. Source inspection, processed
@@ -23,6 +26,7 @@ type PrepareAudioPlaybackOptions = {
 export function usePrepareAudioPlayback({
   candidateResultUrls,
   isActive,
+  isEnabled,
   jobId,
   processedResultUrl,
   sourcePreview,
@@ -61,10 +65,10 @@ export function usePrepareAudioPlayback({
   }, [candidateResultUrls, jobId, processedResultUrl, sourcePreview?.label, sourcePreview?.src, voices])
 
   useEffect(() => {
-    if (!isActive) {
+    if (!isActive || !isEnabled) {
       replaceSource(null)
     }
-  }, [isActive, replaceSource])
+  }, [isActive, isEnabled, replaceSource])
 
   useEffect(() => {
     const activeSource = snapshot.source

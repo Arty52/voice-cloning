@@ -48,7 +48,7 @@ import { Slider } from "@/components/ui/slider"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { VoicePresetToggleGroup } from "@/components/voice-preset-toggle-group"
-import { usePrepareAudioPlayback } from "@/hooks/use-prepare-audio-playback"
+import type { PrepareAudioPlayback } from "@/hooks/use-prepare-audio-playback"
 import type { SampleProcessingController } from "@/hooks/use-sample-processing"
 import { formatCompactBytes, formatElapsedTime, formatMediaDuration } from "@/lib/formatters"
 import { cn } from "@/lib/utils"
@@ -68,6 +68,7 @@ type SampleProcessingPanelProps = {
   isExpanded: boolean
   onAttentionRequest?: () => void
   onToggleExpanded: () => void
+  playback: PrepareAudioPlayback
   processing: SampleProcessingController
   voicePresets: { id: VoicePresetId; label: string; description: string }[]
 }
@@ -102,6 +103,7 @@ export function SampleProcessingPanel({
   isExpanded,
   onAttentionRequest = noopAttentionRequest,
   onToggleExpanded,
+  playback,
   processing,
   voicePresets,
 }: SampleProcessingPanelProps) {
@@ -112,15 +114,6 @@ export function SampleProcessingPanel({
   const statusLabel = panelStatusLabel(processing)
   const elapsedTimeLabel = panelElapsedTimeLabel(processing)
   const isDetailsVisible = isExpanded || !isCollapsible
-  const playback = usePrepareAudioPlayback({
-    candidateResultUrls: processing.candidateResultUrls,
-    isActive: isDetailsVisible,
-    jobId: processing.job?.id ?? null,
-    processedResultUrl: processing.resultUrl,
-    sourcePreview: processing.mediaSource.preview,
-    voices: processing.sourceVoices,
-  })
-
   function handleStartProcessing(event: FormEvent<HTMLFormElement>) {
     if (processing.canStart) {
       onAttentionRequest()
@@ -501,7 +494,7 @@ function SourceSelection({
   processing,
   voicePresets,
 }: {
-  playback: ReturnType<typeof usePrepareAudioPlayback>
+  playback: PrepareAudioPlayback
   processing: SampleProcessingController
   voicePresets: { id: VoicePresetId; label: string; description: string }[]
 }) {
@@ -618,7 +611,7 @@ function MediaSourceSelection({
   playback,
   processing,
 }: {
-  playback: ReturnType<typeof usePrepareAudioPlayback>
+  playback: PrepareAudioPlayback
   processing: SampleProcessingController
 }) {
   const media = processing.mediaSource
@@ -984,7 +977,7 @@ function SavedVoiceCarousel({
   disabled: boolean
   onSelectVoice: (voiceId: string) => void
   onUseAudioFile: () => void
-  playback: ReturnType<typeof usePrepareAudioPlayback>
+  playback: PrepareAudioPlayback
   selectedVoiceId: string
   voicePresets: { id: VoicePresetId; label: string; description: string }[]
   voices: VoiceAsset[]
@@ -1106,7 +1099,7 @@ function SavedVoiceSourceCard({
   disabled: boolean
   isSelected: boolean
   onSelectVoice: (voiceId: string) => void
-  playback: ReturnType<typeof usePrepareAudioPlayback>
+  playback: PrepareAudioPlayback
   voice: VoiceAsset
   voicePreset: string
 }) {
@@ -1181,10 +1174,11 @@ function CompactVoicePreviewButton({
   voice,
 }: {
   disabled: boolean
-  playback: ReturnType<typeof usePrepareAudioPlayback>
+  playback: PrepareAudioPlayback
   voice: VoiceAsset
 }) {
-  const source = playback.sources.get(`voice:${voice.id}`)
+  const voiceId = voice.id.trim()
+  const source = playback.sources.get(`voice:${voiceId}`)
   const isCurrentSource =
     source !== undefined &&
     source.id === playback.controller.snapshot.source?.id &&
@@ -1196,7 +1190,7 @@ function CompactVoicePreviewButton({
       return
     }
     if (!isCurrentSource) {
-      playback.activate(`voice:${voice.id}`)
+      playback.activate(`voice:${voiceId}`)
       playback.controller.dispatch({ type: "play" })
       return
     }
@@ -1365,7 +1359,7 @@ function SingleResultSave({
   processing,
   voicePresets,
 }: {
-  playback: ReturnType<typeof usePrepareAudioPlayback>
+  playback: PrepareAudioPlayback
   processing: SampleProcessingController
   voicePresets: { id: VoicePresetId; label: string; description: string }[]
 }) {
@@ -1430,7 +1424,7 @@ function PreparedCandidateResultSave({
   processing,
   voicePresets,
 }: {
-  playback: ReturnType<typeof usePrepareAudioPlayback>
+  playback: PrepareAudioPlayback
   processing: SampleProcessingController
   voicePresets: { id: VoicePresetId; label: string; description: string }[]
 }) {

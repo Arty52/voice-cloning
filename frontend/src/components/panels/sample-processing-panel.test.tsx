@@ -1,12 +1,29 @@
+import type { ComponentProps } from "react"
+
 import { fireEvent, render, screen, within } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { PlaybackControllerProvider } from "@/hooks/use-playback-controller"
+import { usePrepareAudioPlayback } from "@/hooks/use-prepare-audio-playback"
 import type { SampleProcessingController } from "@/hooks/use-sample-processing"
 import type { PreparedSamplesResult, SampleProcessingJob, VoicePreset } from "@/types"
 
 import { SampleProcessingPanel } from "./sample-processing-panel"
+
+function SampleProcessingPanelHarness(props: Omit<ComponentProps<typeof SampleProcessingPanel>, "playback">) {
+  const { processing } = props
+  const playback = usePrepareAudioPlayback({
+    candidateResultUrls: processing.candidateResultUrls,
+    isActive: true,
+    isEnabled: !processing.isProcessing,
+    jobId: processing.job?.id ?? null,
+    processedResultUrl: processing.resultUrl,
+    sourcePreview: processing.mediaSource.preview,
+    voices: processing.sourceVoices,
+  })
+  return <SampleProcessingPanel {...props} playback={playback} />
+}
 
 const voicePresets: VoicePreset[] = [
   {
@@ -210,7 +227,7 @@ describe("SampleProcessingPanel ranked candidates", () => {
     render(
       <PlaybackControllerProvider>
         <TooltipProvider>
-          <SampleProcessingPanel
+          <SampleProcessingPanelHarness
           isCollapsible={false}
           isExpanded={true}
           onToggleExpanded={vi.fn()}
@@ -360,7 +377,7 @@ describe("SampleProcessingPanel ranked candidates", () => {
     render(
       <PlaybackControllerProvider>
         <TooltipProvider>
-          <SampleProcessingPanel
+          <SampleProcessingPanelHarness
           isCollapsible={false}
           isExpanded={true}
           onToggleExpanded={vi.fn()}
@@ -469,7 +486,7 @@ describe("SampleProcessingPanel ranked candidates", () => {
     render(
       <PlaybackControllerProvider>
         <TooltipProvider>
-          <SampleProcessingPanel
+          <SampleProcessingPanelHarness
           isCollapsible={false}
           isExpanded={true}
           onToggleExpanded={vi.fn()}
@@ -607,7 +624,7 @@ describe("SampleProcessingPanel ranked candidates", () => {
     render(
       <PlaybackControllerProvider>
         <TooltipProvider>
-          <SampleProcessingPanel
+          <SampleProcessingPanelHarness
           isCollapsible={false}
           isExpanded={true}
           onToggleExpanded={vi.fn()}
