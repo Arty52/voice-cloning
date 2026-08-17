@@ -223,6 +223,50 @@ describe("SynchronizedTranscriptViewer", () => {
     expect(screen.getAllByRole("button", { name: /^Seek to Word/ })).toHaveLength(100)
   })
 
+  it("follows the canonical segment when transcript timings overlap", async () => {
+    const user = userEvent.setup()
+    const overlappingDocument: TranscriptDocument = {
+      ...document,
+      segments: [
+        {
+          endSeconds: 3,
+          id: "overlap-first",
+          speakerId: "speaker-1",
+          startSeconds: 0,
+          text: "First overlapping segment.",
+        },
+        {
+          endSeconds: 4,
+          id: "overlap-second",
+          speakerId: "speaker-2",
+          startSeconds: 1,
+          text: "Second overlapping segment.",
+        },
+      ],
+    }
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      if (this.tagName === "ARTICLE" && this.textContent?.includes("First overlapping segment.")) {
+        return { bottom: 10, height: 20, left: 0, right: 100, top: -10, width: 100, x: 0, y: -10, toJSON: vi.fn() }
+      }
+      return { bottom: 80, height: 80, left: 0, right: 100, top: 0, width: 100, x: 0, y: 0, toJSON: vi.fn() }
+    })
+
+    render(
+      <SynchronizedTranscriptViewer currentTimeSeconds={1.5} document={overlappingDocument} onSeek={vi.fn()} />,
+    )
+
+    const currentRows = screen.getByRole("region", { name: "Synchronized Transcript" }).querySelectorAll(
+      "article[aria-current='true']",
+    )
+    expect(currentRows).toHaveLength(1)
+    expect(currentRows[0]).toHaveTextContent("First overlapping segment.")
+    expect(scrollTo).toHaveBeenLastCalledWith({ behavior: "auto", top: -10 })
+
+    fireEvent.wheel(currentRows[0])
+    await user.click(screen.getByRole("button", { name: "Return To Current" }))
+    expect(scrollTo).toHaveBeenLastCalledWith({ behavior: "auto", top: -10 })
+  })
+
   it("disables automatic scrolling for reduced motion while keeping manual return available", async () => {
     const user = userEvent.setup()
     vi.stubGlobal(

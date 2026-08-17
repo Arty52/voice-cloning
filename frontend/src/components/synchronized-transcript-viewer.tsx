@@ -134,6 +134,7 @@ export function SynchronizedTranscriptViewer({
             return (
               <TranscriptSegmentRow
                 currentWordId={wordBoundary.currentWordId}
+                isCanonicalCurrent={segment.id === currentSegmentId}
                 isSeekDisabled={isSeekDisabled}
                 key={segment.id}
                 onCurrentElement={handleCurrentElement}
@@ -156,6 +157,7 @@ const MANUAL_SCROLL_KEYS = new Set([" ", "ArrowDown", "ArrowUp", "End", "Home", 
 
 const TranscriptSegmentRow = memo(function TranscriptSegmentRow({
   currentWordId,
+  isCanonicalCurrent,
   isSeekDisabled,
   onCurrentElement,
   onSeek,
@@ -166,6 +168,7 @@ const TranscriptSegmentRow = memo(function TranscriptSegmentRow({
   speakerLabel,
 }: {
   currentWordId: string | null
+  isCanonicalCurrent: boolean
   isSeekDisabled: boolean
   onCurrentElement: (element: HTMLElement | null) => void
   onSeek: (positionSeconds: number) => void
@@ -178,7 +181,7 @@ const TranscriptSegmentRow = memo(function TranscriptSegmentRow({
   return (
     <li>
       <article
-        aria-current={position === "current" ? "true" : undefined}
+        aria-current={isCanonicalCurrent ? "true" : undefined}
         className={cn(
           "flex flex-col gap-2 rounded-md border border-transparent p-3 transition-colors",
           position === "past" && "text-muted-foreground",
@@ -186,7 +189,7 @@ const TranscriptSegmentRow = memo(function TranscriptSegmentRow({
           position === "future" && "text-muted-foreground/70",
         )}
         data-playback-state={position}
-        ref={position === "current" ? onCurrentElement : undefined}
+        ref={isCanonicalCurrent ? onCurrentElement : undefined}
       >
         <header className="flex flex-wrap items-center gap-2">
           <span
