@@ -2677,8 +2677,9 @@ describe("App", () => {
     fireEvent.play(sharedAudio!)
     expect(cloneCard.getByRole("button", { name: "Pause Voice_Clone_01 Preview" })).toBeInTheDocument()
     expect(cloneCard.getByRole("button", { name: "Select Voice_Clone_01" })).toHaveAttribute("aria-pressed", "false")
+    pauseSpy.mockClear()
     await user.click(cloneCard.getByRole("button", { name: "Pause Voice_Clone_01 Preview" }))
-    expect(pauseSpy).toHaveBeenCalled()
+    expect(pauseSpy).toHaveBeenCalledTimes(1)
     fireEvent.pause(sharedAudio!)
     expect(cloneCard.getByRole("button", { name: "Play Voice_Clone_01 Preview" })).toBeInTheDocument()
 
@@ -2727,9 +2728,10 @@ describe("App", () => {
     fireEvent.play(sharedAudio!)
     expect(defaultCard.getByRole("button", { name: "Pause Default voice Preview" })).toBeInTheDocument()
 
+    pauseSpy.mockClear()
     await user.click(cloneCard.getByRole("button", { name: "Play Voice_Clone_01 Preview" }))
     expect(playSpy).toHaveBeenCalledTimes(2)
-    await waitFor(() => expect(pauseSpy).toHaveBeenCalled())
+    expect(pauseSpy).toHaveBeenCalledTimes(1)
     expect(sharedAudio).toHaveAttribute("src", "/api/voices/voice-clone-01/sample")
     fireEvent.play(sharedAudio!)
     expect(defaultCard.getByRole("button", { name: "Play Default voice Preview" })).toBeInTheDocument()
