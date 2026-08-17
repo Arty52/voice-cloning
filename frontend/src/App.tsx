@@ -19,6 +19,7 @@ import { VoiceLibraryPanel } from "@/components/panels/voice-library-panel"
 import { PlaybackControllerProvider, useHasPlaybackController } from "@/hooks/use-playback-controller"
 import { useScrollIntoViewOnSignal } from "@/hooks/use-scroll-into-view-on-signal"
 import { useVoiceLibraryPlayback } from "@/hooks/use-voice-library-playback"
+import { useVoicePickerPreview } from "@/hooks/use-voice-picker-preview"
 import { useGeneratedAudioPlayback } from "@/hooks/use-generated-audio-playback"
 import { usePrepareAudioPlayback } from "@/hooks/use-prepare-audio-playback"
 import { useAddVoicePlayback } from "@/hooks/use-add-voice-playback"
@@ -114,6 +115,10 @@ function AppContents() {
   } = useVoiceStudioController()
   const voiceLibraryPlayback = useVoiceLibraryPlayback({
     isActive: activeSectionId === "voices",
+    voices: voiceLibrary.voices,
+  })
+  const voicePickerPreview = useVoicePickerPreview({
+    isActive: activeSectionId === "generate" && !isSpeechGenerating,
     voices: voiceLibrary.voices,
   })
   const generatedAudioPlayback = useGeneratedAudioPlayback({
@@ -303,6 +308,7 @@ function AppContents() {
             textRef={textRef}
             tuning={tuning}
             voices={voiceLibrary.voices}
+            voicePickerPreview={voicePickerPreview}
           />
 
           <LatestGeneratedAudioPanel
