@@ -27,6 +27,7 @@ export function SynchronizedTranscriptViewer({
   onSeek,
 }: SynchronizedTranscriptViewerProps) {
   const [isFollowing, setIsFollowing] = useState(true)
+  const prefersReducedMotion = usePrefersReducedMotion()
   const currentSegmentId = useMemo(
     () => segmentAtTime(document.segments, currentTimeSeconds)?.id ?? null,
     [currentTimeSeconds, document.segments],
@@ -34,10 +35,10 @@ export function SynchronizedTranscriptViewer({
   const currentSegmentRef = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
-    if (isFollowing && currentSegmentId) {
+    if (isFollowing && currentSegmentId && !prefersReducedMotion) {
       scrollToSegment(currentSegmentRef.current)
     }
-  }, [currentSegmentId, isFollowing])
+  }, [currentSegmentId, isFollowing, prefersReducedMotion])
 
   function returnToCurrent() {
     setIsFollowing(true)
@@ -71,9 +72,15 @@ export function SynchronizedTranscriptViewer({
             : "Select a timestamp or word to seek the original audio."}
         </p>
         {currentSegmentId ? (
-          <Button disabled={isFollowing} onClick={returnToCurrent} size="sm" type="button" variant="secondary">
+          <Button
+            disabled={isFollowing && !prefersReducedMotion}
+            onClick={returnToCurrent}
+            size="sm"
+            type="button"
+            variant="secondary"
+          >
             <LocateFixed aria-hidden="true" data-icon="inline-start" />
-            {isFollowing ? "Following Current" : "Return To Current"}
+            {isFollowing && !prefersReducedMotion ? "Following Current" : "Return To Current"}
           </Button>
         ) : null}
       </div>
@@ -224,4 +231,23 @@ function scrollToSegment(element: HTMLElement | null) {
   if (typeof element?.scrollIntoView === "function") {
     element.scrollIntoView({ block: "nearest", behavior: "auto" })
   }
+}
+
+function usePrefersReducedMotion() {
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(
+    () => typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true,
+  )
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return
+    }
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)")
+    const handleChange = () => setPrefersReducedMotion(query.matches)
+    handleChange()
+    query.addEventListener("change", handleChange)
+    return () => query.removeEventListener("change", handleChange)
+  }, [])
+
+  return prefersReducedMotion
 }

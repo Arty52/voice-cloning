@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { TranscriptDocument } from "@/lib/voice-ui-contracts"
 
@@ -44,6 +44,10 @@ describe("SynchronizedTranscriptViewer", () => {
       configurable: true,
       value: scrollIntoView,
     })
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
   })
 
   it("shows deterministic past, current, and future word states from playback time", () => {
@@ -117,6 +121,33 @@ describe("SynchronizedTranscriptViewer", () => {
     rerender(<SynchronizedTranscriptViewer currentTimeSeconds={1} document={document} onSeek={vi.fn()} />)
     expect(scrollIntoView).not.toHaveBeenCalled()
     expect(screen.getByRole("button", { name: "Return To Current" })).toBeEnabled()
+  })
+
+  it("disables automatic scrolling for reduced motion while keeping manual return available", async () => {
+    const user = userEvent.setup()
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({
+        addEventListener: vi.fn(),
+        matches: true,
+        media: "(prefers-reduced-motion: reduce)",
+        removeEventListener: vi.fn(),
+      })),
+    )
+    const { rerender } = render(
+      <SynchronizedTranscriptViewer currentTimeSeconds={1} document={document} onSeek={vi.fn()} />,
+    )
+
+    expect(scrollIntoView).not.toHaveBeenCalled()
+    const returnButton = screen.getByRole("button", { name: "Return To Current" })
+    expect(returnButton).toBeEnabled()
+    await user.click(returnButton)
+    expect(scrollIntoView).toHaveBeenCalledOnce()
+    expect(returnButton).toHaveFocus()
+
+    scrollIntoView.mockClear()
+    rerender(<SynchronizedTranscriptViewer currentTimeSeconds={3.5} document={document} onSeek={vi.fn()} />)
+    expect(scrollIntoView).not.toHaveBeenCalled()
   })
 
   it("renders an explicit empty state", () => {
