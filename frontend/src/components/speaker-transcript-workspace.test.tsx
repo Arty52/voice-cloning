@@ -231,8 +231,8 @@ describe("SpeakerTranscriptWorkspace", () => {
 
   it("seeks synchronized words through the original transcript source and follows its clock", async () => {
     const user = userEvent.setup()
-    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined)
-    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined)
+    const load = vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined)
+    const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined)
 
     render(<TestWorkspace />)
 
@@ -244,11 +244,24 @@ describe("SpeakerTranscriptWorkspace", () => {
 
     if (audio) {
       audio.currentTime = 0.6
+      fireEvent.play(audio)
       fireEvent.timeUpdate(audio)
     }
     expect(screen.getByRole("button", { name: "Seek to there. at 0:00" })).toHaveAttribute(
       "aria-current",
       "true",
     )
+
+    const loadCount = load.mock.calls.length
+    const pauseCount = pause.mock.calls.length
+    await user.click(screen.getByRole("button", { name: "Seek to Hello at 0:00" }))
+    expect(load).toHaveBeenCalledTimes(loadCount)
+    expect(pause).toHaveBeenCalledTimes(pauseCount)
+    expect(audio?.currentTime).toBe(0)
+    expect(
+      within(screen.getByRole("group", { name: "Transcript Audio Playback" })).getByRole("button", {
+        name: "Pause Audio",
+      }),
+    ).toBeVisible()
   })
 })

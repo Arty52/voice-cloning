@@ -1,6 +1,6 @@
 import type { ReactNode } from "react"
 
-import { act, renderHook } from "@testing-library/react"
+import { act, fireEvent, renderHook } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
 
 import { PlaybackControllerProvider, usePlaybackController } from "./use-playback-controller"
@@ -111,5 +111,28 @@ describe("useTranscriptPlayback", () => {
       url: initialOptions.sourceUrl,
     })
     expect(result.current.controller.snapshot.activeRange).toEqual({ endSeconds: 3, startSeconds: 1 })
+  })
+
+  it("seeks the active transcript source without reloading or pausing it", () => {
+    const { result } = renderHook((options) => useHarness(options), { initialProps: initialOptions, wrapper })
+
+    act(() => {
+      result.current.playback.playTranscriptItem({ endSeconds: 3, startSeconds: 1 })
+    })
+    const audio = document.querySelector("audio")
+    expect(audio).not.toBeNull()
+    if (audio) {
+      fireEvent.play(audio)
+    }
+    const source = result.current.controller.snapshot.source
+
+    act(() => {
+      expect(result.current.playback.seekTranscript(2)).toBe(true)
+    })
+
+    expect(result.current.controller.snapshot.source).toBe(source)
+    expect(result.current.controller.snapshot.status).toBe("playing")
+    expect(result.current.controller.snapshot.activeRange).toBeNull()
+    expect(result.current.controller.snapshot.currentTimeSeconds).toBe(2)
   })
 })

@@ -97,13 +97,6 @@ export function SpeakerTranscriptWorkspace({
     playback.controller.snapshot.source?.id === transcriptSource?.id &&
     playback.controller.snapshot.source?.url === transcriptSource?.url
 
-  function handleTranscriptSeek(positionSeconds: number) {
-    if (!playback.activate("source")) {
-      return
-    }
-    playback.controller.dispatch({ positionSeconds, type: "seek" })
-  }
-
   function updateTranscriptSelectionThrough(itemId: string) {
     if (!speakerResult || !dragStartItemId) {
       controller.handleTranscriptSelectionChange([itemId])
@@ -185,7 +178,7 @@ export function SpeakerTranscriptWorkspace({
                 }
                 document={transcriptDocument}
                 isSeekDisabled={!transcriptSource}
-                onSeek={handleTranscriptSeek}
+                onSeek={playback.seekTranscript}
               />
             ) : null}
           </CardContent>

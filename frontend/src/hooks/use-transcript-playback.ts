@@ -97,8 +97,29 @@ export function useTranscriptPlayback({
     return true
   }
 
+  function activateIfNeeded(key: string) {
+    const source = sources.get(key)
+    if (!isActive || !source) {
+      return false
+    }
+    const activeSource = controller.snapshot.source
+    if (activeSource?.id !== source.id || activeSource.url !== source.url) {
+      replaceSource(source)
+    }
+    return true
+  }
+
+  function seekTranscript(positionSeconds: number) {
+    if (!Number.isFinite(positionSeconds) || !activateIfNeeded("source")) {
+      return false
+    }
+    controller.dispatch({ type: "clearRange" })
+    controller.dispatch({ positionSeconds, type: "seek" })
+    return true
+  }
+
   function playTranscriptItem(item: Pick<SpeakerTranscriptItem, "startSeconds" | "endSeconds">) {
-    if (!activate("source")) {
+    if (!activateIfNeeded("source")) {
       return false
     }
     controller.dispatch({
@@ -109,5 +130,5 @@ export function useTranscriptPlayback({
     return true
   }
 
-  return { activate, controller, playTranscriptItem, sources }
+  return { activate, controller, playTranscriptItem, seekTranscript, sources }
 }
