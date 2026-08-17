@@ -294,6 +294,34 @@ describe("SynchronizedTranscriptViewer", () => {
     expect(scrollTo).not.toHaveBeenCalled()
   })
 
+  it("disables synchronized highlight transitions for reduced motion", () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({
+        addEventListener: vi.fn(),
+        matches: true,
+        media: "(prefers-reduced-motion: reduce)",
+        removeEventListener: vi.fn(),
+      })),
+    )
+
+    render(
+      <SynchronizedTranscriptViewer currentTimeSeconds={1} document={document} onSeek={vi.fn()} />,
+    )
+
+    const currentArticle = screen.getByText("Morgan").closest("article")
+    expect(currentArticle).toHaveClass("motion-reduce:transition-none")
+    expect(screen.getByRole("button", { name: "Seek to Morgan at 0:00" })).toHaveClass(
+      "motion-reduce:transition-none",
+    )
+    expect(screen.getByRole("button", { name: "Seek to there. at 0:00" })).toHaveClass(
+      "motion-reduce:transition-none",
+    )
+    expect(screen.getByRole("button", { name: "Seek to transcript segment: Segment timing fallback." })).toHaveClass(
+      "motion-reduce:transition-none",
+    )
+  })
+
   it("renders an explicit empty state", () => {
     render(
       <SynchronizedTranscriptViewer

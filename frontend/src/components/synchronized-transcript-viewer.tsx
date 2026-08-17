@@ -183,7 +183,7 @@ const TranscriptSegmentRow = memo(function TranscriptSegmentRow({
       <article
         aria-current={isCanonicalCurrent ? "true" : undefined}
         className={cn(
-          "flex flex-col gap-2 rounded-md border border-transparent p-3 transition-colors",
+          "flex flex-col gap-2 rounded-md border border-transparent p-3 transition-colors motion-reduce:transition-none",
           position === "past" && "text-muted-foreground",
           position === "current" && "border-primary/40 bg-primary/10 text-foreground",
           position === "future" && "text-muted-foreground/70",
@@ -200,7 +200,7 @@ const TranscriptSegmentRow = memo(function TranscriptSegmentRow({
           <span className="text-xs font-medium text-foreground">{speakerLabel}</span>
           <Button
             aria-label={`Seek to ${speakerLabel} at ${formatRecordingDuration(segment.startSeconds)}`}
-            className="h-auto px-1.5 py-0.5 font-mono text-xs tabular-nums"
+            className="h-auto px-1.5 py-0.5 font-mono text-xs tabular-nums motion-reduce:transition-none"
             disabled={isSeekDisabled}
             onClick={() => onSeek(segment.startSeconds)}
             size="sm"
@@ -225,7 +225,7 @@ const TranscriptSegmentRow = memo(function TranscriptSegmentRow({
         ) : (
           <Button
             aria-label={`Seek to transcript segment: ${segment.text}`}
-            className="h-auto justify-start whitespace-normal px-1 py-0 text-left font-normal leading-6"
+            className="h-auto justify-start whitespace-normal px-1 py-0 text-left font-normal leading-6 motion-reduce:transition-none"
             disabled={isSeekDisabled}
             onClick={() => onSeek(segment.startSeconds)}
             size="sm"
@@ -270,7 +270,7 @@ function SynchronizedWord({
       aria-current={position === "current" ? "true" : undefined}
       aria-label={`Seek to ${word.text} at ${formatRecordingDuration(word.startSeconds)}`}
       className={cn(
-        "h-auto px-1 py-0 font-normal leading-6",
+        "h-auto px-1 py-0 font-normal leading-6 motion-reduce:transition-none",
         position === "past" && "text-muted-foreground",
         position === "current" && "bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
         position === "future" && "text-muted-foreground/70",
