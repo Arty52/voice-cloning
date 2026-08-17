@@ -257,9 +257,19 @@ function speakerStyle(index: number) {
 }
 
 function scrollToSegment(element: HTMLElement | null) {
-  if (typeof element?.scrollIntoView === "function") {
-    element.scrollIntoView({ block: "nearest", behavior: "auto" })
+  const viewport = element?.closest("[data-radix-scroll-area-viewport]")
+  if (!(element instanceof HTMLElement) || !(viewport instanceof HTMLElement)) {
+    return
   }
+  const elementRect = element.getBoundingClientRect()
+  const viewportRect = viewport.getBoundingClientRect()
+  let nextScrollTop = viewport.scrollTop
+  if (elementRect.top < viewportRect.top) {
+    nextScrollTop -= viewportRect.top - elementRect.top
+  } else if (elementRect.bottom > viewportRect.bottom) {
+    nextScrollTop += elementRect.bottom - viewportRect.bottom
+  }
+  viewport.scrollTo({ behavior: "auto", top: nextScrollTop })
 }
 
 function usePrefersReducedMotion() {

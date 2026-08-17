@@ -37,12 +37,18 @@ const document: TranscriptDocument = {
 
 describe("SynchronizedTranscriptViewer", () => {
   const scrollIntoView = vi.fn()
+  const scrollTo = vi.fn()
 
   beforeEach(() => {
     scrollIntoView.mockReset()
+    scrollTo.mockReset()
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
       value: scrollIntoView,
+    })
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      configurable: true,
+      value: scrollTo,
     })
   })
 
@@ -65,7 +71,8 @@ describe("SynchronizedTranscriptViewer", () => {
     )
     expect(screen.getByRole("button", { name: "Seek to transcript segment: Segment timing fallback." })).toBeVisible()
     expect(screen.getByText("Speaker 2").closest("article")).toHaveAttribute("data-playback-state", "future")
-    expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest", behavior: "auto" })
+    expect(scrollTo).toHaveBeenCalledWith({ behavior: "auto", top: 0 })
+    expect(scrollIntoView).not.toHaveBeenCalled()
   })
 
   it("emits semantic click and keyboard seek intent for words and fallback segments", async () => {
@@ -107,16 +114,16 @@ describe("SynchronizedTranscriptViewer", () => {
     const { rerender } = render(
       <SynchronizedTranscriptViewer currentTimeSeconds={1} document={document} onSeek={vi.fn()} />,
     )
-    scrollIntoView.mockClear()
+    scrollTo.mockClear()
 
     fireEvent.wheel(screen.getByRole("region", { name: "Synchronized Transcript" }).querySelector("[data-radix-scroll-area-viewport]")!)
     rerender(<SynchronizedTranscriptViewer currentTimeSeconds={3.5} document={document} onSeek={vi.fn()} />)
 
     const returnButton = screen.getByRole("button", { name: "Return To Current" })
-    expect(scrollIntoView).not.toHaveBeenCalled()
+    expect(scrollTo).not.toHaveBeenCalled()
     returnButton.focus()
     await user.click(returnButton)
-    expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest", behavior: "auto" })
+    expect(scrollTo).toHaveBeenCalledWith({ behavior: "auto", top: 0 })
     expect(returnButton).toHaveFocus()
   })
 
@@ -124,23 +131,23 @@ describe("SynchronizedTranscriptViewer", () => {
     const { rerender } = render(
       <SynchronizedTranscriptViewer currentTimeSeconds={1} document={document} onSeek={vi.fn()} />,
     )
-    scrollIntoView.mockClear()
+    scrollTo.mockClear()
     const word = screen.getByRole("button", { name: "Seek to there. at 0:00" })
 
     fireEvent.keyDown(word, { key: "Tab" })
     fireEvent.keyDown(word, { key: "Enter" })
     fireEvent.keyDown(word, { key: " " })
     rerender(<SynchronizedTranscriptViewer currentTimeSeconds={3.5} document={document} onSeek={vi.fn()} />)
-    expect(scrollIntoView).toHaveBeenCalledOnce()
+    expect(scrollTo).toHaveBeenCalledOnce()
     expect(screen.getByRole("button", { name: "Following Current" })).toBeDisabled()
 
-    scrollIntoView.mockClear()
+    scrollTo.mockClear()
     const viewport = screen
       .getByRole("region", { name: "Synchronized Transcript" })
       .querySelector("[data-radix-scroll-area-viewport]")!
     fireEvent.keyDown(viewport, { key: "PageUp" })
     rerender(<SynchronizedTranscriptViewer currentTimeSeconds={1} document={document} onSeek={vi.fn()} />)
-    expect(scrollIntoView).not.toHaveBeenCalled()
+    expect(scrollTo).not.toHaveBeenCalled()
     expect(screen.getByRole("button", { name: "Return To Current" })).toBeEnabled()
   })
 
@@ -148,14 +155,14 @@ describe("SynchronizedTranscriptViewer", () => {
     const { rerender } = render(
       <SynchronizedTranscriptViewer currentTimeSeconds={1} document={document} onSeek={vi.fn()} />,
     )
-    scrollIntoView.mockClear()
+    scrollTo.mockClear()
     const word = screen.getByRole("button", { name: "Seek to there. at 0:00" })
 
     word.focus()
     fireEvent.keyDown(word, { key: "PageDown" })
     rerender(<SynchronizedTranscriptViewer currentTimeSeconds={3.5} document={document} onSeek={vi.fn()} />)
 
-    expect(scrollIntoView).not.toHaveBeenCalled()
+    expect(scrollTo).not.toHaveBeenCalled()
     expect(screen.getByRole("button", { name: "Return To Current" })).toBeEnabled()
     expect(word).toHaveFocus()
   })
@@ -164,7 +171,7 @@ describe("SynchronizedTranscriptViewer", () => {
     const { rerender } = render(
       <SynchronizedTranscriptViewer currentTimeSeconds={1} document={document} onSeek={vi.fn()} />,
     )
-    scrollIntoView.mockClear()
+    scrollTo.mockClear()
     const viewport = screen
       .getByRole("region", { name: "Synchronized Transcript" })
       .querySelector("[data-radix-scroll-area-viewport]")
@@ -175,7 +182,7 @@ describe("SynchronizedTranscriptViewer", () => {
     fireEvent.pointerDown(scrollbar)
     rerender(<SynchronizedTranscriptViewer currentTimeSeconds={3.5} document={document} onSeek={vi.fn()} />)
 
-    expect(scrollIntoView).not.toHaveBeenCalled()
+    expect(scrollTo).not.toHaveBeenCalled()
     expect(screen.getByRole("button", { name: "Return To Current" })).toBeEnabled()
   })
 
@@ -194,16 +201,16 @@ describe("SynchronizedTranscriptViewer", () => {
       <SynchronizedTranscriptViewer currentTimeSeconds={1} document={document} onSeek={vi.fn()} />,
     )
 
-    expect(scrollIntoView).not.toHaveBeenCalled()
+    expect(scrollTo).not.toHaveBeenCalled()
     const returnButton = screen.getByRole("button", { name: "Return To Current" })
     expect(returnButton).toBeEnabled()
     await user.click(returnButton)
-    expect(scrollIntoView).toHaveBeenCalledOnce()
+    expect(scrollTo).toHaveBeenCalledOnce()
     expect(returnButton).toHaveFocus()
 
-    scrollIntoView.mockClear()
+    scrollTo.mockClear()
     rerender(<SynchronizedTranscriptViewer currentTimeSeconds={3.5} document={document} onSeek={vi.fn()} />)
-    expect(scrollIntoView).not.toHaveBeenCalled()
+    expect(scrollTo).not.toHaveBeenCalled()
   })
 
   it("renders an explicit empty state", () => {
