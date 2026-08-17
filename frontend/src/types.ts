@@ -214,12 +214,20 @@ export type SampleProcessingAudioResult = {
   sha256: string
 }
 
+export type SpeakerTranscriptWord = {
+  id: string
+  text: string
+  startSeconds: number
+  endSeconds: number
+}
+
 export type SpeakerTranscriptItem = {
   id: string
   text: string
   startSeconds: number
   endSeconds: number
   speakerId: string
+  words?: SpeakerTranscriptWord[]
 }
 
 export type SpeakerSeparationSpeaker = {

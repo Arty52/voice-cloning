@@ -37,7 +37,17 @@ const speakerSeparationFixture: SpeakerSeparationResult = {
   transcript: {
     items: [
       { endSeconds: 5, id: "turn-2", speakerId: "speaker-local-1", startSeconds: 3, text: "Second turn." },
-      { endSeconds: 2, id: "turn-1", speakerId: "speaker-local-2", startSeconds: 0, text: "First turn." },
+      {
+        endSeconds: 2,
+        id: "turn-1",
+        speakerId: "speaker-local-2",
+        startSeconds: 0,
+        text: "First turn.",
+        words: [
+          { endSeconds: 0.7, id: "turn-1-word-1", startSeconds: 0, text: "First" },
+          { endSeconds: 1.4, id: "turn-1-word-2", startSeconds: 0.8, text: "turn." },
+        ],
+      },
     ],
   },
 }
@@ -70,7 +80,15 @@ describe("voice UI adapters", () => {
       id: "transcript-local-1",
       revision: 0,
       segments: [
-        { id: "turn-1", speakerId: "speaker-local-2", text: "First turn." },
+        {
+          id: "turn-1",
+          speakerId: "speaker-local-2",
+          text: "First turn.",
+          words: [
+            { endSeconds: 0.7, id: "turn-1-word-1", startSeconds: 0, text: "First" },
+            { endSeconds: 1.4, id: "turn-1-word-2", startSeconds: 0.8, text: "turn." },
+          ],
+        },
         { id: "turn-2", speakerId: "speaker-local-1", text: "Second turn." },
       ],
       speakers: [
@@ -80,6 +98,27 @@ describe("voice UI adapters", () => {
     })
     expect(validateTranscriptDocument(transcript)).toBe(true)
     expect(transcript).not.toHaveProperty("providerId")
+  })
+
+  it("drops malformed alignment for one segment so the viewer can fall back to segment timing", () => {
+    const malformed: SpeakerSeparationResult = {
+      ...speakerSeparationFixture,
+      transcript: {
+        items: speakerSeparationFixture.transcript.items.map((item) =>
+          item.id === "turn-1"
+            ? {
+                ...item,
+                words: [{ endSeconds: 3, id: "bad-word", startSeconds: 0, text: "Too long" }],
+              }
+            : item
+        ),
+      },
+    }
+
+    const transcript = speakerSeparationToTranscriptDocument(malformed, { documentId: "transcript-local-1" })
+
+    expect(transcript.segments[0]).not.toHaveProperty("words")
+    expect(validateTranscriptDocument(transcript)).toBe(true)
   })
 
   it("keeps transcript source provenance in a local playback source", () => {
