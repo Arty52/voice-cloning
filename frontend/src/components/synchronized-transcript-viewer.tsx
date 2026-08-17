@@ -1,4 +1,14 @@
-import { type CSSProperties, type KeyboardEvent, type PointerEvent, useEffect, useMemo, useRef, useState } from "react"
+import {
+  type CSSProperties,
+  type KeyboardEvent,
+  memo,
+  type PointerEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react"
 import { LocateFixed } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -33,6 +43,16 @@ export function SynchronizedTranscriptViewer({
     [currentTimeSeconds, document.segments],
   )
   const currentSegmentRef = useRef<HTMLElement | null>(null)
+  const onSeekRef = useRef(onSeek)
+  useEffect(() => {
+    onSeekRef.current = onSeek
+  }, [onSeek])
+  const handleSeek = useCallback((positionSeconds: number) => onSeekRef.current(positionSeconds), [])
+  const handleCurrentElement = useCallback((element: HTMLElement | null) => {
+    if (element) {
+      currentSegmentRef.current = element
+    }
+  }, [])
 
   useEffect(() => {
     if (isFollowing && currentSegmentId && !prefersReducedMotion) {
@@ -110,68 +130,20 @@ export function SynchronizedTranscriptViewer({
             const speaker = speakerById.get(segment.speakerId)
             const speakerIndex = speakerIndexById.get(segment.speakerId) ?? 0
             const position = playbackPosition(segment, currentTimeSeconds)
-            const isCurrent = segment.id === currentSegmentId
+            const wordBoundary = wordBoundaryAtTime(segment, position, currentTimeSeconds)
             return (
-              <li key={segment.id}>
-                <article
-                  aria-current={isCurrent ? "true" : undefined}
-                  className={cn(
-                    "flex flex-col gap-2 rounded-md border border-transparent p-3 transition-colors",
-                    position === "past" && "text-muted-foreground",
-                    position === "current" && "border-primary/40 bg-primary/10 text-foreground",
-                    position === "future" && "text-muted-foreground/70",
-                  )}
-                  data-playback-state={position}
-                  ref={isCurrent ? currentSegmentRef : undefined}
-                >
-                  <header className="flex flex-wrap items-center gap-2">
-                    <span
-                      aria-hidden="true"
-                      className="size-2 rounded-full bg-[var(--speaker-color)]"
-                      style={speakerStyle(speakerIndex)}
-                    />
-                    <span className="text-xs font-medium text-foreground">
-                      {speaker?.label ?? "Unknown Speaker"}
-                    </span>
-                    <Button
-                      aria-label={`Seek to ${speaker?.label ?? "Unknown Speaker"} at ${formatRecordingDuration(segment.startSeconds)}`}
-                      className="h-auto px-1.5 py-0.5 font-mono text-xs tabular-nums"
-                      disabled={isSeekDisabled}
-                      onClick={() => onSeek(segment.startSeconds)}
-                      size="sm"
-                      type="button"
-                      variant="ghost"
-                    >
-                      {formatRecordingDuration(segment.startSeconds)}
-                    </Button>
-                  </header>
-                  {hasCompleteWordAlignment(segment) ? (
-                    <p className="flex flex-wrap gap-x-1 gap-y-0.5 text-sm leading-6">
-                      {segment.words.map((word) => (
-                        <SynchronizedWord
-                          currentTimeSeconds={currentTimeSeconds}
-                          isSeekDisabled={isSeekDisabled}
-                          key={word.id}
-                          onSeek={onSeek}
-                          word={word}
-                        />
-                      ))}
-                    </p>
-                  ) : (
-                    <Button
-                      aria-label={`Seek to transcript segment: ${segment.text}`}
-                      className="h-auto justify-start whitespace-normal px-1 py-0 text-left font-normal leading-6"
-                      disabled={isSeekDisabled}
-                      onClick={() => onSeek(segment.startSeconds)}
-                      size="sm"
-                      type="button"
-                      variant="ghost"
-                    >
-                      {segment.text}
-                    </Button>
-                  )}
-                </article>
-              </li>
+              <TranscriptSegmentRow
+                currentWordId={wordBoundary.currentWordId}
+                isSeekDisabled={isSeekDisabled}
+                key={segment.id}
+                onCurrentElement={handleCurrentElement}
+                onSeek={handleSeek}
+                pastWordCount={wordBoundary.pastWordCount}
+                position={position}
+                segment={segment}
+                speakerIndex={speakerIndex}
+                speakerLabel={speaker?.label ?? "Unknown Speaker"}
+              />
             )
           })}
         </ol>
@@ -181,6 +153,89 @@ export function SynchronizedTranscriptViewer({
 }
 
 const MANUAL_SCROLL_KEYS = new Set([" ", "ArrowDown", "ArrowUp", "End", "Home", "PageDown", "PageUp"])
+
+const TranscriptSegmentRow = memo(function TranscriptSegmentRow({
+  currentWordId,
+  isSeekDisabled,
+  onCurrentElement,
+  onSeek,
+  pastWordCount,
+  position,
+  segment,
+  speakerIndex,
+  speakerLabel,
+}: {
+  currentWordId: string | null
+  isSeekDisabled: boolean
+  onCurrentElement: (element: HTMLElement | null) => void
+  onSeek: (positionSeconds: number) => void
+  pastWordCount: number
+  position: PlaybackPosition
+  segment: TranscriptSegment
+  speakerIndex: number
+  speakerLabel: string
+}) {
+  return (
+    <li>
+      <article
+        aria-current={position === "current" ? "true" : undefined}
+        className={cn(
+          "flex flex-col gap-2 rounded-md border border-transparent p-3 transition-colors",
+          position === "past" && "text-muted-foreground",
+          position === "current" && "border-primary/40 bg-primary/10 text-foreground",
+          position === "future" && "text-muted-foreground/70",
+        )}
+        data-playback-state={position}
+        ref={position === "current" ? onCurrentElement : undefined}
+      >
+        <header className="flex flex-wrap items-center gap-2">
+          <span
+            aria-hidden="true"
+            className="size-2 rounded-full bg-[var(--speaker-color)]"
+            style={speakerStyle(speakerIndex)}
+          />
+          <span className="text-xs font-medium text-foreground">{speakerLabel}</span>
+          <Button
+            aria-label={`Seek to ${speakerLabel} at ${formatRecordingDuration(segment.startSeconds)}`}
+            className="h-auto px-1.5 py-0.5 font-mono text-xs tabular-nums"
+            disabled={isSeekDisabled}
+            onClick={() => onSeek(segment.startSeconds)}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            {formatRecordingDuration(segment.startSeconds)}
+          </Button>
+        </header>
+        {hasCompleteWordAlignment(segment) ? (
+          <p className="flex flex-wrap gap-x-1 gap-y-0.5 text-sm leading-6">
+            {segment.words.map((word, index) => (
+              <SynchronizedWord
+                isSeekDisabled={isSeekDisabled}
+                key={word.id}
+                onSeek={onSeek}
+                position={word.id === currentWordId ? "current" : index < pastWordCount ? "past" : "future"}
+                word={word}
+              />
+            ))}
+          </p>
+        ) : (
+          <Button
+            aria-label={`Seek to transcript segment: ${segment.text}`}
+            className="h-auto justify-start whitespace-normal px-1 py-0 text-left font-normal leading-6"
+            disabled={isSeekDisabled}
+            onClick={() => onSeek(segment.startSeconds)}
+            size="sm"
+            type="button"
+            variant="ghost"
+          >
+            {segment.text}
+          </Button>
+        )}
+      </article>
+    </li>
+  )
+})
 
 function hasCompleteWordAlignment(
   segment: TranscriptSegment,
@@ -197,17 +252,16 @@ function comparableTranscriptText(value: string) {
 }
 
 function SynchronizedWord({
-  currentTimeSeconds,
   isSeekDisabled,
   onSeek,
+  position,
   word,
 }: {
-  currentTimeSeconds: number | null
   isSeekDisabled: boolean
   onSeek: (positionSeconds: number) => void
+  position: PlaybackPosition
   word: TranscriptWord
 }) {
-  const position = playbackPosition(word, currentTimeSeconds)
   return (
     <Button
       aria-current={position === "current" ? "true" : undefined}
@@ -228,6 +282,29 @@ function SynchronizedWord({
       {word.text}
     </Button>
   )
+}
+
+function wordBoundaryAtTime(
+  segment: TranscriptSegment,
+  segmentPosition: PlaybackPosition,
+  currentTimeSeconds: number | null,
+) {
+  if (!segment.words?.length || currentTimeSeconds === null || segmentPosition !== "current") {
+    return { currentWordId: null, pastWordCount: segmentPosition === "past" ? segment.words?.length ?? 0 : 0 }
+  }
+  let pastWordCount = 0
+  let currentWordId: string | null = null
+  for (const word of segment.words) {
+    if (currentTimeSeconds >= word.endSeconds) {
+      pastWordCount += 1
+    } else if (currentTimeSeconds >= word.startSeconds) {
+      currentWordId = word.id
+      break
+    } else {
+      break
+    }
+  }
+  return { currentWordId, pastWordCount }
 }
 
 function segmentAtTime(segments: TranscriptSegment[], currentTimeSeconds: number | null) {
@@ -269,7 +346,11 @@ function scrollToSegment(element: HTMLElement | null) {
   } else if (elementRect.bottom > viewportRect.bottom) {
     nextScrollTop += elementRect.bottom - viewportRect.bottom
   }
-  viewport.scrollTo({ behavior: "auto", top: nextScrollTop })
+  if (typeof viewport.scrollTo === "function") {
+    viewport.scrollTo({ behavior: "auto", top: nextScrollTop })
+  } else {
+    viewport.scrollTop = nextScrollTop
+  }
 }
 
 function usePrefersReducedMotion() {

@@ -186,6 +186,43 @@ describe("SynchronizedTranscriptViewer", () => {
     expect(screen.getByRole("button", { name: "Return To Current" })).toBeEnabled()
   })
 
+  it("does not reconstruct stable transcript rows for playback ticks within one word", () => {
+    let textReads = 0
+    const segments = Array.from({ length: 100 }, (_, index) => {
+      const text = `Word${index}`
+      return {
+        endSeconds: index + 0.9,
+        get text() {
+          textReads += 1
+          return text
+        },
+        id: `segment-${index}`,
+        speakerId: "speaker-1",
+        startSeconds: index,
+        words: [
+          {
+            endSeconds: index + 0.9,
+            id: `word-${index}`,
+            startSeconds: index,
+            text,
+          },
+        ],
+      }
+    })
+    const longDocument: TranscriptDocument = { ...document, segments }
+    const { rerender } = render(
+      <SynchronizedTranscriptViewer currentTimeSeconds={0.1} document={longDocument} onSeek={vi.fn()} />,
+    )
+    const readsAfterInitialRender = textReads
+
+    rerender(
+      <SynchronizedTranscriptViewer currentTimeSeconds={0.2} document={longDocument} onSeek={vi.fn()} />,
+    )
+
+    expect(textReads).toBe(readsAfterInitialRender)
+    expect(screen.getAllByRole("button", { name: /^Seek to Word/ })).toHaveLength(100)
+  })
+
   it("disables automatic scrolling for reduced motion while keeping manual return available", async () => {
     const user = userEvent.setup()
     vi.stubGlobal(
