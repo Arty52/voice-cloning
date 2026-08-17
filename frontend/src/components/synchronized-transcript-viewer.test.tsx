@@ -95,6 +95,30 @@ describe("SynchronizedTranscriptViewer", () => {
     expect(returnButton).toHaveFocus()
   })
 
+  it("keeps following for keyboard seek controls and pauses for viewport scroll keys", () => {
+    const { rerender } = render(
+      <SynchronizedTranscriptViewer currentTimeSeconds={1} document={document} onSeek={vi.fn()} />,
+    )
+    scrollIntoView.mockClear()
+    const word = screen.getByRole("button", { name: "Seek to there. at 0:00" })
+
+    fireEvent.keyDown(word, { key: "Tab" })
+    fireEvent.keyDown(word, { key: "Enter" })
+    fireEvent.keyDown(word, { key: " " })
+    rerender(<SynchronizedTranscriptViewer currentTimeSeconds={3.5} document={document} onSeek={vi.fn()} />)
+    expect(scrollIntoView).toHaveBeenCalledOnce()
+    expect(screen.getByRole("button", { name: "Following Current" })).toBeDisabled()
+
+    scrollIntoView.mockClear()
+    const viewport = screen
+      .getByRole("region", { name: "Synchronized Transcript" })
+      .querySelector("[data-radix-scroll-area-viewport]")!
+    fireEvent.keyDown(viewport, { key: "PageUp" })
+    rerender(<SynchronizedTranscriptViewer currentTimeSeconds={1} document={document} onSeek={vi.fn()} />)
+    expect(scrollIntoView).not.toHaveBeenCalled()
+    expect(screen.getByRole("button", { name: "Return To Current" })).toBeEnabled()
+  })
+
   it("renders an explicit empty state", () => {
     render(
       <SynchronizedTranscriptViewer

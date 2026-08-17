@@ -1,4 +1,4 @@
-import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react"
+import { type CSSProperties, type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react"
 import { LocateFixed } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -44,6 +44,17 @@ export function SynchronizedTranscriptViewer({
     scrollToSegment(currentSegmentRef.current)
   }
 
+  function handleManualScrollKey(event: KeyboardEvent<HTMLDivElement>) {
+    const target = event.target
+    if (
+      target instanceof HTMLElement &&
+      target.hasAttribute("data-radix-scroll-area-viewport") &&
+      MANUAL_SCROLL_KEYS.has(event.key)
+    ) {
+      setIsFollowing(false)
+    }
+  }
+
   if (document.segments.length === 0) {
     return <p className="text-sm text-muted-foreground">No transcript dialogue is available.</p>
   }
@@ -68,7 +79,7 @@ export function SynchronizedTranscriptViewer({
       </div>
       <ScrollArea
         className="h-80 rounded-md border border-border bg-card/70"
-        onKeyDown={() => setIsFollowing(false)}
+        onKeyDown={handleManualScrollKey}
         onTouchMove={() => setIsFollowing(false)}
         onWheel={() => setIsFollowing(false)}
       >
@@ -146,6 +157,8 @@ export function SynchronizedTranscriptViewer({
     </div>
   )
 }
+
+const MANUAL_SCROLL_KEYS = new Set([" ", "ArrowDown", "ArrowUp", "End", "Home", "PageDown", "PageUp"])
 
 function SynchronizedWord({
   currentTimeSeconds,
