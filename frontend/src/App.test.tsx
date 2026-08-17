@@ -2637,6 +2637,7 @@ describe("App", () => {
   })
 
   it("shows saved voice source cards with compact playback and submits the selected voice", async () => {
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined)
     const playSpy = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined)
     const pauseSpy = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined)
     const baseFetch = mockFetch()
@@ -2666,13 +2667,21 @@ describe("App", () => {
     expect(cloneCard.queryByText("Uploaded")).not.toBeInTheDocument()
     expect(cloneCard.getByText("Source: voice-clone-01.mp3")).toBeInTheDocument()
     expect(cloneCard.getByRole("button", { name: "Select Voice_Clone_01" })).toHaveAttribute("aria-pressed", "false")
-    expect(document.querySelector('audio[src="/api/voices/voice-clone-01/sample"]')).toHaveAttribute("preload", "none")
+    const sharedAudio = document.querySelector("audio[aria-hidden='true']")
+    expect(sharedAudio).toBeInstanceOf(HTMLAudioElement)
+    expect(sharedAudio).not.toHaveAttribute("src")
 
     await user.click(cloneCard.getByRole("button", { name: "Play Voice_Clone_01 Preview" }))
     expect(playSpy).toHaveBeenCalled()
+    expect(sharedAudio).toHaveAttribute("src", "/api/voices/voice-clone-01/sample")
+    fireEvent.play(sharedAudio!)
+    expect(cloneCard.getByRole("button", { name: "Pause Voice_Clone_01 Preview" })).toBeInTheDocument()
     expect(cloneCard.getByRole("button", { name: "Select Voice_Clone_01" })).toHaveAttribute("aria-pressed", "false")
+    pauseSpy.mockClear()
     await user.click(cloneCard.getByRole("button", { name: "Pause Voice_Clone_01 Preview" }))
-    expect(pauseSpy).toHaveBeenCalled()
+    expect(pauseSpy).toHaveBeenCalledTimes(1)
+    fireEvent.pause(sharedAudio!)
+    expect(cloneCard.getByRole("button", { name: "Play Voice_Clone_01 Preview" })).toBeInTheDocument()
 
     await user.click(cloneCard.getByRole("button", { name: "Select Voice_Clone_01" }))
     expect(cloneCard.getByRole("button", { name: "Select Voice_Clone_01" })).toHaveAttribute("aria-pressed", "true")
@@ -2689,6 +2698,7 @@ describe("App", () => {
   })
 
   it("keeps compact saved voice previews exclusive and stops them when the carousel unmounts", async () => {
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined)
     const playSpy = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined)
     const pauseSpy = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined)
     const baseFetch = mockFetch()
@@ -2709,14 +2719,21 @@ describe("App", () => {
 
     const defaultCard = within(sampleProcessingPanel().getByRole("group", { name: "Default voice Source Voice" }))
     const cloneCard = within(sampleProcessingPanel().getByRole("group", { name: "Voice_Clone_01 Source Voice" }))
+    const sharedAudio = document.querySelector("audio[aria-hidden='true']")
+    expect(sharedAudio).toBeInstanceOf(HTMLAudioElement)
 
     await user.click(defaultCard.getByRole("button", { name: "Play Default voice Preview" }))
     expect(playSpy).toHaveBeenCalledTimes(1)
+    expect(sharedAudio).toHaveAttribute("src", "/api/voices/default/sample")
+    fireEvent.play(sharedAudio!)
     expect(defaultCard.getByRole("button", { name: "Pause Default voice Preview" })).toBeInTheDocument()
 
+    pauseSpy.mockClear()
     await user.click(cloneCard.getByRole("button", { name: "Play Voice_Clone_01 Preview" }))
     expect(playSpy).toHaveBeenCalledTimes(2)
-    await waitFor(() => expect(pauseSpy).toHaveBeenCalled())
+    expect(pauseSpy).toHaveBeenCalledTimes(1)
+    expect(sharedAudio).toHaveAttribute("src", "/api/voices/voice-clone-01/sample")
+    fireEvent.play(sharedAudio!)
     expect(defaultCard.getByRole("button", { name: "Play Default voice Preview" })).toBeInTheDocument()
     expect(cloneCard.getByRole("button", { name: "Pause Voice_Clone_01 Preview" })).toBeInTheDocument()
 
@@ -2729,6 +2746,7 @@ describe("App", () => {
 
     await user.click(cloneCard.getByRole("button", { name: "Play Voice_Clone_01 Preview" }))
     expect(playSpy).toHaveBeenCalledTimes(3)
+    fireEvent.play(sharedAudio!)
     expect(cloneCard.getByRole("button", { name: "Pause Voice_Clone_01 Preview" })).toBeInTheDocument()
 
     pauseSpy.mockClear()
