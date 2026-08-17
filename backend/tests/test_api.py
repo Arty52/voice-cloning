@@ -59,6 +59,7 @@ from voice_cloning.providers import (
     VOICE_PROVIDER_KEY_HEADER,
     resolve_elevenlabs_key,
 )
+from voice_cloning.persistence.database import Base, create_database_engine
 from voice_cloning.sample_processors import (
     CompositeSampleProcessor,
     _run_external_command,
@@ -1559,6 +1560,15 @@ class FakeWhisperSegment:
         self.words = words
 
 
+class FakeUnalignedWhisperSegment:
+    words = None
+
+    def __init__(self, text: str, start: float, end: float) -> None:
+        self.text = text
+        self.start = start
+        self.end = end
+
+
 class FakeWhisperModel:
     loaded: list[tuple[str, str, str]] = []
 
@@ -1599,6 +1609,13 @@ class FakePartialWhisperModel(FakeWhisperModel):
             ],
             object(),
         )
+
+
+class FakeSegmentFallbackWhisperModel(FakeWhisperModel):
+    def transcribe(self, path: str, *, word_timestamps: bool):
+        assert path.endswith("normalized-source.wav")
+        assert word_timestamps is True
+        return ([FakeUnalignedWhisperSegment("Segment level timing.", 0.1, 0.7)], object())
 
 
 def demucs_processing_settings(
@@ -4222,6 +4239,53 @@ def test_diarization_processor_maps_transcript_and_regenerates_speaker_streams(
     assert corrected_job["result"]["transcript"]["items"][1]["words"] == (
         job["result"]["transcript"]["items"][1]["words"]
     )
+
+
+def test_diarization_processor_omits_word_alignment_for_segment_timing_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        sample_processors_module,
+        "_load_diarization_dependencies",
+        lambda: sample_processors_module._DiarizationDependencies(
+            pipeline_class=FakePyannotePipeline,
+            whisper_model_class=FakeSegmentFallbackWhisperModel,
+        ),
+    )
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'jobs.sqlite'}"
+    engine = create_database_engine(database_url)
+    Base.metadata.create_all(engine)
+    settings = replace(
+        make_settings(tmp_path),
+        database_url=database_url,
+        sample_processing_enable_diarization=True,
+        sample_processing_hf_token="hf_test",
+        sample_processing_ffmpeg_command=str(ffmpeg_fake_command(tmp_path / "ffmpeg-fake", output=b"fake-wav")),
+    )
+    with TestClient(create_app(settings=settings)) as client:
+        create = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "separateSpeakers"},
+            files={"sourceFile": ("conversation.wav", b"speaker-source", "audio/wav")},
+        )
+        job = wait_for_processing_job(client, create.json()["job"]["id"])
+
+    with TestClient(create_app(settings=settings)) as restored_client:
+        restored_response = restored_client.get(f"/api/sample-processing/jobs/{job['id']}")
+
+    assert create.status_code == 202
+    assert job["result"]["transcript"]["items"] == [
+        {
+            "id": "item-1",
+            "text": "Segment level timing.",
+            "startSeconds": 0.1,
+            "endSeconds": 0.7,
+            "speakerId": "speaker-1",
+        }
+    ]
+    assert restored_response.status_code == 200
+    assert restored_response.json()["job"]["result"]["transcript"]["items"] == job["result"]["transcript"]["items"]
 
 
 def test_diarization_processor_rejects_oversized_speaker_stream(

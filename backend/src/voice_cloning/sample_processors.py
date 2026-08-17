@@ -591,6 +591,7 @@ class _TranscribedWord:
     text: str
     start_seconds: float
     end_seconds: float
+    has_word_alignment: bool = True
 
 
 def _load_diarization_dependencies() -> _DiarizationDependencies:
@@ -661,20 +662,29 @@ def _transcribed_words(segments: object) -> tuple[_TranscribedWord, ...]:
             parsed_words = [_transcribed_word_from_object(word) for word in segment_words]
             words.extend(word for word in parsed_words if word is not None)
             continue
-        parsed_segment = _transcribed_word_from_object(segment)
+        parsed_segment = _transcribed_word_from_object(segment, has_word_alignment=False)
         if parsed_segment is not None:
             words.append(parsed_segment)
     words.sort(key=lambda word: (word.start_seconds, word.end_seconds))
     return tuple(words)
 
 
-def _transcribed_word_from_object(value: object) -> _TranscribedWord | None:
+def _transcribed_word_from_object(
+    value: object,
+    *,
+    has_word_alignment: bool = True,
+) -> _TranscribedWord | None:
     text = str(getattr(value, "word", getattr(value, "text", ""))).strip()
     start_seconds = _optional_float(getattr(value, "start", None))
     end_seconds = _optional_float(getattr(value, "end", None))
     if not text or start_seconds is None or end_seconds is None or end_seconds <= start_seconds:
         return None
-    return _TranscribedWord(text=text, start_seconds=start_seconds, end_seconds=end_seconds)
+    return _TranscribedWord(
+        text=text,
+        start_seconds=start_seconds,
+        end_seconds=end_seconds,
+        has_word_alignment=has_word_alignment,
+    )
 
 
 def _speaker_separation_result_from_words(
@@ -750,14 +760,18 @@ def _transcript_items_from_words(
                 start_seconds=current_words[0].start_seconds,
                 end_seconds=current_words[-1].end_seconds,
                 speaker_id=current_speaker_id,
-                words=tuple(
-                    SpeakerTranscriptWord(
-                        id=f"{item_id}-word-{index + 1}",
-                        text=word.text,
-                        start_seconds=word.start_seconds,
-                        end_seconds=word.end_seconds,
+                words=(
+                    tuple(
+                        SpeakerTranscriptWord(
+                            id=f"{item_id}-word-{index + 1}",
+                            text=word.text,
+                            start_seconds=word.start_seconds,
+                            end_seconds=word.end_seconds,
+                        )
+                        for index, word in enumerate(current_words)
                     )
-                    for index, word in enumerate(current_words)
+                    if all(word.has_word_alignment for word in current_words)
+                    else None
                 ),
             )
         )
