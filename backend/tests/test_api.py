@@ -41,6 +41,7 @@ from voice_cloning.models import (
     SpeakerSeparationSpeaker,
     SpeakerSeparationTranscript,
     SpeakerTranscriptItem,
+    SpeakerTranscriptWord,
     SpeechResult,
     SubscriptionSummary,
     VoiceClone,
@@ -544,6 +545,26 @@ class DuplicateSpeakerTranscriptItemsProcessor(FakeSpeakerSeparationProcessor):
                 replace(result.speakers[0], transcript_item_ids=("item-1", "item-1", "item-3")),
                 result.speakers[1],
             ),
+        )
+
+
+class InvalidSpeakerTranscriptWordAlignmentProcessor(FakeSpeakerSeparationProcessor):
+    async def process(self, request: SampleProcessingRequest) -> SpeakerSeparationResult:
+        result = await super().process(request)
+        invalid_item = replace(
+            result.transcript.items[0],
+            words=(
+                SpeakerTranscriptWord(
+                    id="item-1-word-1",
+                    text="Hello",
+                    start_seconds=0.0,
+                    end_seconds=2.0,
+                ),
+            ),
+        )
+        return replace(
+            result,
+            transcript=replace(result.transcript, items=(invalid_item, *result.transcript.items[1:])),
         )
 
 
@@ -3816,6 +3837,23 @@ def test_sample_processing_speaker_separation_rejects_duplicate_speaker_transcri
     assert job["error"] == "Speaker separation speaker references duplicate transcript items."
 
 
+def test_sample_processing_speaker_separation_rejects_invalid_word_alignment(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    app = create_app(settings=settings, sample_processor=InvalidSpeakerTranscriptWordAlignmentProcessor())
+    client = TestClient(app)
+
+    create = client.post(
+        "/api/sample-processing/jobs",
+        data={"operationId": "separateSpeakers"},
+        files={"sourceFile": ("conversation.wav", b"speaker-source", "audio/wav")},
+    )
+    job = wait_for_processing_job(client, create.json()["job"]["id"], status="error")
+
+    assert create.status_code == 202
+    assert job["status"] == "error"
+    assert job["error"] == "Speaker separation word alignment timing is invalid."
+
+
 def test_sample_processing_speaker_voice_save_rolls_back_partial_batch(tmp_path: Path) -> None:
     settings = make_settings(tmp_path)
     voice_library = VoiceLibrary(settings)
@@ -4095,6 +4133,11 @@ def test_diarization_processor_maps_transcript_and_regenerates_speaker_streams(
             json={"transcriptAssignments": [{"itemId": "item-2", "speakerId": "speaker-1"}]},
         )
         updated_job = patch.json()["job"]
+        correction = client.patch(
+            f"/api/sample-processing/jobs/{job['id']}/transcript-items",
+            json={"items": [{"itemId": "item-1", "text": "Corrected hello."}]},
+        )
+        corrected_job = correction.json()["job"]
 
     assert create.status_code == 202
     assert FakePyannotePipeline.loaded == [("pyannote/speaker-diarization-community-1", "hf_test")]
@@ -4110,6 +4153,20 @@ def test_diarization_processor_maps_transcript_and_regenerates_speaker_streams(
             "startSeconds": 0.1,
             "endSeconds": 0.7,
             "speakerId": "speaker-1",
+            "words": [
+                {
+                    "id": "item-1-word-1",
+                    "text": "Hello",
+                    "startSeconds": 0.1,
+                    "endSeconds": 0.3,
+                },
+                {
+                    "id": "item-1-word-2",
+                    "text": "there.",
+                    "startSeconds": 0.35,
+                    "endSeconds": 0.7,
+                },
+            ],
         },
         {
             "id": "item-2",
@@ -4117,6 +4174,20 @@ def test_diarization_processor_maps_transcript_and_regenerates_speaker_streams(
             "startSeconds": 1.3,
             "endSeconds": 2.0,
             "speakerId": "speaker-2",
+            "words": [
+                {
+                    "id": "item-2-word-1",
+                    "text": "General",
+                    "startSeconds": 1.3,
+                    "endSeconds": 1.6,
+                },
+                {
+                    "id": "item-2-word-2",
+                    "text": "Kenobi.",
+                    "startSeconds": 1.65,
+                    "endSeconds": 2.0,
+                },
+            ],
         },
         {
             "id": "item-3",
@@ -4124,6 +4195,14 @@ def test_diarization_processor_maps_transcript_and_regenerates_speaker_streams(
             "startSeconds": 2.6,
             "endSeconds": 3.0,
             "speakerId": "speaker-1",
+            "words": [
+                {
+                    "id": "item-3-word-1",
+                    "text": "Again.",
+                    "startSeconds": 2.6,
+                    "endSeconds": 3.0,
+                }
+            ],
         },
     ]
     assert speaker_stream.status_code == 200
@@ -4132,6 +4211,17 @@ def test_diarization_processor_maps_transcript_and_regenerates_speaker_streams(
     assert updated_job["result"]["speakers"][0]["transcriptItemIds"] == ["item-1", "item-2", "item-3"]
     assert updated_job["result"]["speakers"][1]["transcriptItemIds"] == []
     assert updated_job["result"]["transcript"]["items"][1]["speakerId"] == "speaker-1"
+    assert correction.status_code == 200
+    assert corrected_job["result"]["transcript"]["items"][0] == {
+        "id": "item-1",
+        "text": "Corrected hello.",
+        "startSeconds": 0.1,
+        "endSeconds": 0.7,
+        "speakerId": "speaker-1",
+    }
+    assert corrected_job["result"]["transcript"]["items"][1]["words"] == (
+        job["result"]["transcript"]["items"][1]["words"]
+    )
 
 
 def test_diarization_processor_rejects_oversized_speaker_stream(

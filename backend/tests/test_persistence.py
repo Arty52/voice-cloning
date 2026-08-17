@@ -22,6 +22,7 @@ from voice_cloning.models import (
     SpeakerSeparationSpeaker,
     SpeakerSeparationTranscript,
     SpeakerTranscriptItem,
+    SpeakerTranscriptWord,
     SpeechJob,
     SpeechJobSegment,
     VoiceAsset,
@@ -314,7 +315,7 @@ def test_job_repositories_persist_snapshots_and_mark_interrupted() -> None:
         assert restored_speech_job.segments[0].error == INTERRUPTED_MESSAGE
 
 
-def test_sample_processing_job_repository_roundtrips_corrected_transcript_text() -> None:
+def test_sample_processing_job_repository_roundtrips_transcript_word_alignment() -> None:
     engine = create_database_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
     session_factory = create_session_factory(engine)
@@ -344,10 +345,24 @@ def test_sample_processing_job_repository_roundtrips_corrected_transcript_text()
                 items=(
                     SpeakerTranscriptItem(
                         id="item-1",
-                        text="Corrected dialogue.",
+                        text="Aligned dialogue.",
                         start_seconds=0.0,
                         end_seconds=1.2,
                         speaker_id="speaker-1",
+                        words=(
+                            SpeakerTranscriptWord(
+                                id="item-1-word-1",
+                                text="Aligned",
+                                start_seconds=0.0,
+                                end_seconds=0.6,
+                            ),
+                            SpeakerTranscriptWord(
+                                id="item-1-word-2",
+                                text="dialogue.",
+                                start_seconds=0.7,
+                                end_seconds=1.2,
+                            ),
+                        ),
                     ),
                 ),
             ),
@@ -363,7 +378,8 @@ def test_sample_processing_job_repository_roundtrips_corrected_transcript_text()
     assert restored == job
     assert restored is not None
     assert isinstance(restored.result, SpeakerSeparationResult)
-    assert restored.result.transcript.items[0].text == "Corrected dialogue."
+    assert restored.result.transcript.items[0].words is not None
+    assert restored.result.transcript.items[0].words[1].text == "dialogue."
 
 
 @pytest.mark.parametrize(

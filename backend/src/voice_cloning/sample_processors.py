@@ -15,6 +15,7 @@ from .models import (
     SpeakerSeparationSpeaker,
     SpeakerSeparationTranscript,
     SpeakerTranscriptItem,
+    SpeakerTranscriptWord,
 )
 from .samples import load_sample_file
 from .services.sample_processing import (
@@ -749,6 +750,15 @@ def _transcript_items_from_words(
                 start_seconds=current_words[0].start_seconds,
                 end_seconds=current_words[-1].end_seconds,
                 speaker_id=current_speaker_id,
+                words=tuple(
+                    SpeakerTranscriptWord(
+                        id=f"{item_id}-word-{index + 1}",
+                        text=word.text,
+                        start_seconds=word.start_seconds,
+                        end_seconds=word.end_seconds,
+                    )
+                    for index, word in enumerate(current_words)
+                ),
             )
         )
         current_words = []
