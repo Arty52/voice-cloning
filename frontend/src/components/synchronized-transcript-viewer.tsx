@@ -1,4 +1,4 @@
-import { type CSSProperties, type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react"
+import { type CSSProperties, type KeyboardEvent, type PointerEvent, useEffect, useMemo, useRef, useState } from "react"
 import { LocateFixed } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -63,6 +63,13 @@ export function SynchronizedTranscriptViewer({
     }
   }
 
+  function handleScrollbarPointer(event: PointerEvent<HTMLDivElement>) {
+    const target = event.target
+    if (target instanceof HTMLElement && target.closest("[data-slot='scroll-area-scrollbar']")) {
+      setIsFollowing(false)
+    }
+  }
+
   if (document.segments.length === 0) {
     return <p className="text-sm text-muted-foreground">No transcript dialogue is available.</p>
   }
@@ -94,6 +101,7 @@ export function SynchronizedTranscriptViewer({
       <ScrollArea
         className="h-80 rounded-md border border-border bg-card/70"
         onKeyDown={handleManualScrollKey}
+        onPointerDown={handleScrollbarPointer}
         onTouchMove={() => setIsFollowing(false)}
         onWheel={() => setIsFollowing(false)}
       >

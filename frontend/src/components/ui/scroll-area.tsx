@@ -22,6 +22,7 @@ export function ScrollBar({
 }: ComponentProps<typeof ScrollAreaPrimitive.ScrollAreaScrollbar>) {
   return (
     <ScrollAreaPrimitive.ScrollAreaScrollbar
+      data-slot="scroll-area-scrollbar"
       className={cn(
         "flex touch-none select-none p-px transition-colors",
         orientation === "vertical" && "h-full w-2.5 border-l border-l-transparent",

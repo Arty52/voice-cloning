@@ -160,6 +160,25 @@ describe("SynchronizedTranscriptViewer", () => {
     expect(word).toHaveFocus()
   })
 
+  it("pauses following when the scrollbar receives pointer input", () => {
+    const { rerender } = render(
+      <SynchronizedTranscriptViewer currentTimeSeconds={1} document={document} onSeek={vi.fn()} />,
+    )
+    scrollIntoView.mockClear()
+    const viewport = screen
+      .getByRole("region", { name: "Synchronized Transcript" })
+      .querySelector("[data-radix-scroll-area-viewport]")
+    const scrollbar = window.document.createElement("div")
+    scrollbar.dataset.slot = "scroll-area-scrollbar"
+    viewport?.parentElement?.append(scrollbar)
+
+    fireEvent.pointerDown(scrollbar)
+    rerender(<SynchronizedTranscriptViewer currentTimeSeconds={3.5} document={document} onSeek={vi.fn()} />)
+
+    expect(scrollIntoView).not.toHaveBeenCalled()
+    expect(screen.getByRole("button", { name: "Return To Current" })).toBeEnabled()
+  })
+
   it("disables automatic scrolling for reduced motion while keeping manual return available", async () => {
     const user = userEvent.setup()
     vi.stubGlobal(
