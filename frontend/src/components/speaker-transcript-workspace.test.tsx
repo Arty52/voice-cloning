@@ -264,4 +264,37 @@ describe("SpeakerTranscriptWorkspace", () => {
       }),
     ).toBeVisible()
   })
+
+  it("clears a dialogue range before the transcript playback controls seek", async () => {
+    const user = userEvent.setup()
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined)
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined)
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined)
+
+    render(<TestWorkspace />)
+    const audio = document.querySelector("audio")
+    expect(audio).not.toBeNull()
+    if (!audio) {
+      return
+    }
+
+    await user.click(screen.getByRole("button", { name: "Hello there." }))
+    await user.click(screen.getByRole("button", { name: "Play" }))
+    await waitFor(() => expect(audio.src).toContain("/api/sample-processing/jobs/job-1/source"))
+    Object.defineProperty(audio, "duration", { configurable: true, value: 30 })
+    fireEvent.loadedMetadata(audio)
+    fireEvent.play(audio)
+    const transcriptPlayback = screen.getByRole("group", { name: "Transcript Audio Playback" })
+    const forward = within(transcriptPlayback).getByRole("button", { name: "Forward 10 Seconds" })
+    await waitFor(() => expect(forward).toBeEnabled())
+    await user.click(forward)
+
+    audio.currentTime = 20
+    fireEvent.timeUpdate(audio)
+    expect(
+      within(transcriptPlayback).getByRole("button", {
+        name: "Pause Audio",
+      }),
+    ).toBeVisible()
+  })
 })

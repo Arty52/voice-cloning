@@ -168,6 +168,7 @@ export function SpeakerTranscriptWorkspace({
                 ariaLabel="Transcript Audio Playback"
                 controller={playback.controller}
                 onActivate={() => playback.activate("source")}
+                onBeforeSeek={() => playback.controller.dispatch({ type: "clearRange" })}
                 source={transcriptSource}
               />
             ) : null}
