@@ -123,6 +123,29 @@ describe("useTranscriptPlayback", () => {
     expect(result.current.controller.snapshot.currentTimeSeconds).toBe(2)
   })
 
+  it("claims identical media for a second workspace control action before the first becomes inactive", () => {
+    const { result, rerender } = renderHook(useTwoWorkspaceHarness, {
+      initialProps: { first: initialOptions, second: initialOptions },
+      wrapper,
+    })
+
+    act(() => {
+      expect(result.current.first.seekTranscript(1)).toBe(true)
+    })
+    const source = result.current.controller.snapshot.source
+    const audio = document.querySelector("audio")
+    const load = audio ? vi.spyOn(audio, "load") : null
+
+    act(() => {
+      expect(result.current.second.claim("source")).toBe(true)
+      result.current.second.controller.dispatch({ type: "play" })
+    })
+    expect(load).not.toHaveBeenCalled()
+
+    rerender({ first: { ...initialOptions, isActive: false }, second: initialOptions })
+    expect(result.current.controller.snapshot.source).toBe(source)
+  })
+
   it("preserves an active range when a source label changes", () => {
     const { result, rerender } = renderHook((options) => useHarness(options), { initialProps: initialOptions, wrapper })
 

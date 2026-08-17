@@ -111,6 +111,11 @@ export function useTranscriptPlayback({
     return true
   }
 
+  function claim(key: string) {
+    const source = sources.get(key)
+    return Boolean(isActive && source && controller.claimSource(source))
+  }
+
   function seekTranscript(positionSeconds: number) {
     if (!Number.isFinite(positionSeconds) || !activateIfNeeded("source")) {
       return false
@@ -132,5 +137,5 @@ export function useTranscriptPlayback({
     return true
   }
 
-  return { activate, controller, playTranscriptItem, seekTranscript, sources }
+  return { activate, claim, controller, playTranscriptItem, seekTranscript, sources }
 }

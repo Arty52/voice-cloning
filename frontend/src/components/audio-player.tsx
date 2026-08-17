@@ -28,6 +28,7 @@ type PlaybackControlsProps = {
   controller: PlaybackController
   onBeforeSeek?: () => void
   onActivate: () => void
+  onClaim?: () => void
   source: PlaybackSource
 }
 
@@ -82,7 +83,7 @@ function AudioPlayerControls({ ariaLabel, className, loadOnMount = false, source
  * Shared, presentational controls for a source owned by a feature hook. The
  * owner decides how to activate a source; the controls never create media.
  */
-export function PlaybackControls({ ariaLabel, className, controller, onBeforeSeek, onActivate, source }: PlaybackControlsProps) {
+export function PlaybackControls({ ariaLabel, className, controller, onBeforeSeek, onActivate, onClaim, source }: PlaybackControlsProps) {
   const activeSource = controller.snapshot.source
   const isCurrentSource = activeSource?.id === source.id && activeSource.url === source.url
   const duration = isCurrentSource ? controller.snapshot.durationSeconds : null
@@ -99,6 +100,7 @@ export function PlaybackControls({ ariaLabel, className, controller, onBeforeSee
       controller.dispatch({ type: "play" })
       return
     }
+    onClaim?.()
     controller.dispatch({ type: isPlaying ? "pause" : "play" })
   }
 
@@ -106,6 +108,7 @@ export function PlaybackControls({ ariaLabel, className, controller, onBeforeSee
     if (!canSeek) {
       return
     }
+    onClaim?.()
     onBeforeSeek?.()
     controller.dispatch({ positionSeconds: nextTime, type: "seek" })
   }
@@ -120,6 +123,7 @@ export function PlaybackControls({ ariaLabel, className, controller, onBeforeSee
           aria-label="Rewind 10 Seconds"
           disabled={!canSeek}
           onClick={() => {
+            onClaim?.()
             onBeforeSeek?.()
             controller.dispatch({ seconds: -SEEK_STEP_SECONDS, type: "skip" })
           }}
@@ -133,6 +137,7 @@ export function PlaybackControls({ ariaLabel, className, controller, onBeforeSee
           aria-label="Forward 10 Seconds"
           disabled={!canSeek}
           onClick={() => {
+            onClaim?.()
             onBeforeSeek?.()
             controller.dispatch({ seconds: SEEK_STEP_SECONDS, type: "skip" })
           }}
@@ -154,7 +159,10 @@ export function PlaybackControls({ ariaLabel, className, controller, onBeforeSee
         />
         <Select
           disabled={!isCurrentSource}
-          onValueChange={(value) => controller.dispatch({ playbackRate: Number(value), type: "setPlaybackRate" })}
+          onValueChange={(value) => {
+            onClaim?.()
+            controller.dispatch({ playbackRate: Number(value), type: "setPlaybackRate" })
+          }}
           value={String(controller.snapshot.playbackRate)}
         >
           <SelectTrigger aria-label="Playback Rate" size="sm">

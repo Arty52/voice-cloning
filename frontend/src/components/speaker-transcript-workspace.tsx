@@ -169,6 +169,7 @@ export function SpeakerTranscriptWorkspace({
                 controller={playback.controller}
                 onActivate={() => playback.activate("source")}
                 onBeforeSeek={() => playback.controller.dispatch({ type: "clearRange" })}
+                onClaim={() => playback.claim("source")}
                 source={transcriptSource}
               />
             ) : null}
