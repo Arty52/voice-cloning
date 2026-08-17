@@ -123,6 +123,22 @@ describe("SynchronizedTranscriptViewer", () => {
     expect(screen.getByRole("button", { name: "Return To Current" })).toBeEnabled()
   })
 
+  it("pauses following when a focused seek control receives a manual scroll key", () => {
+    const { rerender } = render(
+      <SynchronizedTranscriptViewer currentTimeSeconds={1} document={document} onSeek={vi.fn()} />,
+    )
+    scrollIntoView.mockClear()
+    const word = screen.getByRole("button", { name: "Seek to there. at 0:00" })
+
+    word.focus()
+    fireEvent.keyDown(word, { key: "PageDown" })
+    rerender(<SynchronizedTranscriptViewer currentTimeSeconds={3.5} document={document} onSeek={vi.fn()} />)
+
+    expect(scrollIntoView).not.toHaveBeenCalled()
+    expect(screen.getByRole("button", { name: "Return To Current" })).toBeEnabled()
+    expect(word).toHaveFocus()
+  })
+
   it("disables automatic scrolling for reduced motion while keeping manual return available", async () => {
     const user = userEvent.setup()
     vi.stubGlobal(

@@ -47,11 +47,18 @@ export function SynchronizedTranscriptViewer({
 
   function handleManualScrollKey(event: KeyboardEvent<HTMLDivElement>) {
     const target = event.target
-    if (
-      target instanceof HTMLElement &&
-      target.hasAttribute("data-radix-scroll-area-viewport") &&
-      MANUAL_SCROLL_KEYS.has(event.key)
-    ) {
+    if (!(target instanceof HTMLElement) || !target.closest("[data-radix-scroll-area-viewport]")) {
+      return
+    }
+
+    const isActivationTarget = target.closest(
+      "button, a[href], input, select, textarea, [role='button'], [role='link']",
+    )
+    if (event.key === " " && isActivationTarget) {
+      return
+    }
+
+    if (MANUAL_SCROLL_KEYS.has(event.key)) {
       setIsFollowing(false)
     }
   }
