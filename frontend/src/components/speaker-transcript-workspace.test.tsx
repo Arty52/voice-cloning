@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { useState } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -31,7 +31,17 @@ const speakerResult: SpeakerSeparationResult = {
   ],
   transcript: {
     items: [
-      { id: "item-1", text: "Hello there.", startSeconds: 0, endSeconds: 1, speakerId: "speaker-1" },
+      {
+        id: "item-1",
+        text: "Hello there.",
+        startSeconds: 0,
+        endSeconds: 1,
+        speakerId: "speaker-1",
+        words: [
+          { id: "item-1-word-1", text: "Hello", startSeconds: 0, endSeconds: 0.4 },
+          { id: "item-1-word-2", text: "there.", startSeconds: 0.5, endSeconds: 1 },
+        ],
+      },
       { id: "item-2", text: "General Kenobi.", startSeconds: 61, endSeconds: 62, speakerId: "speaker-2" },
     ],
   },
@@ -217,5 +227,28 @@ describe("SpeakerTranscriptWorkspace", () => {
     await user.click(screen.getByRole("button", { name: "Hello there." }))
     await user.click(screen.getByRole("button", { name: "Play" }))
     expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(2)
+  })
+
+  it("seeks synchronized words through the original transcript source and follows its clock", async () => {
+    const user = userEvent.setup()
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined)
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined)
+
+    render(<TestWorkspace />)
+
+    const audio = document.querySelector("audio")
+    expect(audio).not.toBeNull()
+    await user.click(screen.getByRole("button", { name: "Seek to there. at 0:00" }))
+    expect(audio?.src).toContain("/api/sample-processing/jobs/job-1/source")
+    expect(audio?.currentTime).toBe(0.5)
+
+    if (audio) {
+      audio.currentTime = 0.6
+      fireEvent.timeUpdate(audio)
+    }
+    expect(screen.getByRole("button", { name: "Seek to there. at 0:00" })).toHaveAttribute(
+      "aria-current",
+      "true",
+    )
   })
 })

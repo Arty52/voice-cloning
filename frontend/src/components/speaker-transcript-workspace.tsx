@@ -2,6 +2,7 @@ import { type CSSProperties, useMemo, useState } from "react"
 import { Download, Play, Save } from "lucide-react"
 
 import { PlaybackControls } from "@/components/audio-player"
+import { SynchronizedTranscriptViewer } from "@/components/synchronized-transcript-viewer"
 import { VoicePresetToggleGroup } from "@/components/voice-preset-toggle-group"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -28,6 +29,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import type { SpeakerTranscriptController } from "@/hooks/use-speaker-transcript"
 import { useTranscriptPlayback } from "@/hooks/use-transcript-playback"
 import { downloadTranscript, type TranscriptExportFormat } from "@/lib/transcript-export"
+import { speakerSeparationToTranscriptDocument } from "@/lib/voice-ui-adapters"
 import { cn } from "@/lib/utils"
 import type {
   SampleProcessingJob,
@@ -75,6 +77,13 @@ export function SpeakerTranscriptWorkspace({
     speakerLabels,
     speakerResultUrls: controller.speakerResultUrls,
   })
+  const transcriptDocument = useMemo(
+    () =>
+      speakerResult && job
+        ? speakerSeparationToTranscriptDocument(speakerResult, { documentId: `transcript:${job.id}` })
+        : null,
+    [job, speakerResult],
+  )
   const selectedSpeakers =
     speakerResult?.speakers.filter((speaker) => controller.selectedSpeakerIds.includes(speaker.id)) ?? []
 
@@ -83,6 +92,17 @@ export function SpeakerTranscriptWorkspace({
   }
   const activeJob = job
   const activeSpeakerResult = speakerResult
+  const transcriptSource = playback.sources.get("source")
+  const isTranscriptSourceActive =
+    playback.controller.snapshot.source?.id === transcriptSource?.id &&
+    playback.controller.snapshot.source?.url === transcriptSource?.url
+
+  function handleTranscriptSeek(positionSeconds: number) {
+    if (!playback.activate("source")) {
+      return
+    }
+    playback.controller.dispatch({ positionSeconds, type: "seek" })
+  }
 
   function updateTranscriptSelectionThrough(itemId: string) {
     if (!speakerResult || !dragStartItemId) {
@@ -141,7 +161,36 @@ export function SpeakerTranscriptWorkspace({
         />
       </CardHeader>
 
-      <CardContent>
+      <CardContent className="flex flex-col gap-4">
+        <Card className="bg-background/70 p-3 shadow-none sm:p-3">
+          <CardHeader className="mb-3">
+            <CardTitle className="text-sm">Synchronized Playback</CardTitle>
+            <CardDescription>
+              Follow the original audio by speaker, segment, and available word timing.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            {transcriptSource ? (
+              <PlaybackControls
+                ariaLabel="Transcript Audio Playback"
+                controller={playback.controller}
+                onActivate={() => playback.activate("source")}
+                source={transcriptSource}
+              />
+            ) : null}
+            {transcriptDocument ? (
+              <SynchronizedTranscriptViewer
+                currentTimeSeconds={
+                  isTranscriptSourceActive ? playback.controller.snapshot.currentTimeSeconds : null
+                }
+                document={transcriptDocument}
+                isSeekDisabled={!transcriptSource}
+                onSeek={handleTranscriptSeek}
+              />
+            ) : null}
+          </CardContent>
+        </Card>
+
         <div className="grid items-stretch gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
           <div className="flex flex-col gap-3">
             {speakerResult.speakers.map((speaker, index) => {
