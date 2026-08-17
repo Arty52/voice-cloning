@@ -1,5 +1,5 @@
 import { Check, Pause, Play, Volume2 } from "lucide-react"
-import { useId, useMemo, useState, type ReactNode } from "react"
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -156,6 +156,7 @@ function VoicePickerOptions({
   selectedVoiceId,
 }: Pick<VoicePickerProps, "onSelect" | "options" | "preview" | "selectedVoiceId">) {
   const [query, setQuery] = useState("")
+  const clearedActivePreviewRef = useRef<string | null>(null)
   const searchInputId = useId()
   const normalizedQuery = query.trim().toLowerCase()
   const filteredOptions = useMemo(
@@ -170,16 +171,33 @@ function VoicePickerOptions({
   )
   const hasScrollableVoiceList = filteredOptions.length > 5
 
+  useEffect(() => {
+    const activeVoiceId = preview.activePreview?.voiceId
+    if (!activeVoiceId) {
+      clearedActivePreviewRef.current = null
+      return
+    }
+    if (!filteredOptions.some((option) => option.id === activeVoiceId)) {
+      if (clearedActivePreviewRef.current === activeVoiceId) {
+        return
+      }
+      clearedActivePreviewRef.current = activeVoiceId
+      preview.clearPreview()
+      return
+    }
+    clearedActivePreviewRef.current = null
+  }, [filteredOptions, preview])
+
   return (
     <div className="flex min-h-0 flex-col gap-3">
       <Field>
         <FieldLabel className="sr-only" htmlFor={searchInputId}>
-          Search voices
+          Search Voices
         </FieldLabel>
         <Input
           id={searchInputId}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search voices"
+          placeholder="Search Voices"
           type="search"
           value={query}
         />
@@ -191,7 +209,7 @@ function VoicePickerOptions({
       ) : null}
       {filteredOptions.length === 0 ? (
         <p className="text-sm text-muted-foreground" role="status">
-          No voices match this search.
+          No Voices Match This Search.
         </p>
       ) : (
         <ScrollArea
@@ -229,7 +247,7 @@ function VoicePickerOptionRow({
 }) {
   const isActive = preview.activePreview?.voiceId === option.id
   const previewLabel = isActive && preview.activePreview?.isPlaying
-    ? `Pause preview for ${option.name}`
+    ? `Pause Preview for ${option.name}`
     : `Preview ${option.name}`
   const previewUnavailable = option.preview === null
 
@@ -258,11 +276,11 @@ function VoicePickerOptionRow({
         {selected ? <Check aria-label="Selected" data-icon="inline-end" /> : null}
       </Button>
       <Button
-        aria-label={previewUnavailable ? `Preview unavailable for ${option.name}` : previewLabel}
+        aria-label={previewUnavailable ? `Preview Unavailable for ${option.name}` : previewLabel}
         disabled={previewUnavailable}
         onClick={() => preview.togglePreview(option.id)}
         size="icon"
-        title={previewUnavailable ? "Preview unavailable" : previewLabel}
+        title={previewUnavailable ? "Preview Unavailable" : previewLabel}
         type="button"
         variant="ghost"
       >

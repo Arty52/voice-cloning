@@ -43,7 +43,7 @@ describe("VoicePicker", () => {
     )
 
     await user.click(screen.getByRole("button", { name: "Choose first voice" }))
-    const firstSearchId = screen.getByRole("searchbox", { name: "Search voices" }).id
+    const firstSearchId = screen.getByRole("searchbox", { name: "Search Voices" }).id
     first.unmount()
 
     render(
@@ -59,7 +59,7 @@ describe("VoicePicker", () => {
       />,
     )
     await user.click(screen.getByRole("button", { name: "Choose second voice" }))
-    const secondSearchId = screen.getByRole("searchbox", { name: "Search voices" }).id
+    const secondSearchId = screen.getByRole("searchbox", { name: "Search Voices" }).id
 
     expect(firstSearchId).not.toBe(secondSearchId)
   })
@@ -106,6 +106,28 @@ describe("VoicePicker", () => {
     await user.keyboard("{Escape}")
 
     expect(preview.clearPreview).toHaveBeenCalledOnce()
-    expect(screen.queryByRole("searchbox", { name: "Search voices" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("searchbox", { name: "Search Voices" })).not.toBeInTheDocument()
+  })
+
+  it("clears a preview when search filtering hides its voice", async () => {
+    const user = userEvent.setup()
+    const activePreview = { error: null, isLoading: false, isPlaying: true, voiceId: "narrator" }
+    render(
+      <VoicePicker
+        description="Select a voice."
+        disabled={false}
+        onSelect={vi.fn()}
+        options={options}
+        preview={{ ...preview, activePreview }}
+        title="Voice"
+        triggerIcon={<Volume2 />}
+        triggerLabel="Choose voice"
+      />,
+    )
+
+    await user.click(screen.getByRole("button", { name: "Choose voice" }))
+    await user.type(screen.getByRole("searchbox", { name: "Search Voices" }), "villain")
+
+    expect(preview.clearPreview).toHaveBeenCalledOnce()
   })
 })
