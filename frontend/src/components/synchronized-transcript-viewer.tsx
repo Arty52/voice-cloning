@@ -137,7 +137,7 @@ export function SynchronizedTranscriptViewer({
                       {formatRecordingDuration(segment.startSeconds)}
                     </Button>
                   </header>
-                  {segment.words?.length ? (
+                  {hasCompleteWordAlignment(segment) ? (
                     <p className="flex flex-wrap gap-x-1 gap-y-0.5 text-sm leading-6">
                       {segment.words.map((word) => (
                         <SynchronizedWord
@@ -173,6 +173,20 @@ export function SynchronizedTranscriptViewer({
 }
 
 const MANUAL_SCROLL_KEYS = new Set([" ", "ArrowDown", "ArrowUp", "End", "Home", "PageDown", "PageUp"])
+
+function hasCompleteWordAlignment(
+  segment: TranscriptSegment,
+): segment is TranscriptSegment & { words: TranscriptWord[] } {
+  if (!segment.words?.length) {
+    return false
+  }
+  const alignedText = segment.words.map((word) => word.text).join("")
+  return comparableTranscriptText(alignedText) === comparableTranscriptText(segment.text)
+}
+
+function comparableTranscriptText(value: string) {
+  return value.replace(/\s/g, "")
+}
 
 function SynchronizedWord({
   currentTimeSeconds,

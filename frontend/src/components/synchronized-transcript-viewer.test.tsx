@@ -81,6 +81,27 @@ describe("SynchronizedTranscriptViewer", () => {
     expect(onSeek).toHaveBeenNthCalledWith(2, 3)
   })
 
+  it("falls back to the complete segment when alignment covers only part of its text", () => {
+    const partialDocument: TranscriptDocument = {
+      ...document,
+      segments: [
+        {
+          ...document.segments[0],
+          words: [{ id: "word-1", text: "Hello", startSeconds: 0, endSeconds: 0.8 }],
+        },
+      ],
+    }
+
+    render(
+      <SynchronizedTranscriptViewer currentTimeSeconds={1} document={partialDocument} onSeek={vi.fn()} />,
+    )
+
+    expect(screen.getByRole("button", { name: "Seek to transcript segment: Hello there." })).toHaveTextContent(
+      "Hello there.",
+    )
+    expect(screen.queryByRole("button", { name: "Seek to Hello at 0:00" })).not.toBeInTheDocument()
+  })
+
   it("pauses auto-follow after manual reading and returns without moving focus", async () => {
     const user = userEvent.setup()
     const { rerender } = render(
