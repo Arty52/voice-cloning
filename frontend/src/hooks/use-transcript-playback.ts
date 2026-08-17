@@ -103,7 +103,9 @@ export function useTranscriptPlayback({
       return false
     }
     const activeSource = controller.snapshot.source
-    if (activeSource?.id !== source.id || activeSource.url !== source.url) {
+    if (activeSource?.id === source.id && activeSource.url === source.url) {
+      controller.claimSource(source)
+    } else {
       replaceSource(source)
     }
     return true
