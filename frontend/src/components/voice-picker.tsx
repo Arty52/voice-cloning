@@ -197,7 +197,7 @@ function VoicePickerOptions({
         <Input
           id={searchInputId}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search Voices"
+          placeholder="Search voices"
           type="search"
           value={query}
         />
@@ -209,7 +209,7 @@ function VoicePickerOptions({
       ) : null}
       {filteredOptions.length === 0 ? (
         <p className="text-sm text-muted-foreground" role="status">
-          No Voices Match This Search.
+          No voices match this search.
         </p>
       ) : (
         <ScrollArea

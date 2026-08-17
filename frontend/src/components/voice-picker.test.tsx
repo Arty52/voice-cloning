@@ -126,8 +126,11 @@ describe("VoicePicker", () => {
     )
 
     await user.click(screen.getByRole("button", { name: "Choose voice" }))
-    await user.type(screen.getByRole("searchbox", { name: "Search Voices" }), "villain")
+    const searchField = screen.getByRole("searchbox", { name: "Search Voices" })
+    expect(searchField).toHaveAttribute("placeholder", "Search voices")
+    await user.type(searchField, "villain")
 
     expect(preview.clearPreview).toHaveBeenCalledOnce()
+    expect(screen.getByRole("status")).toHaveTextContent("No voices match this search.")
   })
 })
