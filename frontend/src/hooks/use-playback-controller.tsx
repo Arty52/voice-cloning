@@ -22,12 +22,14 @@ const EMPTY_SNAPSHOT: PlaybackSnapshot = {
 type PlaybackRequest = { request: number; sourceGeneration: number; sourceId: string }
 
 type PlaybackControllerContextValue = {
+  claimOwnerSource: (ownerId: string, source: PlaybackSource) => boolean
   clearOwner: (ownerId: string) => void
   controller: PlaybackController
   replaceOwnerSource: (ownerId: string, source: PlaybackSource | null) => void
 }
 
 type PlaybackOwnerController = PlaybackController & {
+  claimSource: (source: PlaybackSource) => boolean
   replaceSource: (source: PlaybackSource | null) => void
 }
 
@@ -281,6 +283,15 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
     [clear]
   )
 
+  const claimOwnerSource = useCallback((ownerId: string, source: PlaybackSource) => {
+    const currentSource = snapshotRef.current.source
+    if (currentSource?.id !== source.id || currentSource.url !== source.url) {
+      return false
+    }
+    activeOwnerIdRef.current = ownerId
+    return true
+  }, [])
+
   const replaceOwnerSource = useCallback(
     (ownerId: string, source: PlaybackSource | null) => {
       if (source) {
@@ -304,8 +315,8 @@ export function PlaybackControllerProvider({ children }: { children: ReactNode }
   }, [])
 
   const value = useMemo<PlaybackControllerContextValue>(
-    () => ({ clearOwner, controller: { dispatch, snapshot }, replaceOwnerSource }),
-    [clearOwner, dispatch, replaceOwnerSource, snapshot]
+    () => ({ claimOwnerSource, clearOwner, controller: { dispatch, snapshot }, replaceOwnerSource }),
+    [claimOwnerSource, clearOwner, dispatch, replaceOwnerSource, snapshot]
   )
 
   return (
@@ -412,7 +423,7 @@ export function usePlaybackOwner(ownerId: string): PlaybackOwnerController {
   if (!context) {
     throw new Error("usePlaybackOwner must be used inside PlaybackControllerProvider.")
   }
-  const { clearOwner, controller, replaceOwnerSource } = context
+  const { claimOwnerSource, clearOwner, controller, replaceOwnerSource } = context
 
   useEffect(() => () => clearOwner(ownerId), [clearOwner, ownerId])
 
@@ -421,9 +432,15 @@ export function usePlaybackOwner(ownerId: string): PlaybackOwnerController {
     [ownerId, replaceOwnerSource]
   )
 
+  const claimSource = useCallback(
+    (source: PlaybackSource) => claimOwnerSource(ownerId, source),
+    [claimOwnerSource, ownerId]
+  )
+
   return useMemo(
     () => ({
       ...controller,
+      claimSource,
       dispatch: (intent: PlaybackIntent) => {
         if (intent.type === "replaceSource") {
           replaceOwnerSource(ownerId, intent.source)
@@ -433,7 +450,7 @@ export function usePlaybackOwner(ownerId: string): PlaybackOwnerController {
       },
       replaceSource,
     }),
-    [controller, ownerId, replaceOwnerSource, replaceSource]
+    [claimSource, controller, ownerId, replaceOwnerSource, replaceSource]
   )
 }
 

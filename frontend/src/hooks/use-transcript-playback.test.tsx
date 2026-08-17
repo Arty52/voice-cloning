@@ -1,7 +1,7 @@
 import type { ReactNode } from "react"
 
-import { act, renderHook } from "@testing-library/react"
-import { describe, expect, it } from "vitest"
+import { act, fireEvent, renderHook } from "@testing-library/react"
+import { describe, expect, it, vi } from "vitest"
 
 import { PlaybackControllerProvider, usePlaybackController } from "./use-playback-controller"
 import { useTranscriptPlayback } from "./use-transcript-playback"
@@ -98,6 +98,54 @@ describe("useTranscriptPlayback", () => {
     expect(result.current.controller.snapshot.source).toMatchObject({ id: "transcript:job-1:speaker:speaker-1" })
   })
 
+  it("transfers an identical active source before the previous workspace becomes inactive", () => {
+    const { result, rerender } = renderHook(useTwoWorkspaceHarness, {
+      initialProps: { first: initialOptions, second: initialOptions },
+      wrapper,
+    })
+
+    act(() => {
+      expect(result.current.first.seekTranscript(1)).toBe(true)
+    })
+    const audio = document.querySelector("audio")
+    const source = result.current.controller.snapshot.source
+    const load = audio ? vi.spyOn(audio, "load") : null
+
+    act(() => {
+      expect(result.current.second.seekTranscript(2)).toBe(true)
+    })
+    expect(load).not.toHaveBeenCalled()
+    expect(result.current.controller.snapshot.source).toBe(source)
+    expect(result.current.controller.snapshot.currentTimeSeconds).toBe(2)
+
+    rerender({ first: { ...initialOptions, isActive: false }, second: initialOptions })
+    expect(result.current.controller.snapshot.source).toBe(source)
+    expect(result.current.controller.snapshot.currentTimeSeconds).toBe(2)
+  })
+
+  it("claims identical media for a second workspace control action before the first becomes inactive", () => {
+    const { result, rerender } = renderHook(useTwoWorkspaceHarness, {
+      initialProps: { first: initialOptions, second: initialOptions },
+      wrapper,
+    })
+
+    act(() => {
+      expect(result.current.first.seekTranscript(1)).toBe(true)
+    })
+    const source = result.current.controller.snapshot.source
+    const audio = document.querySelector("audio")
+    const load = audio ? vi.spyOn(audio, "load") : null
+
+    act(() => {
+      expect(result.current.second.claim("source")).toBe(true)
+      result.current.second.controller.dispatch({ type: "play" })
+    })
+    expect(load).not.toHaveBeenCalled()
+
+    rerender({ first: { ...initialOptions, isActive: false }, second: initialOptions })
+    expect(result.current.controller.snapshot.source).toBe(source)
+  })
+
   it("preserves an active range when a source label changes", () => {
     const { result, rerender } = renderHook((options) => useHarness(options), { initialProps: initialOptions, wrapper })
 
@@ -111,5 +159,28 @@ describe("useTranscriptPlayback", () => {
       url: initialOptions.sourceUrl,
     })
     expect(result.current.controller.snapshot.activeRange).toEqual({ endSeconds: 3, startSeconds: 1 })
+  })
+
+  it("seeks the active transcript source without reloading or pausing it", () => {
+    const { result } = renderHook((options) => useHarness(options), { initialProps: initialOptions, wrapper })
+
+    act(() => {
+      result.current.playback.playTranscriptItem({ endSeconds: 3, startSeconds: 1 })
+    })
+    const audio = document.querySelector("audio")
+    expect(audio).not.toBeNull()
+    if (audio) {
+      fireEvent.play(audio)
+    }
+    const source = result.current.controller.snapshot.source
+
+    act(() => {
+      expect(result.current.playback.seekTranscript(2)).toBe(true)
+    })
+
+    expect(result.current.controller.snapshot.source).toBe(source)
+    expect(result.current.controller.snapshot.status).toBe("playing")
+    expect(result.current.controller.snapshot.activeRange).toBeNull()
+    expect(result.current.controller.snapshot.currentTimeSeconds).toBe(2)
   })
 })
