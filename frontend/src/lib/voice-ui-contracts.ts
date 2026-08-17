@@ -171,16 +171,20 @@ export function validateTranscriptDocument(document: TranscriptDocument) {
 function hasValidWordAlignment(segment: TranscriptSegment, wordIds: Set<string>) {
   let previousEndSeconds = segment.startSeconds
   for (const word of segment.words ?? []) {
+    const wordId = word.id.trim()
     if (
-      !word.id.trim() ||
-      wordIds.has(word.id) ||
+      !wordId ||
+      wordId !== word.id ||
+      wordIds.has(wordId) ||
+      !word.text.trim() ||
       !isValidRange(word.startSeconds, word.endSeconds) ||
+      word.endSeconds <= word.startSeconds ||
       word.startSeconds < previousEndSeconds ||
       word.endSeconds > segment.endSeconds
     ) {
       return false
     }
-    wordIds.add(word.id)
+    wordIds.add(wordId)
     previousEndSeconds = word.endSeconds
   }
   return true

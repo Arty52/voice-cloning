@@ -216,12 +216,21 @@ class SampleProcessingSourceSelection:
 
 
 @dataclass(frozen=True)
+class SpeakerTranscriptWord:
+    id: str
+    text: str
+    start_seconds: float
+    end_seconds: float
+
+
+@dataclass(frozen=True)
 class SpeakerTranscriptItem:
     id: str
     text: str
     start_seconds: float
     end_seconds: float
     speaker_id: str
+    words: tuple[SpeakerTranscriptWord, ...] | None = None
 
 
 @dataclass(frozen=True)

@@ -68,6 +68,8 @@ describe("voice UI contracts", () => {
       [{ ...validWords[0] }, { ...validWords[1], id: validWords[0].id }],
       [{ ...validWords[0] }, { ...validWords[1], startSeconds: 0.4 }],
       [{ ...validWords[0], endSeconds: 1.3 }, validWords[1]],
+      [{ ...validWords[0], text: "   " }, validWords[1]],
+      [{ ...validWords[0], endSeconds: validWords[0].startSeconds }, validWords[1]],
     ]) {
       expect(validateTranscriptDocument({ ...document, segments: [{ ...document.segments[0], words }] })).toBe(false)
     }

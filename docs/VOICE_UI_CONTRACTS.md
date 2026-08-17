@@ -61,6 +61,14 @@ word timings cannot be assumed to describe replacement text. A viewer falls
 back to segment timing until a trusted local or provider-neutral alignment
 adapter supplies replacement words.
 
+Successful local diarization jobs now expose that trusted alignment as optional
+`words` on each existing transcript item. The backend assigns provider-neutral
+word ids, validates ordered in-segment ranges, persists the data with the job,
+and omits it for fallback turns, legacy snapshots, or corrected items. The
+`speakerSeparationToTranscriptDocument` adapter carries valid alignment into the
+shared transcript contract and drops a malformed segment's alignment so its
+future viewer can fall back to segment timing without discarding the document.
+
 ## Browser Resource Cleanup
 
 The playback controller pauses and detaches its media element when its source is

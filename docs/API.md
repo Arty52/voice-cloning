@@ -742,7 +742,21 @@ Speaker Separation jobs return a structured result instead of a single audio fil
             "text": "Hello there.",
             "startSeconds": 0.0,
             "endSeconds": 1.2,
-            "speakerId": "speaker-1"
+            "speakerId": "speaker-1",
+            "words": [
+              {
+                "id": "item-1-word-1",
+                "text": "Hello",
+                "startSeconds": 0.0,
+                "endSeconds": 0.5
+              },
+              {
+                "id": "item-1-word-2",
+                "text": "there.",
+                "startSeconds": 0.6,
+                "endSeconds": 1.2
+              }
+            ]
           }
         ]
       }
@@ -750,6 +764,8 @@ Speaker Separation jobs return a structured result instead of a single audio fil
   }
 }
 ```
+
+Each transcript item may include provider-neutral `words` with stable local ids and source-relative start/end seconds. The field is omitted when trusted word alignment is unavailable, including fallback diarization turns, legacy persisted jobs, and corrected transcript items. Consumers must continue to use the item-level timing when `words` is absent. Word alignment is additive: the existing transcript item ids, text, timing, speaker ids, and speaker-to-item references are unchanged.
 
 `GET /api/sample-processing/jobs/{jobId}/source` streams the local source audio for successful Speaker Separation jobs so the frontend can seek and play transcript-selected ranges. For stacked jobs, this is the audio that was fed into diarization after any earlier single-audio steps. It is not used by single-audio jobs.
 
@@ -780,7 +796,7 @@ The response is `200` with `{ "job": { ... } }` and the updated Speaker Separati
 }
 ```
 
-The response is `200` with `{ "job": { ... } }` and the corrected text in the existing Speaker Separation result. The backend trims outer whitespace while preserving internal whitespace. Empty update lists, unknown item ids, duplicate item updates, and blank corrected text are rejected. Corrections are stored with the sample-processing job snapshot when database persistence is configured.
+The response is `200` with `{ "job": { ... } }` and the corrected text in the existing Speaker Separation result. The backend trims outer whitespace while preserving internal whitespace. A correction invalidates and removes word alignment only for the corrected item because its old word timings no longer describe the replacement text; other items retain their alignment. Empty update lists, unknown item ids, duplicate item updates, and blank corrected text are rejected. Corrections are stored with the sample-processing job snapshot when database persistence is configured.
 
 `POST /api/sample-processing/jobs/{jobId}/speaker-voices` saves any subset of generated speakers to the local Voice Library:
 

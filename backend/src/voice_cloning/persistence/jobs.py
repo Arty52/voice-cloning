@@ -29,6 +29,7 @@ from ..models import (
     SpeakerSeparationSpeaker,
     SpeakerSeparationTranscript,
     SpeakerTranscriptItem,
+    SpeakerTranscriptWord,
     SpeechJob,
     SpeechJobSegment,
     SpeechJobStatus,
@@ -345,12 +346,27 @@ def _speaker_from_payload(payload: Mapping[str, Any]) -> SpeakerSeparationSpeake
 
 
 def _transcript_item_from_payload(payload: Mapping[str, Any]) -> SpeakerTranscriptItem:
+    words_payload = payload.get("words")
     return SpeakerTranscriptItem(
         id=str(payload["id"]),
         text=str(payload["text"]),
         start_seconds=float(payload["start_seconds"]),
         end_seconds=float(payload["end_seconds"]),
         speaker_id=str(payload["speaker_id"]),
+        words=(
+            tuple(_transcript_word_from_payload(word) for word in _mapping_items(words_payload))
+            if words_payload is not None
+            else None
+        ),
+    )
+
+
+def _transcript_word_from_payload(payload: Mapping[str, Any]) -> SpeakerTranscriptWord:
+    return SpeakerTranscriptWord(
+        id=str(payload["id"]),
+        text=str(payload["text"]),
+        start_seconds=float(payload["start_seconds"]),
+        end_seconds=float(payload["end_seconds"]),
     )
 
 

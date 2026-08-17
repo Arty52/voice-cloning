@@ -24,6 +24,7 @@ from ..models import (
     SpeakerSeparationSpeaker,
     SpeakerSeparationTranscript,
     SpeakerTranscriptItem,
+    SpeakerTranscriptWord,
     SpeechJob,
     SpeechJobSegment,
     SubscriptionSummary,
@@ -575,12 +576,24 @@ def speaker_separation_transcript_payload(transcript: SpeakerSeparationTranscrip
 
 
 def speaker_transcript_item_payload(item: SpeakerTranscriptItem) -> dict[str, object]:
-    return {
+    payload: dict[str, object] = {
         "id": item.id,
         "text": item.text,
         "startSeconds": item.start_seconds,
         "endSeconds": item.end_seconds,
         "speakerId": item.speaker_id,
+    }
+    if item.words is not None:
+        payload["words"] = [speaker_transcript_word_payload(word) for word in item.words]
+    return payload
+
+
+def speaker_transcript_word_payload(word: SpeakerTranscriptWord) -> dict[str, object]:
+    return {
+        "id": word.id,
+        "text": word.text,
+        "startSeconds": word.start_seconds,
+        "endSeconds": word.end_seconds,
     }
 
 

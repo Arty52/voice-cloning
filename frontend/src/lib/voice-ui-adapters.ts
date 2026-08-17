@@ -1,5 +1,5 @@
-import type { GeneratedResult, SpeakerSeparationResult, VoiceAsset } from "@/types"
-import type { PlaybackSource, TranscriptDocument, VoicePickerOption } from "@/lib/voice-ui-contracts"
+import type { GeneratedResult, SpeakerSeparationResult, SpeakerTranscriptItem, VoiceAsset } from "@/types"
+import type { PlaybackSource, TranscriptDocument, TranscriptWord, VoicePickerOption } from "@/lib/voice-ui-contracts"
 
 type VoicePickerAdapterOptions = {
   previewUrl: string | null
@@ -100,6 +100,7 @@ export function speakerSeparationToTranscriptDocument(
   result: SpeakerSeparationResult,
   { documentId }: TranscriptDocumentAdapterOptions,
 ): TranscriptDocument {
+  const wordIds = new Set<string>()
   const speakers = result.speakers.map((speaker, index) => ({
     id: speaker.id,
     label: speaker.assignedName?.trim() || speaker.label.trim() || `Speaker ${index + 1}`,
@@ -112,15 +113,52 @@ export function speakerSeparationToTranscriptDocument(
         left.item.endSeconds - right.item.endSeconds ||
         left.index - right.index,
     )
-    .map(({ item }) => ({
-      endSeconds: item.endSeconds,
-      id: item.id,
-      speakerId: item.speakerId,
-      startSeconds: item.startSeconds,
-      text: item.text,
-    }))
+    .map(({ item }) => {
+      const words = normalizeTranscriptWords(item, wordIds)
+      return {
+        endSeconds: item.endSeconds,
+        id: item.id,
+        speakerId: item.speakerId,
+        startSeconds: item.startSeconds,
+        text: item.text,
+        ...(words ? { words } : {}),
+      }
+    })
 
   return { id: documentId, revision: 0, segments, speakers }
+}
+
+function normalizeTranscriptWords(item: SpeakerTranscriptItem, wordIds: Set<string>): TranscriptWord[] | undefined {
+  if (!item.words?.length) {
+    return undefined
+  }
+  const itemWordIds = new Set<string>()
+  const words: TranscriptWord[] = []
+  let previousEndSeconds = item.startSeconds
+  for (const word of item.words) {
+    const id = word.id.trim()
+    const text = word.text.trim()
+    if (
+      !id ||
+      wordIds.has(id) ||
+      itemWordIds.has(id) ||
+      !text ||
+      !Number.isFinite(word.startSeconds) ||
+      !Number.isFinite(word.endSeconds) ||
+      word.startSeconds < previousEndSeconds ||
+      word.endSeconds <= word.startSeconds ||
+      word.endSeconds > item.endSeconds
+    ) {
+      return undefined
+    }
+    itemWordIds.add(id)
+    words.push({ endSeconds: word.endSeconds, id, startSeconds: word.startSeconds, text })
+    previousEndSeconds = word.endSeconds
+  }
+  for (const id of itemWordIds) {
+    wordIds.add(id)
+  }
+  return words
 }
 
 export function transcriptSourceToPlaybackSource({
