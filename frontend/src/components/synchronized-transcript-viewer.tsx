@@ -98,11 +98,14 @@ export function SynchronizedTranscriptViewer({
   useEffect(() => {
     if (isFollowing && currentSegmentId && !prefersReducedMotion) {
       if (shouldVirtualize && scrollViewport) {
-        rowVirtualizer.scrollToIndex(currentSegmentIndex, { align: "auto" })
-      } else {
-        scrollToSegment(currentSegmentRef.current)
+        const frameId = window.requestAnimationFrame(() => {
+          rowVirtualizer.scrollToIndex(currentSegmentIndex, { align: "auto" })
+        })
+        return () => window.cancelAnimationFrame(frameId)
       }
+      scrollToSegment(currentSegmentRef.current)
     }
+    return undefined
   }, [
     currentSegmentId,
     currentSegmentIndex,

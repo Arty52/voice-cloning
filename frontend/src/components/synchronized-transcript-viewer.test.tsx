@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -96,6 +96,7 @@ describe("SynchronizedTranscriptViewer", () => {
   })
 
   afterEach(() => {
+    vi.restoreAllMocks()
     vi.unstubAllGlobals()
   })
 
@@ -348,7 +349,21 @@ describe("SynchronizedTranscriptViewer", () => {
     expect(firstSegment).toHaveFocus()
   })
 
-  it("auto-follows a current segment outside the initial virtual window", async () => {
+  it("schedules virtual auto-follow outside the lifecycle and cancels a stale frame", () => {
+    const frameCallbacks = new Map<number, FrameRequestCallback>()
+    let nextFrameId = 0
+    Object.defineProperty(window, "requestAnimationFrame", {
+      configurable: true,
+      value: vi.fn((callback: FrameRequestCallback) => {
+        nextFrameId += 1
+        frameCallbacks.set(nextFrameId, callback)
+        return nextFrameId
+      }),
+    })
+    Object.defineProperty(window, "cancelAnimationFrame", {
+      configurable: true,
+      value: vi.fn((frameId: number) => frameCallbacks.delete(frameId)),
+    })
     const longDocument: TranscriptDocument = {
       ...document,
       segments: Array.from({ length: 1_000 }, (_, index) => ({
@@ -360,13 +375,21 @@ describe("SynchronizedTranscriptViewer", () => {
       })),
     }
 
-    render(
+    const { rerender } = render(
       <SynchronizedTranscriptViewer currentTimeSeconds={500.1} document={longDocument} onSeek={vi.fn()} />,
     )
 
-    await waitFor(() => expect(scrollTo).toHaveBeenCalled())
+    scrollTo.mockClear()
+    expect(scrollTo).not.toHaveBeenCalled()
+    rerender(
+      <SynchronizedTranscriptViewer currentTimeSeconds={600.1} document={longDocument} onSeek={vi.fn()} />,
+    )
+    expect(window.cancelAnimationFrame).toHaveBeenCalledWith(1)
+    expect(frameCallbacks.has(1)).toBe(false)
+    act(() => frameCallbacks.get(2)?.(0))
+
     expect(scrollTo.mock.calls.at(-1)?.[0]).toMatchObject({ behavior: "auto" })
-    expect(scrollTo.mock.calls.at(-1)?.[0].top).toBeGreaterThan(40_000)
+    expect(scrollTo.mock.calls.at(-1)?.[0].top).toBeGreaterThan(50_000)
   })
 
   it("disables automatic scrolling for reduced motion while keeping manual return available", async () => {
