@@ -69,6 +69,29 @@ and omits it for fallback turns, legacy snapshots, or corrected items. The
 shared transcript contract and drops a malformed segment's alignment so its
 future viewer can fall back to segment timing without discarding the document.
 
+## Long Transcript Rendering
+
+`SynchronizedTranscriptViewer` keeps short transcripts on the native ordered
+list path and virtualizes documents above 80 segments inside the existing local
+`ScrollArea`. Virtualization changes rendering only: the normalized transcript,
+shared playback clock, canonical overlap selection, seek ownership, and word
+alignment fallback remain the sources of truth.
+
+The long-list path preserves ordered-list position metadata, keeps the focused
+segment mounted when the visible range changes, and renders a small overscanned
+window with measured variable-height rows. Playback auto-follow targets a
+virtual index without scrolling the outer page; reduced-motion and manual-scroll
+opt-out behavior remain unchanged. Tests use 1,000-segment documents to verify a
+bounded DOM, focus stability, distant auto-follow, and stable row rendering
+during playback ticks.
+
+The implementation pins `@tanstack/react-virtual` 3.14.9, which supports React
+19 and is MIT licensed; its locked `@tanstack/virtual-core` dependency is also
+MIT licensed. Voice Studio owns the rendering and accessibility contract, uses
+no TanStack state outside this presentational viewer, and can replace the
+virtualizer without changing transcript or playback domain contracts. This
+dependency decision was reviewed 2026-08-18.
+
 ## Browser Resource Cleanup
 
 The playback controller pauses and detaches its media element when its source is
