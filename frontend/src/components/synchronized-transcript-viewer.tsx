@@ -93,6 +93,9 @@ export function SynchronizedTranscriptViewer({
     paddingEnd: 12,
     paddingStart: 12,
     rangeExtractor: extractSegmentRange,
+    // Measurement updates can originate in React layout effects. Let React
+    // schedule the rerender instead of nesting TanStack Virtual's flushSync.
+    useFlushSync: false,
   })
 
   useEffect(() => {
