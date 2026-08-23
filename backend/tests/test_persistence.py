@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import replace
 import importlib
 import json
 import os
 from pathlib import Path
 import shutil
+from threading import Event as ThreadEvent
 from uuid import uuid4
 
 import pytest
@@ -32,6 +34,7 @@ from voice_cloning.models import (
 )
 from voice_cloning.persistence.database import (
     Base,
+    SessionFactory,
     create_database_engine,
     create_session_factory,
     unit_of_work,
@@ -49,7 +52,16 @@ from voice_cloning.persistence.models import AppSettingRecord, SampleProcessingJ
 from voice_cloning.persistence.postgres_voice_library import PostgresVoiceLibrary
 from voice_cloning.persistence.voices import SqlAlchemyVoiceRepository
 from voice_cloning.samples import sample_hash
-from voice_cloning.services.sample_processing import SampleProcessingService, SampleProcessingServiceError
+from voice_cloning.services.sample_processing import (
+    PreparedCandidateVoiceSelection,
+    SampleProcessingService,
+    SampleProcessingServiceError,
+    SpeakerAssignmentRequest,
+    SpeakerNameAssignment,
+    SpeakerVoiceSelection,
+    TranscriptTextUpdate,
+    apply_speaker_assignment_metadata,
+)
 from voice_cloning.voice_library import VoiceLibrary
 from voice_cloning.voice_library_factory import create_voice_library
 
@@ -612,6 +624,223 @@ def test_sample_processing_service_restart_restores_staged_artifacts_when_job_ex
     assert service.get_job(job.id) == job
     assert job_dir.joinpath("source.wav").read_bytes() == b"source"
     assert not tombstone_dir.exists()
+
+
+def _speaker_processing_job(job_id: str) -> SampleProcessingJob:
+    source_content = b"speaker source"
+    speaker_content = b"speaker result"
+    return SampleProcessingJob(
+        id=job_id,
+        operation_id="separateSpeakers",
+        status="success",
+        source_name="Conversation",
+        source_filename="source.wav",
+        source_content_type="audio/wav",
+        source_sha256=sample_hash(source_content),
+        source_size_bytes=len(source_content),
+        source_preference="original",
+        created_at="2026-08-23T12:00:00+00:00",
+        updated_at="2026-08-23T12:00:01+00:00",
+        result=SpeakerSeparationResult(
+            kind="speakerSeparation",
+            speakers=(
+                SpeakerSeparationSpeaker(
+                    id="speaker-1",
+                    label="Speaker 1",
+                    transcript_item_ids=("item-1",),
+                    result=SampleProcessingResult(
+                        path=f"{job_id}/speaker-1.wav",
+                        filename="speaker-1.wav",
+                        content_type="audio/wav",
+                        sha256=sample_hash(speaker_content),
+                    ),
+                ),
+            ),
+            transcript=SpeakerSeparationTranscript(
+                items=(
+                    SpeakerTranscriptItem(
+                        id="item-1",
+                        text="Hello.",
+                        start_seconds=0.0,
+                        end_seconds=1.0,
+                        speaker_id="speaker-1",
+                    ),
+                ),
+            ),
+        ),
+        steps=(
+            SampleProcessingJobStep(
+                id=job_id,
+                operation_id="separateSpeakers",
+                operation_label="Separate Speakers",
+                status="success",
+                engine="test",
+                source_sha256=sample_hash(source_content),
+                result_sha256=sample_hash(speaker_content),
+            ),
+        ),
+    )
+
+
+def _persist_speaker_processing_job(
+    settings: Settings,
+    session_factory: SessionFactory,
+    job: SampleProcessingJob,
+) -> None:
+    with unit_of_work(session_factory) as session:
+        SqlAlchemySampleProcessingJobRepository(session).save_job(job)
+    job_dir = settings.sample_processing_dir / job.id
+    job_dir.mkdir(parents=True)
+    (job_dir / "source.wav").write_bytes(b"speaker source")
+    (job_dir / "speaker-1.wav").write_bytes(b"speaker result")
+
+
+class _BlockingAssignmentProcessor:
+    engine_name = "test"
+
+    def __init__(self) -> None:
+        self.started = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def update_speaker_assignments(self, request: SpeakerAssignmentRequest) -> SpeakerSeparationResult:
+        self.started.set()
+        await self.release.wait()
+        return apply_speaker_assignment_metadata(
+            request.result,
+            speaker_names=request.speaker_names,
+            transcript_assignments=request.transcript_assignments,
+        )
+
+
+def test_sample_processing_delete_rejects_active_mutation_but_allows_unrelated_job(
+    tmp_path: Path,
+) -> None:
+    async def scenario() -> None:
+        settings = replace(
+            make_settings(tmp_path),
+            database_url=f"sqlite+pysqlite:///{tmp_path / 'jobs.sqlite'}",
+        )
+        engine = create_database_engine(settings.database_url)
+        Base.metadata.create_all(engine)
+        session_factory = create_session_factory(engine)
+        mutated_job = _speaker_processing_job("mutated-job")
+        unrelated_job = _sample_processing_job("unrelated-job")
+        _persist_speaker_processing_job(settings, session_factory, mutated_job)
+        with unit_of_work(session_factory) as session:
+            SqlAlchemySampleProcessingJobRepository(session).save_job(unrelated_job)
+        unrelated_dir = settings.sample_processing_dir / unrelated_job.id
+        unrelated_dir.mkdir(parents=True)
+        (unrelated_dir / "result.wav").write_bytes(b"unrelated")
+        processor = _BlockingAssignmentProcessor()
+        service = SampleProcessingService(
+            settings,
+            VoiceLibrary(settings),
+            processor=processor,  # type: ignore[arg-type]
+            job_session_factory=session_factory,
+        )
+
+        mutation = asyncio.create_task(
+            service.update_speaker_assignments(
+                mutated_job.id,
+                speaker_names=(SpeakerNameAssignment(speaker_id="speaker-1", name="Morgan"),),
+            )
+        )
+        await processor.started.wait()
+
+        with pytest.raises(SampleProcessingServiceError) as busy_error:
+            service.delete_job(mutated_job.id)
+        assert busy_error.value.status_code == 409
+        assert service.delete_job(unrelated_job.id) == unrelated_job.id
+        assert not unrelated_dir.exists()
+
+        processor.release.set()
+        updated_job = await mutation
+
+        assert isinstance(updated_job.result, SpeakerSeparationResult)
+        assert updated_job.result.speakers[0].assigned_name == "Morgan"
+        assert (settings.sample_processing_dir / mutated_job.id / "source.wav").is_file()
+        with unit_of_work(session_factory) as session:
+            repository = SqlAlchemySampleProcessingJobRepository(session)
+            assert repository.get_job(mutated_job.id) == updated_job
+            assert repository.get_job(unrelated_job.id) is None
+
+    asyncio.run(scenario())
+
+
+def test_sample_processing_delete_reservation_blocks_later_job_operations(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        settings = replace(
+            make_settings(tmp_path),
+            database_url=f"sqlite+pysqlite:///{tmp_path / 'jobs.sqlite'}",
+        )
+        engine = create_database_engine(settings.database_url)
+        Base.metadata.create_all(engine)
+        session_factory = create_session_factory(engine)
+        job = _speaker_processing_job("delete-first")
+        _persist_speaker_processing_job(settings, session_factory, job)
+        processor = _BlockingAssignmentProcessor()
+        service = SampleProcessingService(
+            settings,
+            VoiceLibrary(settings),
+            processor=processor,  # type: ignore[arg-type]
+            job_session_factory=session_factory,
+        )
+        delete_started = ThreadEvent()
+        allow_delete = ThreadEvent()
+        original_delete = service._delete_persisted_job
+
+        def blocking_delete(job_id: str) -> bool:
+            delete_started.set()
+            assert allow_delete.wait(timeout=5)
+            return original_delete(job_id)
+
+        monkeypatch.setattr(service, "_delete_persisted_job", blocking_delete)
+        deletion = asyncio.create_task(asyncio.to_thread(service.delete_job, job.id))
+        assert await asyncio.to_thread(delete_started.wait, 5)
+
+        blocked_calls = (
+            lambda: service.save_result_as_voice(job.id, name="Blocked"),
+            lambda: service.update_transcript_items(
+                job.id,
+                items=(TranscriptTextUpdate(item_id="item-1", text="Blocked"),),
+            ),
+            lambda: service.save_candidate_results_as_voices(
+                job.id,
+                voices=(PreparedCandidateVoiceSelection(candidate_id="candidate-1", name="Blocked"),),
+            ),
+        )
+        for blocked_call in blocked_calls:
+            with pytest.raises(SampleProcessingServiceError) as busy_error:
+                blocked_call()
+            assert busy_error.value.status_code == 409
+        with pytest.raises(SampleProcessingServiceError) as assignment_error:
+            await service.update_speaker_assignments(
+                job.id,
+                speaker_names=(SpeakerNameAssignment(speaker_id="speaker-1", name="Blocked"),),
+            )
+        assert assignment_error.value.status_code == 409
+        with pytest.raises(SampleProcessingServiceError) as speaker_save_error:
+            await service.save_speaker_results_as_voices(
+                job.id,
+                voices=(SpeakerVoiceSelection(speaker_id="speaker-1", name="Blocked"),),
+            )
+        assert speaker_save_error.value.status_code == 409
+        assert not processor.started.is_set()
+
+        allow_delete.set()
+        assert await deletion == job.id
+
+        with pytest.raises(SampleProcessingServiceError) as missing_error:
+            service.get_job(job.id)
+        assert missing_error.value.status_code == 404
+        with unit_of_work(session_factory) as session:
+            assert SqlAlchemySampleProcessingJobRepository(session).get_job(job.id) is None
+        assert not (settings.sample_processing_dir / job.id).exists()
+
+    asyncio.run(scenario())
 
 
 def test_sample_processing_job_repository_roundtrips_transcript_word_alignment() -> None:

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 import hashlib
@@ -8,6 +10,7 @@ import json
 import math
 from pathlib import Path
 import shutil
+from threading import Lock
 from typing import Protocol, cast
 from uuid import uuid4
 
@@ -345,6 +348,9 @@ class SampleProcessingService:
         self._source_paths: dict[str, Path] = {}
         self._speaker_processing_steps: dict[str, dict[str, tuple[VoiceProcessingStep, ...]]] = {}
         self._prepared_candidate_processing_steps: dict[str, dict[str, tuple[VoiceProcessingStep, ...]]] = {}
+        self._job_operation_state_lock = Lock()
+        self._active_job_operation_ids: set[str] = set()
+        self._deleting_job_ids: set[str] = set()
         self._reconcile_delete_tombstones()
         self._mark_interrupted_jobs()
 
@@ -610,6 +616,10 @@ class SampleProcessingService:
         return self.get_job(job_id)
 
     def delete_job(self, job_id: str) -> str:
+        with self._reserve_job_deletion(job_id):
+            return self._delete_job(job_id)
+
+    def _delete_job(self, job_id: str) -> str:
         job = self.get_job(job_id)
         task = self._tasks.get(job_id)
         if job.status not in {"success", "error", "canceled", "interrupted"} or (
@@ -736,6 +746,20 @@ class SampleProcessingService:
         name: str,
         voice_preset_id: str | None = None,
     ) -> VoiceAsset:
+        with self._reserve_job_operation(job_id):
+            return self._save_result_as_voice(
+                job_id,
+                name=name,
+                voice_preset_id=voice_preset_id,
+            )
+
+    def _save_result_as_voice(
+        self,
+        job_id: str,
+        *,
+        name: str,
+        voice_preset_id: str | None = None,
+    ) -> VoiceAsset:
         job = self.get_job(job_id)
         if job.status != "success" or job.result is None:
             raise SampleProcessingServiceError("Sample processing result is not ready.", 409)
@@ -751,6 +775,20 @@ class SampleProcessingService:
         )
 
     async def update_speaker_assignments(
+        self,
+        job_id: str,
+        *,
+        speaker_names: tuple[SpeakerNameAssignment, ...] = (),
+        transcript_assignments: tuple[SpeakerTranscriptAssignment, ...] = (),
+    ) -> SampleProcessingJob:
+        with self._reserve_job_operation(job_id):
+            return await self._update_speaker_assignments(
+                job_id,
+                speaker_names=speaker_names,
+                transcript_assignments=transcript_assignments,
+            )
+
+    async def _update_speaker_assignments(
         self,
         job_id: str,
         *,
@@ -809,6 +847,15 @@ class SampleProcessingService:
         *,
         items: tuple[TranscriptTextUpdate, ...],
     ) -> SampleProcessingJob:
+        with self._reserve_job_operation(job_id):
+            return self._update_transcript_items(job_id, items=items)
+
+    def _update_transcript_items(
+        self,
+        job_id: str,
+        *,
+        items: tuple[TranscriptTextUpdate, ...],
+    ) -> SampleProcessingJob:
         job = self.get_job(job_id)
         result = self._speaker_separation_result(job)
         updated_result = apply_transcript_text_updates(result, items)
@@ -817,6 +864,15 @@ class SampleProcessingService:
         return self.get_job(job_id)
 
     async def save_speaker_results_as_voices(
+        self,
+        job_id: str,
+        *,
+        voices: tuple[SpeakerVoiceSelection, ...],
+    ) -> tuple[VoiceAsset, ...]:
+        with self._reserve_job_operation(job_id):
+            return await self._save_speaker_results_as_voices(job_id, voices=voices)
+
+    async def _save_speaker_results_as_voices(
         self,
         job_id: str,
         *,
@@ -931,6 +987,15 @@ class SampleProcessingService:
         return sample, steps
 
     def save_candidate_results_as_voices(
+        self,
+        job_id: str,
+        *,
+        voices: tuple[PreparedCandidateVoiceSelection, ...],
+    ) -> tuple[VoiceAsset, ...]:
+        with self._reserve_job_operation(job_id):
+            return self._save_candidate_results_as_voices(job_id, voices=voices)
+
+    def _save_candidate_results_as_voices(
         self,
         job_id: str,
         *,
@@ -1546,6 +1611,32 @@ class SampleProcessingService:
             return False
         with unit_of_work(self.job_session_factory) as session:
             return SqlAlchemySampleProcessingJobRepository(session).delete_job(job_id)
+
+    @contextmanager
+    def _reserve_job_operation(self, job_id: str) -> Iterator[None]:
+        with self._job_operation_state_lock:
+            if job_id in self._deleting_job_ids:
+                raise SampleProcessingServiceError("Sample processing job is being deleted.", 409)
+            if job_id in self._active_job_operation_ids:
+                raise SampleProcessingServiceError("Sample processing job is busy.", 409)
+            self._active_job_operation_ids.add(job_id)
+        try:
+            yield
+        finally:
+            with self._job_operation_state_lock:
+                self._active_job_operation_ids.discard(job_id)
+
+    @contextmanager
+    def _reserve_job_deletion(self, job_id: str) -> Iterator[None]:
+        with self._job_operation_state_lock:
+            if job_id in self._active_job_operation_ids or job_id in self._deleting_job_ids:
+                raise SampleProcessingServiceError("Sample processing job is busy.", 409)
+            self._deleting_job_ids.add(job_id)
+        try:
+            yield
+        finally:
+            with self._job_operation_state_lock:
+                self._deleting_job_ids.discard(job_id)
 
     def _reconcile_delete_tombstones(self) -> None:
         staging_dir = self._delete_staging_dir()
