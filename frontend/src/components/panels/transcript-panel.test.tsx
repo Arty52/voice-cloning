@@ -1,9 +1,14 @@
 import { render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 
 import type { TranscriptWorkflowController } from "@/hooks/use-transcript-workflow"
 
 import { TranscriptPanel } from "./transcript-panel"
+
+vi.mock("@/components/speaker-transcript-workspace", () => ({
+  SpeakerTranscriptWorkspace: () => <div>Transcript content</div>,
+}))
 
 function processingTranscript(): TranscriptWorkflowController {
   return {
@@ -34,6 +39,28 @@ function processingTranscript(): TranscriptWorkflowController {
   } as unknown as TranscriptWorkflowController
 }
 
+function completedTranscript(overrides: Partial<TranscriptWorkflowController> = {}): TranscriptWorkflowController {
+  return {
+    ...processingTranscript(),
+    canCancel: false,
+    canClearTranscript: true,
+    clearError: null,
+    clearStatus: "idle",
+    handleClearTranscript: vi.fn(async () => true),
+    isClearingTranscript: false,
+    isProcessing: false,
+    job: {
+      ...processingTranscript().job,
+      id: "transcript-job-1",
+      operationId: "separateSpeakers",
+      status: "success",
+      result: { kind: "speakerSeparation", speakers: [], transcript: { items: [] } },
+    },
+    status: "success",
+    ...overrides,
+  } as unknown as TranscriptWorkflowController
+}
+
 describe("TranscriptPanel", () => {
   it("keeps the processing announcement outside the busy upload controls", () => {
     render(<TranscriptPanel transcript={processingTranscript()} voicePresets={[]} />)
@@ -45,5 +72,31 @@ describe("TranscriptPanel", () => {
     )
     expect(activity.closest("[aria-busy='true']")).toBeNull()
     expect(screen.getByLabelText("Transcript Audio Drop Zone").closest("[aria-busy='true']")).not.toBeNull()
+  })
+
+  it("requires confirmation before permanently clearing a transcript", async () => {
+    const user = userEvent.setup()
+    const transcript = completedTranscript()
+    render(<TranscriptPanel transcript={transcript} voicePresets={[]} />)
+
+    await user.click(screen.getByRole("button", { name: "Clear Transcript" }))
+
+    const dialog = screen.getByRole("alertdialog", { name: "Clear Transcript?" })
+    expect(dialog).toBeVisible()
+    expect(screen.getByText(/Saved voices and local timing diagnostics are not deleted/i)).toBeVisible()
+    await user.click(screen.getByRole("button", { name: "Cancel" }))
+    expect(transcript.handleClearTranscript).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole("button", { name: "Clear Transcript" }))
+    await user.click(screen.getAllByRole("button", { name: "Clear Transcript" }).at(-1)!)
+
+    expect(transcript.handleClearTranscript).toHaveBeenCalledTimes(1)
+  })
+
+  it("disables clearing while transcript edits are still being saved", () => {
+    const transcript = completedTranscript({ canClearTranscript: false })
+    render(<TranscriptPanel transcript={transcript} voicePresets={[]} />)
+
+    expect(screen.getByRole("button", { name: "Clear Transcript" })).toBeDisabled()
   })
 })

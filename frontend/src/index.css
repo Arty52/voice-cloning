@@ -23,6 +23,7 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-accent: var(--sidebar-accent);
@@ -51,6 +52,7 @@
   --input: oklch(1 0 0 / 8%);
   --ring: oklch(0.78 0.13 176);
   --destructive: oklch(0.68 0.21 28);
+  --destructive-foreground: oklch(0.99 0 0);
   --sidebar: oklch(0.17 0.014 252);
   --sidebar-foreground: oklch(0.96 0.005 252);
   --sidebar-accent: oklch(0.24 0.018 252);

@@ -1,4 +1,5 @@
-import { Ban, FileAudio, MessageSquareText, Sparkles } from "lucide-react"
+import { Ban, FileAudio, MessageSquareText, Sparkles, Trash2 } from "lucide-react"
+import { useState } from "react"
 
 import { MediaFileDropZone } from "@/components/media-file-drop-zone"
 import { ProcessingTimeEstimate } from "@/components/processing-time-estimate"
@@ -6,6 +7,17 @@ import { SpeakerTranscriptWorkspace } from "@/components/speaker-transcript-work
 import { TranscriptPipelineActivity } from "@/components/transcript-pipeline-activity"
 import { TranscriptProcessingTiming } from "@/components/transcript-processing-timing"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -25,6 +37,7 @@ const TRANSCRIPT_UPLOAD_HELPER_COPY =
   "Choose a complete MP3, WAV, M4A, M4B, AAC, OGG, or FLAC file. The full audio is processed without a source-range limit."
 
 export function TranscriptPanel({ transcript, voicePresets }: TranscriptPanelProps) {
+  const [clearDialogOpen, setClearDialogOpen] = useState(false)
   const statusLabel = transcriptStatusLabel(transcript.status)
   const activePhase = transcript.job?.progressPhases?.find(
     (phase) => phase.id === transcript.job?.activeProgressPhaseId
@@ -63,11 +76,11 @@ export function TranscriptPanel({ transcript, voicePresets }: TranscriptPanelPro
           ) : null}
 
           <form className="flex flex-col gap-4" onSubmit={transcript.handleStartTranscription}>
-            <FieldGroup aria-busy={transcript.isProcessing}>
+            <FieldGroup aria-busy={transcript.isProcessing || transcript.isClearingTranscript}>
               <MediaFileDropZone
                 accept={TRANSCRIPT_AUDIO_ACCEPT}
                 ariaLabel="Transcript Audio Drop Zone"
-                disabled={transcript.isProcessing}
+                disabled={transcript.isProcessing || transcript.isClearingTranscript}
                 helperCopy={TRANSCRIPT_UPLOAD_HELPER_COPY}
                 id="transcript-source-audio"
                 label="Audio File"
@@ -163,14 +176,70 @@ export function TranscriptPanel({ transcript, voicePresets }: TranscriptPanelPro
 
       {transcript.job?.status === "success" ? (
         <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <MessageSquareText aria-hidden="true" className="size-5 text-primary" />
-              <CardTitle>Dialogue Transcript</CardTitle>
+          <CardHeader className="flex-row items-start justify-between gap-3">
+            <div className="flex min-w-0 flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <MessageSquareText aria-hidden="true" className="size-5 text-primary" />
+                <CardTitle>Dialogue Transcript</CardTitle>
+              </div>
+              <CardDescription>
+                Names, turn assignments, and dialogue corrections are persisted with this transcript job.
+              </CardDescription>
             </div>
-            <CardDescription>
-              Names, turn assignments, and dialogue corrections are persisted with this transcript job.
-            </CardDescription>
+            <AlertDialog
+              onOpenChange={(open) => {
+                if (!transcript.isClearingTranscript) setClearDialogOpen(open)
+              }}
+              open={clearDialogOpen}
+            >
+              <AlertDialogTrigger asChild>
+                <Button
+                  disabled={!transcript.canClearTranscript}
+                  size="sm"
+                  variant="destructive"
+                >
+                  <Trash2 aria-hidden="true" data-icon="inline-start" />
+                  Clear Transcript
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Clear Transcript?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This permanently deletes this job's source audio, separated speaker files, transcript, and saved
+                    transcript corrections. Saved voices and local timing diagnostics are not deleted.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                {transcript.clearError ? (
+                  <Alert className="border-destructive/40 bg-destructive/10 text-destructive" role="alert">
+                    <AlertTitle>Transcript Could Not Be Cleared</AlertTitle>
+                    <AlertDescription>{transcript.clearError}</AlertDescription>
+                  </Alert>
+                ) : null}
+                <AlertDialogFooter>
+                  <AlertDialogCancel asChild>
+                    <Button disabled={transcript.isClearingTranscript} variant="secondary">
+                      Cancel
+                    </Button>
+                  </AlertDialogCancel>
+                  <AlertDialogAction asChild>
+                    <Button
+                      disabled={transcript.isClearingTranscript}
+                      onClick={(event) => {
+                        event.preventDefault()
+                        void transcript.handleClearTranscript().then((cleared) => {
+                          if (cleared) setClearDialogOpen(false)
+                        })
+                      }}
+                      variant="destructive"
+                    >
+                      {transcript.isClearingTranscript ? <Loading aria-hidden="true" size="sm" /> : null}
+                      {transcript.isClearingTranscript ? "Clearing Transcript" : "Clear Transcript"}
+                    </Button>
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </CardHeader>
           <CardContent>
             <SpeakerTranscriptWorkspace
