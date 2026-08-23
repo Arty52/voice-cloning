@@ -12,6 +12,7 @@ import {
   ACTIVE_TRANSCRIPT_SESSIONS_STORAGE_KEY,
   LATEST_TRANSCRIPT_JOB_STORAGE_KEY,
   LATEST_TRANSCRIPT_SESSION_STORAGE_KEY,
+  TRANSCRIPT_RESTORE_SUPPRESSED_STORAGE_KEY,
   TRANSCRIPT_SESSION_STORAGE_PREFIX,
   useTranscriptWorkflow,
 } from "./use-transcript-workflow"
@@ -22,6 +23,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
     ...actual,
     cancelSampleProcessingJob: vi.fn(),
     createSampleProcessingJob: vi.fn(),
+    deleteSampleProcessingJob: vi.fn(),
     fetchSampleProcessingJob: vi.fn(),
   }
 })
@@ -112,8 +114,10 @@ function renderTranscriptWorkflow(overrides: Partial<Parameters<typeof useTransc
 
 beforeEach(() => {
   window.localStorage.clear()
+  window.sessionStorage.clear()
   vi.mocked(api.cancelSampleProcessingJob).mockReset()
   vi.mocked(api.createSampleProcessingJob).mockReset()
+  vi.mocked(api.deleteSampleProcessingJob).mockReset()
   vi.mocked(api.fetchSampleProcessingJob).mockReset()
 })
 
@@ -349,6 +353,80 @@ describe("useTranscriptWorkflow", () => {
     await waitFor(() => expect(result.current.status).toBe("success"))
     expect(result.current.speakerTranscript.speakerSeparationResult).toEqual(speakerResult)
     expect(window.localStorage.getItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY)).toBe("transcript-job-1")
+  })
+
+  it("clears the exact completed transcript while preserving diagnostics and unrelated sessions", async () => {
+    const completedJob = buildJob("success")
+    const otherSession = {
+      jobId: "transcript-job-other-tab",
+      timingDiagnosticId: null,
+      createdAt: "2026-08-04T19:00:00.000Z",
+    }
+    const diagnostic = startTranscriptTimingDiagnostic({
+      createId: () => "timing-clear-target",
+      estimate: { minSeconds: 40, maxSeconds: 115 },
+      sourceFile: new File(["audio"], "private-name.mp3", { type: "audio/mpeg" }),
+    })
+    const currentSession = {
+      jobId: completedJob.id,
+      timingDiagnosticId: diagnostic.id,
+      createdAt: "2026-08-04T20:00:00.000Z",
+    }
+    window.localStorage.setItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY, completedJob.id)
+    window.localStorage.setItem(LATEST_TRANSCRIPT_SESSION_STORAGE_KEY, JSON.stringify(currentSession))
+    window.localStorage.setItem(TRANSCRIPT_SESSION_STORAGE_PREFIX + completedJob.id, JSON.stringify(currentSession))
+    window.localStorage.setItem(
+      TRANSCRIPT_SESSION_STORAGE_PREFIX + otherSession.jobId,
+      JSON.stringify(otherSession)
+    )
+    vi.mocked(api.fetchSampleProcessingJob).mockResolvedValue({ job: completedJob })
+    vi.mocked(api.deleteSampleProcessingJob).mockResolvedValue({ deleted: true, jobId: completedJob.id })
+    const first = renderTranscriptWorkflow()
+
+    await waitFor(() => expect(first.result.current.status).toBe("success"))
+    const diagnosticsBeforeClear = readTranscriptTimingDiagnostics()
+
+    await act(async () => {
+      await expect(first.result.current.handleClearTranscript()).resolves.toBe(true)
+    })
+
+    expect(api.deleteSampleProcessingJob).toHaveBeenCalledWith(completedJob.id)
+    expect(first.result.current.status).toBe("idle")
+    expect(first.result.current.job).toBeNull()
+    expect(first.result.current.sourceFile).toBeNull()
+    expect(first.result.current.timingDiagnostic).toBeNull()
+    expect(window.localStorage.getItem(TRANSCRIPT_SESSION_STORAGE_PREFIX + completedJob.id)).toBeNull()
+    expect(window.localStorage.getItem(TRANSCRIPT_SESSION_STORAGE_PREFIX + otherSession.jobId)).toBe(
+      JSON.stringify(otherSession)
+    )
+    expect(window.sessionStorage.getItem(TRANSCRIPT_RESTORE_SUPPRESSED_STORAGE_KEY)).toBe("true")
+    expect(readTranscriptTimingDiagnostics()).toEqual(diagnosticsBeforeClear)
+
+    first.unmount()
+    const restored = renderTranscriptWorkflow()
+    expect(restored.result.current.status).toBe("idle")
+    expect(restored.result.current.job).toBeNull()
+    expect(api.fetchSampleProcessingJob).toHaveBeenCalledTimes(1)
+  })
+
+  it("preserves the completed transcript when deletion fails", async () => {
+    const completedJob = buildJob("success")
+    window.localStorage.setItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY, completedJob.id)
+    vi.mocked(api.fetchSampleProcessingJob).mockResolvedValue({ job: completedJob })
+    vi.mocked(api.deleteSampleProcessingJob).mockRejectedValue(new Error("Transcript is still being updated."))
+    const { result } = renderTranscriptWorkflow()
+
+    await waitFor(() => expect(result.current.status).toBe("success"))
+    await act(async () => {
+      await expect(result.current.handleClearTranscript()).resolves.toBe(false)
+    })
+
+    expect(result.current.job).toEqual(completedJob)
+    expect(result.current.status).toBe("success")
+    expect(result.current.clearStatus).toBe("error")
+    expect(result.current.clearError).toBe("Transcript is still being updated.")
+    expect(window.localStorage.getItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY)).toBe(completedJob.id)
+    expect(window.sessionStorage.getItem(TRANSCRIPT_RESTORE_SUPPRESSED_STORAGE_KEY)).toBeNull()
   })
 
   it("cancels an active transcript job", async () => {
