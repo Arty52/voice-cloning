@@ -19,6 +19,10 @@ import voice_cloning.sample_processors as sample_processors_module
 import voice_cloning.services.voice_ingestion as voice_ingestion_module
 import voice_cloning.voice_library as voice_library_module
 from voice_cloning.api import SpeechGenerationCanceled, _await_or_cancel_on_disconnect, create_app
+from voice_cloning.api.routes.sample_processing import (
+    ReservedSampleProcessingFileResponse,
+    create_sample_processing_router,
+)
 from voice_cloning.cache import VoiceCache
 from voice_cloning.config import Settings
 from voice_cloning.elevenlabs_client import (
@@ -71,6 +75,7 @@ from voice_cloning.services.sample_processing import (
     DEFAULT_TRIM_SILENCE_PROCESSING_PRESET_ID,
     ISOLATION_PROCESSING_PRESETS,
     SpeakerAssignmentRequest,
+    SampleProcessingJobOperationLease,
     SampleProcessingRequest,
     SampleProcessingService,
     SampleProcessingServiceError,
@@ -83,6 +88,81 @@ from voice_cloning.services.sample_processing import (
 )
 from voice_cloning.services.speech import SpeechServiceError, generate_speech
 from voice_cloning.voice_library import VoiceLibrary
+
+
+def test_sample_processing_artifact_routes_hold_response_lifetime_read_leases(tmp_path: Path) -> None:
+    artifact_path = tmp_path / "artifact.wav"
+    artifact_path.write_bytes(b"audio")
+    events: list[tuple[str, str]] = []
+
+    class StubSampleProcessingService:
+        def reserve_job_artifact_read(self, job_id: str) -> SampleProcessingJobOperationLease:
+            events.append(("reserve", job_id))
+            return SampleProcessingJobOperationLease(lambda: events.append(("release", job_id)))
+
+        def get_job(self, job_id: str) -> object:
+            assert job_id == "job-1"
+            return type(
+                "StubJob",
+                (),
+                {
+                    "result": type("StubResult", (), {"content_type": "audio/wav"})(),
+                    "source_content_type": "audio/mpeg",
+                },
+            )()
+
+        def result_path(self, job_id: str) -> Path:
+            assert job_id == "job-1"
+            return artifact_path
+
+        def source_path(self, job_id: str) -> Path:
+            assert job_id == "job-1"
+            return artifact_path
+
+        def speaker_result_path(self, job_id: str, speaker_id: str) -> Path:
+            assert (job_id, speaker_id) == ("job-1", "speaker-1")
+            return artifact_path
+
+        def candidate_result_path(self, job_id: str, candidate_id: str) -> Path:
+            assert (job_id, candidate_id) == ("job-1", "candidate-1")
+            return artifact_path
+
+    router = create_sample_processing_router(StubSampleProcessingService())  # type: ignore[arg-type]
+    endpoints = {
+        route.path: route.endpoint
+        for route in router.routes
+        if hasattr(route, "path") and hasattr(route, "endpoint")
+    }
+    responses = (
+        endpoints["/api/sample-processing/jobs/{job_id}/result"]("job-1"),
+        endpoints["/api/sample-processing/jobs/{job_id}/source"]("job-1"),
+        endpoints["/api/sample-processing/jobs/{job_id}/speakers/{speaker_id}/result"](
+            "job-1", "speaker-1"
+        ),
+        endpoints["/api/sample-processing/jobs/{job_id}/candidates/{candidate_id}/result"](
+            "job-1", "candidate-1"
+        ),
+    )
+
+    assert all(isinstance(response, ReservedSampleProcessingFileResponse) for response in responses)
+    assert events == [("reserve", "job-1")] * 4
+
+    for response in responses:
+        response.operation_lease.release()
+
+    assert events == [
+        (event, "job-1")
+        for event in (
+            "reserve",
+            "reserve",
+            "reserve",
+            "reserve",
+            "release",
+            "release",
+            "release",
+            "release",
+        )
+    ]
 
 
 class FakeElevenLabsProvider:
@@ -3062,6 +3142,59 @@ def test_sample_processing_cancel_marks_running_stack_canceled(tmp_path: Path) -
     assert repeat_cancel.status_code == 200
     assert repeat_cancel.json()["job"]["status"] == "canceled"
     assert result.status_code == 409
+
+
+def test_sample_processing_delete_removes_one_terminal_job_and_its_artifacts(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    app = create_app(settings=settings, sample_processor=FakeStackSampleProcessor())
+    client = TestClient(app)
+
+    created_jobs: list[dict[str, object]] = []
+    for source_name in ("delete.wav", "retain.wav"):
+        response = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "trimSilence", "processingPresetId": "trimBalanced"},
+            files={"sourceFile": (source_name, source_name.encode(), "audio/wav")},
+        )
+        created_jobs.append(wait_for_processing_job(client, response.json()["job"]["id"]))
+
+    deleted_job_id = str(created_jobs[0]["id"])
+    retained_job_id = str(created_jobs[1]["id"])
+    deleted_job_dir = settings.sample_processing_dir / deleted_job_id
+    retained_job_dir = settings.sample_processing_dir / retained_job_id
+
+    deleted = client.delete(f"/api/sample-processing/jobs/{deleted_job_id}")
+
+    assert deleted.status_code == 200
+    assert deleted.json() == {"deleted": True, "jobId": deleted_job_id}
+    assert client.get(f"/api/sample-processing/jobs/{deleted_job_id}").status_code == 404
+    assert client.get(f"/api/sample-processing/jobs/{deleted_job_id}/result").status_code == 404
+    assert client.delete(f"/api/sample-processing/jobs/{deleted_job_id}").status_code == 404
+    assert not deleted_job_dir.exists()
+    assert client.get(f"/api/sample-processing/jobs/{retained_job_id}").status_code == 200
+    assert client.get(f"/api/sample-processing/jobs/{retained_job_id}/result").status_code == 200
+    assert retained_job_dir.is_dir()
+
+
+def test_sample_processing_delete_rejects_an_active_job_without_removing_artifacts(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    app = create_app(settings=settings, sample_processor=FakeStackSampleProcessor(delay_seconds=5))
+    with TestClient(app) as client:
+        create = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "trimSilence", "processingPresetId": "trimBalanced"},
+            files={"sourceFile": ("active.wav", b"active-source", "audio/wav")},
+        )
+        job_id = create.json()["job"]["id"]
+        job_dir = settings.sample_processing_dir / job_id
+
+        deleted = client.delete(f"/api/sample-processing/jobs/{job_id}")
+
+        assert deleted.status_code == 409
+        assert deleted.json()["detail"] == "Active sample processing jobs must be canceled before deletion."
+        assert client.get(f"/api/sample-processing/jobs/{job_id}").status_code == 200
+        assert job_dir.is_dir()
+        assert client.post(f"/api/sample-processing/jobs/{job_id}/cancel").status_code == 200
 
 
 def test_sample_processing_job_uses_original_voice_source_and_saves_result_as_voice(tmp_path: Path) -> None:

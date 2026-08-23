@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 import hashlib
@@ -8,6 +10,7 @@ import json
 import math
 from pathlib import Path
 import shutil
+from threading import Lock
 from typing import Protocol, cast
 from uuid import uuid4
 
@@ -61,6 +64,7 @@ PREPARE_MAX_CANDIDATES_PER_SPEAKER = 3
 PREPARED_WAV_BYTES_PER_SECOND = PREPARED_SAMPLE_RATE_HZ * 2
 PREPARED_WAV_HEADER_RESERVE_BYTES = 4096
 BYTES_PER_MEBIBYTE = 1024 * 1024
+DELETE_STAGING_DIRNAME = ".deleting"
 PREPARE_FINAL_TRIM_FILTER = (
     "silenceremove="
     "start_periods=1:start_duration=0.12:start_threshold=-45dB:start_silence=0.08:"
@@ -323,6 +327,20 @@ class UnavailableSampleProcessor:
         raise SampleProcessingServiceError("Sample processing is not available.", 503)
 
 
+class SampleProcessingJobOperationLease:
+    def __init__(self, release: Callable[[], None]) -> None:
+        self._release = release
+        self._release_lock = Lock()
+        self._released = False
+
+    def release(self) -> None:
+        with self._release_lock:
+            if self._released:
+                return
+            self._released = True
+        self._release()
+
+
 class SampleProcessingService:
     def __init__(
         self,
@@ -344,6 +362,12 @@ class SampleProcessingService:
         self._source_paths: dict[str, Path] = {}
         self._speaker_processing_steps: dict[str, dict[str, tuple[VoiceProcessingStep, ...]]] = {}
         self._prepared_candidate_processing_steps: dict[str, dict[str, tuple[VoiceProcessingStep, ...]]] = {}
+        self._job_operation_state_lock = Lock()
+        self._active_job_operation_ids: set[str] = set()
+        self._active_job_artifact_read_counts: dict[str, int] = {}
+        self._deleting_job_ids: set[str] = set()
+        self._pending_delete_job_ids: set[str] = set()
+        self._reconcile_delete_tombstones()
         self._mark_interrupted_jobs()
 
     def operations(self) -> tuple[SampleProcessingOperation, ...]:
@@ -607,6 +631,80 @@ class SampleProcessingService:
             self._cancel_job_state(job_id)
         return self.get_job(job_id)
 
+    def delete_job(self, job_id: str) -> str:
+        with self._reserve_job_deletion(job_id):
+            return self._delete_job(job_id)
+
+    def _delete_job(self, job_id: str) -> str:
+        job = self.get_job(job_id)
+        task = self._tasks.get(job_id)
+        if job.status not in {"success", "error", "canceled", "interrupted"} or (
+            task is not None and not task.done()
+        ):
+            raise SampleProcessingServiceError(
+                "Active sample processing jobs must be canceled before deletion.",
+                409,
+            )
+
+        job_dir = self._job_dir(job_id)
+        tombstone_dir = self._delete_tombstone_dir(job_id)
+        staged_artifacts = False
+        if job_dir.exists():
+            try:
+                self._delete_staging_dir().mkdir(parents=True, exist_ok=True)
+                if tombstone_dir.exists():
+                    raise FileExistsError(f"Deletion tombstone already exists for {job_id}.")
+                job_dir.rename(tombstone_dir)
+            except OSError as exc:
+                raise SampleProcessingServiceError(
+                    "Sample processing artifacts could not be staged for deletion.",
+                    500,
+                ) from exc
+            staged_artifacts = True
+
+        try:
+            self._delete_persisted_job(job_id)
+        except Exception as exc:
+            try:
+                persisted_job = self._get_persisted_job(job_id)
+            except Exception as confirmation_exc:
+                self._clear_job_runtime_state(job_id)
+                with self._job_operation_state_lock:
+                    self._pending_delete_job_ids.add(job_id)
+                raise SampleProcessingServiceError(
+                    "Sample processing deletion outcome could not be confirmed.",
+                    500,
+                ) from confirmation_exc
+            if persisted_job is not None and staged_artifacts:
+                try:
+                    tombstone_dir.rename(job_dir)
+                except OSError as restore_exc:
+                    self._clear_job_runtime_state(job_id)
+                    with self._job_operation_state_lock:
+                        self._pending_delete_job_ids.add(job_id)
+                    raise SampleProcessingServiceError(
+                        "Sample processing deletion could not be rolled back.",
+                        500,
+                    ) from restore_exc
+            if persisted_job is not None:
+                raise SampleProcessingServiceError("Sample processing job could not be deleted.", 500) from exc
+
+        self._clear_job_runtime_state(job_id)
+
+        if staged_artifacts:
+            try:
+                shutil.rmtree(tombstone_dir)
+                self._remove_empty_delete_staging_dir()
+            except OSError as exc:
+                # The persisted job is already gone, so restoring partially deleted
+                # artifacts would recreate a broken job. Startup reconciliation will
+                # retry this private tombstone instead.
+                raise SampleProcessingServiceError(
+                    "Sample processing artifacts could not be deleted completely.",
+                    500,
+                ) from exc
+        return job_id
+
     def result_path(self, job_id: str) -> Path:
         job = self.get_job(job_id)
         if job.status != "success" or job.result is None:
@@ -674,6 +772,20 @@ class SampleProcessingService:
         name: str,
         voice_preset_id: str | None = None,
     ) -> VoiceAsset:
+        with self._reserve_job_operation(job_id):
+            return self._save_result_as_voice(
+                job_id,
+                name=name,
+                voice_preset_id=voice_preset_id,
+            )
+
+    def _save_result_as_voice(
+        self,
+        job_id: str,
+        *,
+        name: str,
+        voice_preset_id: str | None = None,
+    ) -> VoiceAsset:
         job = self.get_job(job_id)
         if job.status != "success" or job.result is None:
             raise SampleProcessingServiceError("Sample processing result is not ready.", 409)
@@ -689,6 +801,20 @@ class SampleProcessingService:
         )
 
     async def update_speaker_assignments(
+        self,
+        job_id: str,
+        *,
+        speaker_names: tuple[SpeakerNameAssignment, ...] = (),
+        transcript_assignments: tuple[SpeakerTranscriptAssignment, ...] = (),
+    ) -> SampleProcessingJob:
+        with self._reserve_job_operation(job_id):
+            return await self._update_speaker_assignments(
+                job_id,
+                speaker_names=speaker_names,
+                transcript_assignments=transcript_assignments,
+            )
+
+    async def _update_speaker_assignments(
         self,
         job_id: str,
         *,
@@ -747,6 +873,15 @@ class SampleProcessingService:
         *,
         items: tuple[TranscriptTextUpdate, ...],
     ) -> SampleProcessingJob:
+        with self._reserve_job_operation(job_id):
+            return self._update_transcript_items(job_id, items=items)
+
+    def _update_transcript_items(
+        self,
+        job_id: str,
+        *,
+        items: tuple[TranscriptTextUpdate, ...],
+    ) -> SampleProcessingJob:
         job = self.get_job(job_id)
         result = self._speaker_separation_result(job)
         updated_result = apply_transcript_text_updates(result, items)
@@ -755,6 +890,15 @@ class SampleProcessingService:
         return self.get_job(job_id)
 
     async def save_speaker_results_as_voices(
+        self,
+        job_id: str,
+        *,
+        voices: tuple[SpeakerVoiceSelection, ...],
+    ) -> tuple[VoiceAsset, ...]:
+        with self._reserve_job_operation(job_id):
+            return await self._save_speaker_results_as_voices(job_id, voices=voices)
+
+    async def _save_speaker_results_as_voices(
         self,
         job_id: str,
         *,
@@ -869,6 +1013,15 @@ class SampleProcessingService:
         return sample, steps
 
     def save_candidate_results_as_voices(
+        self,
+        job_id: str,
+        *,
+        voices: tuple[PreparedCandidateVoiceSelection, ...],
+    ) -> tuple[VoiceAsset, ...]:
+        with self._reserve_job_operation(job_id):
+            return self._save_candidate_results_as_voices(job_id, voices=voices)
+
+    def _save_candidate_results_as_voices(
         self,
         job_id: str,
         *,
@@ -1478,6 +1631,108 @@ class SampleProcessingService:
             return None
         with unit_of_work(self.job_session_factory) as session:
             return SqlAlchemySampleProcessingJobRepository(session).get_job(job_id)
+
+    def _delete_persisted_job(self, job_id: str) -> bool:
+        if self.job_session_factory is None:
+            return False
+        with unit_of_work(self.job_session_factory) as session:
+            return SqlAlchemySampleProcessingJobRepository(session).delete_job(job_id)
+
+    def _clear_job_runtime_state(self, job_id: str) -> None:
+        self._jobs.pop(job_id, None)
+        self._tasks.pop(job_id, None)
+        self._source_paths.pop(job_id, None)
+        self._speaker_processing_steps.pop(job_id, None)
+        self._prepared_candidate_processing_steps.pop(job_id, None)
+
+    @contextmanager
+    def _reserve_job_operation(self, job_id: str) -> Iterator[None]:
+        with self._job_operation_state_lock:
+            if job_id in self._deleting_job_ids or job_id in self._pending_delete_job_ids:
+                raise SampleProcessingServiceError("Sample processing job is being deleted.", 409)
+            if job_id in self._active_job_operation_ids or self._active_job_artifact_read_counts.get(job_id, 0):
+                raise SampleProcessingServiceError("Sample processing job is busy.", 409)
+            self._active_job_operation_ids.add(job_id)
+        try:
+            yield
+        finally:
+            with self._job_operation_state_lock:
+                self._active_job_operation_ids.discard(job_id)
+
+    def reserve_job_artifact_read(self, job_id: str) -> SampleProcessingJobOperationLease:
+        with self._job_operation_state_lock:
+            if job_id in self._deleting_job_ids or job_id in self._pending_delete_job_ids:
+                raise SampleProcessingServiceError("Sample processing job is being deleted.", 409)
+            if job_id in self._active_job_operation_ids:
+                raise SampleProcessingServiceError("Sample processing job is busy.", 409)
+            self._active_job_artifact_read_counts[job_id] = self._active_job_artifact_read_counts.get(job_id, 0) + 1
+
+        def release() -> None:
+            with self._job_operation_state_lock:
+                read_count = self._active_job_artifact_read_counts.get(job_id, 0)
+                if read_count <= 1:
+                    self._active_job_artifact_read_counts.pop(job_id, None)
+                else:
+                    self._active_job_artifact_read_counts[job_id] = read_count - 1
+
+        return SampleProcessingJobOperationLease(release)
+
+    @contextmanager
+    def _reserve_job_deletion(self, job_id: str) -> Iterator[None]:
+        with self._job_operation_state_lock:
+            if (
+                job_id in self._active_job_operation_ids
+                or self._active_job_artifact_read_counts.get(job_id, 0) > 0
+                or job_id in self._deleting_job_ids
+                or job_id in self._pending_delete_job_ids
+            ):
+                raise SampleProcessingServiceError("Sample processing job is busy.", 409)
+            self._deleting_job_ids.add(job_id)
+        try:
+            yield
+        finally:
+            with self._job_operation_state_lock:
+                self._deleting_job_ids.discard(job_id)
+
+    def _reconcile_delete_tombstones(self) -> None:
+        staging_dir = self._delete_staging_dir()
+        if not staging_dir.is_dir():
+            return
+        if self.job_session_factory is None:
+            # A tombstone may have been created by an earlier DB-backed run.
+            # Without persistence, absence cannot be confirmed safely.
+            return
+        for tombstone_dir in staging_dir.iterdir():
+            if tombstone_dir.is_symlink() or not tombstone_dir.is_dir():
+                continue
+            job_id = tombstone_dir.name
+            persisted_job = self._get_persisted_job(job_id)
+            if persisted_job is not None:
+                job_dir = self._job_dir(job_id)
+                if not job_dir.exists():
+                    tombstone_dir.rename(job_dir)
+                continue
+            try:
+                shutil.rmtree(tombstone_dir)
+            except OSError:
+                # A future service start retries cleanup without restoring a job
+                # whose persisted snapshot is already gone.
+                continue
+        self._remove_empty_delete_staging_dir()
+
+    def _delete_staging_dir(self) -> Path:
+        return self.processing_dir / DELETE_STAGING_DIRNAME
+
+    def _delete_tombstone_dir(self, job_id: str) -> Path:
+        path = (self._delete_staging_dir() / job_id).resolve()
+        _require_relative_path(path, self._delete_staging_dir())
+        return path
+
+    def _remove_empty_delete_staging_dir(self) -> None:
+        try:
+            self._delete_staging_dir().rmdir()
+        except OSError:
+            pass
 
     def _mark_interrupted_jobs(self) -> None:
         if self.job_session_factory is None:

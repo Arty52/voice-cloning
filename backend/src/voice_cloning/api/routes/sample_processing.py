@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 import json
+from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
+from starlette.types import Receive, Scope, Send
 
 from ...services.sample_processing import (
     PreparedCandidateVoiceSelection,
     SampleProcessingWorkflowStepInput,
     SampleProcessingService,
     SampleProcessingServiceError,
+    SampleProcessingJobOperationLease,
     SourceRangeInput,
     SpeakerNameAssignment,
     SpeakerTranscriptAssignment,
@@ -30,8 +34,44 @@ from ..serializers import (
 )
 
 
+class ReservedSampleProcessingFileResponse(FileResponse):
+    def __init__(
+        self,
+        path: Path,
+        *,
+        operation_lease: SampleProcessingJobOperationLease,
+        filename: str,
+        media_type: str,
+    ) -> None:
+        super().__init__(path, filename=filename, media_type=media_type)
+        self.operation_lease = operation_lease
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            self.operation_lease.release()
+
+
 def create_sample_processing_router(sample_processing: SampleProcessingService) -> APIRouter:
     router = APIRouter()
+
+    def reserved_artifact_response(
+        job_id: str,
+        resolve: Callable[[], tuple[Path, str]],
+    ) -> FileResponse:
+        operation_lease = sample_processing.reserve_job_artifact_read(job_id)
+        try:
+            path, media_type = resolve()
+            return ReservedSampleProcessingFileResponse(
+                path,
+                operation_lease=operation_lease,
+                filename=path.name,
+                media_type=media_type,
+            )
+        except BaseException:
+            operation_lease.release()
+            raise
 
     @router.get("/api/sample-processing/options")
     def sample_processing_options() -> dict[str, object]:
@@ -85,6 +125,14 @@ def create_sample_processing_router(sample_processing: SampleProcessingService) 
             raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
         return {"job": sample_processing_job_payload(job)}
 
+    @router.delete("/api/sample-processing/jobs/{job_id}")
+    def delete_sample_processing_job(job_id: str) -> dict[str, object]:
+        try:
+            deleted_job_id = sample_processing.delete_job(job_id)
+        except SampleProcessingServiceError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+        return {"deleted": True, "jobId": deleted_job_id}
+
     @router.post("/api/sample-processing/jobs/{job_id}/cancel")
     async def cancel_sample_processing_job(job_id: str) -> dict[str, object]:
         try:
@@ -96,37 +144,45 @@ def create_sample_processing_router(sample_processing: SampleProcessingService) 
     @router.get("/api/sample-processing/jobs/{job_id}/result")
     def sample_processing_result(job_id: str) -> FileResponse:
         try:
-            job = sample_processing.get_job(job_id)
-            path = sample_processing.result_path(job_id)
+            def resolve() -> tuple[Path, str]:
+                job = sample_processing.get_job(job_id)
+                path = sample_processing.result_path(job_id)
+                return path, job.result.content_type if job.result else "audio/wav"
+
+            return reserved_artifact_response(job_id, resolve)
         except SampleProcessingServiceError as exc:
             raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
-        media_type = job.result.content_type if job.result else "audio/wav"
-        return FileResponse(path, filename=path.name, media_type=media_type)
 
     @router.get("/api/sample-processing/jobs/{job_id}/source")
     def sample_processing_source(job_id: str) -> FileResponse:
         try:
-            job = sample_processing.get_job(job_id)
-            path = sample_processing.source_path(job_id)
+            def resolve() -> tuple[Path, str]:
+                job = sample_processing.get_job(job_id)
+                return sample_processing.source_path(job_id), job.source_content_type
+
+            return reserved_artifact_response(job_id, resolve)
         except SampleProcessingServiceError as exc:
             raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
-        return FileResponse(path, filename=path.name, media_type=job.source_content_type)
 
     @router.get("/api/sample-processing/jobs/{job_id}/speakers/{speaker_id}/result")
     def sample_processing_speaker_result(job_id: str, speaker_id: str) -> FileResponse:
         try:
-            path = sample_processing.speaker_result_path(job_id, speaker_id)
+            return reserved_artifact_response(
+                job_id,
+                lambda: (sample_processing.speaker_result_path(job_id, speaker_id), "audio/wav"),
+            )
         except SampleProcessingServiceError as exc:
             raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
-        return FileResponse(path, filename=path.name, media_type="audio/wav")
 
     @router.get("/api/sample-processing/jobs/{job_id}/candidates/{candidate_id}/result")
     def sample_processing_candidate_result(job_id: str, candidate_id: str) -> FileResponse:
         try:
-            path = sample_processing.candidate_result_path(job_id, candidate_id)
+            return reserved_artifact_response(
+                job_id,
+                lambda: (sample_processing.candidate_result_path(job_id, candidate_id), "audio/wav"),
+            )
         except SampleProcessingServiceError as exc:
             raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
-        return FileResponse(path, filename=path.name, media_type="audio/wav")
 
     @router.patch("/api/sample-processing/jobs/{job_id}/speaker-assignments")
     async def update_sample_processing_speaker_assignments(

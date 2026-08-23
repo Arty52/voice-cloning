@@ -22,6 +22,8 @@ The FastAPI service is available at `http://localhost:6420` when the Docker stac
 - `DELETE /api/sample-processing/sources/{sourceId}`
 - `POST /api/sample-processing/jobs`
 - `GET /api/sample-processing/jobs/{jobId}`
+- `DELETE /api/sample-processing/jobs/{jobId}`
+- `POST /api/sample-processing/jobs/{jobId}/cancel`
 - `GET /api/sample-processing/jobs/{jobId}/result`
 - `GET /api/sample-processing/jobs/{jobId}/source`
 - `GET /api/sample-processing/jobs/{jobId}/speakers/{speakerId}/result`
@@ -610,6 +612,12 @@ For a stacked workflow, send `workflowSteps` as JSON:
   }
 }
 ```
+
+`DELETE /api/sample-processing/jobs/{jobId}` removes one terminal job snapshot and its job-local runtime artifacts. It returns `{ "deleted": true, "jobId": "..." }`. Pending or running jobs return `409` and must be canceled before deletion. A missing or previously deleted job returns `404`. Deletion never clears other processing jobs, staged media sources, saved voices, generated audio, or browser-local Transcript timing diagnostics.
+
+Before committing the persisted snapshot deletion, the service atomically stages that exact job directory under a private same-filesystem deletion directory. If the database operation reports a failure, a fresh transaction confirms the snapshot state before the service chooses recovery: a confirmed existing snapshot restores the exact staged directory, while a confirmed missing snapshot proceeds with private cleanup and never restores potentially partial artifacts. If the snapshot state cannot be confirmed, the tombstone remains private and that job stays unavailable until startup reconciliation can decide safely. An interrupted or failed cleanup likewise leaves a private tombstone that is retried during service startup. Startup restores a tombstone only when its persisted job still exists and completes cleanup only when the snapshot is absent. If persistence is disabled, startup retains every private tombstone until a later DB-backed startup can confirm its state, preventing both orphaned sensitive artifacts and partially restored jobs.
+
+Deletion also reserves the exact job against concurrent corrections, voice-save operations, and artifact responses. If a speaker-assignment update, transcript-text update, processed-result save, speaker-result save, prepared-candidate save, or artifact response is already active for that job, deletion returns `409`; operations that start after deletion is reserved return `409` as well. Multiple artifact responses for the same job may stream concurrently, and their shared read leases remain active through normal response completion or disconnect. Mutations return `409` while readers are active rather than changing a file while it is streamed. Operations for unrelated jobs remain independent. This prevents artifact removal during a read or mutation and prevents a late update from recreating a deleted persisted snapshot.
 
 `GET /api/sample-processing/jobs/{jobId}/result` streams the processed WAV result. The result is available only after the job reaches `success`.
 
