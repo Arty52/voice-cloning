@@ -36,6 +36,21 @@ const document: TranscriptDocument = {
 }
 const originalCancelAnimationFrame = window.cancelAnimationFrame
 const originalRequestAnimationFrame = window.requestAnimationFrame
+const overriddenHTMLElementProperties = [
+  "clientHeight",
+  "getBoundingClientRect",
+  "offsetHeight",
+  "offsetWidth",
+  "scrollHeight",
+  "scrollIntoView",
+  "scrollTo",
+] as const
+const originalHTMLElementDescriptors = new Map(
+  overriddenHTMLElementProperties.map((property) => [
+    property,
+    Object.getOwnPropertyDescriptor(HTMLElement.prototype, property),
+  ]),
+)
 
 describe("SynchronizedTranscriptViewer", () => {
   const getBoundingClientRect = vi.fn(function (this: HTMLElement) {
@@ -100,8 +115,18 @@ describe("SynchronizedTranscriptViewer", () => {
   afterEach(() => {
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
+    for (const [property, descriptor] of originalHTMLElementDescriptors) {
+      if (descriptor) {
+        Object.defineProperty(HTMLElement.prototype, property, descriptor)
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, property)
+      }
+    }
     expect(window.cancelAnimationFrame).toBe(originalCancelAnimationFrame)
     expect(window.requestAnimationFrame).toBe(originalRequestAnimationFrame)
+    for (const [property, descriptor] of originalHTMLElementDescriptors) {
+      expect(Object.getOwnPropertyDescriptor(HTMLElement.prototype, property)).toEqual(descriptor)
+    }
   })
 
   it("shows deterministic past, current, and future word states from playback time", () => {
