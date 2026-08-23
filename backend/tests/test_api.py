@@ -19,6 +19,10 @@ import voice_cloning.sample_processors as sample_processors_module
 import voice_cloning.services.voice_ingestion as voice_ingestion_module
 import voice_cloning.voice_library as voice_library_module
 from voice_cloning.api import SpeechGenerationCanceled, _await_or_cancel_on_disconnect, create_app
+from voice_cloning.api.routes.sample_processing import (
+    ReservedSampleProcessingFileResponse,
+    create_sample_processing_router,
+)
 from voice_cloning.cache import VoiceCache
 from voice_cloning.config import Settings
 from voice_cloning.elevenlabs_client import (
@@ -71,6 +75,7 @@ from voice_cloning.services.sample_processing import (
     DEFAULT_TRIM_SILENCE_PROCESSING_PRESET_ID,
     ISOLATION_PROCESSING_PRESETS,
     SpeakerAssignmentRequest,
+    SampleProcessingJobOperationLease,
     SampleProcessingRequest,
     SampleProcessingService,
     SampleProcessingServiceError,
@@ -83,6 +88,81 @@ from voice_cloning.services.sample_processing import (
 )
 from voice_cloning.services.speech import SpeechServiceError, generate_speech
 from voice_cloning.voice_library import VoiceLibrary
+
+
+def test_sample_processing_artifact_routes_hold_response_lifetime_read_leases(tmp_path: Path) -> None:
+    artifact_path = tmp_path / "artifact.wav"
+    artifact_path.write_bytes(b"audio")
+    events: list[tuple[str, str]] = []
+
+    class StubSampleProcessingService:
+        def reserve_job_artifact_read(self, job_id: str) -> SampleProcessingJobOperationLease:
+            events.append(("reserve", job_id))
+            return SampleProcessingJobOperationLease(lambda: events.append(("release", job_id)))
+
+        def get_job(self, job_id: str) -> object:
+            assert job_id == "job-1"
+            return type(
+                "StubJob",
+                (),
+                {
+                    "result": type("StubResult", (), {"content_type": "audio/wav"})(),
+                    "source_content_type": "audio/mpeg",
+                },
+            )()
+
+        def result_path(self, job_id: str) -> Path:
+            assert job_id == "job-1"
+            return artifact_path
+
+        def source_path(self, job_id: str) -> Path:
+            assert job_id == "job-1"
+            return artifact_path
+
+        def speaker_result_path(self, job_id: str, speaker_id: str) -> Path:
+            assert (job_id, speaker_id) == ("job-1", "speaker-1")
+            return artifact_path
+
+        def candidate_result_path(self, job_id: str, candidate_id: str) -> Path:
+            assert (job_id, candidate_id) == ("job-1", "candidate-1")
+            return artifact_path
+
+    router = create_sample_processing_router(StubSampleProcessingService())  # type: ignore[arg-type]
+    endpoints = {
+        route.path: route.endpoint
+        for route in router.routes
+        if hasattr(route, "path") and hasattr(route, "endpoint")
+    }
+    responses = (
+        endpoints["/api/sample-processing/jobs/{job_id}/result"]("job-1"),
+        endpoints["/api/sample-processing/jobs/{job_id}/source"]("job-1"),
+        endpoints["/api/sample-processing/jobs/{job_id}/speakers/{speaker_id}/result"](
+            "job-1", "speaker-1"
+        ),
+        endpoints["/api/sample-processing/jobs/{job_id}/candidates/{candidate_id}/result"](
+            "job-1", "candidate-1"
+        ),
+    )
+
+    assert all(isinstance(response, ReservedSampleProcessingFileResponse) for response in responses)
+    assert events == [("reserve", "job-1")] * 4
+
+    for response in responses:
+        response.operation_lease.release()
+
+    assert events == [
+        (event, "job-1")
+        for event in (
+            "reserve",
+            "reserve",
+            "reserve",
+            "reserve",
+            "release",
+            "release",
+            "release",
+            "release",
+        )
+    ]
 
 
 class FakeElevenLabsProvider:

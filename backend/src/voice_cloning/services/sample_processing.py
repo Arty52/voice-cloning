@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -327,6 +327,20 @@ class UnavailableSampleProcessor:
         raise SampleProcessingServiceError("Sample processing is not available.", 503)
 
 
+class SampleProcessingJobOperationLease:
+    def __init__(self, release: Callable[[], None]) -> None:
+        self._release = release
+        self._release_lock = Lock()
+        self._released = False
+
+    def release(self) -> None:
+        with self._release_lock:
+            if self._released:
+                return
+            self._released = True
+        self._release()
+
+
 class SampleProcessingService:
     def __init__(
         self,
@@ -350,7 +364,9 @@ class SampleProcessingService:
         self._prepared_candidate_processing_steps: dict[str, dict[str, tuple[VoiceProcessingStep, ...]]] = {}
         self._job_operation_state_lock = Lock()
         self._active_job_operation_ids: set[str] = set()
+        self._active_job_artifact_read_counts: dict[str, int] = {}
         self._deleting_job_ids: set[str] = set()
+        self._pending_delete_job_ids: set[str] = set()
         self._reconcile_delete_tombstones()
         self._mark_interrupted_jobs()
 
@@ -649,21 +665,31 @@ class SampleProcessingService:
         try:
             self._delete_persisted_job(job_id)
         except Exception as exc:
-            if staged_artifacts:
+            try:
+                persisted_job = self._get_persisted_job(job_id)
+            except Exception as confirmation_exc:
+                self._clear_job_runtime_state(job_id)
+                with self._job_operation_state_lock:
+                    self._pending_delete_job_ids.add(job_id)
+                raise SampleProcessingServiceError(
+                    "Sample processing deletion outcome could not be confirmed.",
+                    500,
+                ) from confirmation_exc
+            if persisted_job is not None and staged_artifacts:
                 try:
                     tombstone_dir.rename(job_dir)
                 except OSError as restore_exc:
+                    self._clear_job_runtime_state(job_id)
+                    with self._job_operation_state_lock:
+                        self._pending_delete_job_ids.add(job_id)
                     raise SampleProcessingServiceError(
                         "Sample processing deletion could not be rolled back.",
                         500,
                     ) from restore_exc
-            raise SampleProcessingServiceError("Sample processing job could not be deleted.", 500) from exc
+            if persisted_job is not None:
+                raise SampleProcessingServiceError("Sample processing job could not be deleted.", 500) from exc
 
-        self._jobs.pop(job_id, None)
-        self._tasks.pop(job_id, None)
-        self._source_paths.pop(job_id, None)
-        self._speaker_processing_steps.pop(job_id, None)
-        self._prepared_candidate_processing_steps.pop(job_id, None)
+        self._clear_job_runtime_state(job_id)
 
         if staged_artifacts:
             try:
@@ -1612,12 +1638,19 @@ class SampleProcessingService:
         with unit_of_work(self.job_session_factory) as session:
             return SqlAlchemySampleProcessingJobRepository(session).delete_job(job_id)
 
+    def _clear_job_runtime_state(self, job_id: str) -> None:
+        self._jobs.pop(job_id, None)
+        self._tasks.pop(job_id, None)
+        self._source_paths.pop(job_id, None)
+        self._speaker_processing_steps.pop(job_id, None)
+        self._prepared_candidate_processing_steps.pop(job_id, None)
+
     @contextmanager
     def _reserve_job_operation(self, job_id: str) -> Iterator[None]:
         with self._job_operation_state_lock:
-            if job_id in self._deleting_job_ids:
+            if job_id in self._deleting_job_ids or job_id in self._pending_delete_job_ids:
                 raise SampleProcessingServiceError("Sample processing job is being deleted.", 409)
-            if job_id in self._active_job_operation_ids:
+            if job_id in self._active_job_operation_ids or self._active_job_artifact_read_counts.get(job_id, 0):
                 raise SampleProcessingServiceError("Sample processing job is busy.", 409)
             self._active_job_operation_ids.add(job_id)
         try:
@@ -1626,10 +1659,33 @@ class SampleProcessingService:
             with self._job_operation_state_lock:
                 self._active_job_operation_ids.discard(job_id)
 
+    def reserve_job_artifact_read(self, job_id: str) -> SampleProcessingJobOperationLease:
+        with self._job_operation_state_lock:
+            if job_id in self._deleting_job_ids or job_id in self._pending_delete_job_ids:
+                raise SampleProcessingServiceError("Sample processing job is being deleted.", 409)
+            if job_id in self._active_job_operation_ids:
+                raise SampleProcessingServiceError("Sample processing job is busy.", 409)
+            self._active_job_artifact_read_counts[job_id] = self._active_job_artifact_read_counts.get(job_id, 0) + 1
+
+        def release() -> None:
+            with self._job_operation_state_lock:
+                read_count = self._active_job_artifact_read_counts.get(job_id, 0)
+                if read_count <= 1:
+                    self._active_job_artifact_read_counts.pop(job_id, None)
+                else:
+                    self._active_job_artifact_read_counts[job_id] = read_count - 1
+
+        return SampleProcessingJobOperationLease(release)
+
     @contextmanager
     def _reserve_job_deletion(self, job_id: str) -> Iterator[None]:
         with self._job_operation_state_lock:
-            if job_id in self._active_job_operation_ids or job_id in self._deleting_job_ids:
+            if (
+                job_id in self._active_job_operation_ids
+                or self._active_job_artifact_read_counts.get(job_id, 0) > 0
+                or job_id in self._deleting_job_ids
+                or job_id in self._pending_delete_job_ids
+            ):
                 raise SampleProcessingServiceError("Sample processing job is busy.", 409)
             self._deleting_job_ids.add(job_id)
         try:
