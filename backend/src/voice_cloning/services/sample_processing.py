@@ -1698,6 +1698,10 @@ class SampleProcessingService:
         staging_dir = self._delete_staging_dir()
         if not staging_dir.is_dir():
             return
+        if self.job_session_factory is None:
+            # A tombstone may have been created by an earlier DB-backed run.
+            # Without persistence, absence cannot be confirmed safely.
+            return
         for tombstone_dir in staging_dir.iterdir():
             if tombstone_dir.is_symlink() or not tombstone_dir.is_dir():
                 continue

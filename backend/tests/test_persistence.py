@@ -755,6 +755,43 @@ def test_sample_processing_service_restart_restores_staged_artifacts_when_job_ex
     assert not tombstone_dir.exists()
 
 
+def test_sample_processing_service_restart_without_persistence_retains_tombstone(
+    tmp_path: Path,
+) -> None:
+    database_settings = replace(
+        make_settings(tmp_path),
+        database_url=f"sqlite+pysqlite:///{tmp_path / 'jobs.sqlite'}",
+    )
+    engine = create_database_engine(database_settings.database_url)
+    Base.metadata.create_all(engine)
+    session_factory = create_session_factory(engine)
+    job = _sample_processing_job("database-temporarily-disabled")
+    with unit_of_work(session_factory) as session:
+        SqlAlchemySampleProcessingJobRepository(session).save_job(job)
+    job_dir = database_settings.sample_processing_dir / job.id
+    job_dir.mkdir(parents=True)
+    (job_dir / "source.wav").write_bytes(b"source")
+    tombstone_dir = database_settings.sample_processing_dir / ".deleting" / job.id
+    tombstone_dir.parent.mkdir(parents=True)
+    job_dir.rename(tombstone_dir)
+
+    no_database_settings = replace(database_settings, database_url="")
+    SampleProcessingService(no_database_settings, VoiceLibrary(no_database_settings))
+
+    assert not job_dir.exists()
+    assert tombstone_dir.joinpath("source.wav").read_bytes() == b"source"
+
+    restored_service = SampleProcessingService(
+        database_settings,
+        VoiceLibrary(database_settings),
+        job_session_factory=session_factory,
+    )
+
+    assert restored_service.get_job(job.id) == job
+    assert job_dir.joinpath("source.wav").read_bytes() == b"source"
+    assert not tombstone_dir.exists()
+
+
 def _speaker_processing_job(job_id: str) -> SampleProcessingJob:
     source_content = b"speaker source"
     speaker_content = b"speaker result"
