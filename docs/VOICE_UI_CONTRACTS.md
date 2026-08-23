@@ -85,11 +85,13 @@ opt-out behavior remain unchanged. Tests use 1,000-segment documents to verify a
 bounded DOM, focus stability, distant auto-follow, and stable row rendering
 during playback ticks.
 
-The implementation pins `@tanstack/react-virtual` 3.14.9, which supports React
-19 and is MIT licensed; its locked `@tanstack/virtual-core` dependency is also
-MIT licensed. Voice Studio owns the rendering and accessibility contract, uses
-no TanStack state outside this presentational viewer, and can replace the
-virtualizer without changing transcript or playback domain contracts. This
+The manifest declares the compatible `@tanstack/react-virtual` range `^3.14.9`;
+the lockfile currently resolves it to 3.14.9. That package supports React 19
+and is MIT licensed, and the lockfile resolves its MIT-licensed
+`@tanstack/virtual-core` dependency to 3.17.7. Voice Studio owns the rendering
+and accessibility contract, uses no TanStack state outside this presentational
+viewer, and can replace the virtualizer without changing transcript or playback
+domain contracts. This
 dependency decision was reviewed 2026-08-18.
 
 ## Browser Resource Cleanup
