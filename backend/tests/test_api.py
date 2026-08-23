@@ -3064,6 +3064,59 @@ def test_sample_processing_cancel_marks_running_stack_canceled(tmp_path: Path) -
     assert result.status_code == 409
 
 
+def test_sample_processing_delete_removes_one_terminal_job_and_its_artifacts(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    app = create_app(settings=settings, sample_processor=FakeStackSampleProcessor())
+    client = TestClient(app)
+
+    created_jobs: list[dict[str, object]] = []
+    for source_name in ("delete.wav", "retain.wav"):
+        response = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "trimSilence", "processingPresetId": "trimBalanced"},
+            files={"sourceFile": (source_name, source_name.encode(), "audio/wav")},
+        )
+        created_jobs.append(wait_for_processing_job(client, response.json()["job"]["id"]))
+
+    deleted_job_id = str(created_jobs[0]["id"])
+    retained_job_id = str(created_jobs[1]["id"])
+    deleted_job_dir = settings.sample_processing_dir / deleted_job_id
+    retained_job_dir = settings.sample_processing_dir / retained_job_id
+
+    deleted = client.delete(f"/api/sample-processing/jobs/{deleted_job_id}")
+
+    assert deleted.status_code == 200
+    assert deleted.json() == {"deleted": True, "jobId": deleted_job_id}
+    assert client.get(f"/api/sample-processing/jobs/{deleted_job_id}").status_code == 404
+    assert client.get(f"/api/sample-processing/jobs/{deleted_job_id}/result").status_code == 404
+    assert client.delete(f"/api/sample-processing/jobs/{deleted_job_id}").status_code == 404
+    assert not deleted_job_dir.exists()
+    assert client.get(f"/api/sample-processing/jobs/{retained_job_id}").status_code == 200
+    assert client.get(f"/api/sample-processing/jobs/{retained_job_id}/result").status_code == 200
+    assert retained_job_dir.is_dir()
+
+
+def test_sample_processing_delete_rejects_an_active_job_without_removing_artifacts(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path)
+    app = create_app(settings=settings, sample_processor=FakeStackSampleProcessor(delay_seconds=5))
+    with TestClient(app) as client:
+        create = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "trimSilence", "processingPresetId": "trimBalanced"},
+            files={"sourceFile": ("active.wav", b"active-source", "audio/wav")},
+        )
+        job_id = create.json()["job"]["id"]
+        job_dir = settings.sample_processing_dir / job_id
+
+        deleted = client.delete(f"/api/sample-processing/jobs/{job_id}")
+
+        assert deleted.status_code == 409
+        assert deleted.json()["detail"] == "Active sample processing jobs must be canceled before deletion."
+        assert client.get(f"/api/sample-processing/jobs/{job_id}").status_code == 200
+        assert job_dir.is_dir()
+        assert client.post(f"/api/sample-processing/jobs/{job_id}/cancel").status_code == 200
+
+
 def test_sample_processing_job_uses_original_voice_source_and_saves_result_as_voice(tmp_path: Path) -> None:
     settings = make_settings(
         tmp_path,

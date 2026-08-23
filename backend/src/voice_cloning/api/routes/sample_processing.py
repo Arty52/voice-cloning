@@ -85,6 +85,14 @@ def create_sample_processing_router(sample_processing: SampleProcessingService) 
             raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
         return {"job": sample_processing_job_payload(job)}
 
+    @router.delete("/api/sample-processing/jobs/{job_id}")
+    def delete_sample_processing_job(job_id: str) -> dict[str, object]:
+        try:
+            deleted_job_id = sample_processing.delete_job(job_id)
+        except SampleProcessingServiceError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+        return {"deleted": True, "jobId": deleted_job_id}
+
     @router.post("/api/sample-processing/jobs/{job_id}/cancel")
     async def cancel_sample_processing_job(job_id: str) -> dict[str, object]:
         try:

@@ -22,6 +22,8 @@ The FastAPI service is available at `http://localhost:6420` when the Docker stac
 - `DELETE /api/sample-processing/sources/{sourceId}`
 - `POST /api/sample-processing/jobs`
 - `GET /api/sample-processing/jobs/{jobId}`
+- `DELETE /api/sample-processing/jobs/{jobId}`
+- `POST /api/sample-processing/jobs/{jobId}/cancel`
 - `GET /api/sample-processing/jobs/{jobId}/result`
 - `GET /api/sample-processing/jobs/{jobId}/source`
 - `GET /api/sample-processing/jobs/{jobId}/speakers/{speakerId}/result`
@@ -610,6 +612,8 @@ For a stacked workflow, send `workflowSteps` as JSON:
   }
 }
 ```
+
+`DELETE /api/sample-processing/jobs/{jobId}` removes one terminal job snapshot and its job-local runtime artifacts. It returns `{ "deleted": true, "jobId": "..." }`. Pending or running jobs return `409` and must be canceled before deletion. A missing or previously deleted job returns `404`. Deletion never clears other processing jobs, staged media sources, saved voices, generated audio, or browser-local Transcript timing diagnostics.
 
 `GET /api/sample-processing/jobs/{jobId}/result` streams the processed WAV result. The result is available only after the job reaches `success`.
 
