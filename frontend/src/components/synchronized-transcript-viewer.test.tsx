@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -34,14 +34,74 @@ const document: TranscriptDocument = {
     },
   ],
 }
+const originalCancelAnimationFrame = window.cancelAnimationFrame
+const originalRequestAnimationFrame = window.requestAnimationFrame
+const overriddenHTMLElementProperties = [
+  "clientHeight",
+  "getBoundingClientRect",
+  "offsetHeight",
+  "offsetWidth",
+  "scrollHeight",
+  "scrollIntoView",
+  "scrollTo",
+] as const
+const originalHTMLElementDescriptors = new Map(
+  overriddenHTMLElementProperties.map((property) => [
+    property,
+    Object.getOwnPropertyDescriptor(HTMLElement.prototype, property),
+  ]),
+)
 
 describe("SynchronizedTranscriptViewer", () => {
+  const getBoundingClientRect = vi.fn(function (this: HTMLElement) {
+    const height = this.hasAttribute("data-radix-scroll-area-viewport") ? 320 : 104
+    return {
+      bottom: height,
+      height,
+      left: 0,
+      right: 768,
+      top: 0,
+      width: 768,
+      x: 0,
+      y: 0,
+      toJSON: vi.fn(),
+    }
+  })
   const scrollIntoView = vi.fn()
   const scrollTo = vi.fn()
 
   beforeEach(() => {
+    getBoundingClientRect.mockClear()
     scrollIntoView.mockReset()
     scrollTo.mockReset()
+    Object.defineProperty(HTMLElement.prototype, "getBoundingClientRect", {
+      configurable: true,
+      value: getBoundingClientRect,
+    })
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+      configurable: true,
+      get() {
+        return this.hasAttribute("data-radix-scroll-area-viewport") ? 320 : 104
+      },
+    })
+    Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
+      configurable: true,
+      get() {
+        return 768
+      },
+    })
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+      configurable: true,
+      get() {
+        return this.hasAttribute("data-radix-scroll-area-viewport") ? 320 : 104
+      },
+    })
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get() {
+        return this.hasAttribute("data-radix-scroll-area-viewport") ? 200_000 : 104
+      },
+    })
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
       configurable: true,
       value: scrollIntoView,
@@ -53,7 +113,20 @@ describe("SynchronizedTranscriptViewer", () => {
   })
 
   afterEach(() => {
+    vi.restoreAllMocks()
     vi.unstubAllGlobals()
+    for (const [property, descriptor] of originalHTMLElementDescriptors) {
+      if (descriptor) {
+        Object.defineProperty(HTMLElement.prototype, property, descriptor)
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, property)
+      }
+    }
+    expect(window.cancelAnimationFrame).toBe(originalCancelAnimationFrame)
+    expect(window.requestAnimationFrame).toBe(originalRequestAnimationFrame)
+    for (const [property, descriptor] of originalHTMLElementDescriptors) {
+      expect(Object.getOwnPropertyDescriptor(HTMLElement.prototype, property)).toEqual(descriptor)
+    }
   })
 
   it("shows deterministic past, current, and future word states from playback time", () => {
@@ -134,7 +207,7 @@ describe("SynchronizedTranscriptViewer", () => {
     scrollTo.mockClear()
     const word = screen.getByRole("button", { name: "Seek to there. at 0:00" })
 
-    fireEvent.keyDown(word, { key: "Tab" })
+    expect(fireEvent.keyDown(word, { key: "Tab" })).toBe(true)
     fireEvent.keyDown(word, { key: "Enter" })
     fireEvent.keyDown(word, { key: " " })
     rerender(<SynchronizedTranscriptViewer currentTimeSeconds={3.5} document={document} onSeek={vi.fn()} />)
@@ -186,9 +259,9 @@ describe("SynchronizedTranscriptViewer", () => {
     expect(screen.getByRole("button", { name: "Return To Current" })).toBeEnabled()
   })
 
-  it("does not reconstruct stable transcript rows for playback ticks within one word", () => {
+  it("virtualizes long transcripts without reconstructing stable rows for playback ticks within one word", () => {
     let textReads = 0
-    const segments = Array.from({ length: 100 }, (_, index) => {
+    const segments = Array.from({ length: 1_000 }, (_, index) => {
       const text = `Word${index}`
       return {
         endSeconds: index + 0.9,
@@ -220,7 +293,52 @@ describe("SynchronizedTranscriptViewer", () => {
     )
 
     expect(textReads).toBe(readsAfterInitialRender)
-    expect(screen.getAllByRole("button", { name: /^Seek to Word/ })).toHaveLength(100)
+    const renderedWords = screen.getAllByRole("button", { name: /^Seek to Word/ })
+    expect(renderedWords.length).toBeGreaterThan(0)
+    expect(renderedWords.length).toBeLessThan(20)
+    const transcriptList = screen.getByRole("list", { name: "1000 Transcript Segments" })
+    expect(withinListItems(transcriptList)).toHaveLength(1_000)
+    const virtualList = screen
+      .getByRole("region", { name: "Synchronized Transcript" })
+      .querySelector("[data-virtualized='true']")
+    expect(virtualList).toHaveAttribute("role", "presentation")
+    expect(virtualList?.querySelectorAll(":scope > li[data-index]").length).toBeLessThan(20)
+  })
+
+  it("exposes every long-transcript segment to assistive technology when seeking is disabled", () => {
+    const longDocument: TranscriptDocument = {
+      ...document,
+      segments: Array.from({ length: 200 }, (_, index) => ({
+        endSeconds: index + 0.9,
+        id: `segment-${index}`,
+        speakerId: index % 2 === 0 ? "speaker-1" : "speaker-2",
+        startSeconds: index,
+        text: `Accessible segment ${index}`,
+      })),
+    }
+    render(
+      <SynchronizedTranscriptViewer
+        currentTimeSeconds={null}
+        document={longDocument}
+        isSeekDisabled
+        onSeek={vi.fn()}
+      />,
+    )
+
+    const completeTranscript = screen.getByRole("list", { name: "200 Transcript Segments" })
+    const accessibleSegments = withinListItems(completeTranscript)
+    expect(accessibleSegments).toHaveLength(200)
+    expect(accessibleSegments[0]).toHaveTextContent("Morgan. 0:00. Accessible segment 0")
+    expect(accessibleSegments[100]).toHaveTextContent("Morgan. 1:40. Accessible segment 100")
+    expect(accessibleSegments[199]).toHaveTextContent("Speaker 2. 3:19. Accessible segment 199")
+    expect(completeTranscript.querySelector("button, a, input, select, textarea")).toBeNull()
+    expect(screen.getAllByRole("list")).toEqual([completeTranscript])
+
+    const visualList = screen
+      .getByRole("region", { name: "Synchronized Transcript" })
+      .querySelector("[data-virtualized='true']")
+    expect(visualList).toHaveAttribute("role", "presentation")
+    expect(visualList?.querySelectorAll(":scope > li[data-index]").length).toBeLessThan(20)
   })
 
   it("follows the canonical segment when transcript timings overlap", async () => {
@@ -244,7 +362,7 @@ describe("SynchronizedTranscriptViewer", () => {
         },
       ],
     }
-    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    getBoundingClientRect.mockImplementation(function (this: HTMLElement) {
       if (this.tagName === "ARTICLE" && this.textContent?.includes("First overlapping segment.")) {
         return { bottom: 10, height: 20, left: 0, right: 100, top: -10, width: 100, x: 0, y: -10, toJSON: vi.fn() }
       }
@@ -265,6 +383,142 @@ describe("SynchronizedTranscriptViewer", () => {
     fireEvent.wheel(currentRows[0])
     await user.click(screen.getByRole("button", { name: "Return To Current" }))
     expect(scrollTo).toHaveBeenLastCalledWith({ behavior: "auto", top: -10 })
+  })
+
+  it("keeps a focused long-transcript row mounted while the viewport range changes", async () => {
+    const longDocument: TranscriptDocument = {
+      ...document,
+      segments: Array.from({ length: 200 }, (_, index) => ({
+        endSeconds: index + 0.9,
+        id: `segment-${index}`,
+        speakerId: "speaker-1",
+        startSeconds: index,
+        text: `Segment ${index}`,
+      })),
+    }
+    render(
+      <SynchronizedTranscriptViewer currentTimeSeconds={null} document={longDocument} onSeek={vi.fn()} />,
+    )
+
+    const firstSegment = screen.getByRole("button", { name: "Seek to transcript segment: Segment 0" })
+    firstSegment.focus()
+    const viewport = screen
+      .getByRole("region", { name: "Synchronized Transcript" })
+      .querySelector("[data-radix-scroll-area-viewport]") as HTMLElement
+    Object.defineProperty(viewport, "scrollTop", { configurable: true, value: 10_000, writable: true })
+    fireEvent.scroll(viewport)
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Seek to transcript segment: Segment 96" }),
+      ).toBeInTheDocument(),
+    )
+    expect(firstSegment).toBeInTheDocument()
+    expect(firstSegment).toHaveFocus()
+  })
+
+  it("moves Tab and Shift+Tab focus across unmounted virtual row boundaries", async () => {
+    const longDocument: TranscriptDocument = {
+      ...document,
+      segments: Array.from({ length: 200 }, (_, index) => ({
+        endSeconds: index + 0.9,
+        id: `segment-${index}`,
+        speakerId: "speaker-1",
+        startSeconds: index,
+        text: `Segment ${index}`,
+      })),
+    }
+    render(
+      <SynchronizedTranscriptViewer currentTimeSeconds={null} document={longDocument} onSeek={vi.fn()} />,
+    )
+
+    const region = screen.getByRole("region", { name: "Synchronized Transcript" })
+    const list = region.querySelector("[data-virtualized='true']") as HTMLElement
+    const viewport = region.querySelector("[data-radix-scroll-area-viewport]") as HTMLElement
+    const initialRows = withinListItems(list)
+    const lastInitialRow = initialRows.at(-1) as HTMLLIElement
+    const lastInitialIndex = Number(lastInitialRow.dataset.index)
+    const lastInitialControl = seekControlsInRow(lastInitialRow).at(-1) as HTMLElement
+    expect(virtualRowInList(list, lastInitialIndex + 1)).toBeNull()
+
+    lastInitialControl.focus()
+    expect(fireEvent.keyDown(lastInitialControl, { key: "Tab" })).toBe(false)
+    applyLastVirtualScroll(viewport, scrollTo)
+
+    const nextRow = await waitFor(() => {
+      const row = virtualRowInList(list, lastInitialIndex + 1)
+      expect(row).not.toBeNull()
+      return row as HTMLLIElement
+    })
+    const nextFirstControl = seekControlsInRow(nextRow).at(0) as HTMLElement
+    await waitFor(() => expect(nextFirstControl).toHaveFocus())
+
+    Object.defineProperty(viewport, "scrollTop", {
+      configurable: true,
+      value: 10_000,
+      writable: true,
+    })
+    fireEvent.scroll(viewport)
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Seek to transcript segment: Segment 96" }),
+      ).toBeInTheDocument(),
+    )
+    expect(nextFirstControl).toHaveFocus()
+    expect(virtualRowInList(list, lastInitialIndex)).toBeNull()
+
+    expect(fireEvent.keyDown(nextFirstControl, { key: "Tab", shiftKey: true })).toBe(false)
+    applyLastVirtualScroll(viewport, scrollTo)
+
+    const previousRow = await waitFor(() => {
+      const row = virtualRowInList(list, lastInitialIndex)
+      expect(row).not.toBeNull()
+      return row as HTMLLIElement
+    })
+    await waitFor(() => expect(seekControlsInRow(previousRow).at(-1)).toHaveFocus())
+  })
+
+  it("schedules virtual auto-follow outside the lifecycle and cancels a stale frame", () => {
+    const frameCallbacks = new Map<number, FrameRequestCallback>()
+    let nextFrameId = 0
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((callback: FrameRequestCallback) => {
+        nextFrameId += 1
+        frameCallbacks.set(nextFrameId, callback)
+        return nextFrameId
+      }),
+    )
+    vi.stubGlobal(
+      "cancelAnimationFrame",
+      vi.fn((frameId: number) => frameCallbacks.delete(frameId)),
+    )
+    const longDocument: TranscriptDocument = {
+      ...document,
+      segments: Array.from({ length: 1_000 }, (_, index) => ({
+        endSeconds: index + 0.9,
+        id: `segment-${index}`,
+        speakerId: "speaker-1",
+        startSeconds: index,
+        text: `Segment ${index}`,
+      })),
+    }
+
+    const { rerender } = render(
+      <SynchronizedTranscriptViewer currentTimeSeconds={500.1} document={longDocument} onSeek={vi.fn()} />,
+    )
+
+    scrollTo.mockClear()
+    expect(scrollTo).not.toHaveBeenCalled()
+    rerender(
+      <SynchronizedTranscriptViewer currentTimeSeconds={600.1} document={longDocument} onSeek={vi.fn()} />,
+    )
+    expect(window.cancelAnimationFrame).toHaveBeenCalledWith(1)
+    expect(frameCallbacks.has(1)).toBe(false)
+    act(() => frameCallbacks.get(2)?.(0))
+
+    expect(scrollTo.mock.calls.at(-1)?.[0]).toMatchObject({ behavior: "auto" })
+    expect(scrollTo.mock.calls.at(-1)?.[0].top).toBeGreaterThan(50_000)
   })
 
   it("disables automatic scrolling for reduced motion while keeping manual return available", async () => {
@@ -334,3 +588,28 @@ describe("SynchronizedTranscriptViewer", () => {
     expect(screen.getByText("No transcript dialogue is available.")).toBeVisible()
   })
 })
+
+function withinListItems(list: HTMLElement) {
+  return Array.from(list.querySelectorAll(":scope > li"))
+}
+
+function applyLastVirtualScroll(viewport: HTMLElement, scrollMock: ReturnType<typeof vi.fn>) {
+  const options = scrollMock.mock.calls.at(-1)?.[0]
+  expect(options).toEqual(expect.objectContaining({ top: expect.any(Number) }))
+  Object.defineProperty(viewport, "scrollTop", {
+    configurable: true,
+    value: options.top,
+    writable: true,
+  })
+  fireEvent.scroll(viewport)
+}
+
+function seekControlsInRow(row: HTMLElement) {
+  return Array.from(
+    row.querySelectorAll<HTMLElement>("[data-transcript-seek-control='true']:not(:disabled)"),
+  )
+}
+
+function virtualRowInList(list: HTMLElement, index: number) {
+  return list.querySelector<HTMLLIElement>(`li[data-index="${index}"]`)
+}
