@@ -34,6 +34,8 @@ const document: TranscriptDocument = {
     },
   ],
 }
+const originalCancelAnimationFrame = window.cancelAnimationFrame
+const originalRequestAnimationFrame = window.requestAnimationFrame
 
 describe("SynchronizedTranscriptViewer", () => {
   const getBoundingClientRect = vi.fn(function (this: HTMLElement) {
@@ -98,6 +100,8 @@ describe("SynchronizedTranscriptViewer", () => {
   afterEach(() => {
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
+    expect(window.cancelAnimationFrame).toBe(originalCancelAnimationFrame)
+    expect(window.requestAnimationFrame).toBe(originalRequestAnimationFrame)
   })
 
   it("shows deterministic past, current, and future word states from playback time", () => {
@@ -414,18 +418,18 @@ describe("SynchronizedTranscriptViewer", () => {
   it("schedules virtual auto-follow outside the lifecycle and cancels a stale frame", () => {
     const frameCallbacks = new Map<number, FrameRequestCallback>()
     let nextFrameId = 0
-    Object.defineProperty(window, "requestAnimationFrame", {
-      configurable: true,
-      value: vi.fn((callback: FrameRequestCallback) => {
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((callback: FrameRequestCallback) => {
         nextFrameId += 1
         frameCallbacks.set(nextFrameId, callback)
         return nextFrameId
       }),
-    })
-    Object.defineProperty(window, "cancelAnimationFrame", {
-      configurable: true,
-      value: vi.fn((frameId: number) => frameCallbacks.delete(frameId)),
-    })
+    )
+    vi.stubGlobal(
+      "cancelAnimationFrame",
+      vi.fn((frameId: number) => frameCallbacks.delete(frameId)),
+    )
     const longDocument: TranscriptDocument = {
       ...document,
       segments: Array.from({ length: 1_000 }, (_, index) => ({
