@@ -77,12 +77,16 @@ list path and virtualizes documents above 80 segments inside the existing local
 shared playback clock, canonical overlap selection, seek ownership, and word
 alignment fallback remain the sources of truth.
 
-The long-list path preserves ordered-list position metadata, keeps the focused
-segment mounted when the visible range changes, and renders a small overscanned
-window with measured variable-height rows. Playback auto-follow targets a
-virtual index without scrolling the outer page; reduced-motion and manual-scroll
-opt-out behavior remain unchanged. Tests use 1,000-segment documents to verify a
-bounded DOM, focus stability, distant auto-follow, and stable row rendering
+The long-list path exposes one lightweight, complete ordered-list transcript to
+assistive technology, with speaker, timestamp, and text for every segment. Its
+separate visual surface has presentation-only list semantics and renders a
+small overscanned window of measured variable-height rows; visible seek controls
+remain keyboard and screen-reader accessible, and no offscreen control is
+focusable. The focused visual segment stays mounted when the range changes.
+Playback auto-follow targets a virtual index without scrolling the outer page;
+reduced-motion and manual-scroll opt-out behavior remain unchanged. Tests use
+1,000-segment documents to verify bounded rich visual rows, stable memoized
+assistive text, focus stability, distant auto-follow, and stable row rendering
 during playback ticks.
 
 The manifest declares the compatible `@tanstack/react-virtual` range `^3.14.9`;

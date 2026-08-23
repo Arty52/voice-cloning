@@ -297,9 +297,48 @@ describe("SynchronizedTranscriptViewer", () => {
     expect(renderedWords.length).toBeGreaterThan(0)
     expect(renderedWords.length).toBeLessThan(20)
     const transcriptList = screen.getByRole("list", { name: "1000 Transcript Segments" })
-    expect(transcriptList).toHaveAttribute("data-virtualized", "true")
-    expect(withinListItems(transcriptList)[0]).toHaveAttribute("aria-posinset", "1")
-    expect(withinListItems(transcriptList)[0]).toHaveAttribute("aria-setsize", "1000")
+    expect(withinListItems(transcriptList)).toHaveLength(1_000)
+    const virtualList = screen
+      .getByRole("region", { name: "Synchronized Transcript" })
+      .querySelector("[data-virtualized='true']")
+    expect(virtualList).toHaveAttribute("role", "presentation")
+    expect(virtualList?.querySelectorAll(":scope > li[data-index]").length).toBeLessThan(20)
+  })
+
+  it("exposes every long-transcript segment to assistive technology when seeking is disabled", () => {
+    const longDocument: TranscriptDocument = {
+      ...document,
+      segments: Array.from({ length: 200 }, (_, index) => ({
+        endSeconds: index + 0.9,
+        id: `segment-${index}`,
+        speakerId: index % 2 === 0 ? "speaker-1" : "speaker-2",
+        startSeconds: index,
+        text: `Accessible segment ${index}`,
+      })),
+    }
+    render(
+      <SynchronizedTranscriptViewer
+        currentTimeSeconds={null}
+        document={longDocument}
+        isSeekDisabled
+        onSeek={vi.fn()}
+      />,
+    )
+
+    const completeTranscript = screen.getByRole("list", { name: "200 Transcript Segments" })
+    const accessibleSegments = withinListItems(completeTranscript)
+    expect(accessibleSegments).toHaveLength(200)
+    expect(accessibleSegments[0]).toHaveTextContent("Morgan. 0:00. Accessible segment 0")
+    expect(accessibleSegments[100]).toHaveTextContent("Morgan. 1:40. Accessible segment 100")
+    expect(accessibleSegments[199]).toHaveTextContent("Speaker 2. 3:19. Accessible segment 199")
+    expect(completeTranscript.querySelector("button, a, input, select, textarea")).toBeNull()
+    expect(screen.getAllByRole("list")).toEqual([completeTranscript])
+
+    const visualList = screen
+      .getByRole("region", { name: "Synchronized Transcript" })
+      .querySelector("[data-virtualized='true']")
+    expect(visualList).toHaveAttribute("role", "presentation")
+    expect(visualList?.querySelectorAll(":scope > li[data-index]").length).toBeLessThan(20)
   })
 
   it("follows the canonical segment when transcript timings overlap", async () => {
@@ -393,10 +432,9 @@ describe("SynchronizedTranscriptViewer", () => {
       <SynchronizedTranscriptViewer currentTimeSeconds={null} document={longDocument} onSeek={vi.fn()} />,
     )
 
-    const list = screen.getByRole("list", { name: "200 Transcript Segments" })
-    const viewport = screen
-      .getByRole("region", { name: "Synchronized Transcript" })
-      .querySelector("[data-radix-scroll-area-viewport]") as HTMLElement
+    const region = screen.getByRole("region", { name: "Synchronized Transcript" })
+    const list = region.querySelector("[data-virtualized='true']") as HTMLElement
+    const viewport = region.querySelector("[data-radix-scroll-area-viewport]") as HTMLElement
     const initialRows = withinListItems(list)
     const lastInitialRow = initialRows.at(-1) as HTMLLIElement
     const lastInitialIndex = Number(lastInitialRow.dataset.index)

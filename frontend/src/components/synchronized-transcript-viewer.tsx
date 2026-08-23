@@ -294,34 +294,36 @@ export function SynchronizedTranscriptViewer({
         viewportRef={setScrollViewport}
       >
         {shouldVirtualize ? (
-          <ol
-            aria-label={`${document.segments.length} Transcript Segments`}
-            className="relative list-none p-0"
-            data-virtualized="true"
-            style={{ height: rowVirtualizer.getTotalSize() }}
-          >
-            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-              const segment = document.segments[virtualRow.index]
-              if (!segment) {
-                return null
-              }
-              return (
-                <li
-                  aria-posinset={virtualRow.index + 1}
-                  aria-setsize={document.segments.length}
-                  className="absolute left-0 top-0 w-full px-3"
-                  data-index={virtualRow.index}
-                  key={virtualRow.key}
-                  onBlurCapture={(event) => handleSegmentBlur(virtualRow.index, event)}
-                  onFocusCapture={() => setFocusedSegmentIndex(virtualRow.index)}
-                  ref={rowVirtualizer.measureElement}
-                  style={{ transform: `translateY(${virtualRow.start}px)` }}
-                >
-                  {renderSegment(segment)}
-                </li>
-              )
-            })}
-          </ol>
+          <>
+            <CompleteTranscriptText document={document} />
+            <ol
+              className="relative list-none p-0"
+              data-virtualized="true"
+              role="presentation"
+              style={{ height: rowVirtualizer.getTotalSize() }}
+            >
+              {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                const segment = document.segments[virtualRow.index]
+                if (!segment) {
+                  return null
+                }
+                return (
+                  <li
+                    className="absolute left-0 top-0 w-full px-3"
+                    data-index={virtualRow.index}
+                    key={virtualRow.key}
+                    onBlurCapture={(event) => handleSegmentBlur(virtualRow.index, event)}
+                    onFocusCapture={() => setFocusedSegmentIndex(virtualRow.index)}
+                    ref={rowVirtualizer.measureElement}
+                    role="presentation"
+                    style={{ transform: `translateY(${virtualRow.start}px)` }}
+                  >
+                    {renderSegment(segment)}
+                  </li>
+                )
+              })}
+            </ol>
+          </>
         ) : (
           <ol className="flex flex-col gap-2 p-3">
             {document.segments.map((segment) => (
@@ -339,6 +341,27 @@ const LONG_TRANSCRIPT_THRESHOLD = 80
 const TRANSCRIPT_SEEK_CONTROL_SELECTOR = "[data-transcript-seek-control='true']:not(:disabled)"
 const TRANSCRIPT_VIEWPORT_RECT = { height: 320, width: 768 }
 const VIRTUAL_FOCUS_ATTEMPTS = 4
+
+const CompleteTranscriptText = memo(function CompleteTranscriptText({
+  document,
+}: {
+  document: TranscriptDocument
+}) {
+  const speakerById = new Map(document.speakers.map((speaker) => [speaker.id, speaker]))
+  return (
+    <ol
+      aria-label={`${document.segments.length} Transcript Segments`}
+      className="sr-only"
+    >
+      {document.segments.map((segment) => (
+        <li key={segment.id}>
+          {speakerById.get(segment.speakerId)?.label ?? "Unknown Speaker"}.{" "}
+          {formatRecordingDuration(segment.startSeconds)}. {segment.text}
+        </li>
+      ))}
+    </ol>
+  )
+})
 
 function estimateSegmentHeight(segment: TranscriptSegment | undefined) {
   const estimatedLines = Math.max(1, Math.ceil((segment?.text.length ?? 0) / 48))
