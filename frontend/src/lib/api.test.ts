@@ -5,6 +5,7 @@ import {
   cancelSampleProcessingJob,
   cancelSpeechJob,
   createSampleProcessingJob,
+  deleteSampleProcessingJob,
   createSpeechJob,
   deleteSampleProcessingSource,
   providerHeaders,
@@ -260,6 +261,17 @@ describe("voice API helpers", () => {
     expect(fetch).toHaveBeenCalledWith(
       "/api/sample-processing/jobs/job-1/cancel",
       expect.objectContaining({ method: "POST" })
+    )
+  })
+
+  it("deletes the exact sample processing job", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => okJson({ deleted: true, jobId: "job/1" })))
+
+    await expect(deleteSampleProcessingJob("job/1")).resolves.toEqual({ deleted: true, jobId: "job/1" })
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/sample-processing/jobs/job%2F1",
+      expect.objectContaining({ method: "DELETE" })
     )
   })
 

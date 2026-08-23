@@ -359,6 +359,13 @@ export async function cancelSampleProcessingJob(jobId: string) {
   })
 }
 
+export async function deleteSampleProcessingJob(jobId: string) {
+  return fetchJson<{ deleted: true; jobId: string }>(
+    `/api/sample-processing/jobs/${encodeURIComponent(jobId)}`,
+    { method: "DELETE" }
+  )
+}
+
 export function sampleProcessingResultUrl(jobId: string) {
   return `/api/sample-processing/jobs/${encodeURIComponent(jobId)}/result`
 }

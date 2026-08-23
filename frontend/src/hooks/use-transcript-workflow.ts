@@ -35,6 +35,7 @@ const POLL_INTERVAL_MS = 1500
 const TIMER_INTERVAL_MS = 250
 export const LATEST_TRANSCRIPT_JOB_STORAGE_KEY = "voice-cloning.latestTranscriptJobId.v1"
 export const LATEST_TRANSCRIPT_SESSION_STORAGE_KEY = "voice-cloning.latestTranscriptSession.v1"
+export const TRANSCRIPT_RESTORE_SUPPRESSED_STORAGE_KEY = "voice-cloning.transcriptRestoreSuppressed.v1"
 // Each active session has its own key so tabs never need a read-modify-write
 // update to a shared JSON array.
 export const TRANSCRIPT_SESSION_STORAGE_PREFIX = "voice-cloning.transcriptSession.v1."
@@ -49,12 +50,16 @@ export function useTranscriptWorkflow({
   diarizationAvailable,
   onVoiceSaved,
 }: UseTranscriptWorkflowOptions) {
+  const [restoreSuppressed] = useState(readTranscriptRestoreSuppressed)
   const [initialStoredTranscriptSessions] = useState(readStoredTranscriptSessions)
   const [initialStoredTranscriptSession] = useState(
-    () => readStoredLatestTranscriptSession() ?? initialStoredTranscriptSessions.at(-1) ?? null
+    () =>
+      restoreSuppressed
+        ? null
+        : readStoredLatestTranscriptSession() ?? initialStoredTranscriptSessions.at(-1) ?? null
   )
   const [initialStoredJobId] = useState(
-    () => initialStoredTranscriptSession?.jobId ?? readStoredLatestTranscriptJobId()
+    () => (restoreSuppressed ? null : initialStoredTranscriptSession?.jobId ?? readStoredLatestTranscriptJobId())
   )
   const [sourceFile, setSourceFile] = useState<File | null>(null)
   const [job, setJob] = useState<SampleProcessingJob | null>(null)
@@ -63,6 +68,8 @@ export function useTranscriptWorkflow({
   )
   const [error, setError] = useState<string | null>(null)
   const [validationError, setValidationError] = useState<string | null>(null)
+  const [clearStatus, setClearStatus] = useState<AsyncStatus>("idle")
+  const [clearError, setClearError] = useState<string | null>(null)
   const [processingElapsedMs, setProcessingElapsedMs] = useState<number | null>(null)
   const [timingDiagnostic, setTimingDiagnostic] = useState<TranscriptTimingDiagnosticRecord | null>(() =>
     readInitialTimingDiagnostic(
@@ -74,6 +81,8 @@ export function useTranscriptWorkflow({
   const timingDiagnosticIdRef = useRef<string | null>(timingDiagnostic?.id ?? null)
   const mountedRef = useRef(true)
   const runIdRef = useRef(0)
+  const clearRequestIdRef = useRef(0)
+  const clearedJobIdsRef = useRef(new Set<string>())
   const activeJobIdRef = useRef<string | null>(null)
   const pollJobRef = useRef<(jobId: string, runId: number) => Promise<void>>(async () => undefined)
   const restoreJobRef = useRef<(jobId: string, runId: number) => Promise<void>>(async () => undefined)
@@ -94,11 +103,19 @@ export function useTranscriptWorkflow({
   )
 
   const isProcessing = status === "restoring" || status === "starting" || status === "processing"
+  const isClearingTranscript = clearStatus === "loading"
+  const hasSpeakerMutationInFlight =
+    speakerTranscript.assignmentStatus === "loading" ||
+    speakerTranscript.transcriptSaveStatus === "loading" ||
+    speakerTranscript.speakerSaveStatus === "loading"
+  const canClearTranscript =
+    job?.status === "success" && !isProcessing && !isClearingTranscript && !hasSpeakerMutationInFlight
   const canStart =
     sourceFile !== null &&
     availabilityStatus === "success" &&
     diarizationAvailable &&
-    !isProcessing
+    !isProcessing &&
+    !isClearingTranscript
   const canCancel =
     (status === "starting" || status === "processing") && activeJobIdRef.current !== null
   const processingEstimateRangeSeconds =
@@ -230,6 +247,54 @@ export function useTranscriptWorkflow({
     }
   }
 
+  async function handleClearTranscript() {
+    const activeJob = job
+    if (!activeJob || !canClearTranscript) {
+      return false
+    }
+
+    const requestId = clearRequestIdRef.current + 1
+    clearRequestIdRef.current = requestId
+    setClearStatus("loading")
+    setClearError(null)
+    try {
+      const payload = await api.deleteSampleProcessingJob(activeJob.id)
+      if (!mountedRef.current || clearRequestIdRef.current !== requestId) {
+        return false
+      }
+      if (activeJobIdRef.current !== activeJob.id) {
+        setClearStatus("idle")
+        return false
+      }
+      if (payload.deleted !== true || payload.jobId !== activeJob.id) {
+        throw new Error("The server did not confirm the requested transcript was cleared.")
+      }
+
+      clearedJobIdsRef.current.add(activeJob.id)
+      runIdRef.current += 1
+      activeJobIdRef.current = null
+      clearStoredTranscriptAfterUserReset(activeJob.id)
+      timingDiagnosticIdRef.current = null
+      setSourceFile(null)
+      setJob(null)
+      setStatus("idle")
+      setError(null)
+      setValidationError(null)
+      setProcessingElapsedMs(null)
+      setTimingDiagnostic(null)
+      setClearStatus("idle")
+      setClearError(null)
+      return true
+    } catch (caught) {
+      if (!mountedRef.current || clearRequestIdRef.current !== requestId) {
+        return false
+      }
+      setClearStatus("error")
+      setClearError(caught instanceof Error ? caught.message : "Unable to clear this transcript.")
+      return false
+    }
+  }
+
   async function restoreJob(jobId: string, runId: number) {
     try {
       const payload = await api.fetchSampleProcessingJob(jobId)
@@ -305,7 +370,9 @@ export function useTranscriptWorkflow({
   }
 
   function applyJob(nextJob: SampleProcessingJob) {
-    updateJob(nextJob)
+    if (!updateJob(nextJob)) {
+      return true
+    }
     const elapsedMs = elapsedMsFromJob(nextJob)
     setProcessingElapsedMs(elapsedMs)
     if (nextJob.status === "success") {
@@ -332,9 +399,13 @@ export function useTranscriptWorkflow({
   }
 
   function updateJob(nextJob: SampleProcessingJob) {
+    if (clearedJobIdsRef.current.has(nextJob.id)) {
+      return false
+    }
     activeJobIdRef.current = nextJob.id
     writeStoredLatestTranscriptJob(nextJob.id, timingDiagnosticIdRef.current)
     setJob(nextJob)
+    return true
   }
 
   function updateElapsedTime(nextJob: SampleProcessingJob) {
@@ -375,12 +446,17 @@ export function useTranscriptWorkflow({
 
   return {
     canCancel,
+    canClearTranscript,
     canStart,
+    clearError,
+    clearStatus,
     error,
     handleCancelTranscription,
+    handleClearTranscript,
     handleSourceFileChange,
     handleSourceFileSelect,
     handleStartTranscription,
+    isClearingTranscript,
     isProcessing,
     job,
     preStartEstimateRangeSeconds,
@@ -428,6 +504,14 @@ function readStoredLatestTranscriptJobId() {
     return window.localStorage.getItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY)
   } catch {
     return null
+  }
+}
+
+function readTranscriptRestoreSuppressed() {
+  try {
+    return window.sessionStorage.getItem(TRANSCRIPT_RESTORE_SUPPRESSED_STORAGE_KEY) === "true"
+  } catch {
+    return false
   }
 }
 
@@ -601,6 +685,7 @@ function pruneStoredTranscriptSessionRecords(
 function writeStoredLatestTranscriptJob(jobId: string, timingDiagnosticId: string | null) {
   const nextSession = { jobId, timingDiagnosticId, createdAt: new Date().toISOString() } satisfies StoredTranscriptSession
   try {
+    window.sessionStorage.removeItem(TRANSCRIPT_RESTORE_SUPPRESSED_STORAGE_KEY)
     writeStoredTranscriptSession(nextSession)
     readStoredTranscriptSessions()
     window.localStorage.setItem(
@@ -625,6 +710,17 @@ function writeStoredLatestTranscriptJob(jobId: string, timingDiagnosticId: strin
     window.localStorage.setItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY, jobId)
   } catch {
     // The paired session is enough to restore the current job safely.
+  }
+}
+
+function clearStoredTranscriptAfterUserReset(jobId: string) {
+  clearStoredLatestTranscriptJob(jobId)
+  try {
+    // This tab stays at the empty upload state on reload without deleting
+    // unrelated transcript sessions that another tab may still own.
+    window.sessionStorage.setItem(TRANSCRIPT_RESTORE_SUPPRESSED_STORAGE_KEY, "true")
+  } catch {
+    // Browser storage is optional; the active mounted workflow is already reset.
   }
 }
 
