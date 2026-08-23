@@ -48,7 +48,7 @@ from voice_cloning.persistence.models import AppSettingRecord, SampleProcessingJ
 from voice_cloning.persistence.postgres_voice_library import PostgresVoiceLibrary
 from voice_cloning.persistence.voices import SqlAlchemyVoiceRepository
 from voice_cloning.samples import sample_hash
-from voice_cloning.services.sample_processing import SampleProcessingService
+from voice_cloning.services.sample_processing import SampleProcessingService, SampleProcessingServiceError
 from voice_cloning.voice_library import VoiceLibrary
 from voice_cloning.voice_library_factory import create_voice_library
 
@@ -313,6 +313,107 @@ def test_job_repositories_persist_snapshots_and_mark_interrupted() -> None:
         assert restored_speech_job.active_segment_id is None
         assert restored_speech_job.segments[0].status == "error"
         assert restored_speech_job.segments[0].error == INTERRUPTED_MESSAGE
+
+    with unit_of_work(session_factory) as session:
+        assert SqlAlchemySampleProcessingJobRepository(session).delete_job("sample-job") is True
+
+    with unit_of_work(session_factory) as session:
+        assert SqlAlchemySampleProcessingJobRepository(session).delete_job("sample-job") is False
+        assert SqlAlchemySampleProcessingJobRepository(session).get_job("sample-job") is None
+        assert SqlAlchemySpeechGenerationJobRepository(session).get_job("speech-job") is not None
+
+
+def test_sample_processing_service_deletes_only_one_terminal_job_and_its_artifacts(tmp_path: Path) -> None:
+    settings = replace(make_settings(tmp_path), database_url=f"sqlite+pysqlite:///{tmp_path / 'jobs.sqlite'}")
+    engine = create_database_engine(settings.database_url)
+    Base.metadata.create_all(engine)
+    session_factory = create_session_factory(engine)
+
+    def job(job_id: str, status: str) -> SampleProcessingJob:
+        return SampleProcessingJob(
+            id=job_id,
+            operation_id="trimSilence",
+            status=status,  # type: ignore[arg-type]
+            source_name="Narrator",
+            source_filename="source.wav",
+            source_content_type="audio/wav",
+            source_sha256=f"{job_id}-source-hash",
+            source_size_bytes=128,
+            source_preference="active",
+            created_at="2026-08-23T12:00:00+00:00",
+            updated_at="2026-08-23T12:00:01+00:00",
+            result=(
+                SampleProcessingResult(
+                    path=f"{job_id}/result.wav",
+                    filename="result.wav",
+                    content_type="audio/wav",
+                    sha256=f"{job_id}-result-hash",
+                )
+                if status == "success"
+                else None
+            ),
+            steps=(
+                SampleProcessingJobStep(
+                    id=job_id,
+                    operation_id="trimSilence",
+                    operation_label="Trim Silence",
+                    status="success" if status == "success" else "running",
+                    engine="ffmpeg",
+                ),
+            ),
+            active_step_id=None if status == "success" else job_id,
+        )
+
+    deleted_job = job("delete-me", "success")
+    retained_job = job("keep-me", "success")
+    with unit_of_work(session_factory) as session:
+        repository = SqlAlchemySampleProcessingJobRepository(session)
+        repository.save_job(deleted_job)
+        repository.save_job(retained_job)
+    for job_id in (deleted_job.id, retained_job.id):
+        job_dir = settings.sample_processing_dir / job_id
+        job_dir.mkdir(parents=True)
+        (job_dir / "source.wav").write_bytes(b"source")
+        (job_dir / "result.wav").write_bytes(b"result")
+
+    service = SampleProcessingService(
+        settings,
+        VoiceLibrary(settings),
+        job_session_factory=session_factory,
+    )
+    deleted_source = settings.sample_processing_dir / deleted_job.id / "source.wav"
+    service._jobs[deleted_job.id] = deleted_job
+    service._source_paths[deleted_job.id] = deleted_source
+    service._speaker_processing_steps[deleted_job.id] = {}
+    service._prepared_candidate_processing_steps[deleted_job.id] = {}
+
+    assert service.delete_job(deleted_job.id) == deleted_job.id
+    assert not (settings.sample_processing_dir / deleted_job.id).exists()
+    assert (settings.sample_processing_dir / retained_job.id / "result.wav").is_file()
+    assert deleted_job.id not in service._jobs
+    assert deleted_job.id not in service._source_paths
+    assert deleted_job.id not in service._speaker_processing_steps
+    assert deleted_job.id not in service._prepared_candidate_processing_steps
+    assert service.get_job(retained_job.id) == retained_job
+    with pytest.raises(SampleProcessingServiceError) as missing_error:
+        service.get_job(deleted_job.id)
+    assert missing_error.value.status_code == 404
+    with unit_of_work(session_factory) as session:
+        repository = SqlAlchemySampleProcessingJobRepository(session)
+        assert repository.get_job(deleted_job.id) is None
+        assert repository.get_job(retained_job.id) == retained_job
+
+    active_job = job("active-job", "running")
+    active_dir = settings.sample_processing_dir / active_job.id
+    active_dir.mkdir()
+    (active_dir / "source.wav").write_bytes(b"active")
+    service._jobs[active_job.id] = active_job
+    service._persist_job(active_job)
+    with pytest.raises(SampleProcessingServiceError) as active_error:
+        service.delete_job(active_job.id)
+    assert active_error.value.status_code == 409
+    assert active_dir.is_dir()
+    assert service.get_job(active_job.id) == active_job
 
 
 def test_sample_processing_job_repository_roundtrips_transcript_word_alignment() -> None:

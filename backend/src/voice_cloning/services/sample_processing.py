@@ -607,6 +607,34 @@ class SampleProcessingService:
             self._cancel_job_state(job_id)
         return self.get_job(job_id)
 
+    def delete_job(self, job_id: str) -> str:
+        job = self.get_job(job_id)
+        task = self._tasks.get(job_id)
+        if job.status not in {"success", "error", "canceled", "interrupted"} or (
+            task is not None and not task.done()
+        ):
+            raise SampleProcessingServiceError(
+                "Active sample processing jobs must be canceled before deletion.",
+                409,
+            )
+
+        persisted_job_deleted = self._delete_persisted_job(job_id)
+        try:
+            job_dir = self._job_dir(job_id)
+            if job_dir.exists():
+                shutil.rmtree(job_dir)
+        except OSError as exc:
+            if persisted_job_deleted:
+                self._persist_job(job)
+            raise SampleProcessingServiceError("Sample processing artifacts could not be deleted.", 500) from exc
+
+        self._jobs.pop(job_id, None)
+        self._tasks.pop(job_id, None)
+        self._source_paths.pop(job_id, None)
+        self._speaker_processing_steps.pop(job_id, None)
+        self._prepared_candidate_processing_steps.pop(job_id, None)
+        return job_id
+
     def result_path(self, job_id: str) -> Path:
         job = self.get_job(job_id)
         if job.status != "success" or job.result is None:
@@ -1478,6 +1506,12 @@ class SampleProcessingService:
             return None
         with unit_of_work(self.job_session_factory) as session:
             return SqlAlchemySampleProcessingJobRepository(session).get_job(job_id)
+
+    def _delete_persisted_job(self, job_id: str) -> bool:
+        if self.job_session_factory is None:
+            return False
+        with unit_of_work(self.job_session_factory) as session:
+            return SqlAlchemySampleProcessingJobRepository(session).delete_job(job_id)
 
     def _mark_interrupted_jobs(self) -> None:
         if self.job_session_factory is None:

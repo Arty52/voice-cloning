@@ -80,6 +80,13 @@ class SqlAlchemySampleProcessingJobRepository:
             active_progress_phase_id=None if record.status == INTERRUPTED_STATUS else job.active_progress_phase_id,
         )
 
+    def delete_job(self, job_id: str) -> bool:
+        record = self.session.get(SampleProcessingJobRecord, job_id)
+        if record is None:
+            return False
+        self.session.delete(record)
+        return True
+
     def mark_active_jobs_interrupted(self) -> int:
         records = self.session.scalars(
             select(SampleProcessingJobRecord).where(SampleProcessingJobRecord.status.in_(ACTIVE_JOB_STATUSES))
