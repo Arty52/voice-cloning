@@ -178,7 +178,7 @@ describe("SynchronizedTranscriptViewer", () => {
     scrollTo.mockClear()
     const word = screen.getByRole("button", { name: "Seek to there. at 0:00" })
 
-    fireEvent.keyDown(word, { key: "Tab" })
+    expect(fireEvent.keyDown(word, { key: "Tab" })).toBe(true)
     fireEvent.keyDown(word, { key: "Enter" })
     fireEvent.keyDown(word, { key: " " })
     rerender(<SynchronizedTranscriptViewer currentTimeSeconds={3.5} document={document} onSeek={vi.fn()} />)
@@ -349,6 +349,68 @@ describe("SynchronizedTranscriptViewer", () => {
     expect(firstSegment).toHaveFocus()
   })
 
+  it("moves Tab and Shift+Tab focus across unmounted virtual row boundaries", async () => {
+    const longDocument: TranscriptDocument = {
+      ...document,
+      segments: Array.from({ length: 200 }, (_, index) => ({
+        endSeconds: index + 0.9,
+        id: `segment-${index}`,
+        speakerId: "speaker-1",
+        startSeconds: index,
+        text: `Segment ${index}`,
+      })),
+    }
+    render(
+      <SynchronizedTranscriptViewer currentTimeSeconds={null} document={longDocument} onSeek={vi.fn()} />,
+    )
+
+    const list = screen.getByRole("list", { name: "200 Transcript Segments" })
+    const viewport = screen
+      .getByRole("region", { name: "Synchronized Transcript" })
+      .querySelector("[data-radix-scroll-area-viewport]") as HTMLElement
+    const initialRows = withinListItems(list)
+    const lastInitialRow = initialRows.at(-1) as HTMLLIElement
+    const lastInitialIndex = Number(lastInitialRow.dataset.index)
+    const lastInitialControl = seekControlsInRow(lastInitialRow).at(-1) as HTMLElement
+    expect(virtualRowInList(list, lastInitialIndex + 1)).toBeNull()
+
+    lastInitialControl.focus()
+    expect(fireEvent.keyDown(lastInitialControl, { key: "Tab" })).toBe(false)
+    applyLastVirtualScroll(viewport, scrollTo)
+
+    const nextRow = await waitFor(() => {
+      const row = virtualRowInList(list, lastInitialIndex + 1)
+      expect(row).not.toBeNull()
+      return row as HTMLLIElement
+    })
+    const nextFirstControl = seekControlsInRow(nextRow).at(0) as HTMLElement
+    await waitFor(() => expect(nextFirstControl).toHaveFocus())
+
+    Object.defineProperty(viewport, "scrollTop", {
+      configurable: true,
+      value: 10_000,
+      writable: true,
+    })
+    fireEvent.scroll(viewport)
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Seek to transcript segment: Segment 96" }),
+      ).toBeInTheDocument(),
+    )
+    expect(nextFirstControl).toHaveFocus()
+    expect(virtualRowInList(list, lastInitialIndex)).toBeNull()
+
+    expect(fireEvent.keyDown(nextFirstControl, { key: "Tab", shiftKey: true })).toBe(false)
+    applyLastVirtualScroll(viewport, scrollTo)
+
+    const previousRow = await waitFor(() => {
+      const row = virtualRowInList(list, lastInitialIndex)
+      expect(row).not.toBeNull()
+      return row as HTMLLIElement
+    })
+    await waitFor(() => expect(seekControlsInRow(previousRow).at(-1)).toHaveFocus())
+  })
+
   it("schedules virtual auto-follow outside the lifecycle and cancels a stale frame", () => {
     const frameCallbacks = new Map<number, FrameRequestCallback>()
     let nextFrameId = 0
@@ -462,4 +524,25 @@ describe("SynchronizedTranscriptViewer", () => {
 
 function withinListItems(list: HTMLElement) {
   return Array.from(list.querySelectorAll(":scope > li"))
+}
+
+function applyLastVirtualScroll(viewport: HTMLElement, scrollMock: ReturnType<typeof vi.fn>) {
+  const options = scrollMock.mock.calls.at(-1)?.[0]
+  expect(options).toEqual(expect.objectContaining({ top: expect.any(Number) }))
+  Object.defineProperty(viewport, "scrollTop", {
+    configurable: true,
+    value: options.top,
+    writable: true,
+  })
+  fireEvent.scroll(viewport)
+}
+
+function seekControlsInRow(row: HTMLElement) {
+  return Array.from(
+    row.querySelectorAll<HTMLElement>("[data-transcript-seek-control='true']:not(:disabled)"),
+  )
+}
+
+function virtualRowInList(list: HTMLElement, index: number) {
+  return list.querySelector<HTMLLIElement>(`li[data-index="${index}"]`)
 }

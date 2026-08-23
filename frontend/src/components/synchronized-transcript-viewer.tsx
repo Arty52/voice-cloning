@@ -20,6 +20,10 @@ import type { TranscriptDocument, TranscriptSegment, TranscriptWord } from "@/li
 import { cn } from "@/lib/utils"
 
 type PlaybackPosition = "current" | "future" | "past"
+type VirtualFocusRequest = {
+  edge: "first" | "last"
+  index: number
+}
 
 type SynchronizedTranscriptViewerProps = {
   currentTimeSeconds: number | null
@@ -40,6 +44,7 @@ export function SynchronizedTranscriptViewer({
 }: SynchronizedTranscriptViewerProps) {
   const [isFollowing, setIsFollowing] = useState(true)
   const [focusedSegmentIndex, setFocusedSegmentIndex] = useState<number | null>(null)
+  const [virtualFocusRequest, setVirtualFocusRequest] = useState<VirtualFocusRequest | null>(null)
   const prefersReducedMotion = usePrefersReducedMotion()
   const segmentTimeIndex = useMemo(
     () => buildSegmentTimeIndex(document.segments),
@@ -119,6 +124,39 @@ export function SynchronizedTranscriptViewer({
     shouldVirtualize,
   ])
 
+  useEffect(() => {
+    if (!scrollViewport || !virtualFocusRequest) {
+      return undefined
+    }
+
+    let attemptsRemaining = VIRTUAL_FOCUS_ATTEMPTS
+    let frameId = 0
+    const focusRequestedControl = () => {
+      const row = virtualRowAtIndex(scrollViewport, virtualFocusRequest.index)
+      const controls = enabledSeekControls(row)
+      const target =
+        virtualFocusRequest.edge === "first" ? controls.at(0) : controls.at(-1)
+      if (target) {
+        target.focus()
+        setVirtualFocusRequest((current) =>
+          sameVirtualFocusRequest(current, virtualFocusRequest) ? null : current,
+        )
+        return
+      }
+      attemptsRemaining -= 1
+      if (attemptsRemaining > 0) {
+        frameId = window.requestAnimationFrame(focusRequestedControl)
+      } else {
+        setVirtualFocusRequest((current) =>
+          sameVirtualFocusRequest(current, virtualFocusRequest) ? null : current,
+        )
+      }
+    }
+
+    frameId = window.requestAnimationFrame(focusRequestedControl)
+    return () => window.cancelAnimationFrame(frameId)
+  }, [scrollViewport, virtualFocusRequest])
+
   function returnToCurrent() {
     setIsFollowing(true)
     if (shouldVirtualize && currentSegmentIndex >= 0) {
@@ -140,6 +178,10 @@ export function SynchronizedTranscriptViewer({
       return
     }
 
+    if (event.key === "Tab" && handleVirtualTab(event, target)) {
+      return
+    }
+
     const isActivationTarget = target.closest(
       "button, a[href], input, select, textarea, [role='button'], [role='link']",
     )
@@ -150,6 +192,41 @@ export function SynchronizedTranscriptViewer({
     if (MANUAL_SCROLL_KEYS.has(event.key)) {
       setIsFollowing(false)
     }
+  }
+
+  function handleVirtualTab(event: KeyboardEvent<HTMLDivElement>, target: HTMLElement) {
+    if (!shouldVirtualize || !scrollViewport) {
+      return false
+    }
+    const control = target.closest<HTMLElement>(TRANSCRIPT_SEEK_CONTROL_SELECTOR)
+    const row = control?.closest<HTMLLIElement>("li[data-index]")
+    if (!control || !row) {
+      return false
+    }
+    const controls = enabledSeekControls(row)
+    const isRowBoundary = event.shiftKey
+      ? control === controls.at(0)
+      : control === controls.at(-1)
+    if (!isRowBoundary) {
+      return false
+    }
+    const rowIndex = Number(row.dataset.index)
+    const adjacentIndex = event.shiftKey ? rowIndex - 1 : rowIndex + 1
+    if (adjacentIndex < 0 || adjacentIndex >= document.segments.length) {
+      return false
+    }
+    if (virtualRowAtIndex(scrollViewport, adjacentIndex)) {
+      return false
+    }
+
+    event.preventDefault()
+    setIsFollowing(false)
+    setVirtualFocusRequest({
+      edge: event.shiftKey ? "last" : "first",
+      index: adjacentIndex,
+    })
+    rowVirtualizer.scrollToIndex(adjacentIndex, { align: "auto" })
+    return true
   }
 
   function handleScrollbarPointer(event: PointerEvent<HTMLDivElement>) {
@@ -259,7 +336,9 @@ export function SynchronizedTranscriptViewer({
 
 const MANUAL_SCROLL_KEYS = new Set([" ", "ArrowDown", "ArrowUp", "End", "Home", "PageDown", "PageUp"])
 const LONG_TRANSCRIPT_THRESHOLD = 80
+const TRANSCRIPT_SEEK_CONTROL_SELECTOR = "[data-transcript-seek-control='true']:not(:disabled)"
 const TRANSCRIPT_VIEWPORT_RECT = { height: 320, width: 768 }
+const VIRTUAL_FOCUS_ATTEMPTS = 4
 
 function estimateSegmentHeight(segment: TranscriptSegment | undefined) {
   const estimatedLines = Math.max(1, Math.ceil((segment?.text.length ?? 0) / 48))
@@ -276,6 +355,23 @@ function includePinnedIndex(indexes: number[], pinnedIndex: number | null, itemC
     return indexes
   }
   return [...indexes, pinnedIndex].sort((left, right) => left - right)
+}
+
+function enabledSeekControls(row: HTMLLIElement | null) {
+  return row
+    ? Array.from(row.querySelectorAll<HTMLElement>(TRANSCRIPT_SEEK_CONTROL_SELECTOR))
+    : []
+}
+
+function sameVirtualFocusRequest(
+  left: VirtualFocusRequest | null,
+  right: VirtualFocusRequest,
+) {
+  return left?.edge === right.edge && left.index === right.index
+}
+
+function virtualRowAtIndex(viewport: HTMLElement, index: number) {
+  return viewport.querySelector<HTMLLIElement>(`li[data-index="${index}"]`)
 }
 
 const TranscriptSegmentRow = memo(function TranscriptSegmentRow({
@@ -323,6 +419,7 @@ const TranscriptSegmentRow = memo(function TranscriptSegmentRow({
         <Button
           aria-label={`Seek to ${speakerLabel} at ${formatRecordingDuration(segment.startSeconds)}`}
           className="h-auto px-1.5 py-0.5 font-mono text-xs tabular-nums motion-reduce:transition-none"
+          data-transcript-seek-control="true"
           disabled={isSeekDisabled}
           onClick={() => onSeek(segment.startSeconds)}
           size="sm"
@@ -348,6 +445,7 @@ const TranscriptSegmentRow = memo(function TranscriptSegmentRow({
         <Button
           aria-label={`Seek to transcript segment: ${segment.text}`}
           className="h-auto justify-start whitespace-normal px-1 py-0 text-left font-normal leading-6 motion-reduce:transition-none"
+          data-transcript-seek-control="true"
           disabled={isSeekDisabled}
           onClick={() => onSeek(segment.startSeconds)}
           size="sm"
@@ -397,6 +495,7 @@ function SynchronizedWord({
         position === "future" && "text-muted-foreground/70",
       )}
       data-playback-state={position}
+      data-transcript-seek-control="true"
       disabled={isSeekDisabled}
       onClick={() => onSeek(word.startSeconds)}
       size="sm"
