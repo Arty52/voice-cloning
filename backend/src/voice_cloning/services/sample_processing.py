@@ -61,6 +61,7 @@ PREPARE_MAX_CANDIDATES_PER_SPEAKER = 3
 PREPARED_WAV_BYTES_PER_SECOND = PREPARED_SAMPLE_RATE_HZ * 2
 PREPARED_WAV_HEADER_RESERVE_BYTES = 4096
 BYTES_PER_MEBIBYTE = 1024 * 1024
+DELETE_STAGING_DIRNAME = ".deleting"
 PREPARE_FINAL_TRIM_FILTER = (
     "silenceremove="
     "start_periods=1:start_duration=0.12:start_threshold=-45dB:start_silence=0.08:"
@@ -344,6 +345,7 @@ class SampleProcessingService:
         self._source_paths: dict[str, Path] = {}
         self._speaker_processing_steps: dict[str, dict[str, tuple[VoiceProcessingStep, ...]]] = {}
         self._prepared_candidate_processing_steps: dict[str, dict[str, tuple[VoiceProcessingStep, ...]]] = {}
+        self._reconcile_delete_tombstones()
         self._mark_interrupted_jobs()
 
     def operations(self) -> tuple[SampleProcessingOperation, ...]:
@@ -618,21 +620,53 @@ class SampleProcessingService:
                 409,
             )
 
-        persisted_job_deleted = self._delete_persisted_job(job_id)
+        job_dir = self._job_dir(job_id)
+        tombstone_dir = self._delete_tombstone_dir(job_id)
+        staged_artifacts = False
+        if job_dir.exists():
+            try:
+                self._delete_staging_dir().mkdir(parents=True, exist_ok=True)
+                if tombstone_dir.exists():
+                    raise FileExistsError(f"Deletion tombstone already exists for {job_id}.")
+                job_dir.rename(tombstone_dir)
+            except OSError as exc:
+                raise SampleProcessingServiceError(
+                    "Sample processing artifacts could not be staged for deletion.",
+                    500,
+                ) from exc
+            staged_artifacts = True
+
         try:
-            job_dir = self._job_dir(job_id)
-            if job_dir.exists():
-                shutil.rmtree(job_dir)
-        except OSError as exc:
-            if persisted_job_deleted:
-                self._persist_job(job)
-            raise SampleProcessingServiceError("Sample processing artifacts could not be deleted.", 500) from exc
+            self._delete_persisted_job(job_id)
+        except Exception as exc:
+            if staged_artifacts:
+                try:
+                    tombstone_dir.rename(job_dir)
+                except OSError as restore_exc:
+                    raise SampleProcessingServiceError(
+                        "Sample processing deletion could not be rolled back.",
+                        500,
+                    ) from restore_exc
+            raise SampleProcessingServiceError("Sample processing job could not be deleted.", 500) from exc
 
         self._jobs.pop(job_id, None)
         self._tasks.pop(job_id, None)
         self._source_paths.pop(job_id, None)
         self._speaker_processing_steps.pop(job_id, None)
         self._prepared_candidate_processing_steps.pop(job_id, None)
+
+        if staged_artifacts:
+            try:
+                shutil.rmtree(tombstone_dir)
+                self._remove_empty_delete_staging_dir()
+            except OSError as exc:
+                # The persisted job is already gone, so restoring partially deleted
+                # artifacts would recreate a broken job. Startup reconciliation will
+                # retry this private tombstone instead.
+                raise SampleProcessingServiceError(
+                    "Sample processing artifacts could not be deleted completely.",
+                    500,
+                ) from exc
         return job_id
 
     def result_path(self, job_id: str) -> Path:
@@ -1512,6 +1546,42 @@ class SampleProcessingService:
             return False
         with unit_of_work(self.job_session_factory) as session:
             return SqlAlchemySampleProcessingJobRepository(session).delete_job(job_id)
+
+    def _reconcile_delete_tombstones(self) -> None:
+        staging_dir = self._delete_staging_dir()
+        if not staging_dir.is_dir():
+            return
+        for tombstone_dir in staging_dir.iterdir():
+            if tombstone_dir.is_symlink() or not tombstone_dir.is_dir():
+                continue
+            job_id = tombstone_dir.name
+            persisted_job = self._get_persisted_job(job_id)
+            if persisted_job is not None:
+                job_dir = self._job_dir(job_id)
+                if not job_dir.exists():
+                    tombstone_dir.rename(job_dir)
+                continue
+            try:
+                shutil.rmtree(tombstone_dir)
+            except OSError:
+                # A future service start retries cleanup without restoring a job
+                # whose persisted snapshot is already gone.
+                continue
+        self._remove_empty_delete_staging_dir()
+
+    def _delete_staging_dir(self) -> Path:
+        return self.processing_dir / DELETE_STAGING_DIRNAME
+
+    def _delete_tombstone_dir(self, job_id: str) -> Path:
+        path = (self._delete_staging_dir() / job_id).resolve()
+        _require_relative_path(path, self._delete_staging_dir())
+        return path
+
+    def _remove_empty_delete_staging_dir(self) -> None:
+        try:
+            self._delete_staging_dir().rmdir()
+        except OSError:
+            pass
 
     def _mark_interrupted_jobs(self) -> None:
         if self.job_session_factory is None:

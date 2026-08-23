@@ -5,6 +5,7 @@ import importlib
 import json
 import os
 from pathlib import Path
+import shutil
 from uuid import uuid4
 
 import pytest
@@ -323,49 +324,50 @@ def test_job_repositories_persist_snapshots_and_mark_interrupted() -> None:
         assert SqlAlchemySpeechGenerationJobRepository(session).get_job("speech-job") is not None
 
 
+def _sample_processing_job(job_id: str, status: str = "success") -> SampleProcessingJob:
+    return SampleProcessingJob(
+        id=job_id,
+        operation_id="trimSilence",
+        status=status,  # type: ignore[arg-type]
+        source_name="Narrator",
+        source_filename="source.wav",
+        source_content_type="audio/wav",
+        source_sha256=f"{job_id}-source-hash",
+        source_size_bytes=128,
+        source_preference="active",
+        created_at="2026-08-23T12:00:00+00:00",
+        updated_at="2026-08-23T12:00:01+00:00",
+        result=(
+            SampleProcessingResult(
+                path=f"{job_id}/result.wav",
+                filename="result.wav",
+                content_type="audio/wav",
+                sha256=f"{job_id}-result-hash",
+            )
+            if status == "success"
+            else None
+        ),
+        steps=(
+            SampleProcessingJobStep(
+                id=job_id,
+                operation_id="trimSilence",
+                operation_label="Trim Silence",
+                status="success" if status == "success" else "running",
+                engine="ffmpeg",
+            ),
+        ),
+        active_step_id=None if status == "success" else job_id,
+    )
+
+
 def test_sample_processing_service_deletes_only_one_terminal_job_and_its_artifacts(tmp_path: Path) -> None:
     settings = replace(make_settings(tmp_path), database_url=f"sqlite+pysqlite:///{tmp_path / 'jobs.sqlite'}")
     engine = create_database_engine(settings.database_url)
     Base.metadata.create_all(engine)
     session_factory = create_session_factory(engine)
 
-    def job(job_id: str, status: str) -> SampleProcessingJob:
-        return SampleProcessingJob(
-            id=job_id,
-            operation_id="trimSilence",
-            status=status,  # type: ignore[arg-type]
-            source_name="Narrator",
-            source_filename="source.wav",
-            source_content_type="audio/wav",
-            source_sha256=f"{job_id}-source-hash",
-            source_size_bytes=128,
-            source_preference="active",
-            created_at="2026-08-23T12:00:00+00:00",
-            updated_at="2026-08-23T12:00:01+00:00",
-            result=(
-                SampleProcessingResult(
-                    path=f"{job_id}/result.wav",
-                    filename="result.wav",
-                    content_type="audio/wav",
-                    sha256=f"{job_id}-result-hash",
-                )
-                if status == "success"
-                else None
-            ),
-            steps=(
-                SampleProcessingJobStep(
-                    id=job_id,
-                    operation_id="trimSilence",
-                    operation_label="Trim Silence",
-                    status="success" if status == "success" else "running",
-                    engine="ffmpeg",
-                ),
-            ),
-            active_step_id=None if status == "success" else job_id,
-        )
-
-    deleted_job = job("delete-me", "success")
-    retained_job = job("keep-me", "success")
+    deleted_job = _sample_processing_job("delete-me")
+    retained_job = _sample_processing_job("keep-me")
     with unit_of_work(session_factory) as session:
         repository = SqlAlchemySampleProcessingJobRepository(session)
         repository.save_job(deleted_job)
@@ -403,7 +405,7 @@ def test_sample_processing_service_deletes_only_one_terminal_job_and_its_artifac
         assert repository.get_job(deleted_job.id) is None
         assert repository.get_job(retained_job.id) == retained_job
 
-    active_job = job("active-job", "running")
+    active_job = _sample_processing_job("active-job", "running")
     active_dir = settings.sample_processing_dir / active_job.id
     active_dir.mkdir()
     (active_dir / "source.wav").write_bytes(b"active")
@@ -414,6 +416,202 @@ def test_sample_processing_service_deletes_only_one_terminal_job_and_its_artifac
     assert active_error.value.status_code == 409
     assert active_dir.is_dir()
     assert service.get_job(active_job.id) == active_job
+
+
+def test_sample_processing_service_stage_failure_preserves_job_and_artifacts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = replace(make_settings(tmp_path), database_url=f"sqlite+pysqlite:///{tmp_path / 'jobs.sqlite'}")
+    engine = create_database_engine(settings.database_url)
+    Base.metadata.create_all(engine)
+    session_factory = create_session_factory(engine)
+    job = _sample_processing_job("stage-failure")
+    with unit_of_work(session_factory) as session:
+        SqlAlchemySampleProcessingJobRepository(session).save_job(job)
+    job_dir = settings.sample_processing_dir / job.id
+    job_dir.mkdir(parents=True)
+    (job_dir / "source.wav").write_bytes(b"source")
+    service = SampleProcessingService(settings, VoiceLibrary(settings), job_session_factory=session_factory)
+    original_rename = Path.rename
+
+    def fail_exact_stage(path: Path, target: Path) -> Path:
+        if path == job_dir:
+            raise OSError("stage failed")
+        return original_rename(path, target)
+
+    monkeypatch.setattr(Path, "rename", fail_exact_stage)
+
+    with pytest.raises(SampleProcessingServiceError) as error:
+        service.delete_job(job.id)
+
+    assert error.value.status_code == 500
+    assert job_dir.joinpath("source.wav").read_bytes() == b"source"
+    assert service.get_job(job.id) == job
+    with unit_of_work(session_factory) as session:
+        assert SqlAlchemySampleProcessingJobRepository(session).get_job(job.id) == job
+
+
+def test_sample_processing_service_staging_directory_failure_is_translated(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = replace(make_settings(tmp_path), database_url=f"sqlite+pysqlite:///{tmp_path / 'jobs.sqlite'}")
+    engine = create_database_engine(settings.database_url)
+    Base.metadata.create_all(engine)
+    session_factory = create_session_factory(engine)
+    job = _sample_processing_job("staging-directory-failure")
+    with unit_of_work(session_factory) as session:
+        SqlAlchemySampleProcessingJobRepository(session).save_job(job)
+    job_dir = settings.sample_processing_dir / job.id
+    job_dir.mkdir(parents=True)
+    (job_dir / "source.wav").write_bytes(b"source")
+    service = SampleProcessingService(settings, VoiceLibrary(settings), job_session_factory=session_factory)
+    staging_dir = settings.sample_processing_dir / ".deleting"
+    original_mkdir = Path.mkdir
+
+    def fail_exact_mkdir(
+        path: Path,
+        mode: int = 0o777,
+        parents: bool = False,
+        exist_ok: bool = False,
+    ) -> None:
+        if path == staging_dir:
+            raise OSError("staging directory unavailable")
+        original_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
+
+    monkeypatch.setattr(Path, "mkdir", fail_exact_mkdir)
+
+    with pytest.raises(SampleProcessingServiceError) as error:
+        service.delete_job(job.id)
+
+    assert error.value.status_code == 500
+    assert job_dir.joinpath("source.wav").read_bytes() == b"source"
+    with unit_of_work(session_factory) as session:
+        assert SqlAlchemySampleProcessingJobRepository(session).get_job(job.id) == job
+
+
+def test_sample_processing_service_refuses_to_overwrite_existing_tombstone(tmp_path: Path) -> None:
+    settings = replace(make_settings(tmp_path), database_url=f"sqlite+pysqlite:///{tmp_path / 'jobs.sqlite'}")
+    engine = create_database_engine(settings.database_url)
+    Base.metadata.create_all(engine)
+    session_factory = create_session_factory(engine)
+    job = _sample_processing_job("existing-tombstone")
+    with unit_of_work(session_factory) as session:
+        SqlAlchemySampleProcessingJobRepository(session).save_job(job)
+    job_dir = settings.sample_processing_dir / job.id
+    job_dir.mkdir(parents=True)
+    (job_dir / "source.wav").write_bytes(b"current")
+    service = SampleProcessingService(settings, VoiceLibrary(settings), job_session_factory=session_factory)
+    tombstone_dir = settings.sample_processing_dir / ".deleting" / job.id
+    tombstone_dir.mkdir(parents=True)
+    (tombstone_dir / "source.wav").write_bytes(b"staged")
+
+    with pytest.raises(SampleProcessingServiceError) as error:
+        service.delete_job(job.id)
+
+    assert error.value.status_code == 500
+    assert job_dir.joinpath("source.wav").read_bytes() == b"current"
+    assert tombstone_dir.joinpath("source.wav").read_bytes() == b"staged"
+    with unit_of_work(session_factory) as session:
+        assert SqlAlchemySampleProcessingJobRepository(session).get_job(job.id) == job
+
+
+def test_sample_processing_service_persistence_failure_restores_staged_artifacts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = replace(make_settings(tmp_path), database_url=f"sqlite+pysqlite:///{tmp_path / 'jobs.sqlite'}")
+    engine = create_database_engine(settings.database_url)
+    Base.metadata.create_all(engine)
+    session_factory = create_session_factory(engine)
+    job = _sample_processing_job("persistence-failure")
+    with unit_of_work(session_factory) as session:
+        SqlAlchemySampleProcessingJobRepository(session).save_job(job)
+    job_dir = settings.sample_processing_dir / job.id
+    job_dir.mkdir(parents=True)
+    (job_dir / "source.wav").write_bytes(b"source")
+    service = SampleProcessingService(settings, VoiceLibrary(settings), job_session_factory=session_factory)
+
+    def fail_persisted_delete(job_id: str) -> bool:
+        assert job_id == job.id
+        raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr(service, "_delete_persisted_job", fail_persisted_delete)
+
+    with pytest.raises(SampleProcessingServiceError) as error:
+        service.delete_job(job.id)
+
+    assert error.value.status_code == 500
+    assert job_dir.joinpath("source.wav").read_bytes() == b"source"
+    assert not (settings.sample_processing_dir / ".deleting" / job.id).exists()
+    with unit_of_work(session_factory) as session:
+        assert SqlAlchemySampleProcessingJobRepository(session).get_job(job.id) == job
+
+
+def test_sample_processing_service_cleanup_failure_leaves_restart_recoverable_tombstone(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = replace(make_settings(tmp_path), database_url=f"sqlite+pysqlite:///{tmp_path / 'jobs.sqlite'}")
+    engine = create_database_engine(settings.database_url)
+    Base.metadata.create_all(engine)
+    session_factory = create_session_factory(engine)
+    job = _sample_processing_job("cleanup-failure")
+    with unit_of_work(session_factory) as session:
+        SqlAlchemySampleProcessingJobRepository(session).save_job(job)
+    job_dir = settings.sample_processing_dir / job.id
+    job_dir.mkdir(parents=True)
+    (job_dir / "source.wav").write_bytes(b"source")
+    service = SampleProcessingService(settings, VoiceLibrary(settings), job_session_factory=session_factory)
+    tombstone_dir = settings.sample_processing_dir / ".deleting" / job.id
+    original_rmtree = shutil.rmtree
+
+    def fail_exact_cleanup(path: str | Path, *args: object, **kwargs: object) -> None:
+        if Path(path) == tombstone_dir:
+            raise OSError("cleanup failed")
+        original_rmtree(path, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(shutil, "rmtree", fail_exact_cleanup)
+
+    with pytest.raises(SampleProcessingServiceError) as error:
+        service.delete_job(job.id)
+
+    assert error.value.status_code == 500
+    assert not job_dir.exists()
+    assert tombstone_dir.joinpath("source.wav").read_bytes() == b"source"
+    with pytest.raises(SampleProcessingServiceError) as missing_error:
+        service.get_job(job.id)
+    assert missing_error.value.status_code == 404
+    with unit_of_work(session_factory) as session:
+        assert SqlAlchemySampleProcessingJobRepository(session).get_job(job.id) is None
+
+    monkeypatch.setattr(shutil, "rmtree", original_rmtree)
+    SampleProcessingService(settings, VoiceLibrary(settings), job_session_factory=session_factory)
+
+    assert not tombstone_dir.exists()
+
+
+def test_sample_processing_service_restart_restores_staged_artifacts_when_job_exists(tmp_path: Path) -> None:
+    settings = replace(make_settings(tmp_path), database_url=f"sqlite+pysqlite:///{tmp_path / 'jobs.sqlite'}")
+    engine = create_database_engine(settings.database_url)
+    Base.metadata.create_all(engine)
+    session_factory = create_session_factory(engine)
+    job = _sample_processing_job("crash-before-database-delete")
+    with unit_of_work(session_factory) as session:
+        SqlAlchemySampleProcessingJobRepository(session).save_job(job)
+    job_dir = settings.sample_processing_dir / job.id
+    job_dir.mkdir(parents=True)
+    (job_dir / "source.wav").write_bytes(b"source")
+    tombstone_dir = settings.sample_processing_dir / ".deleting" / job.id
+    tombstone_dir.parent.mkdir(parents=True)
+    job_dir.rename(tombstone_dir)
+
+    service = SampleProcessingService(settings, VoiceLibrary(settings), job_session_factory=session_factory)
+
+    assert service.get_job(job.id) == job
+    assert job_dir.joinpath("source.wav").read_bytes() == b"source"
+    assert not tombstone_dir.exists()
 
 
 def test_sample_processing_job_repository_roundtrips_transcript_word_alignment() -> None:

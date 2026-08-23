@@ -615,6 +615,8 @@ For a stacked workflow, send `workflowSteps` as JSON:
 
 `DELETE /api/sample-processing/jobs/{jobId}` removes one terminal job snapshot and its job-local runtime artifacts. It returns `{ "deleted": true, "jobId": "..." }`. Pending or running jobs return `409` and must be canceled before deletion. A missing or previously deleted job returns `404`. Deletion never clears other processing jobs, staged media sources, saved voices, generated audio, or browser-local Transcript timing diagnostics.
 
+Before committing the persisted snapshot deletion, the service atomically stages that exact job directory under a private same-filesystem deletion directory. A database failure restores the staged directory and leaves the job readable. Once the snapshot deletion commits, the service never restores potentially partial artifacts; an interrupted or failed cleanup leaves a private tombstone that is retried during service startup. Startup restores a tombstone only when its persisted job still exists and completes cleanup only when the snapshot is absent, preventing both orphaned sensitive artifacts and partially restored jobs.
+
 `GET /api/sample-processing/jobs/{jobId}/result` streams the processed WAV result. The result is available only after the job reaches `success`.
 
 `prepareVoice` streams large uploads to disk, optionally runs Isolate Voice, optionally runs Speaker Separation, detects nonsilent speech on the cleaned/intermediate source, ranks provider-sized windows up to 120 seconds, runs final Trim Silence-style cleanup, and normalizes each candidate to mono 16 kHz PCM WAV. A successful job returns ranked candidates instead of one result file:
