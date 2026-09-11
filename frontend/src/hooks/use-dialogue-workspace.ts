@@ -51,7 +51,7 @@ export function useDialogueWorkspace(options: Options) {
   }, [options.ready, storage.initialDraft])
 
   return {
-    isRestoring: isRestoring || !hydrated || !options.ready,
+    isRestoring: isRestoring || !hydrated,
     error: storage.error,
     conflict: storage.conflict !== null,
     keepCurrent: storage.keepCurrent,

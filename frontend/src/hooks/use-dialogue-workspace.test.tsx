@@ -30,9 +30,9 @@ describe("dialogue workspace recovery", () => {
     expect(restoreRecovery).not.toHaveBeenCalled()
     expect(resetGeneration).toHaveBeenCalledTimes(1)
   })
-  it("leaves a new workspace alone when there is no saved draft", () => {
+  it("does not block a new workspace while metadata loads without a saved draft", () => {
     const applyDraft = vi.fn()
-    const { result } = renderHook(() => useDialogueWorkspace({ draft: null, ready: true, applyDraft, speech: {} as ReturnType<typeof useMultiVoiceSpeechGeneration>, providers: [], archivedItems: [], onResult: vi.fn() }))
+    const { result } = renderHook(() => useDialogueWorkspace({ draft: null, ready: false, applyDraft, speech: {} as ReturnType<typeof useMultiVoiceSpeechGeneration>, providers: [], archivedItems: [], onResult: vi.fn() }))
     expect(result.current.isRestoring).toBe(false)
     expect(applyDraft).not.toHaveBeenCalled()
   })
