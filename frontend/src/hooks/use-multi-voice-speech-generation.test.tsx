@@ -9,7 +9,7 @@ import type {
   VoiceProvider,
 } from "@/types"
 
-import { useMultiVoiceSpeechGeneration } from "./use-multi-voice-speech-generation"
+import { refreshScriptSnapshotFromJob, useMultiVoiceSpeechGeneration } from "./use-multi-voice-speech-generation"
 
 type GenerateMultiVoiceSpeechInput = Parameters<
   ReturnType<typeof useMultiVoiceSpeechGeneration>["generateSpeech"]
@@ -375,6 +375,49 @@ describe("useMultiVoiceSpeechGeneration", () => {
     vi.unstubAllGlobals()
   })
 
+  it("snapshots generated text and spacing instead of unrelated draft changes", () => {
+    const job = { ...dialogueSuccessJob, segmentGapMs: 0, segments: dialogueSuccessJob.segments.map((segment, index) => index === 0 ? { ...segment, text: "Updated audio." } : segment) }
+    const snapshot = refreshScriptSnapshotFromJob(dialogueScriptSnapshot, job)!
+    expect(snapshot.text).toBe("Updated audio.\nHi.")
+    expect(snapshot.dialogueBlocks.map(block => block.text)).toEqual(["Updated audio.", "Hi."])
+    expect(snapshot.segmentGapMs).toBe(0)
+  })
+
+  it("revises selected rows, rejects overlapping actions, and retains a successful baseline on failure", async () => {
+    let failRevision = false
+    let release: (() => void) | null = null
+    const revised = { ...dialogueRegeneratedJob, id: "revision-job" }
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input)
+      if (path === "/api/speech/jobs") return okJson({ job: dialogueSuccessJob }, 202)
+      if (path.endsWith("/revisions")) {
+        if (failRevision) throw new Error("Provider unavailable")
+        await new Promise<void>(resolve => { release = resolve })
+        return okJson({ job: revised }, 202)
+      }
+      return okAudio()
+    }))
+    const persistGeneratedAudio = vi.fn(async () => generatedResult)
+    const { result } = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await result.current.generateSpeech(generationInput({ dialogueId: "script", scriptSnapshot: dialogueScriptSnapshot })) })
+    const input = { providerKey: "secret", segments: [{ segmentId: "dialogue-block-1", text: "Changed", voiceId: "villain", voiceSettings: { stability: 0.91 } }], scriptSnapshot: dialogueScriptSnapshot, storageLimitBytes: 100 }
+    let pending: Promise<GeneratedResult | null>
+    await act(async () => {
+      pending = result.current.reviseSpeech(input)
+      expect(await result.current.reviseSpeech(input)).toBeNull()
+    })
+    expect(result.current.segmentResultUrls["dialogue-block-2"]).toContain("dialogue-job")
+    await act(async () => { release!(); await pending! })
+    expect(result.current.successfulRun?.job.id).toBe("revision-job")
+    const request = vi.mocked(fetch).mock.calls.find(([path]) => String(path).endsWith("/revisions"))!
+    expect(JSON.parse(request[1]!.body as string)).toEqual({ segments: input.segments })
+    failRevision = true
+    await act(async () => { await result.current.reviseSpeech(input) })
+    expect(result.current.error).toBe("Provider unavailable")
+    expect(result.current.successfulRun?.job.id).toBe("revision-job")
+    expect(persistGeneratedAudio).toHaveBeenCalledTimes(2)
+  })
+
   it("creates, polls, and persists a successful multi-voice speech job", async () => {
     vi.stubGlobal(
       "fetch",
@@ -540,9 +583,9 @@ describe("useMultiVoiceSpeechGeneration", () => {
       vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
         const path = String(input)
         if (path === "/api/speech/jobs" && init?.method === "POST") {
-          return okJson({ job: successJob }, 202)
+          return okJson({ job: dialogueSuccessJob }, 202)
         }
-        if (path === "/api/speech/jobs/job-1/result" && !init) {
+        if (path === "/api/speech/jobs/dialogue-job/result" && !init) {
           return okAudio("combined")
         }
         return okJson({})
@@ -557,7 +600,10 @@ describe("useMultiVoiceSpeechGeneration", () => {
 
     expect(persistGeneratedAudio).toHaveBeenCalledWith(
       expect.objectContaining({
-        scriptSnapshot: dialogueScriptSnapshot,
+        scriptSnapshot: expect.objectContaining({
+          text: "Hello.\nHi.", segmentGapMs: 250,
+          dialogueBlocks: [expect.objectContaining({ text: "Hello.", voiceId: "narrator" }), expect.objectContaining({ text: "Hi.", voiceId: "villain" })],
+        }),
       }),
       100
     )

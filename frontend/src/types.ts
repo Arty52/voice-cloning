@@ -366,6 +366,8 @@ export type SpeechJobSegment = {
 }
 
 export type SpeechJob = {
+  providerId?: string | null
+  modelId?: string | null
   id: string
   status: SpeechJobStatus
   text: string

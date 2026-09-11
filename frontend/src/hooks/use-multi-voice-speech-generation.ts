@@ -22,6 +22,7 @@ import type {
 export type MultiVoiceGenerationStatus = "idle" | "starting" | "processing" | "success" | "error" | "canceled"
 
 type GenerateMultiVoiceSpeechInput = {
+  dialogueId?: string
   backendDefaultModelId: string | null
   canUseProvider: boolean
   defaultVoice: VoiceAsset | null
@@ -55,7 +56,8 @@ type RegenerateVoiceInput = {
   voiceSettings: VoiceTuningValues
 }
 
-type PersistContext = {
+export type PersistContext = {
+  dialogueId?: string
   backendDefaultModelId: string | null
   defaultVoice: VoiceAsset
   modelId: string | null
@@ -67,6 +69,8 @@ type PersistContext = {
   tuning: VoiceTuningValues
 }
 
+export type SuccessfulSpeechRun = { job: SpeechJob; context: PersistContext }
+
 type UseMultiVoiceSpeechGenerationOptions = {
   persistGeneratedAudio: (input: SaveGeneratedAudioInput, limitBytes: number) => Promise<GeneratedResult>
 }
@@ -77,10 +81,12 @@ const MULTI_VOICE_LABEL = "Multi-Voice"
 
 export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMultiVoiceSpeechGenerationOptions) {
   const [job, setJob] = useState<SpeechJob | null>(null)
+  const [successfulRun, setSuccessfulRun] = useState<SuccessfulSpeechRun | null>(null)
   const [status, setStatus] = useState<MultiVoiceGenerationStatus>("idle")
   const [error, setError] = useState<string | null>(null)
   const [generationElapsedMs, setGenerationElapsedMs] = useState<number | null>(null)
   const runIdRef = useRef(0)
+  const busyRef = useRef(false)
   const mountedRef = useRef(true)
   const activeJobIdRef = useRef<string | null>(null)
   const generationStartedAtRef = useRef<number | null>(null)
@@ -90,13 +96,14 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
   const canCancel = isGenerating && job !== null
   const resultUrl = job?.status === "success" ? api.speechJobResultUrl(job.id) : null
   const segmentResultUrls = useMemo(() => {
-    if (job?.status !== "success") {
+    const playableJob = job?.status === "success" ? job : successfulRun?.job
+    if (!playableJob) {
       return {}
     }
     return Object.fromEntries(
-      job.segments.map((segment) => [segment.id, api.speechJobSegmentResultUrl(job.id, segment.id)])
+      playableJob.segments.map((segment) => [segment.id, api.speechJobSegmentResultUrl(playableJob.id, segment.id)])
     ) as Record<string, string>
-  }, [job])
+  }, [job, successfulRun])
 
   useEffect(() => {
     mountedRef.current = true
@@ -121,6 +128,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
   }, [isGenerating])
 
   async function generateSpeech(input: GenerateMultiVoiceSpeechInput) {
+    if (busyRef.current) return null
     if (input.text.trim().length === 0) {
       setStatus("error")
       setError("Enter text first.")
@@ -145,6 +153,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
     const runId = startRun()
     const submittedModelId = api.hasModel(input.models, input.selectedModelId) ? input.selectedModelId : null
     const persistContext: PersistContext = {
+      dialogueId: input.dialogueId,
       backendDefaultModelId: input.backendDefaultModelId,
       defaultVoice: input.defaultVoice,
       modelId: submittedModelId,
@@ -191,6 +200,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
     voiceId,
     voiceSettings,
   }: RegenerateSegmentInput) {
+    if (busyRef.current) return null
     const activeJob = job
     const persistContext = lastPersistContextRef.current
     if (!activeJob || activeJob.status !== "success") {
@@ -233,6 +243,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
     voiceId,
     voiceSettings,
   }: RegenerateVoiceInput) {
+    if (busyRef.current) return null
     const activeJob = job
     const persistContext = lastPersistContextRef.current
     if (!activeJob || activeJob.status !== "success") {
@@ -268,6 +279,29 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
     }
   }
 
+  async function reviseSpeech(input: {
+    providerKey: string | null
+    segments: api.SpeechSegmentReplacement[]
+    scriptSnapshot: GeneratedAudioScriptSnapshot
+    segmentGapMs?: number | null
+    storageLimitBytes: number
+  }) {
+    if (busyRef.current || !successfulRun) return null
+    const runId = startRun({ clearJob: false })
+    const context = { ...successfulRun.context, scriptSnapshot: input.scriptSnapshot, storageLimitBytes: input.storageLimitBytes }
+    lastPersistContextRef.current = context
+    try {
+      const payload = await api.createSpeechRevision(successfulRun.job.id, {
+        providerKey: input.providerKey, segments: input.segments, segmentGapMs: input.segmentGapMs,
+      })
+      if (!isActiveRun(runId)) return null
+      updateJob(payload.job)
+      return await handleJobUpdate(payload.job, runId, context)
+    } catch (caught) {
+      return failActiveRun(runId, caught, "Unable to revise dialogue.")
+    }
+  }
+
   async function handleJobUpdate(jobUpdate: SpeechJob, runId: number, persistContext: PersistContext) {
     if (jobUpdate.status === "success") {
       const elapsedMs = finishGenerationTimer()
@@ -276,12 +310,14 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
       return persistSuccessfulJob(jobUpdate, persistContext, elapsedMs)
     }
     if (jobUpdate.status === "canceled") {
+      busyRef.current = false
       finishGenerationTimer()
       setStatus("canceled")
       setError(CANCELED_GENERATION_MESSAGE)
       return null
     }
     if (jobUpdate.status === "error" || jobUpdate.status === "interrupted") {
+      busyRef.current = false
       finishGenerationTimer()
       setStatus("error")
       setError(jobUpdate.error || "Multi-voice generation failed.")
@@ -306,12 +342,14 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
           return persistSuccessfulJob(payload.job, persistContext, elapsedMs)
         }
         if (payload.job.status === "canceled") {
+          busyRef.current = false
           finishGenerationTimer()
           setStatus("canceled")
           setError(CANCELED_GENERATION_MESSAGE)
           return null
         }
         if (payload.job.status === "error" || payload.job.status === "interrupted") {
+          busyRef.current = false
           finishGenerationTimer()
           setStatus("error")
           setError(payload.job.error || "Multi-voice generation failed.")
@@ -347,11 +385,13 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
         return persistContext ? persistSuccessfulJob(payload.job, persistContext, elapsedMs) : null
       }
       if (payload.job.status === "error") {
+        busyRef.current = false
         setStatus("error")
         setError(payload.job.error || "Multi-voice generation failed.")
         return
       }
       setStatus("canceled")
+      busyRef.current = false
       setError(CANCELED_GENERATION_MESSAGE)
     } catch (caught) {
       if (!isActiveRun(activeRunId)) {
@@ -362,6 +402,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
   }
 
   function resetGeneration() {
+    busyRef.current = false
     runIdRef.current += 1
     updateJob(null)
     clearGenerationTimer()
@@ -398,15 +439,20 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
         voiceId: persistContext.defaultVoice.id,
         voiceName: MULTI_VOICE_LABEL,
       }
-      return persistGeneratedAudio(input, persistContext.storageLimitBytes)
+      const result = await persistGeneratedAudio(input, persistContext.storageLimitBytes)
+      setSuccessfulRun({ job: jobUpdate, context: { ...persistContext, scriptSnapshot: input.scriptSnapshot ?? null } })
+      return result
     } catch (caught) {
       setStatus("error")
       setError(caught instanceof Error ? caught.message : "Unable to save multi-voice generated audio.")
       return null
+    } finally {
+      busyRef.current = false
     }
   }
 
   function startRun({ clearJob = true }: { clearJob?: boolean } = {}) {
+    busyRef.current = true
     const runId = runIdRef.current + 1
     runIdRef.current = runId
     setStatus("starting")
@@ -423,6 +469,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
       return null
     }
     finishGenerationTimer()
+    busyRef.current = false
     setStatus("error")
     setError(caught instanceof Error ? caught.message : fallback)
     return null
@@ -463,6 +510,8 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
   }
 
   return {
+    successfulRun,
+    reviseSpeech,
     canCancel,
     cancelGeneration,
     error,
@@ -483,7 +532,7 @@ function sumCharacters(job: SpeechJob) {
   return job.segments.reduce((total, segment) => total + (segment.characterCount ?? segment.text.length), 0)
 }
 
-function refreshScriptSnapshotFromJob(
+export function refreshScriptSnapshotFromJob(
   scriptSnapshot: GeneratedAudioScriptSnapshot | null,
   job: SpeechJob
 ): GeneratedAudioScriptSnapshot | null {
@@ -510,11 +559,14 @@ function refreshScriptSnapshotFromJob(
 
   return {
     ...scriptSnapshot,
+    text: job.segments.map(segment => segment.text).join(""),
+    segmentGapMs: job.segmentGapMs,
     dialogueBlocks: scriptSnapshot.dialogueBlocks.map((block) => {
       const segment = segmentsById.get(block.id)
       return segment
         ? {
-            ...block,
+              ...block,
+              text: segment.text.trim(),
             voiceId: segment.voiceId,
             voiceName: segment.voiceName,
             voiceSettings: segment.voiceSettings ? { ...segment.voiceSettings } : null,
