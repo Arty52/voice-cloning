@@ -532,7 +532,7 @@ function sumCharacters(job: SpeechJob) {
   return job.segments.reduce((total, segment) => total + (segment.characterCount ?? segment.text.length), 0)
 }
 
-function refreshScriptSnapshotFromJob(
+export function refreshScriptSnapshotFromJob(
   scriptSnapshot: GeneratedAudioScriptSnapshot | null,
   job: SpeechJob
 ): GeneratedAudioScriptSnapshot | null {
@@ -559,11 +559,14 @@ function refreshScriptSnapshotFromJob(
 
   return {
     ...scriptSnapshot,
+    text: job.segments.map(segment => segment.text).join(""),
+    segmentGapMs: job.segmentGapMs,
     dialogueBlocks: scriptSnapshot.dialogueBlocks.map((block) => {
       const segment = segmentsById.get(block.id)
       return segment
         ? {
-            ...block,
+              ...block,
+              text: segment.text.trim(),
             voiceId: segment.voiceId,
             voiceName: segment.voiceName,
             voiceSettings: segment.voiceSettings ? { ...segment.voiceSettings } : null,

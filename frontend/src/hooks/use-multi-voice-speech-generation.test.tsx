@@ -9,7 +9,7 @@ import type {
   VoiceProvider,
 } from "@/types"
 
-import { useMultiVoiceSpeechGeneration } from "./use-multi-voice-speech-generation"
+import { refreshScriptSnapshotFromJob, useMultiVoiceSpeechGeneration } from "./use-multi-voice-speech-generation"
 
 type GenerateMultiVoiceSpeechInput = Parameters<
   ReturnType<typeof useMultiVoiceSpeechGeneration>["generateSpeech"]
@@ -375,6 +375,14 @@ describe("useMultiVoiceSpeechGeneration", () => {
     vi.unstubAllGlobals()
   })
 
+  it("snapshots generated text and spacing instead of unrelated draft changes", () => {
+    const job = { ...dialogueSuccessJob, segmentGapMs: 0, segments: dialogueSuccessJob.segments.map((segment, index) => index === 0 ? { ...segment, text: "Updated audio." } : segment) }
+    const snapshot = refreshScriptSnapshotFromJob(dialogueScriptSnapshot, job)!
+    expect(snapshot.text).toBe("Updated audio.\nHi.")
+    expect(snapshot.dialogueBlocks.map(block => block.text)).toEqual(["Updated audio.", "Hi."])
+    expect(snapshot.segmentGapMs).toBe(0)
+  })
+
   it("revises selected rows, rejects overlapping actions, and retains a successful baseline on failure", async () => {
     let failRevision = false
     let release: (() => void) | null = null
@@ -575,9 +583,9 @@ describe("useMultiVoiceSpeechGeneration", () => {
       vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
         const path = String(input)
         if (path === "/api/speech/jobs" && init?.method === "POST") {
-          return okJson({ job: successJob }, 202)
+          return okJson({ job: dialogueSuccessJob }, 202)
         }
-        if (path === "/api/speech/jobs/job-1/result" && !init) {
+        if (path === "/api/speech/jobs/dialogue-job/result" && !init) {
           return okAudio("combined")
         }
         return okJson({})
@@ -592,7 +600,10 @@ describe("useMultiVoiceSpeechGeneration", () => {
 
     expect(persistGeneratedAudio).toHaveBeenCalledWith(
       expect.objectContaining({
-        scriptSnapshot: dialogueScriptSnapshot,
+        scriptSnapshot: expect.objectContaining({
+          text: "Hello.\nHi.", segmentGapMs: 250,
+          dialogueBlocks: [expect.objectContaining({ text: "Hello.", voiceId: "narrator" }), expect.objectContaining({ text: "Hi.", voiceId: "villain" })],
+        }),
       }),
       100
     )
