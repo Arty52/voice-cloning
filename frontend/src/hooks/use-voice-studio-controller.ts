@@ -21,6 +21,7 @@ import { useVoiceSampleInput } from "@/hooks/use-voice-sample-input"
 import { useVoiceTuning } from "@/hooks/use-voice-tuning"
 import { useWorkflowNavigation } from "@/hooks/use-workflow-navigation"
 import { buildDialogueScriptSnapshot, buildRangeScriptSnapshot } from "@/lib/generated-audio-script-snapshot"
+import { dialogueRowState } from "@/lib/dialogue-row-state"
 import { dialogueRevisionState, revisionScriptSnapshot, type DialogueBaseline } from "@/lib/dialogue-revisions"
 import { isTemporaryGeneratedAudioId } from "@/lib/generated-audio-view-model"
 import { isAppSettingsUnavailableError, loadAppSettings, saveAppSettings } from "@/lib/app-settings-api"
@@ -73,6 +74,7 @@ const EMPTY_TUNING_METADATA: ProviderTuningMetadata = {
 export function useVoiceStudioController() {
   const [text, setText] = useState(DEFAULT_TEXT)
   const [sourceExpanded, setSourceExpanded] = useState(true)
+  const [sourceError, setSourceError] = useState<string | null>(null)
   const [isCostQuotaExpanded, setIsCostQuotaExpanded] = useState(false)
   const [isSampleProcessingExpanded, setIsSampleProcessingExpanded] = useState(false)
   const [latestGeneratedAudioId, setLatestGeneratedAudioId] = useState<string | null>(null)
@@ -334,7 +336,7 @@ export function useVoiceStudioController() {
     }
     textarea.style.height = "auto"
     textarea.style.height = `${textarea.scrollHeight}px`
-  }, [text])
+  }, [text, sourceExpanded, dialogue.mode])
 
   useEffect(() => {
     let isMounted = true
@@ -412,26 +414,57 @@ export function useVoiceStudioController() {
     }
   }
 
-  async function reviseDialogueRows(ids: string[]) {
+  function importDialogue() {
+    if (isSpeechGenerating || dialogueWorkspace.isRestoring) return
+    const importSource = () => {
+      if (!dialogue.importFromText(text)) {
+        setSourceError("Enter speakable dialogue before importing.")
+        return
+      }
+      setSourceError(null)
+      setSourceExpanded(false)
+      window.requestAnimationFrame(() => document.getElementById("dialogue-source-toggle")?.focus({ preventScroll: true }))
+    }
+    if (dialogue.blocks.length > 0) {
+      confirmation.requestConfirmation({
+        title: "Reimport Dialogue?",
+        body: "This replaces the current rows, row edits, and voice overrides with the source text. Matching speaker mappings are kept.",
+        confirmLabel: "Reimport Dialogue",
+        destructive: true,
+        onConfirm: importSource,
+      })
+    } else importSource()
+  }
+
+  async function reviseDialogueRows(ids: string[], voiceSettings?: VoiceTuningValues) {
     if (!canGenerate || dialogueWorkspace.isRestoring || !dialogueRevision.canRevise || !dialogueBaseline) return
     if (ids.length === 0 && !dialogueRevision.spacingChanged) return
     const selected = new Set(ids)
     setLatestGenerationMode("dialogue")
     const draft = buildDialogueScriptSnapshot({
-      dialogueBlocks: dialogue.blocks, speakerMappings: dialogue.speakerMappings,
+      dialogueBlocks: dialogue.blocks.map(block => voiceSettings && selected.has(block.id) ? { ...block, voiceSettings } : block), speakerMappings: dialogue.speakerMappings,
       sourceVoiceId: voiceLibrary.selectedVoice?.id, text: dialogue.segmentBuild.text,
       segmentGapMs: naturalHandoffsEnabled ? null : 0,
     })
     const generatedResult = await multiVoiceSpeech.reviseSpeech({
       providerKey: providerKeys.activeProviderKey,
       segments: dialogue.segmentBuild.segments.filter(s => selected.has(s.clientSegmentId!)).map(s => ({
-        segmentId: s.clientSegmentId!, text: s.text, voiceId: s.voiceId, voiceSettings: s.voiceSettings ?? tuning,
+        segmentId: s.clientSegmentId!, text: s.text, voiceId: s.voiceId, voiceSettings: voiceSettings ?? s.voiceSettings ?? tuning,
       })),
       segmentGapMs: dialogueRevision.spacingChanged ? (naturalHandoffsEnabled ? null : 0) : undefined,
       scriptSnapshot: revisionScriptSnapshot(dialogueBaseline.scriptSnapshot, draft, ids),
       storageLimitBytes: generatedAudio.storageLimitBytes,
     })
     if (generatedResult) setLatestGeneratedAudioId(generatedResult.id)
+  }
+
+  function regenerateDialogueVoiceRows(rowId: string, voiceSettings: VoiceTuningValues) {
+    if (!canGenerate || dialogueWorkspace.isRestoring || !dialogueRevision.canRevise) return
+    const voiceId = dialogue.segmentBuild.segments.find(segment => segment.clientSegmentId === rowId)?.voiceId
+    if (!voiceId) return
+    const ids = dialogue.segmentBuild.segments.filter(segment => segment.voiceId === voiceId).map(segment => segment.clientSegmentId!)
+    dialogue.applyBlockVoiceSettingsToMatchingVoice(rowId, voiceSettings)
+    void reviseDialogueRows(ids, voiceSettings)
   }
 
   async function generateSpeech(forceAll = false) {
@@ -775,7 +808,15 @@ export function useVoiceStudioController() {
   }
 
   return {
+    dialogueRowStates: Object.fromEntries(dialogue.blocks.map(block => [block.id, dialogueRowState(
+      block.id, dialogueBaseline, dialogueRevision,
+      multiVoiceSpeech.recovery?.active?.context.dialogueId === dialogue.identity ? multiVoiceSpeech.job : null,
+    )])),
+    regenerateDialogueVoiceRows,
+    importDialogue,
+    sourceError,
     dialogueWorkspace,
+    isDialogueConnecting: dialogueWorkspace.isRestoring && multiVoiceSpeech.status !== "processing",
     sourceExpanded,
     setSourceExpanded,
     dialogueRevision,
@@ -850,7 +891,7 @@ export function useVoiceStudioController() {
     assignVoiceToSelection,
     clearVoiceAssignments,
     clearUserTuningPresetSelection,
-    isSpeechGenerating,
+    isSpeechGenerating: isSpeechGenerating || dialogueWorkspace.isRestoring,
     multiVoiceSpeech,
     multiVoiceSegmentResultUrls: multiVoiceSpeech.segmentResultUrls,
     removeVoiceAssignment,

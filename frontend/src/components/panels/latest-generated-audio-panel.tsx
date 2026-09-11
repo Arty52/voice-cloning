@@ -46,6 +46,7 @@ import type {
 } from "@/types"
 
 type LatestGeneratedAudioPanelProps = {
+  showSegmentControls?: boolean
   activeProviderId?: string | null
   attentionRef?: RefObject<HTMLElement | null>
   error: string | null
@@ -71,6 +72,7 @@ type LatestGeneratedAudioPanelProps = {
 }
 
 export function LatestGeneratedAudioPanel({
+  showSegmentControls = true,
   activeProviderId = null,
   attentionRef,
   error,
@@ -149,7 +151,7 @@ export function LatestGeneratedAudioPanel({
             onViewScriptSnapshot={onViewScriptSnapshot}
             playback={playback}
           />
-          {item.multiVoiceMetadata ? (
+          {item.multiVoiceMetadata && showSegmentControls ? (
             <MultiVoiceSegmentResults
               disabled={isGenerating}
               activeProviderId={activeProviderId}
