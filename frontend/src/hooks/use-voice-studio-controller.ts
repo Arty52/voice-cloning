@@ -73,6 +73,7 @@ const EMPTY_TUNING_METADATA: ProviderTuningMetadata = {
 export function useVoiceStudioController() {
   const [text, setText] = useState(DEFAULT_TEXT)
   const [sourceExpanded, setSourceExpanded] = useState(true)
+  const [sourceError, setSourceError] = useState<string | null>(null)
   const [isCostQuotaExpanded, setIsCostQuotaExpanded] = useState(false)
   const [isSampleProcessingExpanded, setIsSampleProcessingExpanded] = useState(false)
   const [latestGeneratedAudioId, setLatestGeneratedAudioId] = useState<string | null>(null)
@@ -334,7 +335,7 @@ export function useVoiceStudioController() {
     }
     textarea.style.height = "auto"
     textarea.style.height = `${textarea.scrollHeight}px`
-  }, [text])
+  }, [text, sourceExpanded, dialogue.mode])
 
   useEffect(() => {
     let isMounted = true
@@ -410,6 +411,28 @@ export function useVoiceStudioController() {
         caught instanceof Error ? caught.message : "Unable to save natural handoffs preference."
       )
     }
+  }
+
+  function importDialogue() {
+    if (isSpeechGenerating || dialogueWorkspace.isRestoring) return
+    const importSource = () => {
+      if (!dialogue.importFromText(text)) {
+        setSourceError("Enter speakable dialogue before importing.")
+        return
+      }
+      setSourceError(null)
+      setSourceExpanded(false)
+      window.requestAnimationFrame(() => document.getElementById("dialogue-source-toggle")?.focus({ preventScroll: true }))
+    }
+    if (dialogue.blocks.length > 0) {
+      confirmation.requestConfirmation({
+        title: "Reimport Dialogue?",
+        body: "This replaces the current rows, row edits, and voice overrides with the source text. Matching speaker mappings are kept.",
+        confirmLabel: "Reimport Dialogue",
+        destructive: true,
+        onConfirm: importSource,
+      })
+    } else importSource()
   }
 
   async function reviseDialogueRows(ids: string[]) {
@@ -775,6 +798,8 @@ export function useVoiceStudioController() {
   }
 
   return {
+    importDialogue,
+    sourceError,
     dialogueWorkspace,
     sourceExpanded,
     setSourceExpanded,

@@ -157,6 +157,36 @@ describe("useVoiceStudioController script snapshot restore", () => {
     vi.restoreAllMocks()
   })
 
+  it("confirms reimport, preserves the original source and matching mappings, and discards overrides only after confirmation", () => {
+    const { result } = renderHook(() => useVoiceStudioController())
+    act(() => result.current.setText("Narrator: Original."))
+    act(() => result.current.importDialogue())
+    expect(result.current.sourceExpanded).toBe(false)
+    const identity = result.current.dialogue.identity
+    const rowId = result.current.dialogue.blocks[0].id
+    act(() => {
+      result.current.dialogue.updateSpeakerMapping("Narrator", narrator)
+      result.current.dialogue.updateBlockText(rowId, "Edited.")
+      result.current.dialogue.updateBlockVoice(rowId, villain)
+      result.current.dialogue.updateBlockVoiceSettings(rowId, { speed: 1.1 })
+      result.current.setSourceExpanded(true)
+    })
+    expect(result.current.text).toBe("Narrator: Original.")
+    act(() => result.current.importDialogue())
+    expect(result.current.confirmation.confirmation?.title).toBe("Reimport Dialogue?")
+    act(() => result.current.confirmation.clearConfirmation())
+    expect(result.current.dialogue.blocks[0].text).toBe("Edited.")
+    expect(result.current.sourceExpanded).toBe(true)
+    act(() => result.current.importDialogue())
+    act(() => { void result.current.confirmation.confirmation?.onConfirm() })
+    expect(result.current.dialogue.blocks[0].text).toBe("Original.")
+    expect(result.current.dialogue.blocks[0].voiceSettings).toBeFalsy()
+    expect(result.current.dialogue.blocks[0].voiceId).toBeFalsy()
+    expect(result.current.dialogue.speakerMappings[0].voiceId).toBe("narrator")
+    expect(result.current.dialogue.identity).not.toBe(identity)
+    expect(result.current.sourceExpanded).toBe(false)
+  })
+
   it("restores range text, assignments, source voice, and disabled Natural Handoffs", () => {
     const { result } = renderHook(() => useVoiceStudioController())
 

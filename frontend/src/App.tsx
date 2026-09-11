@@ -59,6 +59,10 @@ function AppContents() {
     confirmation,
     dialogue,
     dialogueSpeechSegmentCount,
+    importDialogue,
+    sourceExpanded,
+    setSourceExpanded,
+    sourceError,
     effectiveVoiceSettingsByVoiceId,
     estimatedCredits,
     generatedAudio,
@@ -275,6 +279,10 @@ function AppContents() {
 
         <WorkflowSectionPanel activeSectionId={activeSectionId} id="generate">
           <SpeechInputPanel
+            sourceExpanded={sourceExpanded}
+            onSourceExpandedChange={setSourceExpanded}
+            onImportDialogue={importDialogue}
+            sourceError={sourceError}
             assignmentError={voiceAssignmentError}
             assignmentSpeechSegmentCount={voiceAssignmentSpeechSegmentCount}
             assignments={voiceAssignments}
