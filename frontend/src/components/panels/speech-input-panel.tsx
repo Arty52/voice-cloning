@@ -1,4 +1,4 @@
-import { Pencil, RefreshCw, Save, Sparkles, Trash2, UserPlus, X } from "lucide-react"
+import { Pencil, Save, Sparkles, Trash2, UserPlus } from "lucide-react"
 import { type FormEvent, type RefObject } from "react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -6,7 +6,6 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
-import { Loading } from "@/components/ui/loading"
 import {
   Select,
   SelectContent,
@@ -28,7 +27,10 @@ import { DialogueEditor, type DialogueEditingActions } from "@/components/dialog
 import { DialogueSource } from "@/components/dialogue/dialogue-source"
 import { VoicePickerControl } from "@/components/dialogue/voice-picker-control"
 
+import { GenerationBar, type GenerationBarProps } from "@/components/dialogue/generation-bar"
+
 type SpeechInputPanelProps = {
+  generationBar?: Partial<GenerationBarProps>
   dialogueActions?: DialogueEditingActions
   sourceExpanded?: boolean
   onSourceExpandedChange?: (expanded: boolean) => void
@@ -73,6 +75,7 @@ type SpeechInputPanelProps = {
 const EMPTY_VOICE_SETTINGS_BY_VOICE_ID: Record<string, VoiceTuningValues> = {}
 
 export function SpeechInputPanel({
+  generationBar,
   dialogueActions,
   sourceExpanded = true,
   onSourceExpandedChange = () => {},
@@ -153,6 +156,33 @@ export function SpeechInputPanel({
             </SelectContent>
           </Select>
         </Field>
+        <Field className="w-full sm:w-64" data-disabled={isGenerating || voices.length === 0 ? "" : undefined}>
+          <FieldLabel htmlFor="source-voice">Source Voice</FieldLabel>
+          <Select
+            disabled={isGenerating || voices.length === 0}
+            onValueChange={(voiceId) => {
+              if (voices.some((voice) => voice.id === voiceId)) {
+                onSourceVoiceChange(voiceId)
+              }
+            }}
+            value={selectedVoice?.id ?? ""}
+          >
+            <SelectTrigger className="w-full" id="source-voice">
+              <SelectValue placeholder="No voice selected" />
+            </SelectTrigger>
+            <SelectContent position="popper">
+              <SelectGroup>
+                <SelectLabel>Voice Library</SelectLabel>
+                {voices.map((voice) => (
+                  <SelectItem key={voice.id} value={voice.id}>
+                    {voice.name}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </Field>
+
         {!isDialogueMode ? <Button
           disabled={isGenerating || !text.trim()}
           onClick={onImportDialogue ?? (() => dialogue.importFromText(text))}
@@ -334,59 +364,17 @@ export function SpeechInputPanel({
         />
       ) : null}
 
-      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <Field className="w-full sm:w-64" data-disabled={isGenerating || voices.length === 0 ? "" : undefined}>
-          <FieldLabel htmlFor="source-voice">Source Voice</FieldLabel>
-          <Select
-            disabled={isGenerating || voices.length === 0}
-            onValueChange={(voiceId) => {
-              if (voices.some((voice) => voice.id === voiceId)) {
-                onSourceVoiceChange(voiceId)
-              }
-            }}
-            value={selectedVoice?.id ?? ""}
-          >
-            <SelectTrigger className="w-full" id="source-voice">
-              <SelectValue placeholder="No voice selected" />
-            </SelectTrigger>
-            <SelectContent position="popper">
-              <SelectGroup>
-                <SelectLabel>Voice Library</SelectLabel>
-                {voices.map((voice) => (
-                  <SelectItem key={voice.id} value={voice.id}>
-                    {voice.name}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </Field>
-        <div className="flex flex-wrap gap-2">
-          <Button disabled={!canGenerate} type="submit">
-            {isGenerating ? (
-              <Loading aria-hidden="true" size="sm" />
-            ) : (
-              <Sparkles aria-hidden="true" />
-            )}
-            {isGenerating ? "Generating..." : "Generate"}
-          </Button>
-          <Button disabled={!canGenerate} onClick={() => onGenerate()} type="button" variant="secondary">
-            <RefreshCw aria-hidden="true" />
-            Retry
-          </Button>
-          {isGenerating ? (
-            <Button
-              className="border-destructive/60 text-foreground hover:bg-destructive/15"
-              onClick={onCancelGeneration}
-              type="button"
-              variant="secondary"
-            >
-              <X aria-hidden="true" />
-              Cancel
-            </Button>
-          ) : null}
-        </div>
-      </div>
+      <GenerationBar
+        canGenerate={canGenerate}
+        canRegenerateAll={canGenerate}
+        isDialogue={isDialogueMode}
+        isGenerating={isGenerating}
+        characterCount={characterCount}
+        rowCount={dialogue.blocks.length}
+        onRegenerateAll={() => onGenerate()}
+        onCancel={onCancelGeneration}
+        {...generationBar}
+      />
     </form>
   )
 }

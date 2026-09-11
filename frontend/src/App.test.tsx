@@ -1661,14 +1661,14 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "Import Dialogue" }))
     await user.click(screen.getByRole("button", { name: "Map Voice" }))
     await user.click(screen.getByRole("button", { name: "Default voice" }))
-    await waitFor(() => expect(screen.getByRole("button", { name: /^Generate$/ })).toBeEnabled())
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Generate All$/ })).toBeEnabled())
 
     fireEvent.change(screen.getByLabelText("Dialogue"), {
       target: { value: "x".repeat(MAX_SPEECH_TEXT_LENGTH + 1) },
     })
 
-    expect(screen.getByText(`${MAX_SPEECH_TEXT_LENGTH + 1}/${MAX_SPEECH_TEXT_LENGTH}`)).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: /^Generate$/ })).toBeDisabled()
+    expect(screen.getByText(`${(MAX_SPEECH_TEXT_LENGTH + 1).toLocaleString()} Working Characters`)).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /^Generate All$/ })).toBeDisabled()
   })
 
   it("applies dialogue row tuning to same-voice rows before generation", async () => {
@@ -1734,7 +1734,7 @@ describe("App", () => {
     fireEvent.change(screen.getByRole("slider", { name: "Speed" }), { target: { value: "1.12" } })
     await user.click(screen.getByRole("button", { name: "Open Dialogue Row 1 Tuning Actions" }))
     await user.click(screen.getByRole("menuitem", { name: "Apply To Same Voice" }))
-    await user.click(screen.getByRole("button", { name: /^Generate$/ }))
+    await user.click(screen.getByRole("button", { name: /^Generate All$/ }))
 
     await waitFor(() => expect(createJobBody).not.toBeNull())
     const submittedJob = createJobBody as unknown as NonNullable<Parameters<typeof speechJobFromSubmitted>[0]>
@@ -1809,7 +1809,7 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "Import Dialogue" }))
     await user.click(screen.getByRole("button", { name: "Map Voice" }))
     await user.click(screen.getByRole("button", { name: "Default voice" }))
-    await user.click(screen.getByRole("button", { name: /^Generate$/ }))
+    await user.click(screen.getByRole("button", { name: /^Generate All$/ }))
 
     const pending = await screen.findByRole("status", { name: "Generating Dialogue" })
     expect(pending).toHaveTextContent("Rendering dialogue rows into a combined audio result.")
@@ -1899,7 +1899,7 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "Default voice" }))
     await user.click(screen.getByRole("button", { name: "Tune Dialogue Row 1" }))
     fireEvent.change(screen.getByRole("slider", { name: "Speed" }), { target: { value: "1.12" } })
-    await user.click(screen.getByRole("button", { name: /^Generate$/ }))
+    await user.click(screen.getByRole("button", { name: /^Generate All$/ }))
 
     await waitFor(() => expect(createJobBody).not.toBeNull())
     const submittedJob = createJobBody as unknown as NonNullable<Parameters<typeof speechJobFromSubmitted>[0]>
@@ -1996,7 +1996,7 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "Import Dialogue" }))
     await user.click(screen.getByRole("button", { name: "Map Voice" }))
     await user.click(screen.getByRole("button", { name: "Default voice" }))
-    await user.click(screen.getByRole("button", { name: /^Generate$/ }))
+    await user.click(screen.getByRole("button", { name: /^Generate All$/ }))
     await waitFor(() => expect(createJobBody).not.toBeNull())
     const submittedJob = createJobBody as unknown as NonNullable<Parameters<typeof speechJobFromSubmitted>[0]>
     expect(submittedJob.segments).toHaveLength(2)
@@ -3892,7 +3892,7 @@ describe("App", () => {
     expect(generateSection).not.toBeNull()
     expect(textLabel.compareDocumentPosition(latestHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(within(generateSection as HTMLElement).queryByRole("heading", { name: "Voice Tuning" })).not.toBeInTheDocument()
-    expect(screen.getByText("Generating Speech")).toBeInTheDocument()
+    expect(within(screen.getByRole("region", { name: "Generation Controls" })).getByText("Generating Speech")).toBeInTheDocument()
     resolveSpeech(
       new Response(audioBlob, {
         status: 200,
@@ -3946,7 +3946,7 @@ describe("App", () => {
       "Cancel this generation? The provider may still process an in-flight text-to-speech request, so this may still consume credits."
     )
     expectAbortSignal(speechSignal, true)
-    expect(await screen.findByText(/Generation canceled in this browser/i)).toBeInTheDocument()
+    expect(await within(screen.getByRole("region", { name: "Generation Controls" })).findByText(/Generation canceled in this browser/i)).toBeInTheDocument()
     expect(screen.queryByLabelText(/generated voice playback/i)).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Generate" })).not.toBeDisabled()
   })

@@ -105,6 +105,7 @@ export function SidebarProvider({
         style={
           {
             "--sidebar-width": SIDEBAR_WIDTH,
+            "--sidebar-offset": open ? SIDEBAR_WIDTH : "0px",
             "--sidebar-width-mobile": SIDEBAR_WIDTH_MOBILE,
             ...style,
           } as CSSProperties

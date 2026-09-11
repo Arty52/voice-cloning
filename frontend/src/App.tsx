@@ -1,5 +1,7 @@
 import { type FormEvent, useRef, useState } from "react"
 
+import { useElementHeight } from "@/hooks/use-element-height"
+import { DialogueDraftNotice } from "@/components/dialogue/dialogue-draft-notice"
 import { AppHeader } from "@/components/app-header"
 import { ConfirmationDialog } from "@/components/dialogs/confirmation-dialog"
 import { ScriptSnapshotDialog } from "@/components/dialogs/script-snapshot-dialog"
@@ -41,6 +43,7 @@ function App() {
 }
 
 function AppContents() {
+  const generationBar = useElementHeight()
   const [scriptSnapshotDialog, setScriptSnapshotDialog] = useState<GeneratedAudioScriptSnapshot | null>(null)
   const [prepareAudioWorkflow, setPrepareAudioWorkflow] = useState<PrepareAudioWorkflow | null>(null)
   const [generatedAudioAttentionSignal, setGeneratedAudioAttentionSignal] = useState(0)
@@ -64,6 +67,10 @@ function AppContents() {
     setSourceExpanded,
     sourceError,
     dialogueRowStates,
+    dialogueWorkspace,
+    isDialogueConnecting,
+    canGenerateDialogueChanges,
+    generateAllSpeech,
     dialogueRevision,
     regenerateDialogueRow,
     regenerateDialogueVoiceRows,
@@ -172,7 +179,7 @@ function AppContents() {
     if (!canGenerate) {
       return
     }
-    setGeneratedAudioAttentionSignal((currentSignal) => currentSignal + 1)
+    if (dialogue.mode !== "dialogue") setGeneratedAudioAttentionSignal((currentSignal) => currentSignal + 1)
     handleGenerate()
   }
 
@@ -282,7 +289,18 @@ function AppContents() {
         </WorkflowSectionPanel>
 
         <WorkflowSectionPanel activeSectionId={activeSectionId} id="generate">
+          <DialogueDraftNotice conflict={dialogueWorkspace.conflict} error={dialogueWorkspace.error} disabled={isSpeechGenerating} onKeepCurrent={dialogueWorkspace.keepCurrent} onUseSaved={dialogueWorkspace.useSaved} />
           <SpeechInputPanel
+            generationBar={{
+              barRef: generationBar.ref,
+              canGenerate: dialogue.mode === "dialogue" ? canGenerateDialogueChanges : canGenerate,
+              canRegenerateAll: canGenerate,
+              onRegenerateAll: generateAllSpeech,
+              revision: dialogueRevision,
+              isRestoring: isDialogueConnecting,
+              pendingStatus: generationPendingStatus,
+              error: speechError,
+            }}
             sourceExpanded={sourceExpanded}
             onSourceExpandedChange={setSourceExpanded}
             onImportDialogue={importDialogue}
@@ -363,6 +381,7 @@ function AppContents() {
             tuning={tuning}
             voices={voiceLibrary.voices}
           />
+          <div aria-hidden="true" style={{ height: generationBar.height }} />
         </WorkflowSectionPanel>
 
         <WorkflowSectionPanel activeSectionId={activeSectionId} id="archive">

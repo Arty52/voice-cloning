@@ -816,6 +816,7 @@ export function useVoiceStudioController() {
     importDialogue,
     sourceError,
     dialogueWorkspace,
+    isDialogueConnecting: dialogueWorkspace.isRestoring && multiVoiceSpeech.status !== "processing",
     sourceExpanded,
     setSourceExpanded,
     dialogueRevision,

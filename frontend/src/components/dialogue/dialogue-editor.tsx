@@ -81,7 +81,7 @@ export function DialogueEditor({
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-sm font-medium">Dialogue Rows</h3>
             <Badge>{formatCount(dialogue.blocks.length, "Row")}</Badge>
-            <span className="text-xs text-muted-foreground">{dialogue.blocks.reduce((count, row) => count + row.text.length, 0).toLocaleString()} Working Characters</span>
+            <span className="text-xs text-muted-foreground">{dialogue.blocks.map(row => row.text.trim()).filter(Boolean).join("\n").length.toLocaleString()} Working Characters</span>
             {dialogueSpeechSegmentCount === null ? null : (
               <Badge variant="secondary">{formatCount(dialogueSpeechSegmentCount, "Speech Segment")}</Badge>
             )}
@@ -282,15 +282,15 @@ function DialogueRow({
       )}
     >
       <div className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
+          <div className="flex w-full min-w-0 items-center gap-3 sm:w-auto">
             <Checkbox
               aria-label={`Select Dialogue Row ${index + 1}`}
               checked={dialogue.selectedBlockIds.has(block.id)}
               disabled={isGenerating}
               onCheckedChange={(checked) => dialogue.toggleBlockSelection(block.id, checked === true)}
             />
-            <div className="w-48 min-w-0 max-w-full">
+            <div className="w-full min-w-0 sm:w-48">
               <Field>
                 <FieldLabel htmlFor={speakerId}>Speaker</FieldLabel>
                 <Input
@@ -305,7 +305,7 @@ function DialogueRow({
 
             </div>
           </div>
-          <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
+          <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:flex-1 sm:justify-end [&_button]:shrink-0 [&_button]:whitespace-nowrap">
             <Badge variant={overrideVoice ? "accent" : "secondary"}>
               {effectiveVoice?.name ?? "Mapping Required"}
             </Badge>
