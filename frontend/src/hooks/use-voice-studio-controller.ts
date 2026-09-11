@@ -3,6 +3,8 @@ import { type FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState }
 import { DEFAULT_TEXT, MAX_SPEECH_TEXT_LENGTH } from "@/constants"
 import { useConfirmation } from "@/hooks/use-confirmation"
 import { useDialogueScript } from "@/hooks/use-dialogue-script"
+import { useDialogueWorkspace } from "@/hooks/use-dialogue-workspace"
+import type { DialogueDraft } from "@/lib/dialogue-draft"
 import { useGeneratedAudioLibrary } from "@/hooks/use-generated-audio-library"
 import { useProviderKeys } from "@/hooks/use-provider-keys"
 import { useSampleProcessing } from "@/hooks/use-sample-processing"
@@ -70,6 +72,7 @@ const EMPTY_TUNING_METADATA: ProviderTuningMetadata = {
 
 export function useVoiceStudioController() {
   const [text, setText] = useState(DEFAULT_TEXT)
+  const [sourceExpanded, setSourceExpanded] = useState(true)
   const [isCostQuotaExpanded, setIsCostQuotaExpanded] = useState(false)
   const [isSampleProcessingExpanded, setIsSampleProcessingExpanded] = useState(false)
   const [latestGeneratedAudioId, setLatestGeneratedAudioId] = useState<string | null>(null)
@@ -172,7 +175,7 @@ export function useVoiceStudioController() {
     ? {
         dialogueId: successfulRun.context.dialogueId,
         job: successfulRun.job,
-        providerId: successfulRun.context.provider?.id ?? null,
+        providerId: successfulRun.context.provider?.id ?? successfulRun.context.providerId ?? null,
         modelId: successfulRun.context.modelId ?? successfulRun.context.backendDefaultModelId,
         tuning: successfulRun.context.tuning,
         scriptSnapshot: successfulRun.context.scriptSnapshot,
@@ -242,6 +245,40 @@ export function useVoiceStudioController() {
     (isDialogueMode
       ? !voiceAssignmentError && dialogue.segmentBuild.segments.length > 0
       : !hasVoiceAssignments || (!assignmentSegments.stale && !voiceAssignmentError && assignmentSegments.segments.length > 0))
+  const dialogueWorkspace = useDialogueWorkspace({
+    ready: !["idle", "loading"].includes(voiceLibrary.voiceStatus) &&
+      !["idle", "loading"].includes(providerKeys.providerStatus) &&
+      !["idle", "loading"].includes(metadata.modelStatus) &&
+      !["idle", "loading"].includes(generatedAudio.generatedAudioStatus),
+    draft: isDialogueMode ? {
+      identity: dialogue.identity, sourceText: text, sourceExpanded, blocks: dialogue.blocks,
+      speakerMappings: dialogue.speakerMappings, sourceVoiceId: voiceLibrary.selectedVoiceId || null,
+      providerId: activeProviderId, modelId: metadata.selectedModelId,
+      selectedUserTuningPresetId, naturalHandoffs: naturalHandoffsEnabled,
+      speech: multiVoiceSpeech.recovery,
+    } : null,
+    applyDraft: applyWorkspaceDraft,
+    speech: multiVoiceSpeech, providers: providerKeys.providers ?? [],
+    archivedItems: generatedAudio.generatedAudioItems, onResult: setLatestGeneratedAudioId,
+  })
+
+  function applyWorkspaceDraft(draft: DialogueDraft | null) {
+    setText(draft?.sourceText ?? DEFAULT_TEXT)
+    setSourceExpanded(draft?.sourceExpanded ?? true)
+    setSelectedUserTuningPresetId(draft?.selectedUserTuningPresetId ?? null)
+    setVoiceAssignments([])
+    dialogue.restoreState({
+      blocks: draft?.blocks ?? [], speakerMappings: draft?.speakerMappings ?? [],
+      identity: draft?.identity, mode: draft ? "dialogue" : "range",
+    })
+    if (draft) {
+      voiceLibrary.setSelectedVoiceId(draft.sourceVoiceId ?? "")
+      metadata.restoreSelectedModelId(draft.modelId)
+      handleNaturalHandoffsEnabledChange(draft.naturalHandoffs)
+      setLatestGenerationMode("dialogue")
+    }
+  }
+
   const sectionStatuses = useMemo(
     () =>
       buildWorkflowSectionStatuses({
@@ -376,7 +413,7 @@ export function useVoiceStudioController() {
   }
 
   async function reviseDialogueRows(ids: string[]) {
-    if (!canGenerate || !dialogueRevision.canRevise || !dialogueBaseline) return
+    if (!canGenerate || dialogueWorkspace.isRestoring || !dialogueRevision.canRevise || !dialogueBaseline) return
     if (ids.length === 0 && !dialogueRevision.spacingChanged) return
     const selected = new Set(ids)
     setLatestGenerationMode("dialogue")
@@ -398,7 +435,7 @@ export function useVoiceStudioController() {
   }
 
   async function generateSpeech(forceAll = false) {
-    if (isSpeechGenerating) return
+    if (isSpeechGenerating || dialogueWorkspace.isRestoring) return
     if (isDialogueMode) {
       if (!forceAll && dialogueRevision.canRevise) {
         return reviseDialogueRows(dialogueRevision.changedIds)
@@ -738,6 +775,9 @@ export function useVoiceStudioController() {
   }
 
   return {
+    dialogueWorkspace,
+    sourceExpanded,
+    setSourceExpanded,
     dialogueRevision,
     dialogueBaseline,
     generateAllSpeech: () => { if (canGenerate) void generateSpeech(true) },
@@ -746,7 +786,7 @@ export function useVoiceStudioController() {
     activeSectionId: workflowNavigation.activeSectionId,
     applyUserTuningPreset,
     archiveStorageError,
-    canGenerate,
+    canGenerate: canGenerate && !dialogueWorkspace.isRestoring,
     cancelGeneration,
     characterCount,
     confirmation,

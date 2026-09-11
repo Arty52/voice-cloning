@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react"
 import { DIALOGUE_DRAFT_KEY, parseDialogueDraft, readDialogueDraft, type DialogueDraft, type DialogueDraftEnvelope } from "@/lib/dialogue-draft"
 
-export function useDialogueDraftStorage(draft: DialogueDraft | null) {
-  const [initial] = useState(readDialogueDraft)
+export function useDialogueDraftStorage(draft: DialogueDraft | null, initialRead?: ReturnType<typeof readDialogueDraft>) {
+  const [initial] = useState(() => initialRead ?? readDialogueDraft())
   const [error, setError] = useState(initial.error)
   const [conflict, setConflict] = useState<{ envelope: DialogueDraftEnvelope | null } | null>(null)
   const [writerId] = useState(() => crypto.randomUUID())
@@ -17,7 +17,7 @@ export function useDialogueDraftStorage(draft: DialogueDraft | null) {
     const next = pending.current
     if (!next || paused.current || (!force && JSON.stringify(next) === savedJson.current)) return
     try {
-      const current = parseDialogueDraft(localStorage.getItem(DIALOGUE_DRAFT_KEY))
+      const current = force ? null : parseDialogueDraft(localStorage.getItem(DIALOGUE_DRAFT_KEY))
       if (!force && (current?.revision ?? null) !== seenRevision.current && current?.writerId !== writerId) {
         paused.current = true
         if (mounted.current) setConflict({ envelope: current })
