@@ -1913,10 +1913,10 @@ describe("App", () => {
 
     await screen.findByRole("heading", { name: "Latest Generated Audio" })
     const latestPanel = latestGeneratedAudioPanel()
-    await user.click(await latestPanel.findByRole("button", { name: /show segments/i }))
-    expect(latestPanel.queryByRole("button", { name: "Save Tuning To Voice" })).not.toBeInTheDocument()
-    await user.click(latestPanel.getAllByRole("button", { name: /^Tune$/i })[0])
-    await user.click(screen.getByRole("button", { name: "Open Segment 1 Tuning Actions" }))
+    await waitFor(() => expect(screen.getByRole("button", { name: "Regenerate Dialogue Row 1" })).toBeEnabled())
+    expect(latestPanel.queryByRole("button", { name: /show segments/i })).not.toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "Tune Dialogue Row 1" }))
+    await user.click(screen.getByRole("button", { name: "Open Dialogue Row 1 Tuning Actions" }))
     await user.click(screen.getByRole("menuitem", { name: "Save Tuning To Voice" }))
 
     await waitFor(() => expect(patchVoiceBody).not.toBeNull())
@@ -1940,7 +1940,7 @@ describe("App", () => {
       text: string
       voiceSettings?: Record<string, unknown> | null
     } | null = null
-    let regenerateVoiceBody: { voiceSettings?: Record<string, unknown> } | null = null
+    let regenerateVoiceBody: { segments: Array<{ voiceSettings: Record<string, unknown>; segmentId: string }> } | null = null
     vi.stubGlobal(
       "fetch",
       vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -1966,13 +1966,13 @@ describe("App", () => {
           createJobBody = JSON.parse(String(init.body))
           return okJson({ job: speechJobFromSubmitted(createJobBody) })
         }
-        if (path === "/api/speech/jobs/job-1/voices/default/regenerate" && init?.method === "POST") {
+        if (path === "/api/speech/jobs/job-1/revisions" && init?.method === "POST") {
           regenerateVoiceBody = JSON.parse(String(init.body))
           return okJson({
             job: speechJobFromSubmitted(createJobBody, {
               generationCount: 2,
               resultSha256: "combined-hash-2",
-              voiceSettings: regenerateVoiceBody?.voiceSettings ?? null,
+              voiceSettings: regenerateVoiceBody?.segments[0].voiceSettings ?? null,
             }),
           })
         }
@@ -2003,22 +2003,23 @@ describe("App", () => {
 
     await screen.findByRole("heading", { name: "Latest Generated Audio" })
     const latestPanel = latestGeneratedAudioPanel()
-    await user.click(await latestPanel.findByRole("button", { name: /show segments/i }))
-    await user.click(latestPanel.getAllByRole("button", { name: /^Tune$/i })[0])
+    await waitFor(() => expect(screen.getByRole("button", { name: "Regenerate Dialogue Row 1" })).toBeEnabled())
+    expect(latestPanel.queryByRole("button", { name: /show segments/i })).not.toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "Tune Dialogue Row 1" }))
     fireEvent.change(screen.getByRole("slider", { name: "Speed" }), { target: { value: "1.08" } })
     expect(latestPanel.queryByRole("button", { name: "Regenerate All For Voice" })).not.toBeInTheDocument()
-    await user.click(screen.getByRole("button", { name: "Open Segment 1 Tuning Actions" }))
-    await user.click(screen.getByRole("menuitem", { name: "Regenerate Same Voice Segments" }))
+    await user.click(screen.getByRole("button", { name: "Open Dialogue Row 1 Tuning Actions" }))
+    await user.click(screen.getByRole("menuitem", { name: "Regenerate Same Voice Rows" }))
 
     await waitFor(() => expect(regenerateVoiceBody).not.toBeNull())
-    expect(regenerateVoiceBody).toEqual({
-      voiceSettings: {
+    const replacements = (regenerateVoiceBody as unknown as { segments: Array<{ voiceSettings: Record<string, unknown> }> }).segments
+    expect(replacements).toHaveLength(2)
+    for (const replacement of replacements) expect(replacement.voiceSettings).toEqual({
         stability: 0.5,
         similarityBoost: 0.75,
         style: 0,
         speed: 1.08,
         useSpeakerBoost: true,
-      },
     })
   })
 

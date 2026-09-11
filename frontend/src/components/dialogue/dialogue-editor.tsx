@@ -1,4 +1,4 @@
-import { SlidersHorizontal, UserPlus, X } from "lucide-react"
+import { RefreshCw, Save, SlidersHorizontal, UserPlus, X } from "lucide-react"
 import { type KeyboardEvent } from "react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -26,7 +26,21 @@ import type { ProviderTuningControl, ProviderTuningValue, VoiceAsset, VoiceTunin
 
 import { VoicePickerControl } from "@/components/dialogue/voice-picker-control"
 
-type DialogueEditorProps = {
+import { DialogueRowActions } from "@/components/dialogue/dialogue-row-actions"
+import type { DialogueRowState } from "@/lib/dialogue-row-state"
+import type { useGeneratedAudioPlayback } from "@/hooks/use-generated-audio-playback"
+
+export type DialogueEditingActions = {
+  rowStates?: Record<string, DialogueRowState>
+  canRegenerate?: boolean
+  onRegenerate?: (id: string) => void
+  onRegenerateVoiceRows?: (id: string, settings: VoiceTuningValues) => void
+  onSaveVoiceTuning?: (voiceId: string, settings: VoiceTuningValues) => void
+  isSavingVoiceTuning?: boolean
+  playback?: ReturnType<typeof useGeneratedAudioPlayback>
+}
+
+type DialogueEditorProps = DialogueEditingActions & {
   defaultVoice: VoiceAsset | null
   dialogue: DialogueScriptController
   dialogueSpeechSegmentCount: number | null
@@ -50,6 +64,7 @@ export function DialogueEditor({
   preview,
   tuning,
   voices,
+  ...actions
 }: DialogueEditorProps) {
   const selectedRowsLabel = formatCount(dialogue.selectedBlockCount, "Selected Row")
   const canAssignRows = dialogue.selectedBlockCount > 0 && voices.length > 0 && !isGenerating
@@ -66,6 +81,7 @@ export function DialogueEditor({
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-sm font-medium">Dialogue Rows</h3>
             <Badge>{formatCount(dialogue.blocks.length, "Row")}</Badge>
+            <span className="text-xs text-muted-foreground">{dialogue.blocks.reduce((count, row) => count + row.text.length, 0).toLocaleString()} Working Characters</span>
             {dialogueSpeechSegmentCount === null ? null : (
               <Badge variant="secondary">{formatCount(dialogueSpeechSegmentCount, "Speech Segment")}</Badge>
             )}
@@ -108,6 +124,7 @@ export function DialogueEditor({
         <div className="grid gap-3">
           {dialogue.blocks.map((block, index) => (
             <DialogueRow
+              {...actions}
               block={block}
               defaultVoice={defaultVoice}
               dialogue={dialogue}
@@ -180,7 +197,7 @@ function SpeakerMappings({ dialogue, isGenerating, preview, voices }: SpeakerMap
   )
 }
 
-type DialogueRowProps = {
+type DialogueRowProps = DialogueEditingActions & {
   block: MultiVoiceScriptBlock
   defaultVoice: VoiceAsset | null
   dialogue: DialogueScriptController
@@ -206,6 +223,13 @@ function DialogueRow({
   preview,
   tuning,
   voices,
+  rowStates = {},
+  canRegenerate = false,
+  onRegenerate,
+  onRegenerateVoiceRows,
+  onSaveVoiceTuning,
+  isSavingVoiceTuning = false,
+  playback,
 }: DialogueRowProps) {
   const { effectiveVoice, mappedVoice, overrideVoice } = resolveDialogueRowVoice({
     block,
@@ -237,6 +261,7 @@ function DialogueRow({
         }).effectiveVoice?.id === effectiveVoice.id
       )
     })
+  const rowState = rowStates[block.id] ?? { label: "Not Generated", hasTake: false, previousTake: false, error: null, running: false }
   const speakerId = `${block.id}-speaker`
   const textId = `${block.id}-text`
 
@@ -249,6 +274,7 @@ function DialogueRow({
 
   return (
     <article
+      aria-label={`Dialogue Row ${index + 1}`}
       className={cn(
         "dialogue-speaker-row rounded-md border border-border bg-background/70 p-3",
         speakerColorClassName(block.speakerLabel),
@@ -256,15 +282,15 @@ function DialogueRow({
       )}
     >
       <div className="flex flex-col gap-3">
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div className="flex min-w-0 flex-1 items-start gap-3">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             <Checkbox
               aria-label={`Select Dialogue Row ${index + 1}`}
               checked={dialogue.selectedBlockIds.has(block.id)}
               disabled={isGenerating}
               onCheckedChange={(checked) => dialogue.toggleBlockSelection(block.id, checked === true)}
             />
-            <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)]">
+            <div className="w-48 min-w-0 max-w-full">
               <Field>
                 <FieldLabel htmlFor={speakerId}>Speaker</FieldLabel>
                 <Input
@@ -276,20 +302,10 @@ function DialogueRow({
                   value={block.speakerLabel ?? ""}
                 />
               </Field>
-              <Field data-invalid={mappingMissing ? "" : undefined}>
-                <FieldLabel htmlFor={textId}>Dialogue</FieldLabel>
-                <Textarea
-                  aria-invalid={mappingMissing}
-                  disabled={isGenerating}
-                  id={textId}
-                  onChange={(event) => dialogue.updateBlockText(block.id, event.target.value)}
-                  rows={2}
-                  value={block.text}
-                />
-              </Field>
+
             </div>
           </div>
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
             <Badge variant={overrideVoice ? "accent" : "secondary"}>
               {effectiveVoice?.name ?? "Mapping Required"}
             </Badge>
@@ -328,6 +344,18 @@ function DialogueRow({
                           label: "Apply To Same Voice",
                           onSelect: () => dialogue.applyBlockVoiceSettingsToMatchingVoice(block.id, rowTuning),
                         },
+                        ...(onSaveVoiceTuning ? [{
+                          disabled: isSavingVoiceTuning || !effectiveVoice,
+                          icon: <Save aria-hidden="true" className="size-4" />,
+                          label: "Save Tuning To Voice",
+                          onSelect: () => effectiveVoice && onSaveVoiceTuning(effectiveVoice.id, rowTuning),
+                        }] : []),
+                        ...(onRegenerateVoiceRows ? [{
+                          disabled: !canRegenerate,
+                          icon: <RefreshCw aria-hidden="true" className="size-4" />,
+                          label: "Regenerate Same Voice Rows",
+                          onSelect: () => onRegenerateVoiceRows(block.id, rowTuning),
+                        }] : []),
                       ]}
                     />
                   </div>
@@ -369,6 +397,23 @@ function DialogueRow({
             ) : null}
           </div>
         </div>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs text-muted-foreground">{rowState.previousTake ? "Playback uses the previous take until regeneration succeeds." : `Row ${index + 1}`}</span>
+          <DialogueRowActions id={block.id} index={index} state={rowState} canRegenerate={canRegenerate && !isGenerating} onRegenerate={onRegenerate} playback={playback} />
+        </div>
+              <Field data-invalid={mappingMissing ? "" : undefined}>
+                <FieldLabel htmlFor={textId}>Dialogue</FieldLabel>
+                <Textarea
+                  className="min-h-24 resize-y"
+                  aria-invalid={mappingMissing}
+                  disabled={isGenerating}
+                  id={textId}
+                  onChange={(event) => dialogue.updateBlockText(block.id, event.target.value)}
+                  rows={3}
+                  value={block.text}
+                />
+              </Field>
+        {rowState.error ? <p role="alert" className="text-sm text-destructive">{rowState.error}</p> : null}
         {mappingMissing ? (
           <Alert className="border-destructive/40 bg-destructive/10 text-destructive" role="alert">
             <AlertTitle>Speaker Mapping Required</AlertTitle>

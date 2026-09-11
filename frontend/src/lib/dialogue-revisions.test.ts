@@ -1,3 +1,4 @@
+import { dialogueRowState } from "./dialogue-row-state"
 import { describe, expect, it } from "vitest"
 import { dialogueRevisionState, revisionScriptSnapshot, type DialogueBaseline } from "./dialogue-revisions"
 import type { SpeechJobSegmentDraft } from "./voice-assignments"
@@ -40,5 +41,21 @@ describe("dialogue revisions", () => {
     const revised = revisionScriptSnapshot(snapshot, draft, ["one"])
     expect(revised.dialogueBlocks.map(b => b.text)).toEqual(["Draft edit.", "two."])
     expect(snapshot.dialogueBlocks[0].text).toBe("one.")
+  })
+})
+
+
+describe("dialogue row recording state", () => {
+  it("never links reused row positions to another dialogue identity", () => {
+    expect(dialogueRowState("one", baseline, dialogueRevisionState({ ...input, dialogueId: "new" }), null).hasTake).toBe(false)
+  })
+  it("keeps old audio during running and failed revisions", () => {
+    const revision = dialogueRevisionState({ ...input, segments: [{ ...segments[0], text: "Edit." }, segments[1]] })
+    const active = { ...baseline.job, id: "revision", status: "running", segments: [{ ...baseline.job.segments[0], status: "running" }] } as SpeechJob
+    expect(dialogueRowState("one", baseline, revision, active)).toMatchObject({ label: "Generating", hasTake: true, previousTake: true, running: true })
+    active.segments[0].status = "error"
+    active.segments[0].error = "Provider unavailable"
+    expect(dialogueRowState("one", baseline, revision, active)).toMatchObject({ label: "Error", error: "Provider unavailable", hasTake: true })
+    expect(dialogueRowState("two", baseline, revision, active)).toMatchObject({ label: "Up To Date", previousTake: false })
   })
 })

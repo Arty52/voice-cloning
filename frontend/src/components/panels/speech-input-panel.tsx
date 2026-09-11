@@ -24,11 +24,12 @@ import { cn } from "@/lib/utils"
 import type { VoiceTextAssignment } from "@/lib/voice-assignments"
 import type { ProviderTuningControl, VoiceAsset, VoiceTuningValues } from "@/types"
 
-import { DialogueEditor } from "@/components/dialogue/dialogue-editor"
+import { DialogueEditor, type DialogueEditingActions } from "@/components/dialogue/dialogue-editor"
 import { DialogueSource } from "@/components/dialogue/dialogue-source"
 import { VoicePickerControl } from "@/components/dialogue/voice-picker-control"
 
 type SpeechInputPanelProps = {
+  dialogueActions?: DialogueEditingActions
   sourceExpanded?: boolean
   onSourceExpandedChange?: (expanded: boolean) => void
   onImportDialogue?: () => void
@@ -72,6 +73,7 @@ type SpeechInputPanelProps = {
 const EMPTY_VOICE_SETTINGS_BY_VOICE_ID: Record<string, VoiceTuningValues> = {}
 
 export function SpeechInputPanel({
+  dialogueActions,
   sourceExpanded = true,
   onSourceExpandedChange = () => {},
   onImportDialogue,
@@ -318,6 +320,7 @@ export function SpeechInputPanel({
 
       {isDialogueMode ? (
         <DialogueEditor
+          {...dialogueActions}
           defaultVoice={selectedVoice}
           dialogue={dialogue}
           dialogueSpeechSegmentCount={dialogueSpeechSegmentCount}

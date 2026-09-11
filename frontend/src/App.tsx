@@ -63,6 +63,10 @@ function AppContents() {
     sourceExpanded,
     setSourceExpanded,
     sourceError,
+    dialogueRowStates,
+    dialogueRevision,
+    regenerateDialogueRow,
+    regenerateDialogueVoiceRows,
     effectiveVoiceSettingsByVoiceId,
     estimatedCredits,
     generatedAudio,
@@ -283,6 +287,15 @@ function AppContents() {
             onSourceExpandedChange={setSourceExpanded}
             onImportDialogue={importDialogue}
             sourceError={sourceError}
+            dialogueActions={{
+              rowStates: dialogueRowStates,
+              canRegenerate: canGenerate && dialogueRevision.canRevise,
+              onRegenerate: regenerateDialogueRow,
+              onRegenerateVoiceRows: regenerateDialogueVoiceRows,
+              onSaveVoiceTuning: (voiceId, settings) => { void saveGeneratedSegmentTuningToVoice(voiceId, settings) },
+              isSavingVoiceTuning: voiceLibrary.isUpdatingVoice,
+              playback: generatedAudioPlayback,
+            }}
             assignmentError={voiceAssignmentError}
             assignmentSpeechSegmentCount={voiceAssignmentSpeechSegmentCount}
             assignments={voiceAssignments}
@@ -320,6 +333,7 @@ function AppContents() {
           />
 
           <LatestGeneratedAudioPanel
+            showSegmentControls={dialogue.mode !== "dialogue" || !dialogueRevision.linked}
             activeProviderId={providerKeys.activeProviderId}
             attentionRef={generatedAudioAttentionRef}
             error={speechError}
