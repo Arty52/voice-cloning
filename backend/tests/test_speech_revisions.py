@@ -129,3 +129,72 @@ def test_revision_api_contract_and_key_privacy(tmp_path):
         assert client.get(f"/api/speech/jobs/{base['id']}").json()["job"]["text"] == "Hello"
         assert client.post(f"/api/speech/jobs/{base['id']}/revisions", json={"segments": [], "segmentGapMs": -1}).status_code == 422
         assert client.post("/api/speech/jobs/missing/revisions", json={"segments": []}).status_code == 404
+
+
+def test_failed_and_canceled_revisions_preserve_successful_recording(tmp_path, monkeypatch):
+    async def scenario():
+        service, provider, assembly = make_service(tmp_path)
+        base = await generate_base(service, provider, 2)
+        original = service.result_path(base.id).read_bytes()
+        assembly.fail = True
+        revision = await service.create_revision(base.id, replacements=(replacement(0),), provider=provider, provider_key=None)
+        await service._tasks[revision.id]
+        assert service.get_job(revision.id).status == "error"
+        assert service.result_path(base.id).read_bytes() == original
+        assembly.fail = False
+        started = asyncio.Event()
+
+        async def blocked_speech(*args, **kwargs):
+            started.set()
+            await asyncio.Event().wait()
+
+        monkeypatch.setattr(provider, "create_speech", blocked_speech)
+        revision = await service.create_revision(base.id, replacements=(replacement(0),), provider=provider, provider_key=None)
+        await started.wait()
+        await service.cancel_job(revision.id)
+        assert service.get_job(revision.id).status == "canceled"
+        assert service.get_job(base.id) == base
+        assert service.result_path(base.id).read_bytes() == original
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("failure", ["copy", "database"])
+def test_revision_staging_failure_cleans_files_and_keeps_base(tmp_path, monkeypatch, failure):
+    async def scenario():
+        service, provider, _ = make_service(tmp_path)
+        base = await generate_base(service, provider, 2)
+
+        def fail(*args, **kwargs):
+            raise OSError("Injected failure")
+
+        if failure == "copy":
+            monkeypatch.setattr("voice_cloning.services.speech_jobs.shutil.copyfile", fail)
+        else:
+            monkeypatch.setattr(service, "_persist_job", fail)
+        with pytest.raises(OSError):
+            await service.create_revision(base.id, replacements=(replacement(0),), provider=provider, provider_key=None)
+        assert list(service.jobs_dir.iterdir()) == [service.jobs_dir / base.id]
+        assert list(service._jobs) == [base.id]
+        assert not service._tasks
+        assert len(provider.speech_requests) == 2
+    asyncio.run(scenario())
+
+
+def test_revision_of_restored_persisted_job(tmp_path):
+    from voice_cloning.persistence.database import Base, create_database_engine, create_session_factory
+    async def scenario():
+        service, provider, assembly = make_service(tmp_path)
+        engine = create_database_engine("sqlite://")
+        Base.metadata.create_all(engine)
+        sessions = create_session_factory(engine)
+        service.job_session_factory = sessions
+        base = await generate_base(service, provider, 2)
+        restored = SpeechJobService(service.settings, service.voice_cache, service.voice_library, assembly, sessions)
+        assert restored.get_job(base.id) == base
+        revision = await restored.create_revision(base.id, replacements=(replacement(1),), provider=provider, provider_key=None)
+        await restored._tasks[revision.id]
+        restored._jobs.clear()
+        assert restored.get_job(revision.id).status == "success"
+        assert restored.get_job(base.id) == base
+        engine.dispose()
+    asyncio.run(scenario())
