@@ -1,3 +1,4 @@
+import { speechResultId } from "@/lib/speech-session"
 import { act, renderHook } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
@@ -373,6 +374,56 @@ describe("useMultiVoiceSpeechGeneration", () => {
     vi.useRealTimers()
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
+  })
+
+  it("restores a successful recording without synthesis or another archive save", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => String(input).endsWith("/result") ? okAudio() : okJson({ job: dialogueSuccessJob })))
+    const persistGeneratedAudio = vi.fn(async () => generatedResult)
+    const first = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await first.result.current.generateSpeech(generationInput({ dialogueId: "script", scriptSnapshot: dialogueScriptSnapshot })) })
+    const recovery = first.result.current.recovery
+    expect(JSON.stringify(recovery)).not.toContain("browser-secret")
+    expect(JSON.stringify(recovery)).not.toContain("serverKeyConfigured")
+    first.unmount()
+    vi.mocked(fetch).mockClear()
+    persistGeneratedAudio.mockClear()
+    const next = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { expect(await next.result.current.restoreRecovery(recovery, [provider], [generatedResult])).toEqual(generatedResult) })
+    expect(vi.mocked(fetch).mock.calls).toEqual([["/api/speech/jobs/dialogue-job", undefined]])
+    expect(persistGeneratedAudio).not.toHaveBeenCalled()
+    expect(next.result.current.successfulRun?.job.id).toBe("dialogue-job")
+  })
+
+  it("reconnects to an accepted job and archives its completed result without resubmission", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => String(input).endsWith("/result") ? okAudio() : okJson({ job: dialogueSuccessJob })))
+    const persistGeneratedAudio = vi.fn(async () => generatedResult)
+    const first = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await first.result.current.generateSpeech(generationInput({ dialogueId: "script", scriptSnapshot: dialogueScriptSnapshot })) })
+    const active = first.result.current.recovery.successful!
+    first.unmount()
+    vi.mocked(fetch).mockClear()
+    persistGeneratedAudio.mockClear()
+    const next = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await next.result.current.restoreRecovery({ active, successful: null, resultId: null }, [provider], []) })
+    expect(vi.mocked(fetch).mock.calls.every(([, init]) => !init?.method || init.method === "GET")).toBe(true)
+    expect(persistGeneratedAudio).toHaveBeenCalledTimes(1)
+    expect(next.result.current.status).toBe("success")
+  })
+
+  it("uses a stable archive ID and skips a completed save after an uncertain refresh", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => String(input).endsWith("/result") ? okAudio() : okJson({ job: dialogueSuccessJob })))
+    const saved = { ...generatedResult, id: speechResultId(dialogueSuccessJob) }
+    const persistGeneratedAudio = vi.fn(async () => saved)
+    const first = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await first.result.current.generateSpeech(generationInput({ dialogueId: "script", scriptSnapshot: dialogueScriptSnapshot })) })
+    expect(persistGeneratedAudio).toHaveBeenCalledWith(expect.objectContaining({ id: saved.id, createdAt: dialogueSuccessJob.updatedAt }), 100)
+    const active = first.result.current.recovery.successful!
+    first.unmount()
+    persistGeneratedAudio.mockClear()
+    const next = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await next.result.current.restoreRecovery({ active, successful: null, resultId: null }, [provider], [saved]) })
+    expect(persistGeneratedAudio).not.toHaveBeenCalled()
+    expect(next.result.current.successfulRun?.resultId).toBe(saved.id)
   })
 
   it("snapshots generated text and spacing instead of unrelated draft changes", () => {
