@@ -151,6 +151,25 @@ export type RegenerateSpeechJobSegmentRequest = {
   voiceSettings?: VoiceTuningValues | null
 }
 
+export type SpeechSegmentReplacement = {
+  segmentId: string
+  text: string
+  voiceId: string
+  voiceSettings: VoiceTuningValues
+}
+
+export async function createSpeechRevision(jobId: string, { providerKey, ...revision }: {
+  providerKey: string | null
+  segments: SpeechSegmentReplacement[]
+  segmentGapMs?: number | null
+}) {
+  return fetchJson<SpeechJobResponse>(`/api/speech/jobs/${encodeURIComponent(jobId)}/revisions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...providerHeaders({ providerKey }) },
+    body: JSON.stringify(revision),
+  })
+}
+
 export type RegenerateSpeechJobVoiceRequest = {
   providerKey: string | null
   voiceSettings: VoiceTuningValues
