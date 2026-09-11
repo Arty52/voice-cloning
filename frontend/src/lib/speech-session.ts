@@ -16,6 +16,11 @@ export type PersistContext = {
 }
 export type SuccessfulSpeechRun = { job: SpeechJob; context: PersistContext; resultId?: string }
 
+export function speechResultId(job: SpeechJob) {
+  const take = job.segments.reduce((sum, segment) => sum + segment.generationCount, 0)
+  return `speech-${job.id}-${job.resultSha256}-${take}`
+}
+
 /** Persist references and submitted settings, never provider credentials or runtime audio. */
 export function storeSpeechRun(jobId: string, context: PersistContext | null): StoredSpeechRun | null {
   if (!context?.dialogueId || context.scriptSnapshot?.mode !== "dialogue") return null

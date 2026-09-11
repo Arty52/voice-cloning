@@ -1,5 +1,5 @@
 import type { DialogueSpeechRecovery } from "@/lib/dialogue-draft"
-import { storeSpeechRun, restoreSpeechContext, type PersistContext, type SuccessfulSpeechRun } from "@/lib/speech-session"
+import { storeSpeechRun, restoreSpeechContext, speechResultId, type PersistContext, type SuccessfulSpeechRun } from "@/lib/speech-session"
 
 import { useEffect, useMemo, useRef, useState } from "react"
 
@@ -295,7 +295,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
   async function handleJobUpdate(jobUpdate: SpeechJob, runId: number, persistContext: PersistContext) {
     if (jobUpdate.status === "success") {
       const elapsedMs = finishGenerationTimer()
-      setStatus("success")
+      setStatus("processing")
       setError(null)
       return persistSuccessfulJob(jobUpdate, persistContext, elapsedMs)
     }
@@ -327,7 +327,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
         updateJob(payload.job)
         if (payload.job.status === "success") {
           const elapsedMs = finishGenerationTimer()
-          setStatus("success")
+          setStatus("processing")
           setError(null)
           return persistSuccessfulJob(payload.job, persistContext, elapsedMs)
         }
@@ -369,7 +369,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
       updateJob(payload.job)
       const elapsedMs = finishGenerationTimer()
       if (payload.job.status === "success") {
-        setStatus("success")
+        setStatus("processing")
         setError(null)
         const persistContext = lastPersistContextRef.current
         return persistContext ? persistSuccessfulJob(payload.job, persistContext, elapsedMs) : null
@@ -422,6 +422,14 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
         const context = restoreSpeechContext(recovery.active.context, providers)
         lastPersistContextRef.current = context
         updateJob(restored)
+        const existing = archivedItems.find(item => item.id === speechResultId(restored))
+        if (restored.status === "success" && existing) {
+          setSuccessfulRun({ job: restored, context, resultId: existing.id })
+          finishGenerationTimer()
+          busyRef.current = false
+          setStatus("success")
+          return existing
+        }
         return await handleJobUpdate(restored, runId, context)
       }
       finishGenerationTimer()
@@ -434,14 +442,17 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
   }
 
   async function persistSuccessfulJob(jobUpdate: SpeechJob, persistContext: PersistContext, elapsedMs: number | null) {
+    const runId = runIdRef.current
     try {
       const response = await fetch(api.speechJobResultUrl(jobUpdate.id))
       if (!response.ok) {
         throw new Error(await response.text() || `Request failed with status ${response.status}.`)
       }
       const blob = await response.blob()
-      const createdAt = new Date().toISOString()
+      if (!isActiveRun(runId)) return null
+      const createdAt = jobUpdate.updatedAt
       const input: SaveGeneratedAudioInput = {
+        id: speechResultId(jobUpdate),
         appVoiceId: persistContext.defaultVoice.id,
         blob,
         cacheState: "multi-voice",
@@ -463,14 +474,17 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
         voiceName: MULTI_VOICE_LABEL,
       }
       const result = await persistGeneratedAudio(input, persistContext.storageLimitBytes)
+      if (!isActiveRun(runId)) return null
       setSuccessfulRun({ job: jobUpdate, context: { ...persistContext, scriptSnapshot: input.scriptSnapshot ?? null }, resultId: result.id })
+      setStatus("success")
       return result
     } catch (caught) {
+      if (!isActiveRun(runId)) return null
       setStatus("error")
       setError(caught instanceof Error ? caught.message : "Unable to save multi-voice generated audio.")
       return null
     } finally {
-      busyRef.current = false
+      if (isActiveRun(runId)) busyRef.current = false
     }
   }
 
