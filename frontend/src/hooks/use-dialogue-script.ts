@@ -18,6 +18,7 @@ export type UseDialogueScriptOptions = {
 }
 
 export type RestoreDialogueScriptStateInput = {
+  identity?: string
   blocks: MultiVoiceScriptBlock[]
   mode?: DialogueInputMode
   speakerMappings: SpeakerVoiceMapping[]
@@ -31,6 +32,7 @@ export function useDialogueScript({
   voices,
 }: UseDialogueScriptOptions) {
   const [mode, setMode] = useState<DialogueInputMode>("range")
+  const [identity, setIdentity] = useState<string>(() => crypto.randomUUID())
   const [blocks, setBlocks] = useState<MultiVoiceScriptBlock[]>([])
   const [speakerMappings, setSpeakerMappings] = useState<SpeakerVoiceMapping[]>([])
   const [selectedBlockIds, setSelectedBlockIds] = useState<Set<string>>(() => new Set())
@@ -59,13 +61,17 @@ export function useDialogueScript({
 
   function importFromText(text: string) {
     const nextBlocks = parseSpeakerLabeledScript(text)
+    if (nextBlocks.length === 0) return false
+    setIdentity(crypto.randomUUID())
     setBlocks(nextBlocks)
     setSpeakerMappings((current) => mergeSpeakerMappings(current, uniqueSpeakerLabels(nextBlocks)))
     setSelectedBlockIds(new Set())
     setMode("dialogue")
+    return true
   }
 
-  function restoreState({ blocks, mode = "dialogue", speakerMappings }: RestoreDialogueScriptStateInput) {
+  function restoreState({ blocks, identity, mode = "dialogue", speakerMappings }: RestoreDialogueScriptStateInput) {
+    setIdentity(identity ?? crypto.randomUUID())
     setBlocks(blocks.map(copyBlock))
     setSpeakerMappings(speakerMappings.map(copySpeakerMapping))
     setSelectedBlockIds(new Set())
@@ -205,6 +211,7 @@ export function useDialogueScript({
   }
 
   return {
+    identity,
     allBlocksSelected,
     applyBlockVoiceSettingsToMatchingVoice,
     assignSelectedBlocks,
