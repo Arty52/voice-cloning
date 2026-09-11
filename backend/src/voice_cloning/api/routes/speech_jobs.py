@@ -66,6 +66,7 @@ def create_speech_jobs_router(
                     SpeechSegmentReplacement(segment.segmentId, segment.text, segment.voiceId, segment.voiceSettings)
                     for segment in request.segments
                 ),
+                use_default_gap="segmentGapMs" in request.model_fields_set and request.segmentGapMs is None,
             )
         except ProviderError as exc:
             raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc

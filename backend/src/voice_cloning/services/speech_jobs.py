@@ -124,6 +124,7 @@ class SpeechJobService:
         provider: VoiceProvider,
         provider_key: str | None,
         segment_gap_ms: int | None = None,
+        use_default_gap: bool = False,
     ) -> SpeechJob:
         base = self.get_job(base_job_id)
         if base.status != "success" or base_job_id in self._tasks:
@@ -134,7 +135,7 @@ class SpeechJobService:
             segments = revision_segments(base, replacements, max_text_chars=self.settings.max_text_chars)
         except ValueError as exc:
             raise SpeechJobServiceError(str(exc), 422) from exc
-        gap = base.segment_gap_ms if segment_gap_ms is None else self._validate_segment_gap(segment_gap_ms)
+        gap = self._validate_segment_gap(segment_gap_ms) if use_default_gap or segment_gap_ms is not None else base.segment_gap_ms
         if not replacements and gap == base.segment_gap_ms:
             raise SpeechJobServiceError("Choose a segment or change the handoff spacing.", 422)
         # Resolve every replacement before creating files or making provider calls.

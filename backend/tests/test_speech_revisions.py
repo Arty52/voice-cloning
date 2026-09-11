@@ -198,3 +198,14 @@ def test_revision_of_restored_persisted_job(tmp_path):
         assert restored.get_job(base.id) == base
         engine.dispose()
     asyncio.run(scenario())
+
+
+def test_handoff_revision_can_restore_configured_default_without_synthesis(tmp_path):
+    async def scenario():
+        service, provider, assembly = make_service(tmp_path)
+        base = await generate_base(service, provider, 2)
+        revised = await service.create_revision(base.id, replacements=(), provider=provider, provider_key=None, use_default_gap=True)
+        await service._tasks[revised.id]
+        assert service.get_job(revised.id).segment_gap_ms == service.settings.speech_job_segment_gap_ms
+        assert len(provider.speech_requests) == 2
+    asyncio.run(scenario())
