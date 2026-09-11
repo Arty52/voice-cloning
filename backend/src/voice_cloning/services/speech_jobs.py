@@ -19,6 +19,7 @@ from ..samples import sample_hash
 from ..voice_library import VoiceLibrary
 from .cancellation import cancel_and_drain_task
 from .speech import SpeechServiceError, generate_speech
+from .speech_revisions import SpeechSegmentReplacement, revision_segments
 from .speech_audio import (
     SPEECH_RESULT_FILENAME,
     SpeechAudioProcessor,
@@ -114,6 +115,63 @@ class SpeechJobService:
             if job_dir_created:
                 shutil.rmtree(job_dir, ignore_errors=True)
             raise
+
+    async def create_revision(
+        self,
+        base_job_id: str,
+        *,
+        replacements: tuple[SpeechSegmentReplacement, ...],
+        provider: VoiceProvider,
+        provider_key: str | None,
+        segment_gap_ms: int | None = None,
+        use_default_gap: bool = False,
+    ) -> SpeechJob:
+        base = self.get_job(base_job_id)
+        if base.status != "success" or base_job_id in self._tasks:
+            raise SpeechJobServiceError("Revisions require a successful speech job.", 409)
+        if provider.id != base.provider_id:
+            raise SpeechJobServiceError("A revision must use the original provider.", 422)
+        try:
+            segments = revision_segments(base, replacements, max_text_chars=self.settings.max_text_chars)
+        except ValueError as exc:
+            raise SpeechJobServiceError(str(exc), 422) from exc
+        gap = self._validate_segment_gap(segment_gap_ms) if use_default_gap or segment_gap_ms is not None else base.segment_gap_ms
+        if not replacements and gap == base.segment_gap_ms:
+            raise SpeechJobServiceError("Choose a segment or change the handoff spacing.", 422)
+        # Resolve every replacement before creating files or making provider calls.
+        segments = tuple(
+            replace(segment, voice_name=self.voice_library.get_asset(segment.voice_id).name)
+            if segment.status == "pending" else segment
+            for segment in segments
+        )
+        for segment in segments:
+            if segment.status == "pending":
+                provider.normalize_voice_settings(segment.voice_settings)
+            else:
+                self.segment_result_path(base_job_id, segment.id)
+        job_id = uuid4().hex
+        now = _utc_now()
+        job = replace(
+            base, id=job_id, segments=segments, text="".join(segment.text for segment in segments),
+            segment_gap_ms=gap, status="pending", result_sha256=None, active_segment_id=None,
+            error=None, created_at=now, updated_at=now,
+        )
+        job_dir = self._job_dir(job_id)
+        try:
+            (job_dir / SEGMENTS_DIR_NAME).mkdir(parents=True, exist_ok=False)
+            for segment in segments:
+                if segment.status == "success":
+                    shutil.copyfile(self._segment_path(base_job_id, segment.id), self._segment_path(job_id, segment.id))
+            # Stage all files before inserting the job. A failed transaction leaves no revision files.
+            self._persist_job(job)
+        except Exception:
+            shutil.rmtree(job_dir, ignore_errors=True)
+            raise
+        self._jobs[job_id] = job
+        self._tasks[job_id] = asyncio.create_task(
+            self._run_job(job_id, provider=provider, model_id=base.model_id, provider_key=provider_key)
+        )
+        return job
 
     def get_job(self, job_id: str) -> SpeechJob:
         job = self._jobs.get(job_id)
@@ -253,6 +311,8 @@ class SpeechJobService:
         self._update_job(job_id, status="running", error=None)
         try:
             for segment in self.get_job(job_id).segments:
+                if segment.status == "success":
+                    continue
                 await self._generate_segment(
                     job_id,
                     segment,
