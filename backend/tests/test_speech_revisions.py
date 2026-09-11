@@ -28,6 +28,13 @@ class FakeAssembly:
 def make_service(tmp_path):
     settings = make_settings(tmp_path)
     provider = FakeElevenLabsProvider().bind_settings(settings)
+    original_speech = provider.create_speech
+
+    async def create_speech(voice_id, text, *args, **kwargs):
+        result = await original_speech(voice_id, text, *args, **kwargs)
+        return replace(result, audio=text.encode(), character_count=len(text))
+
+    provider.create_speech = create_speech
     assembly = FakeAssembly()
     service = SpeechJobService(settings, VoiceCache(settings.storage_dir / "voice-cache.json"), VoiceLibrary(settings), assembly)
     return service, provider, assembly
@@ -95,3 +102,30 @@ def test_invalid_revision_does_not_create_files_or_call_provider(tmp_path: Path,
         assert len(provider.speech_requests) == 2
         assert len(list(service.jobs_dir.iterdir())) == 1
     asyncio.run(scenario())
+
+
+def test_revision_api_contract_and_key_privacy(tmp_path):
+    from fastapi.testclient import TestClient
+    from voice_cloning.api import create_app
+    from voice_cloning.providers import ProviderRegistry, VOICE_PROVIDER_KEY_HEADER
+    from test_api import wait_for_speech_job
+    service, provider, _ = make_service(tmp_path)
+    app = create_app(settings=service.settings, provider_registry=ProviderRegistry([provider]),
+                     voice_cache=service.voice_cache, voice_library=service.voice_library, speech_job_service=service)
+    with TestClient(app) as client:
+        base = client.post("/api/speech/jobs", json={"text": "Hello", "defaultVoiceId": "default", "segments": [
+            {"clientSegmentId": "row-0", "text": "Hello", "voiceId": "default"}
+        ]}).json()["job"]
+        wait_for_speech_job(client, base["id"])
+        response = client.post(f"/api/speech/jobs/{base['id']}/revisions", json={"segments": [
+            {"segmentId": "row-0", "text": "Goodbye", "voiceId": "default", "voiceSettings": {"speed": 1.1}}
+        ]}, headers={VOICE_PROVIDER_KEY_HEADER: "browser-secret"})
+        assert response.status_code == 202
+        assert "browser-secret" not in response.text
+        revised = wait_for_speech_job(client, response.json()["job"]["id"])
+        assert revised["text"] == "Goodbye"
+        assert revised["segments"][0]["characterCount"] == 7
+        assert revised["providerId"] == base["providerId"]
+        assert client.get(f"/api/speech/jobs/{base['id']}").json()["job"]["text"] == "Hello"
+        assert client.post(f"/api/speech/jobs/{base['id']}/revisions", json={"segments": [], "segmentGapMs": -1}).status_code == 422
+        assert client.post("/api/speech/jobs/missing/revisions", json={"segments": []}).status_code == 404

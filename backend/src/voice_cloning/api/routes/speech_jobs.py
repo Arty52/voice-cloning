@@ -6,7 +6,8 @@ from fastapi.responses import FileResponse
 from ...providers import ProviderError, ProviderRegistry, VOICE_PROVIDER_KEY_HEADER
 from ...services.speech_audio import SPEECH_RESULT_CONTENT_TYPE
 from ...services.speech_jobs import SpeechJobSegmentInput, SpeechJobService, SpeechJobServiceError
-from ..schemas import CreateSpeechJobRequest, RegenerateSpeechSegmentRequest, RegenerateSpeechVoiceRequest
+from ...services.speech_revisions import SpeechSegmentReplacement
+from ..schemas import CreateSpeechJobRequest, CreateSpeechRevisionRequest, RegenerateSpeechSegmentRequest, RegenerateSpeechVoiceRequest
 from ..serializers import speech_job_payload
 
 
@@ -39,6 +40,30 @@ def create_speech_jobs_router(
                         assignment_kind=segment.assignmentKind,
                         voice_settings=segment.voiceSettings,
                     )
+                    for segment in request.segments
+                ),
+            )
+        except ProviderError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        except SpeechJobServiceError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+        return {"job": speech_job_payload(job)}
+
+    @router.post("/api/speech/jobs/{job_id}/revisions", status_code=202)
+    async def create_speech_revision(
+        job_id: str,
+        request: CreateSpeechRevisionRequest,
+        provider_key: str | None = Header(default=None, alias=VOICE_PROVIDER_KEY_HEADER),
+    ) -> dict[str, object]:
+        try:
+            base = speech_jobs.get_job(job_id)
+            job = await speech_jobs.create_revision(
+                job_id,
+                provider=provider_registry.get(base.provider_id),
+                provider_key=provider_key,
+                segment_gap_ms=request.segmentGapMs,
+                replacements=tuple(
+                    SpeechSegmentReplacement(segment.segmentId, segment.text, segment.voiceId, segment.voiceSettings)
                     for segment in request.segments
                 ),
             )

@@ -88,5 +88,17 @@ class RegenerateSpeechSegmentRequest(BaseModel):
     voiceSettings: dict[str, Any] | None = None
 
 
+class SpeechSegmentReplacementRequest(BaseModel):
+    segmentId: str
+    text: str
+    voiceId: str
+    voiceSettings: dict[str, Any]
+
+
+class CreateSpeechRevisionRequest(BaseModel):
+    segments: list[SpeechSegmentReplacementRequest]
+    segmentGapMs: int | None = Field(default=None, ge=0)
+
+
 class RegenerateSpeechVoiceRequest(BaseModel):
     voiceSettings: dict[str, Any]
