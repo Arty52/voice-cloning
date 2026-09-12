@@ -16,7 +16,8 @@ export type DialogueRowActionsProps = {
 
 export function DialogueRowActions({ id, index, state, canRegenerate, onRegenerate, playback }: DialogueRowActionsProps) {
   const source = state.hasTake ? playback?.segmentSources.get(id) : null
-  const current = source && playback?.controller.snapshot.source?.id === source.id && playback.controller.snapshot.source.url === source.url
+  const activeSource = playback?.controller.snapshot.source
+  const current = source && activeSource?.id === source.id && activeSource?.url === source.url
   const isPlaying = current && playback?.controller.snapshot.status === "playing"
   const playLabel = `${isPlaying ? "Pause" : "Play"} Dialogue Row ${index + 1}${state.previousTake ? " Previous Take" : ""}`
   return (
