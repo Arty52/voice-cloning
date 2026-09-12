@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import * as workspace from "@/hooks/use-dialogue-workspace"
 import { DIALOGUE_DRAFT_KEY } from "@/lib/dialogue-draft"
-import type { GeneratedAudioScriptSnapshot, VoiceAsset } from "@/types"
+import type { GeneratedAudioScriptSnapshot, SpeechJob, VoiceAsset } from "@/types"
 
 import { useVoiceStudioController } from "./use-voice-studio-controller"
 
@@ -12,6 +12,9 @@ const controllerMocks = vi.hoisted(() => ({
   voiceStatus: "success",
   presetStatus: "success",
   providerId: null as string | null,
+  speechJob: null as SpeechJob | null,
+  speechDialogueId: null as string | null,
+  speechRecovery: { active: null, successful: null, resultId: null },
   voices: [] as VoiceAsset[],
 }))
 
@@ -98,7 +101,9 @@ vi.mock("@/hooks/use-multi-voice-speech-generation", () => ({
     generateSpeech: vi.fn(),
     generationElapsedMs: null,
     isGenerating: false,
-    job: null,
+    job: controllerMocks.speechJob,
+    jobDialogueId: controllerMocks.speechDialogueId,
+    recovery: controllerMocks.speechRecovery,
     regenerateSegment: vi.fn(),
     regenerateVoiceSegments: vi.fn(),
     resetGeneration: vi.fn(),
@@ -148,11 +153,14 @@ describe("useVoiceStudioController script snapshot restore", () => {
   let originalRequestAnimationFrame: typeof window.requestAnimationFrame
 
   beforeEach(() => {
+    localStorage.removeItem(DIALOGUE_DRAFT_KEY)
     originalRequestAnimationFrame = window.requestAnimationFrame
     controllerMocks.selectedVoiceId = "narrator"
     controllerMocks.voiceStatus = "success"
     controllerMocks.presetStatus = "success"
     controllerMocks.providerId = null
+    controllerMocks.speechJob = null
+    controllerMocks.speechDialogueId = null
     controllerMocks.voices = [narrator, villain]
     window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
       callback(0)
@@ -247,6 +255,21 @@ describe("useVoiceStudioController script snapshot restore", () => {
     expect(result.current.draftProviderChange).toBeNull()
     expect(workspaceSpy.mock.calls.at(-1)![0].draft?.providerId).toBe("new-provider")
     expect(result.current.multiVoiceSpeech.generateSpeech).not.toHaveBeenCalled()
+  })
+
+  it("keeps failed rows visible after terminal jobs leave active recovery", () => {
+    const { result, rerender } = renderHook(() => useVoiceStudioController())
+    act(() => result.current.dialogue.importFromText("Narrator: Original."))
+    const rowId = result.current.dialogue.blocks[0].id
+    controllerMocks.speechDialogueId = result.current.dialogue.identity
+    controllerMocks.speechJob = { id: "failed-job", status: "error", segments: [
+      { id: rowId, status: "error", error: "Provider unavailable" },
+    ] } as SpeechJob
+    rerender()
+    expect(result.current.multiVoiceSpeech.recovery.active).toBeNull()
+    expect(result.current.dialogueRowStates[rowId]).toMatchObject({ label: "Error", error: "Provider unavailable" })
+    act(() => result.current.dialogue.importFromText("Narrator: Replacement."))
+    expect(result.current.dialogueRowStates[rowId]?.label).not.toBe("Error")
   })
 
   it("restores range text, assignments, source voice, and disabled Natural Handoffs", () => {

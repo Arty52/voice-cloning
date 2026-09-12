@@ -830,7 +830,7 @@ export function useVoiceStudioController() {
   return {
     dialogueRowStates: Object.fromEntries(dialogue.blocks.map(block => [block.id, dialogueRowState(
       block.id, dialogueBaseline, dialogueRevision,
-      multiVoiceSpeech.recovery?.active?.context.dialogueId === dialogue.identity ? multiVoiceSpeech.job : null,
+      multiVoiceSpeech.jobDialogueId === dialogue.identity ? multiVoiceSpeech.job : null,
     )])),
     regenerateDialogueVoiceRows,
     importDialogue,

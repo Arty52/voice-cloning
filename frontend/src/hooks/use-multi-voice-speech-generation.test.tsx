@@ -458,6 +458,7 @@ describe("useMultiVoiceSpeechGeneration", () => {
     vi.mocked(fetch).mockImplementation(async () => okJson({ job: { ...dialogueSuccessJob, status } }))
     const next = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
     await act(async () => { await next.result.current.restoreRecovery({ active, successful: null, resultId: null }, [provider], []) })
+    expect(next.result.current.jobDialogueId).toBe("script")
     expect(next.result.current.recovery.active).toBeNull()
     expect(next.result.current.error).toBeTruthy()
     const saved = next.result.current.recovery
