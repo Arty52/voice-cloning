@@ -87,6 +87,7 @@ export function useVoiceStudioController() {
   )
   const [naturalHandoffsSaveError, setNaturalHandoffsSaveError] = useState<string | null>(null)
   const [scriptRestoreWarning, setScriptRestoreWarning] = useState<string | null>(null)
+  const [draftProviderId, setDraftProviderId] = useState<string | null>(null)
   const [selectedUserTuningPresetId, setSelectedUserTuningPresetId] = useState<string | null>(null)
   const [textSelection, setTextSelection] = useState({ end: 0, start: 0, text: "" })
   const [voiceAssignments, setVoiceAssignments] = useState<VoiceTextAssignment[]>([])
@@ -129,6 +130,7 @@ export function useVoiceStudioController() {
   const selectedModel = metadata.models.find((model) => model.modelId === metadata.selectedModelId) ?? null
   const providerTuning = providerKeys.activeProvider?.tuning ?? EMPTY_TUNING_METADATA
   const activeProviderId = providerKeys.activeProviderId || null
+  const hasDraftProviderMismatch = Boolean(draftProviderId && draftProviderId !== activeProviderId)
   const effectiveVoiceSettingsByVoiceId = useMemo(
     () => buildEffectiveVoiceSettingsByVoiceId(activeProviderId, providerTuning, voiceLibrary.voices),
     [activeProviderId, providerTuning, voiceLibrary.voices]
@@ -250,6 +252,7 @@ export function useVoiceStudioController() {
     voiceLibrary.selectedVoice !== null &&
     providerKeys.canUseProvider &&
     isSelectedUserTuningPresetAvailable &&
+    !hasDraftProviderMismatch &&
     !isSpeechGenerating &&
     (isDialogueMode
       ? !voiceAssignmentError && dialogue.segmentBuild.segments.length > 0
@@ -257,12 +260,12 @@ export function useVoiceStudioController() {
   const workspaceDraft = useMemo<DialogueDraft | null>(() => (isDialogueMode ? {
       identity: dialogue.identity, sourceText: text, sourceExpanded, blocks: dialogue.blocks,
       speakerMappings: dialogue.speakerMappings, sourceVoiceId: voiceLibrary.selectedVoiceId || null,
-      providerId: activeProviderId, modelId: metadata.selectedModelId,
+      providerId: draftProviderId ?? activeProviderId, modelId: metadata.selectedModelId,
       selectedUserTuningPresetId, naturalHandoffs: naturalHandoffsEnabled,
       speech: multiVoiceSpeech.recovery,
     } : null), [
     isDialogueMode, dialogue.identity, text, sourceExpanded, dialogue.blocks, dialogue.speakerMappings,
-    voiceLibrary.selectedVoiceId, activeProviderId, metadata.selectedModelId, selectedUserTuningPresetId,
+    voiceLibrary.selectedVoiceId, activeProviderId, draftProviderId, metadata.selectedModelId, selectedUserTuningPresetId,
     naturalHandoffsEnabled, multiVoiceSpeech.recovery,
   ])
   const dialogueWorkspace = useDialogueWorkspace({
@@ -278,6 +281,7 @@ export function useVoiceStudioController() {
   })
 
   function applyWorkspaceDraft(draft: DialogueDraft | null) {
+    setDraftProviderId(draft?.providerId ?? null)
     setText(draft?.sourceText ?? DEFAULT_TEXT)
     setSourceExpanded(draft?.sourceExpanded ?? true)
     setSelectedUserTuningPresetId(draft?.selectedUserTuningPresetId ?? null)
@@ -484,7 +488,7 @@ export function useVoiceStudioController() {
   }
 
   async function generateSpeech(forceAll = false) {
-    if (isSpeechGenerating || dialogueWorkspace.isRestoring || !isSelectedUserTuningPresetAvailable) return
+    if (isSpeechGenerating || dialogueWorkspace.isRestoring || !isSelectedUserTuningPresetAvailable || hasDraftProviderMismatch) return
     if (isDialogueMode) {
       if (!forceAll && dialogueRevision.canRevise) {
         return reviseDialogueRows(dialogueRevision.changedIds)
@@ -833,6 +837,10 @@ export function useVoiceStudioController() {
     sourceError,
     dialogueWorkspace,
     isDialogueConnecting: dialogueWorkspace.isRestoring && multiVoiceSpeech.status !== "processing",
+    draftProviderChange: hasDraftProviderMismatch ? {
+      saved: draftProviderId!, current: activeProviderId ?? "Unavailable",
+      onAccept: () => { setDraftProviderId(activeProviderId); setSelectedUserTuningPresetId(null) },
+    } : null,
     sourceExpanded,
     setSourceExpanded,
     dialogueRevision,

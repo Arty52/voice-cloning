@@ -22,3 +22,14 @@ describe("dialogue draft notices", () => {
     expect(save).toHaveBeenCalledOnce()
   })
 })
+
+it("requires an explicit choice before adopting a changed provider", async () => {
+  const user = userEvent.setup()
+  const onAccept = vi.fn()
+  render(<DialogueDraftNotice conflict={false} error={null} disabled={false} onKeepCurrent={vi.fn()} onUseSaved={vi.fn()}
+    providerChange={{ saved: "Saved Provider", current: "Current Provider", onAccept }} />)
+  expect(screen.getByText("Provider Changed")).toBeVisible()
+  expect(onAccept).not.toHaveBeenCalled()
+  await user.click(screen.getByRole("button", { name: "Use Current Provider" }))
+  expect(onAccept).toHaveBeenCalledOnce()
+})
