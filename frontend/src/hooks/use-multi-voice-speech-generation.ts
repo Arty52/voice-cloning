@@ -594,7 +594,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
   return {
     restoreRecovery,
     recovery: unreconciledRecovery ?? {
-      active: status !== "starting" && job && (job.status === "pending" || job.status === "running" || (job.status === "success" && job.id !== successfulRun?.job.id))
+      active: status !== "starting" && job && (job.status === "pending" || job.status === "running" || (job.status === "success" && (!successfulRun || speechResultId(job) !== speechResultId(successfulRun.job))))
         ? storeSpeechRun(job.id, activeContext) : null,
       successful: successfulRun ? storeSpeechRun(successfulRun.job.id, successfulRun.context) : null,
       resultId: successfulRun?.resultId ?? null,
