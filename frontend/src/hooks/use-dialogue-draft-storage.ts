@@ -1,3 +1,4 @@
+import { createDialogueIdentity } from "@/lib/dialogue-identity"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { DIALOGUE_DRAFT_KEY, parseDialogueDraft, readDialogueDraft, type DialogueDraft, type DialogueDraftEnvelope } from "@/lib/dialogue-draft"
 
@@ -5,7 +6,7 @@ export function useDialogueDraftStorage(draft: DialogueDraft | null, initialRead
   const [initial] = useState(() => initialRead ?? readDialogueDraft())
   const [error, setError] = useState(initial.error)
   const [conflict, setConflict] = useState<{ envelope: DialogueDraftEnvelope | null } | null>(null)
-  const [writerId] = useState(() => window.crypto.randomUUID())
+  const [writerId] = useState(() => createDialogueIdentity())
   const seenRevision = useRef(initial.envelope?.revision ?? null)
   const [initialSerialized] = useState(() => JSON.stringify(initial.envelope?.draft ?? null))
   const savedJson = useRef(initialSerialized)
@@ -25,7 +26,7 @@ export function useDialogueDraftStorage(draft: DialogueDraft | null, initialRead
         if (mounted.current) setConflict({ envelope: current })
         return
       }
-      const envelope: DialogueDraftEnvelope = { version: 1, writerId, revision: window.crypto.randomUUID(), draft: next }
+      const envelope: DialogueDraftEnvelope = { version: 1, writerId, revision: createDialogueIdentity(), draft: next }
       localStorage.setItem(DIALOGUE_DRAFT_KEY, JSON.stringify(envelope))
       seenRevision.current = envelope.revision
       savedJson.current = pendingJson.current
