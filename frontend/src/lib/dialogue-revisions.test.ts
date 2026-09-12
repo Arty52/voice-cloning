@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { dialogueRevisionState, revisionScriptSnapshot, type DialogueBaseline } from "./dialogue-revisions"
+import { dialogueRevisionCharacterCount, dialogueRevisionState, revisionScriptSnapshot, type DialogueBaseline } from "./dialogue-revisions"
 import type { SpeechJobSegmentDraft } from "./voice-assignments"
 import type { GeneratedAudioScriptSnapshot, SpeechJob } from "@/types"
 
@@ -46,4 +46,10 @@ describe("dialogue revisions", () => {
     expect(revised.dialogueBlocks.map(b => b.text)).toEqual(["Draft edit.", "two."])
     expect(snapshot.dialogueBlocks[0].text).toBe("one.")
   })
+  it("estimates only changed provider text and zero characters for spacing-only revisions", () => {
+    expect(dialogueRevisionCharacterCount([{ ...segments[0], text: "  Changed.\n" }, segments[1]], ["one"])).toBe(8)
+    expect(dialogueRevisionCharacterCount(segments, [])).toBe(0)
+    expect(dialogueRevisionCharacterCount(segments, ["one", "two"])).toBe(8)
+  })
+
 })

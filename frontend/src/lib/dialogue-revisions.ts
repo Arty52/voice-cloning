@@ -49,3 +49,9 @@ export function revisionScriptSnapshot(base: GeneratedAudioScriptSnapshot, draft
     dialogueBlocks: base.dialogueBlocks.map(block => selected.has(block.id) ? draftBlocks.get(block.id) ?? block : block),
   }
 }
+
+/** Count only provider-bound text; handoff-only revisions synthesize no characters. */
+export function dialogueRevisionCharacterCount(segments: SpeechJobSegmentDraft[], changedIds: string[]) {
+  const changed = new Set(changedIds)
+  return segments.reduce((count, segment) => count + (changed.has(segment.clientSegmentId!) ? segment.text.trim().length : 0), 0)
+}

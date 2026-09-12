@@ -62,6 +62,8 @@ function AppContents() {
     dialogueSpeechSegmentCount,
     effectiveVoiceSettingsByVoiceId,
     estimatedCredits,
+    estimatedCharacterCount,
+    fullGenerationEstimate,
     generatedAudio,
     generationPendingStatus,
     handleGenerate,
@@ -397,7 +399,8 @@ function AppContents() {
           />
 
           <CostQuotaPanel
-            characterCount={characterCount}
+            characterCount={estimatedCharacterCount}
+            fullGenerationEstimate={fullGenerationEstimate}
             estimatedCredits={estimatedCredits}
             hasModelRate={hasModelRate}
             isCollapsible={false}
