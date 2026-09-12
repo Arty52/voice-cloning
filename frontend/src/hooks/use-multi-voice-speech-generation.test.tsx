@@ -1,3 +1,4 @@
+import { markGeneratedAudioArchiveCleared } from "@/lib/generated-audio-archive-migration"
 import { speechResultId } from "@/lib/speech-session"
 import { act, renderHook } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -457,6 +458,27 @@ describe("useMultiVoiceSpeechGeneration", () => {
     await act(async () => { await reopened.result.current.restoreRecovery(saved, [provider], []) })
     expect(fetch).not.toHaveBeenCalled()
     expect(reopened.result.current.status).toBe("idle")
+  })
+
+  it.each(["successful", "active"] as const)("does not recreate explicitly deleted %s recordings", async (reference) => {
+    const deletedJob = { ...dialogueSuccessJob, id: `deleted-${reference}` }
+    const saved = { ...generatedResult, id: speechResultId(deletedJob) }
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => String(input).endsWith("/result") ? okAudio() : okJson({ job: deletedJob })))
+    const persistGeneratedAudio = vi.fn(async () => saved)
+    const first = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await first.result.current.generateSpeech(generationInput({ dialogueId: "script", scriptSnapshot: dialogueScriptSnapshot })) })
+    const run = first.result.current.recovery.successful!
+    first.unmount()
+    await markGeneratedAudioArchiveCleared([saved.id])
+    persistGeneratedAudio.mockClear()
+    vi.mocked(fetch).mockClear()
+    const reopened = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await reopened.result.current.restoreRecovery({ successful: reference === "successful" ? run : null,
+      active: reference === "active" ? run : null, resultId: reference === "successful" ? saved.id : null }, [provider], []) })
+    expect(persistGeneratedAudio).not.toHaveBeenCalled()
+    expect(vi.mocked(fetch).mock.calls).toEqual([[`/api/speech/jobs/${deletedJob.id}`, undefined]])
+    expect(reopened.result.current.recovery).toEqual({ successful: null, active: null, resultId: null })
+    expect(reopened.result.current.resultUrl).toBeNull()
   })
 
   it("reconnects to an accepted job and archives its completed result without resubmission", async () => {

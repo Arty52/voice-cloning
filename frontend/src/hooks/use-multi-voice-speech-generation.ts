@@ -1,6 +1,7 @@
 import type { DialogueSpeechRecovery } from "@/lib/dialogue-draft"
 import { storeSpeechRun, restoreSpeechContext, speechResultId, type PersistContext, type SuccessfulSpeechRun } from "@/lib/speech-session"
 
+import { readGeneratedAudioArchiveMigrationState } from "@/lib/generated-audio-archive-migration"
 import { useEffect, useMemo, useRef, useState } from "react"
 
 import { BACKEND_DEFAULT_MODEL_LABEL, CANCELED_GENERATION_MESSAGE } from "@/constants"
@@ -424,22 +425,37 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
     setSuccessfulRun(null)
     let restoredResult: GeneratedResult | null = null
     try {
+      const { clearedIds } = await readGeneratedAudioArchiveMigrationState()
+      if (!isActiveRun(runId)) return null
       if (recovery.successful) {
         const { job: restored } = await api.fetchSpeechJob(recovery.successful.jobId)
         if (!isActiveRun(runId)) return null
         if (restored.status !== "success") throw new Error("The previous recording is unavailable. Generate all rows to make a new recording.")
-        const context = restoreSpeechContext(recovery.successful.context, providers)
-        restoredResult = archivedItems.find(item => item.id === speechResultId(restored))
-          ?? archivedItems.find(item => item.id === recovery.resultId) ?? null
-        setSuccessfulRun({ job: restored, context, resultId: restoredResult?.id })
-        lastPersistContextRef.current = context
-        updateJob(restored)
-        if (!recovery.active) setUnreconciledRecovery(null)
-        if (!restoredResult && !recovery.active) return await persistSuccessfulJob(restored, context, null)
+        if (clearedIds.has(speechResultId(restored)) || (recovery.resultId && clearedIds.has(recovery.resultId))) {
+          recovery = { ...recovery, successful: null, resultId: null,
+            active: recovery.active?.jobId === restored.id ? null : recovery.active }
+          setUnreconciledRecovery(recovery)
+        } else {
+          const context = restoreSpeechContext(recovery.successful.context, providers)
+          restoredResult = archivedItems.find(item => item.id === speechResultId(restored))
+            ?? archivedItems.find(item => item.id === recovery.resultId) ?? null
+          setSuccessfulRun({ job: restored, context, resultId: restoredResult?.id })
+          lastPersistContextRef.current = context
+          updateJob(restored)
+          if (!recovery.active) setUnreconciledRecovery(null)
+          if (!restoredResult && !recovery.active) return await persistSuccessfulJob(restored, context, null)
+        }
       }
       if (recovery.active) {
         const { job: restored } = await api.fetchSpeechJob(recovery.active.jobId)
         if (!isActiveRun(runId)) return null
+        if (restored.status === "success" && clearedIds.has(speechResultId(restored))) {
+          setUnreconciledRecovery(null)
+          finishGenerationTimer()
+          busyRef.current = false
+          setStatus(restoredResult ? "success" : "idle")
+          return restoredResult
+        }
         const context = restoreSpeechContext(recovery.active.context, providers)
         lastPersistContextRef.current = context
         updateJob(restored)
