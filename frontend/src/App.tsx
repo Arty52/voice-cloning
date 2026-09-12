@@ -63,6 +63,7 @@ function AppContents() {
     dialogue,
     dialogueSpeechSegmentCount,
     dialogueWorkspace,
+    draftProviderChange,
     effectiveVoiceSettingsByVoiceId,
     estimatedCredits,
     estimatedCharacterCount,
@@ -280,7 +281,7 @@ function AppContents() {
         </WorkflowSectionPanel>
 
         <WorkflowSectionPanel activeSectionId={activeSectionId} id="generate">
-          <DialogueDraftNotice conflict={dialogueWorkspace.conflict} error={dialogueWorkspace.error} disabled={isSpeechGenerating || dialogueWorkspace.isRestoring} onKeepCurrent={dialogueWorkspace.keepCurrent} onUseSaved={dialogueWorkspace.useSaved} />
+          <DialogueDraftNotice providerChange={draftProviderChange} conflict={dialogueWorkspace.conflict} error={dialogueWorkspace.error} disabled={isSpeechGenerating || dialogueWorkspace.isRestoring} onKeepCurrent={dialogueWorkspace.keepCurrent} onUseSaved={dialogueWorkspace.useSaved} />
           <SpeechInputPanel
             assignmentError={voiceAssignmentError}
             assignmentSpeechSegmentCount={voiceAssignmentSpeechSegmentCount}

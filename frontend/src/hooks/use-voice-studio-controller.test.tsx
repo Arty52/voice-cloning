@@ -11,13 +11,14 @@ const controllerMocks = vi.hoisted(() => ({
   selectedVoiceId: "narrator",
   voiceStatus: "success",
   presetStatus: "success",
+  providerId: null as string | null,
   voices: [] as VoiceAsset[],
 }))
 
 vi.mock("@/hooks/use-provider-keys", () => ({
   useProviderKeys: () => ({
     activeProvider: null,
-    activeProviderId: null,
+    activeProviderId: controllerMocks.providerId,
     activeProviderKey: null,
     canUseProvider: false,
     keySource: "missing",
@@ -151,6 +152,7 @@ describe("useVoiceStudioController script snapshot restore", () => {
     controllerMocks.selectedVoiceId = "narrator"
     controllerMocks.voiceStatus = "success"
     controllerMocks.presetStatus = "success"
+    controllerMocks.providerId = null
     controllerMocks.voices = [narrator, villain]
     window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
       callback(0)
@@ -194,6 +196,26 @@ describe("useVoiceStudioController script snapshot restore", () => {
     act(() => result.current.dialogue.updateBlockText(result.current.dialogue.blocks[0].id, "Edited."))
     expect(workspaceSpy.mock.calls.at(-1)![0].draft).not.toBe(draft)
     expect(workspaceSpy.mock.calls.at(-1)![0].draft?.blocks[0].text).toBe("Edited.")
+  })
+
+  it("preserves the saved provider until the current provider is explicitly chosen", async () => {
+    controllerMocks.providerId = "new-provider"
+    const workspaceSpy = vi.spyOn(workspace, "useDialogueWorkspace")
+    localStorage.setItem(DIALOGUE_DRAFT_KEY, JSON.stringify({ version: 1, writerId: "saved", revision: "saved", draft: {
+      identity: "script", sourceText: "Narrator: Saved.", sourceExpanded: false,
+      blocks: [{ id: "row-1", speakerLabel: "Narrator", text: "Saved.", voiceId: null }], speakerMappings: [],
+      sourceVoiceId: "narrator", providerId: "saved-provider", modelId: "", selectedUserTuningPresetId: null, naturalHandoffs: false,
+      speech: { active: null, successful: null, resultId: null },
+    } }))
+    const { result } = renderHook(() => useVoiceStudioController())
+    await waitFor(() => expect(result.current.dialogueWorkspace.isRestoring).toBe(false))
+    expect(result.current.draftProviderChange).toMatchObject({ saved: "saved-provider", current: "new-provider" })
+    expect(workspaceSpy.mock.calls.at(-1)![0].draft?.providerId).toBe("saved-provider")
+    expect(result.current.canGenerate).toBe(false)
+    act(() => result.current.draftProviderChange!.onAccept())
+    expect(result.current.draftProviderChange).toBeNull()
+    expect(workspaceSpy.mock.calls.at(-1)![0].draft?.providerId).toBe("new-provider")
+    expect(result.current.multiVoiceSpeech.generateSpeech).not.toHaveBeenCalled()
   })
 
   it("restores range text, assignments, source voice, and disabled Natural Handoffs", () => {
