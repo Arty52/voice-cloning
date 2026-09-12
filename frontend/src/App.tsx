@@ -1,5 +1,6 @@
 import { type FormEvent, useRef, useState } from "react"
 
+import { DialogueDraftNotice } from "@/components/dialogue/dialogue-draft-notice"
 import { AppHeader } from "@/components/app-header"
 import { ConfirmationDialog } from "@/components/dialogs/confirmation-dialog"
 import { ScriptSnapshotDialog } from "@/components/dialogs/script-snapshot-dialog"
@@ -59,6 +60,7 @@ function AppContents() {
     confirmation,
     dialogue,
     dialogueSpeechSegmentCount,
+    dialogueWorkspace,
     effectiveVoiceSettingsByVoiceId,
     estimatedCredits,
     generatedAudio,
@@ -274,6 +276,7 @@ function AppContents() {
         </WorkflowSectionPanel>
 
         <WorkflowSectionPanel activeSectionId={activeSectionId} id="generate">
+          <DialogueDraftNotice conflict={dialogueWorkspace.conflict} error={dialogueWorkspace.error} disabled={isSpeechGenerating || dialogueWorkspace.isRestoring} onKeepCurrent={dialogueWorkspace.keepCurrent} onUseSaved={dialogueWorkspace.useSaved} />
           <SpeechInputPanel
             assignmentError={voiceAssignmentError}
             assignmentSpeechSegmentCount={voiceAssignmentSpeechSegmentCount}

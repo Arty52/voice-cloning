@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event"
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import App from "./App"
+import { DIALOGUE_DRAFT_KEY, parseDialogueDraft } from "./lib/dialogue-draft"
 import { TooltipProvider } from "./components/ui/tooltip"
 import { MAX_SPEECH_TEXT_LENGTH } from "./constants"
 import { VOICE_PROVIDER_KEY_HEADER } from "./lib/api"
@@ -1648,6 +1649,32 @@ describe("App", () => {
 
     await user.click(screen.getByRole("button", { name: /^Generate$/ }))
     expect(createSpeechJob).not.toHaveBeenCalled()
+  })
+
+  it("exposes draft conflict choices and resumes saving the chosen workspace", async () => {
+    window.history.replaceState(null, "", "/#generate")
+    const user = userEvent.setup()
+    renderApp()
+    await screen.findByText("default/default-voice.mp3")
+    fireEvent.change(screen.getByLabelText(/text to speak/i), { target: { value: "Speaker: My draft." } })
+    await chooseGenerateInputMode(user, "Dialogue Rows")
+    await user.click(screen.getByRole("button", { name: "Import Dialogue" }))
+    act(() => { window.dispatchEvent(new Event("pagehide")) })
+    const current = parseDialogueDraft(localStorage.getItem(DIALOGUE_DRAFT_KEY))!
+    const otherDraft = { ...current.draft, sourceText: "Speaker: Other draft.", blocks: current.draft.blocks.map(block => ({ ...block, text: "Other draft." })) }
+    const updateOther = () => {
+      const other = JSON.stringify({ ...current, draft: otherDraft, writerId: "other-tab", revision: window.crypto.randomUUID() })
+      localStorage.setItem(DIALOGUE_DRAFT_KEY, other)
+      act(() => { window.dispatchEvent(new StorageEvent("storage", { key: DIALOGUE_DRAFT_KEY, newValue: other })) })
+    }
+    updateOther()
+    expect(screen.getByText("Local autosaving is paused. Choose which dialogue draft to keep.")).toBeVisible()
+    await user.click(screen.getByRole("button", { name: "Keep This Draft" }))
+    expect(parseDialogueDraft(localStorage.getItem(DIALOGUE_DRAFT_KEY))?.draft.sourceText).toBe("Speaker: My draft.")
+    updateOther()
+    await user.click(screen.getByRole("button", { name: "Use Saved Draft" }))
+    await waitFor(() => expect(screen.getByLabelText("Dialogue")).toHaveValue("Other draft."))
+    expect(screen.queryByRole("button", { name: "Keep This Draft" })).not.toBeInTheDocument()
   })
 
   it("blocks dialogue row generation when edited text exceeds the speech limit", async () => {
