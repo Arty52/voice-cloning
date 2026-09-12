@@ -1913,7 +1913,7 @@ describe("App", () => {
 
     await screen.findByRole("heading", { name: "Latest Generated Audio" })
     const latestPanel = latestGeneratedAudioPanel()
-    await user.click(latestPanel.getByRole("button", { name: /show segments/i }))
+    await user.click(await latestPanel.findByRole("button", { name: /show segments/i }))
     expect(latestPanel.queryByRole("button", { name: "Save Tuning To Voice" })).not.toBeInTheDocument()
     await user.click(latestPanel.getAllByRole("button", { name: /^Tune$/i })[0])
     await user.click(screen.getByRole("button", { name: "Open Segment 1 Tuning Actions" }))
