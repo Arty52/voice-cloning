@@ -53,6 +53,7 @@ export function CostQuotaPanel({
   subscriptionError,
   subscriptionStatus,
 }: CostQuotaPanelProps) {
+  const actualCharacterCount = result?.multiVoiceMetadata?.synthesizedCharacterCount ?? result?.characterCount
   const isLoading = subscriptionStatus === "loading" || modelStatus === "loading"
   const isSubscriptionLoading = subscriptionStatus === "loading"
   const detailsId = "cost-quota-details"
@@ -102,8 +103,8 @@ export function CostQuotaPanel({
           icon={<Check aria-hidden="true" className="size-4" />}
           label="Actual"
           value={
-            result?.characterCount !== null && result?.characterCount !== undefined
-              ? formatNumber(result.characterCount)
+            actualCharacterCount !== null && actualCharacterCount !== undefined
+              ? formatNumber(actualCharacterCount)
               : "No run"
           }
         />

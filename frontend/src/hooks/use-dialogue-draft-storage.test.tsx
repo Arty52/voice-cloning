@@ -10,7 +10,7 @@ const draft: DialogueDraft = {
   modelId: "model", selectedUserTuningPresetId: null, naturalHandoffs: false,
   speech: { active: null, successful: null, resultId: null },
 }
-const envelope = (value = draft, writerId = "other") => JSON.stringify({ version: 1, writerId, revision: crypto.randomUUID(), draft: value })
+const envelope = (value = draft, writerId = "other") => JSON.stringify({ version: 1, writerId, revision: window.crypto.randomUUID(), draft: value })
 
 describe("dialogue draft storage", () => {
   beforeEach(() => { localStorage.clear(); vi.useFakeTimers() })

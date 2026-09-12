@@ -1,6 +1,7 @@
 import type { DialogueSpeechRecovery } from "@/lib/dialogue-draft"
 import { storeSpeechRun, restoreSpeechContext, speechResultId, type PersistContext, type SuccessfulSpeechRun } from "@/lib/speech-session"
 
+import { readGeneratedAudioArchiveMigrationState } from "@/lib/generated-audio-archive-migration"
 import { useEffect, useMemo, useRef, useState } from "react"
 
 import { BACKEND_DEFAULT_MODEL_LABEL, CANCELED_GENERATION_MESSAGE } from "@/constants"
@@ -58,6 +59,7 @@ type RegenerateVoiceInput = {
   voiceId: string
   voiceSettings: VoiceTuningValues
 }
+
 
 type UseMultiVoiceSpeechGenerationOptions = {
   persistGeneratedAudio: (input: SaveGeneratedAudioInput, limitBytes: number) => Promise<GeneratedResult>
@@ -209,6 +211,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
     const runId = startRun({ clearJob: false })
     const nextPersistContext = {
       ...persistContext,
+      synthesizedSegmentIds: [segmentId],
       storageLimitBytes: storageLimitBytes ?? persistContext.storageLimitBytes,
     }
     lastPersistContextRef.current = nextPersistContext
@@ -252,6 +255,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
     const runId = startRun({ clearJob: false })
     const nextPersistContext = {
       ...persistContext,
+      synthesizedSegmentIds: activeJob.segments.filter(segment => segment.voiceId === voiceId).map(segment => segment.id),
       storageLimitBytes: storageLimitBytes ?? persistContext.storageLimitBytes,
     }
     lastPersistContextRef.current = nextPersistContext
@@ -287,6 +291,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
     const runId = startRun({ clearJob: false })
     const context = {
       ...successfulRun.context,
+      synthesizedSegmentIds: input.segments.map(segment => segment.segmentId),
       defaultVoice: input.defaultVoice,
       tuning: { ...input.tuning },
       selectedTuningPresetId: input.selectedTuningPresetId,
@@ -424,22 +429,37 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
     setSuccessfulRun(null)
     let restoredResult: GeneratedResult | null = null
     try {
+      const { clearedIds } = await readGeneratedAudioArchiveMigrationState()
+      if (!isActiveRun(runId)) return null
       if (recovery.successful) {
         const { job: restored } = await api.fetchSpeechJob(recovery.successful.jobId)
         if (!isActiveRun(runId)) return null
         if (restored.status !== "success") throw new Error("The previous recording is unavailable. Generate all rows to make a new recording.")
-        const context = restoreSpeechContext(recovery.successful.context, providers)
-        restoredResult = archivedItems.find(item => item.id === speechResultId(restored))
-          ?? archivedItems.find(item => item.id === recovery.resultId) ?? null
-        setSuccessfulRun({ job: restored, context, resultId: restoredResult?.id })
-        lastPersistContextRef.current = context
-        updateJob(restored)
-        if (!recovery.active) setUnreconciledRecovery(null)
-        if (!restoredResult && !recovery.active) return await persistSuccessfulJob(restored, context, null)
+        if (clearedIds.has(speechResultId(restored)) || (recovery.resultId && clearedIds.has(recovery.resultId))) {
+          recovery = { ...recovery, successful: null, resultId: null,
+            active: recovery.active?.jobId === restored.id ? null : recovery.active }
+          setUnreconciledRecovery(recovery)
+        } else {
+          const context = restoreSpeechContext(recovery.successful.context, providers)
+          restoredResult = archivedItems.find(item => item.id === speechResultId(restored))
+            ?? archivedItems.find(item => item.id === recovery.resultId) ?? null
+          setSuccessfulRun({ job: restored, context, resultId: restoredResult?.id })
+          lastPersistContextRef.current = context
+          updateJob(restored)
+          if (!recovery.active) setUnreconciledRecovery(null)
+          if (!restoredResult && !recovery.active) return await persistSuccessfulJob(restored, context, null)
+        }
       }
       if (recovery.active) {
         const { job: restored } = await api.fetchSpeechJob(recovery.active.jobId)
         if (!isActiveRun(runId)) return null
+        if (restored.status === "success" && clearedIds.has(speechResultId(restored))) {
+          setUnreconciledRecovery(null)
+          finishGenerationTimer()
+          busyRef.current = false
+          setStatus(restoredResult ? "success" : "idle")
+          return restoredResult
+        }
         const context = restoreSpeechContext(recovery.active.context, providers)
         lastPersistContextRef.current = context
         updateJob(restored)
@@ -484,7 +504,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
         createdAt,
         generationElapsedMs: elapsedMs,
         modelId: persistContext.modelId || persistContext.backendDefaultModelId || BACKEND_DEFAULT_MODEL_LABEL,
-        multiVoiceMetadata: buildGeneratedAudioMultiVoiceMetadata(jobUpdate, persistContext.provider),
+        multiVoiceMetadata: buildGeneratedAudioMultiVoiceMetadata(jobUpdate, persistContext.provider, persistContext.synthesizedSegmentIds),
         requestId: null,
         scriptSnapshot: refreshScriptSnapshotFromJob(persistContext.scriptSnapshot, jobUpdate),
         tuningMetadata: buildGeneratedAudioJobTuningMetadata(jobUpdate, {
@@ -574,7 +594,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
   return {
     restoreRecovery,
     recovery: unreconciledRecovery ?? {
-      active: status !== "starting" && job && (job.id !== successfulRun?.job.id || job.status !== "success")
+      active: status !== "starting" && job && (job.status === "pending" || job.status === "running" || (job.status === "success" && job.id !== successfulRun?.job.id))
         ? storeSpeechRun(job.id, activeContext) : null,
       successful: successfulRun ? storeSpeechRun(successfulRun.job.id, successfulRun.context) : null,
       resultId: successfulRun?.resultId ?? null,

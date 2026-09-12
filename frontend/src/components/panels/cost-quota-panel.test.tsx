@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react"
 import { expect, it, vi } from "vitest"
+import type { GeneratedResult } from "@/types"
 import { CostQuotaPanel } from "./cost-quota-panel"
 
 it("distinguishes selective revision cost from regenerating the complete recording", () => {
@@ -10,4 +11,13 @@ it("distinguishes selective revision cost from regenerating the complete recordi
   expect(screen.getByText("Generate Changes")).toBeVisible()
   expect(screen.getByText("~4")).toBeVisible()
   expect(screen.getByText(/Regenerate All uses/)).toHaveTextContent("1,600 characters (~800 credits)")
+})
+
+it("shows synthesis usage independently of total recording characters", () => {
+  render(<CostQuotaPanel characterCount={0} estimatedCredits={0} hasModelRate={false} isExpanded isGenerating={false}
+    modelError={null} modelStatus="success" models={[]} onModelChange={vi.fn()} onRefresh={vi.fn()} onToggleExpanded={vi.fn()}
+    providerLinks={[]} result={{ characterCount: 1600, multiVoiceMetadata: { synthesizedCharacterCount: 8 } } as GeneratedResult}
+    selectedModel={null} selectedModelId="" subscription={null} subscriptionError={null} subscriptionStatus="success" />)
+  expect(screen.getByText("8")).toBeVisible()
+  expect(screen.queryByText("1,600")).not.toBeInTheDocument()
 })
