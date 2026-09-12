@@ -52,6 +52,7 @@ function AppContents() {
     archiveStorageError,
     assignVoiceToSelection,
     canGenerate,
+    generateAllSpeech,
     cancelGeneration,
     characterCount,
     clearUserTuningPresetSelection,
@@ -290,6 +291,7 @@ function AppContents() {
             onClearAssignments={clearVoiceAssignments}
             onEditAssignmentVoice={updateVoiceAssignment}
             onGenerate={handleGenerateWithAttention}
+            onRegenerateAll={generateAllSpeech}
             onNaturalHandoffsEnabledChange={setNaturalHandoffsEnabled}
             onSaveNaturalHandoffsDefault={saveNaturalHandoffsDefault}
             onRemoveAssignment={removeVoiceAssignment}
