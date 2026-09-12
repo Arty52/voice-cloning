@@ -81,6 +81,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
   const busyRef = useRef(false)
   const mountedRef = useRef(true)
   const activeJobIdRef = useRef<string | null>(null)
+  const generationStartedAtEpochRef = useRef<number | null>(null)
   const generationStartedAtRef = useRef<number | null>(null)
   const lastPersistContextRef = useRef<PersistContext | null>(null)
 
@@ -152,7 +153,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
     const runId = startRun()
     const submittedModelId = api.hasModel(input.models, input.selectedModelId) ? input.selectedModelId : null
     const persistContext: PersistContext = {
-      generationStartedAt: Date.now(),
+      generationStartedAt: generationStartedAtEpochRef.current ?? undefined,
       dialogueId: input.dialogueId,
       providerId: input.providerId,
       naturalHandoffs: input.segmentGapMs !== 0,
@@ -219,7 +220,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
     const runId = startRun({ clearJob: false })
     const nextPersistContext = {
       ...persistContext,
-      generationStartedAt: Date.now(),
+      generationStartedAt: generationStartedAtEpochRef.current ?? undefined,
       synthesizedSegmentIds: [segmentId],
       storageLimitBytes: storageLimitBytes ?? persistContext.storageLimitBytes,
     }
@@ -264,7 +265,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
     const runId = startRun({ clearJob: false })
     const nextPersistContext = {
       ...persistContext,
-      generationStartedAt: Date.now(),
+      generationStartedAt: generationStartedAtEpochRef.current ?? undefined,
       synthesizedSegmentIds: activeJob.segments.filter(segment => segment.voiceId === voiceId).map(segment => segment.id),
       storageLimitBytes: storageLimitBytes ?? persistContext.storageLimitBytes,
     }
@@ -301,7 +302,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
     const runId = startRun({ clearJob: false })
     const context = {
       ...successfulRun.context,
-      generationStartedAt: Date.now(),
+      generationStartedAt: generationStartedAtEpochRef.current ?? undefined,
       synthesizedSegmentIds: input.segments.map(segment => segment.segmentId),
       defaultVoice: input.defaultVoice,
       tuning: { ...input.tuning },
@@ -479,12 +480,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
           return restoredResult
         }
         const context = restoreSpeechContext(recovery.active.context, providers)
-        const startedAt = context.generationStartedAt ?? Date.parse(restored.createdAt)
-        if (Number.isFinite(startedAt)) {
-          const elapsed = Math.max(0, Date.now() - startedAt)
-          generationStartedAtRef.current = performance.now() - elapsed
-          setGenerationElapsedMs(elapsed)
-        }
+        startGenerationTimer(context.generationStartedAt ?? Date.parse(restored.createdAt))
         lastPersistContextRef.current = context
         updateJob(restored)
         setUnreconciledRecovery(null)
@@ -591,9 +587,12 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
     setActiveContext(lastPersistContextRef.current)
   }
 
-  function startGenerationTimer() {
-    generationStartedAtRef.current = performance.now()
-    setGenerationElapsedMs(0)
+  function startGenerationTimer(startedAt = Date.now()) {
+    const timestamp = Number.isFinite(startedAt) ? startedAt : Date.now()
+    const elapsed = Math.max(0, Date.now() - timestamp)
+    generationStartedAtEpochRef.current = timestamp
+    generationStartedAtRef.current = performance.now() - elapsed
+    setGenerationElapsedMs(elapsed)
   }
 
   function finishGenerationTimer() {
@@ -612,6 +611,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
   }
 
   function clearGenerationTimer() {
+    generationStartedAtEpochRef.current = null
     generationStartedAtRef.current = null
     setGenerationElapsedMs(null)
   }
