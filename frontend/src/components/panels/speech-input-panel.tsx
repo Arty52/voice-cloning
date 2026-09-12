@@ -53,6 +53,7 @@ type SpeechInputPanelProps = {
   onCancelGeneration: () => void
   onClearAssignments: () => void
   onEditAssignmentVoice: (assignmentId: string, voice: VoiceAsset) => void
+  onRegenerateAll?: () => void
   onGenerate: (event?: FormEvent<HTMLFormElement>) => void
   onNaturalHandoffsEnabledChange: (enabled: boolean) => void
   onSaveNaturalHandoffsDefault?: () => void
@@ -99,6 +100,7 @@ export function SpeechInputPanel({
   onClearAssignments,
   onEditAssignmentVoice,
   onGenerate,
+  onRegenerateAll,
   onNaturalHandoffsEnabledChange,
   onSaveNaturalHandoffsDefault = noopSaveNaturalHandoffsDefault,
   onRemoveAssignment,
@@ -371,10 +373,11 @@ export function SpeechInputPanel({
         isGenerating={isGenerating}
         characterCount={characterCount}
         rowCount={dialogue.blocks.length}
-        onRegenerateAll={() => onGenerate()}
+        onRegenerateAll={onRegenerateAll ?? (() => onGenerate())}
         onCancel={onCancelGeneration}
         {...generationBar}
       />
+
     </form>
   )
 }

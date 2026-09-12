@@ -22,7 +22,7 @@ import { useVoiceTuning } from "@/hooks/use-voice-tuning"
 import { useWorkflowNavigation } from "@/hooks/use-workflow-navigation"
 import { buildDialogueScriptSnapshot, buildRangeScriptSnapshot } from "@/lib/generated-audio-script-snapshot"
 import { dialogueRowState } from "@/lib/dialogue-row-state"
-import { dialogueRevisionState, revisionScriptSnapshot, type DialogueBaseline } from "@/lib/dialogue-revisions"
+import { dialogueRevisionCharacterCount, dialogueRevisionState, revisionScriptSnapshot, type DialogueBaseline } from "@/lib/dialogue-revisions"
 import { isTemporaryGeneratedAudioId } from "@/lib/generated-audio-view-model"
 import { isAppSettingsUnavailableError, loadAppSettings, saveAppSettings } from "@/lib/app-settings-api"
 import { formatBytes, formatNumber } from "@/lib/formatters"
@@ -236,7 +236,11 @@ export function useVoiceStudioController() {
       })
     : null
   const modelMultiplier = selectedModel?.characterCostMultiplier ?? null
-  const estimatedCredits = modelMultiplier === null ? characterCount : Math.ceil(characterCount * modelMultiplier)
+  const estimatedCharacterCount = isDialogueMode && dialogueRevision.canRevise
+    ? dialogueRevisionCharacterCount(dialogue.segmentBuild.segments, dialogueRevision.changedIds) : characterCount
+  const estimatedCredits = modelMultiplier === null ? estimatedCharacterCount : Math.ceil(estimatedCharacterCount * modelMultiplier)
+  const fullGenerationEstimate = isDialogueMode && dialogueRevision.canRevise
+    ? { characterCount, credits: modelMultiplier === null ? characterCount : Math.ceil(characterCount * modelMultiplier) } : undefined
   const hasModelRate = modelMultiplier !== null
   const isWithinSpeechTextLimit = characterCount <= MAX_SPEECH_TEXT_LENGTH
   const canGenerate =
@@ -448,6 +452,7 @@ export function useVoiceStudioController() {
       segmentGapMs: naturalHandoffsEnabled ? null : 0,
     })
     const generatedResult = await multiVoiceSpeech.reviseSpeech({
+      defaultVoice: voiceLibrary.selectedVoice!,
       tuning, selectedTuningPresetId, selectedUserTuningPreset,
       naturalHandoffs: naturalHandoffsEnabled,
       providerKey: providerKeys.activeProviderKey,
@@ -838,6 +843,8 @@ export function useVoiceStudioController() {
     dialogueSpeechSegmentCount,
     effectiveVoiceSettingsByVoiceId,
     estimatedCredits,
+    estimatedCharacterCount,
+    fullGenerationEstimate,
     generatedAudio,
     handleGenerate,
     handleStorageLimitChange,

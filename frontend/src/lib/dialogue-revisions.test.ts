@@ -1,6 +1,6 @@
 import { dialogueRowState } from "./dialogue-row-state"
 import { describe, expect, it } from "vitest"
-import { dialogueRevisionState, revisionScriptSnapshot, type DialogueBaseline } from "./dialogue-revisions"
+import { dialogueRevisionCharacterCount, dialogueRevisionState, revisionScriptSnapshot, type DialogueBaseline } from "./dialogue-revisions"
 import type { SpeechJobSegmentDraft } from "./voice-assignments"
 import type { GeneratedAudioScriptSnapshot, SpeechJob } from "@/types"
 
@@ -41,11 +41,18 @@ describe("dialogue revisions", () => {
     expect(dialogueRevisionState({ ...input, baseline: { ...baseline, naturalHandoffs: true }, naturalHandoffs: false }).spacingChanged).toBe(true)
   })
   it("keeps other unsynthesized row edits out of the recording snapshot", () => {
-    const draft = { ...snapshot, dialogueBlocks: snapshot.dialogueBlocks.map(b => ({ ...b, text: "Draft edit." })) }
+    const draft = { ...snapshot, sourceVoiceId: "new-default", dialogueBlocks: snapshot.dialogueBlocks.map(b => ({ ...b, text: "Draft edit." })) }
     const revised = revisionScriptSnapshot(snapshot, draft, ["one"])
+    expect(revised.sourceVoiceId).toBe("new-default")
     expect(revised.dialogueBlocks.map(b => b.text)).toEqual(["Draft edit.", "two."])
     expect(snapshot.dialogueBlocks[0].text).toBe("one.")
   })
+  it("estimates only changed provider text and zero characters for spacing-only revisions", () => {
+    expect(dialogueRevisionCharacterCount([{ ...segments[0], text: "  Changed.\n" }, segments[1]], ["one"])).toBe(8)
+    expect(dialogueRevisionCharacterCount(segments, [])).toBe(0)
+    expect(dialogueRevisionCharacterCount(segments, ["one", "two"])).toBe(8)
+  })
+
 })
 
 
