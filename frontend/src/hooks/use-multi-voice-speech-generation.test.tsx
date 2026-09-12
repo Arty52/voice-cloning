@@ -526,7 +526,7 @@ describe("useMultiVoiceSpeechGeneration", () => {
   it("reconnects to an accepted job and archives its completed result without resubmission", async () => {
     const clock = vi.spyOn(Date, "now").mockReturnValue(1000)
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => String(input).endsWith("/result") ? okAudio() : okJson({ job: dialogueSuccessJob })))
-    const persistGeneratedAudio = vi.fn(async (_input: import("@/lib/generated-audio-storage").SaveGeneratedAudioInput) => generatedResult)
+    const persistGeneratedAudio = vi.fn<(input: import("@/lib/generated-audio-storage").SaveGeneratedAudioInput) => Promise<GeneratedResult>>().mockResolvedValue(generatedResult)
     const first = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
     await act(async () => { await first.result.current.generateSpeech(generationInput({ dialogueId: "script", scriptSnapshot: dialogueScriptSnapshot })) })
     const active = first.result.current.recovery.successful!
