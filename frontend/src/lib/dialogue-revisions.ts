@@ -3,6 +3,7 @@ import type { SpeechJobSegmentDraft } from "@/lib/voice-assignments"
 import { voiceTuningValuesEqual } from "@/lib/voice-tuning"
 
 export type DialogueBaseline = {
+  naturalHandoffs?: boolean
   dialogueId: string
   job: SpeechJob
   providerId: string | null
@@ -34,7 +35,7 @@ export function dialogueRevisionState({ dialogueId, baseline, segments, provider
       { ...defaults, ...(previous.voiceSettings ?? baseline!.tuning) },
     )
   }).map(s => s.clientSegmentId!) : []
-  const spacingChanged = Boolean(canRevise && naturalHandoffs !== (baseline!.job.segmentGapMs > 0))
+  const spacingChanged = Boolean(canRevise && naturalHandoffs !== (baseline!.naturalHandoffs ?? baseline!.job.segmentGapMs > 0))
   return { canRevise, changedIds, fullGenerationReason, linked, spacingChanged }
 }
 

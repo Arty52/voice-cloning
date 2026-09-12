@@ -3,6 +3,7 @@ import type { GeneratedAudioScriptSnapshot, UserTuningPreset, VoiceTuningValues 
 
 export const DIALOGUE_DRAFT_KEY = "voice-cloning.dialogueDraft.v1"
 export type StoredSpeechContext = {
+  naturalHandoffs?: boolean
   dialogueId: string
   providerId: string | null
   defaultVoice: { id: string; name: string }
@@ -56,7 +57,7 @@ function run(value: unknown): boolean {
 }
 function context(value: unknown): boolean {
   if (!record(value)) return false
-  return string(value.dialogueId) && nullableString(value.providerId) && record(value.defaultVoice) && string(value.defaultVoice.id) && string(value.defaultVoice.name) &&
+  return (value.naturalHandoffs === undefined || typeof value.naturalHandoffs === "boolean") && string(value.dialogueId) && nullableString(value.providerId) && record(value.defaultVoice) && string(value.defaultVoice.id) && string(value.defaultVoice.name) &&
     nullableString(value.modelId) && nullableString(value.backendDefaultModelId) && tuning(value.tuning) && snapshot(value.scriptSnapshot) &&
     string(value.selectedTuningPresetId) && Number.isFinite(value.storageLimitBytes) && Number(value.storageLimitBytes) > 0 && preset(value.selectedUserTuningPreset)
 }

@@ -434,6 +434,15 @@ describe("useMultiVoiceSpeechGeneration", () => {
     expect(snapshot.segmentGapMs).toBe(0)
   })
 
+  it("snapshots actual speaker mappings, including mixed voices after a partial revision", () => {
+    const snapshot = refreshScriptSnapshotFromJob(dialogueScriptSnapshot, dialogueRegeneratedJob)!
+    expect(snapshot.speakerMappings).toContainEqual({ speakerLabel: "Narrator", voiceId: "villain" })
+    const sharedSpeaker = { ...dialogueScriptSnapshot, dialogueBlocks: dialogueScriptSnapshot.dialogueBlocks.map(block => ({ ...block, speakerLabel: "Same Speaker" })) }
+    const mixed = refreshScriptSnapshotFromJob(sharedSpeaker, dialogueSuccessJob)!
+    expect(mixed.speakerMappings).toEqual([{ speakerLabel: "Same Speaker", voiceId: null }])
+    expect(mixed.dialogueBlocks.map(block => block.voiceId)).toEqual(["narrator", "villain"])
+  })
+
   it("revises selected rows, rejects overlapping actions, and retains a successful baseline on failure", async () => {
     let failRevision = false
     let release: (() => void) | null = null
@@ -451,7 +460,7 @@ describe("useMultiVoiceSpeechGeneration", () => {
     const persistGeneratedAudio = vi.fn(async () => generatedResult)
     const { result } = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
     await act(async () => { await result.current.generateSpeech(generationInput({ dialogueId: "script", scriptSnapshot: dialogueScriptSnapshot })) })
-    const input = { providerKey: "secret", segments: [{ segmentId: "dialogue-block-1", text: "Changed", voiceId: "villain", voiceSettings: { stability: 0.91 } }], scriptSnapshot: dialogueScriptSnapshot, storageLimitBytes: 100 }
+    const input = { tuning: { stability: 0.91 }, selectedTuningPresetId: "custom", providerKey: "secret", segments: [{ segmentId: "dialogue-block-1", text: "Changed", voiceId: "villain", voiceSettings: { stability: 0.91 } }], scriptSnapshot: dialogueScriptSnapshot, storageLimitBytes: 100 }
     let pending: Promise<GeneratedResult | null>
     await act(async () => {
       pending = result.current.reviseSpeech(input)
@@ -460,6 +469,7 @@ describe("useMultiVoiceSpeechGeneration", () => {
     expect(result.current.segmentResultUrls["dialogue-block-2"]).toContain("dialogue-job")
     await act(async () => { release!(); await pending! })
     expect(result.current.successfulRun?.job.id).toBe("revision-job")
+    expect(result.current.successfulRun?.context.naturalHandoffs).toBe(true)
     const request = vi.mocked(fetch).mock.calls.find(([path]) => String(path).endsWith("/revisions"))!
     expect(JSON.parse(request[1]!.body as string)).toEqual({ segments: input.segments })
     failRevision = true
@@ -467,6 +477,61 @@ describe("useMultiVoiceSpeechGeneration", () => {
     expect(result.current.error).toBe("Provider unavailable")
     expect(result.current.successfulRun?.job.id).toBe("revision-job")
     expect(persistGeneratedAudio).toHaveBeenCalledTimes(2)
+  })
+
+  it.each([true, false])("records current revision tuning provenance without mislabeling mixed takes (uniform=%s)", async (uniform) => {
+    const currentTuning = { stability: 0.91 }
+    const preset = { id: "new-preset", name: "New Preset", providerId: provider.id, voicePresetId: null, settings: currentTuning, createdAt: "now", updatedAt: "now" }
+    const revised = { ...dialogueRegeneratedJob, id: "revision-job", segments: dialogueRegeneratedJob.segments.map((segment, index) => uniform || index === 0 ? { ...segment, voiceSettings: currentTuning } : segment) }
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input)
+      if (path === "/api/speech/jobs") return okJson({ job: dialogueSuccessJob }, 202)
+      if (path.endsWith("/revisions")) return okJson({ job: revised }, 202)
+      return okAudio()
+    }))
+    const persistGeneratedAudio = vi.fn(async () => generatedResult)
+    const { result } = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await result.current.generateSpeech(generationInput({ dialogueId: "script", scriptSnapshot: dialogueScriptSnapshot })) })
+    await act(async () => { await result.current.reviseSpeech({ tuning: currentTuning, selectedTuningPresetId: preset.id, selectedUserTuningPreset: preset, providerKey: null, segments: [], scriptSnapshot: dialogueScriptSnapshot, storageLimitBytes: 100 }) })
+    expect(result.current.successfulRun?.context.tuning).toEqual(currentTuning)
+    expect(result.current.successfulRun?.context.selectedUserTuningPreset).toEqual(preset)
+    expect(persistGeneratedAudio).toHaveBeenLastCalledWith(expect.objectContaining({
+      tuningMetadata: expect.objectContaining(uniform ? { mode: "userPreset", presetId: preset.id, userPreset: expect.objectContaining({ name: "New Preset" }) } : { mode: "custom", presetId: null, userPreset: null }),
+      multiVoiceMetadata: expect.objectContaining({ segments: expect.arrayContaining([expect.objectContaining({ voiceSettings: currentTuning })]) }),
+    }), 100)
+  })
+
+  it.each(["fetch", "archive"])("keeps previous playback and editing locked until revision saving completes (%s failure)", async (failure) => {
+    let release!: () => void
+    const revised = { ...dialogueRegeneratedJob, id: "revision-job" }
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input)
+      if (path === "/api/speech/jobs") return okJson({ job: dialogueSuccessJob }, 202)
+      if (path.endsWith("/revisions")) return okJson({ job: revised }, 202)
+      if (path === "/api/speech/jobs/revision-job/result" && failure === "fetch") {
+        await new Promise<void>(resolve => { release = resolve })
+        throw new Error("Download failed")
+      }
+      return okAudio()
+    }))
+    const persistGeneratedAudio = vi.fn(async () => generatedResult)
+    const { result } = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await result.current.generateSpeech(generationInput({ dialogueId: "script", scriptSnapshot: dialogueScriptSnapshot })) })
+    if (failure === "archive") persistGeneratedAudio.mockImplementationOnce(async () => {
+      await new Promise<void>(resolve => { release = resolve })
+      throw new Error("Archive failed")
+    })
+    let pending!: Promise<GeneratedResult | null>
+    await act(async () => { pending = result.current.reviseSpeech({ tuning: { stability: 0.91 }, selectedTuningPresetId: "custom", providerKey: null, segments: [], scriptSnapshot: dialogueScriptSnapshot, storageLimitBytes: 100 }) })
+    expect(result.current.job?.id).toBe("revision-job")
+    expect(result.current.isGenerating).toBe(true)
+    expect(result.current.canCancel).toBe(false)
+    expect(result.current.segmentResultUrls["dialogue-block-1"]).toContain("/dialogue-job/")
+    await act(async () => { release(); await pending })
+    expect(result.current.status).toBe("error")
+    expect(result.current.successfulRun?.job.id).toBe("dialogue-job")
+    expect(result.current.segmentResultUrls["dialogue-block-1"]).toContain("/dialogue-job/")
+    expect(result.current.resultUrl).toBe("/api/speech/jobs/dialogue-job/result")
   })
 
   it("creates, polls, and persists a successful multi-voice speech job", async () => {

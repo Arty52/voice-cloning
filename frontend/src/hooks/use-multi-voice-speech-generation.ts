@@ -7,7 +7,7 @@ import { BACKEND_DEFAULT_MODEL_LABEL, CANCELED_GENERATION_MESSAGE } from "@/cons
 import * as api from "@/lib/api"
 import {
   buildGeneratedAudioMultiVoiceMetadata,
-  buildGeneratedAudioTuningMetadata,
+  buildGeneratedAudioJobTuningMetadata,
 } from "@/lib/generated-audio-metadata"
 import type { SaveGeneratedAudioInput } from "@/lib/generated-audio-storage"
 import type { SpeechJobSegmentDraft } from "@/lib/voice-assignments"
@@ -82,17 +82,17 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
   const lastPersistContextRef = useRef<PersistContext | null>(null)
 
   const isGenerating = status === "starting" || status === "processing"
-  const canCancel = isGenerating && job !== null
-  const resultUrl = job?.status === "success" ? api.speechJobResultUrl(job.id) : null
+  const canCancel = isGenerating && (job?.status === "pending" || job?.status === "running")
+  const resultUrl = successfulRun ? api.speechJobResultUrl(successfulRun.job.id) : null
   const segmentResultUrls = useMemo(() => {
-    const playableJob = job?.status === "success" ? job : successfulRun?.job
+    const playableJob = successfulRun?.job
     if (!playableJob) {
       return {}
     }
     return Object.fromEntries(
       playableJob.segments.map((segment) => [segment.id, api.speechJobSegmentResultUrl(playableJob.id, segment.id)])
     ) as Record<string, string>
-  }, [job, successfulRun])
+  }, [successfulRun])
 
   useEffect(() => {
     mountedRef.current = true
@@ -144,6 +144,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
     const persistContext: PersistContext = {
       dialogueId: input.dialogueId,
       providerId: input.providerId,
+      naturalHandoffs: input.segmentGapMs !== 0,
       backendDefaultModelId: input.backendDefaultModelId,
       defaultVoice: input.defaultVoice,
       modelId: submittedModelId,
@@ -270,6 +271,10 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
   }
 
   async function reviseSpeech(input: {
+    tuning: VoiceTuningValues
+    selectedTuningPresetId: string
+    selectedUserTuningPreset?: UserTuningPreset | null
+    naturalHandoffs?: boolean
     providerKey: string | null
     segments: api.SpeechSegmentReplacement[]
     scriptSnapshot: GeneratedAudioScriptSnapshot
@@ -278,7 +283,15 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
   }) {
     if (busyRef.current || !successfulRun) return null
     const runId = startRun({ clearJob: false })
-    const context = { ...successfulRun.context, scriptSnapshot: input.scriptSnapshot, storageLimitBytes: input.storageLimitBytes }
+    const context = {
+      ...successfulRun.context,
+      tuning: { ...input.tuning },
+      selectedTuningPresetId: input.selectedTuningPresetId,
+      selectedUserTuningPreset: input.selectedUserTuningPreset ?? null,
+      naturalHandoffs: input.naturalHandoffs ?? successfulRun.context.naturalHandoffs,
+      scriptSnapshot: input.scriptSnapshot,
+      storageLimitBytes: input.storageLimitBytes,
+    }
     lastPersistContextRef.current = context
     try {
       const payload = await api.createSpeechRevision(successfulRun.job.id, {
@@ -357,7 +370,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
   async function cancelGeneration() {
     const activeJobId = activeJobIdRef.current
     const activeRunId = runIdRef.current
-    if (!activeJobId || !isGenerating) {
+    if (!activeJobId || !canCancel) {
       return
     }
     try {
@@ -464,7 +477,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
         multiVoiceMetadata: buildGeneratedAudioMultiVoiceMetadata(jobUpdate, persistContext.provider),
         requestId: null,
         scriptSnapshot: refreshScriptSnapshotFromJob(persistContext.scriptSnapshot, jobUpdate),
-        tuningMetadata: buildGeneratedAudioTuningMetadata({
+        tuningMetadata: buildGeneratedAudioJobTuningMetadata(jobUpdate, {
           provider: persistContext.provider,
           selectedPresetId: persistContext.selectedTuningPresetId,
           tuning: persistContext.tuning,
@@ -602,21 +615,24 @@ export function refreshScriptSnapshotFromJob(
     }
   }
 
+  const dialogueBlocks = scriptSnapshot.dialogueBlocks.map((block) => {
+    const segment = segmentsById.get(block.id)
+    return segment
+      ? { ...block, text: segment.text.trim(), voiceId: segment.voiceId, voiceName: segment.voiceName,
+          voiceSettings: segment.voiceSettings ? { ...segment.voiceSettings } : null }
+      : block
+  })
+  const speakerLabels = [...new Set(dialogueBlocks.flatMap(block => block.speakerLabel ? [block.speakerLabel] : []))]
   return {
     ...scriptSnapshot,
     text: job.segments.map(segment => segment.text).join(""),
     segmentGapMs: job.segmentGapMs,
-    dialogueBlocks: scriptSnapshot.dialogueBlocks.map((block) => {
-      const segment = segmentsById.get(block.id)
-      return segment
-        ? {
-              ...block,
-              text: segment.text.trim(),
-            voiceId: segment.voiceId,
-            voiceName: segment.voiceName,
-            voiceSettings: segment.voiceSettings ? { ...segment.voiceSettings } : null,
-          }
-        : block
+    dialogueBlocks,
+    // A partial revision can leave one speaker with multiple recorded voices.
+    // Each block retains its actual voice; never claim a single mapping in that case.
+    speakerMappings: speakerLabels.map(speakerLabel => {
+      const voices = new Set(dialogueBlocks.filter(block => block.speakerLabel === speakerLabel).map(block => block.voiceId))
+      return { speakerLabel, voiceId: voices.size === 1 ? [...voices][0] : null }
     }),
   }
 }

@@ -2,6 +2,7 @@ import type { StoredSpeechContext, StoredSpeechRun } from "@/lib/dialogue-draft"
 import type { GeneratedAudioScriptSnapshot, SpeechJob, UserTuningPreset, VoiceAsset, VoiceProvider, VoiceTuningValues } from "@/types"
 
 export type PersistContext = {
+  naturalHandoffs?: boolean
   dialogueId?: string
   providerId?: string | null
   backendDefaultModelId: string | null
@@ -26,6 +27,7 @@ export function storeSpeechRun(jobId: string, context: PersistContext | null): S
   if (!context?.dialogueId || context.scriptSnapshot?.mode !== "dialogue") return null
   return { jobId, context: {
     dialogueId: context.dialogueId,
+    naturalHandoffs: context.naturalHandoffs,
     providerId: context.provider?.id ?? context.providerId ?? null,
     defaultVoice: { id: context.defaultVoice.id, name: context.defaultVoice.name },
     modelId: context.modelId, backendDefaultModelId: context.backendDefaultModelId,

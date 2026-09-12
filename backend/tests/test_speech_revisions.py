@@ -129,6 +129,12 @@ def test_revision_api_contract_and_key_privacy(tmp_path):
         assert client.get(f"/api/speech/jobs/{base['id']}").json()["job"]["text"] == "Hello"
         assert client.post(f"/api/speech/jobs/{base['id']}/revisions", json={"segments": [], "segmentGapMs": -1}).status_code == 422
         assert client.post("/api/speech/jobs/missing/revisions", json={"segments": []}).status_code == 404
+        calls_before_spacing = len(provider.speech_requests)
+        spacing = client.post(f"/api/speech/jobs/{base['id']}/revisions", json={"segmentGapMs": 400})
+        assert spacing.status_code == 202
+        assert wait_for_speech_job(client, spacing.json()["job"]["id"])["segmentGapMs"] == 400
+        assert len(provider.speech_requests) == calls_before_spacing
+        assert client.post(f"/api/speech/jobs/{base['id']}/revisions", json={}).status_code == 422
 
 
 def test_failed_and_canceled_revisions_preserve_successful_recording(tmp_path, monkeypatch):
@@ -189,14 +195,54 @@ def test_revision_of_restored_persisted_job(tmp_path):
         sessions = create_session_factory(engine)
         service.job_session_factory = sessions
         base = await generate_base(service, provider, 2)
+        original_model_id = provider.default_model_id
+        assert base.model_id == original_model_id
+        provider.bind_settings(replace(service.settings, elevenlabs_model_id="eleven_flash_v2_5"))
+        assert provider.default_model_id != original_model_id
         restored = SpeechJobService(service.settings, service.voice_cache, service.voice_library, assembly, sessions)
         assert restored.get_job(base.id) == base
         revision = await restored.create_revision(base.id, replacements=(replacement(1),), provider=provider, provider_key=None)
         await restored._tasks[revision.id]
         restored._jobs.clear()
         assert restored.get_job(revision.id).status == "success"
+        assert restored.get_job(revision.id).model_id == original_model_id
+        assert provider.speech_requests[-1][3] == original_model_id
         assert restored.get_job(base.id) == base
         engine.dispose()
+    asyncio.run(scenario())
+
+
+def test_revision_directory_collision_preserves_existing_files(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    async def scenario():
+        service, provider, _ = make_service(tmp_path)
+        base = await generate_base(service, provider, 2)
+        existing = service.jobs_dir / "existing-job"
+        existing.mkdir()
+        marker = existing / "keep.txt"
+        marker.write_text("Existing job data")
+        monkeypatch.setattr("voice_cloning.services.speech_jobs.uuid4", lambda: SimpleNamespace(hex=existing.name))
+        with pytest.raises(FileExistsError):
+            await service.create_revision(base.id, replacements=(replacement(0),), provider=provider, provider_key=None)
+        assert marker.read_text() == "Existing job data"
+        assert list(existing.iterdir()) == [marker]
+        assert len(provider.speech_requests) == 2
+        assert list(service._jobs) == [base.id]
+    asyncio.run(scenario())
+
+
+def test_legacy_job_without_model_allows_assembly_but_requires_full_generation_for_replacements(tmp_path):
+    async def scenario():
+        service, provider, _ = make_service(tmp_path)
+        base = await generate_base(service, provider, 2)
+        service._jobs[base.id] = replace(base, model_id=None)
+        with pytest.raises(SpeechJobServiceError, match="original model is unknown"):
+            await service.create_revision(base.id, replacements=(replacement(0),), provider=provider, provider_key=None)
+        spacing = await service.create_revision(base.id, replacements=(), provider=provider, provider_key=None, segment_gap_ms=300)
+        await service._tasks[spacing.id]
+        assert service.get_job(spacing.id).status == "success"
+        assert len(provider.speech_requests) == 2
     asyncio.run(scenario())
 
 
@@ -208,4 +254,17 @@ def test_handoff_revision_can_restore_configured_default_without_synthesis(tmp_p
         await service._tasks[revised.id]
         assert service.get_job(revised.id).segment_gap_ms == service.settings.speech_job_segment_gap_ms
         assert len(provider.speech_requests) == 2
+    asyncio.run(scenario())
+
+
+def test_explicit_handoff_mode_change_reassembles_with_zero_default_gap(tmp_path):
+    async def scenario():
+        service, provider, assembly = make_service(tmp_path)
+        service.settings = replace(service.settings, speech_job_segment_gap_ms=0)
+        base = await generate_base(service, provider, 2)
+        revised = await service.create_revision(base.id, replacements=(), provider=provider, provider_key=None, use_default_gap=True)
+        await service._tasks[revised.id]
+        assert service.get_job(revised.id).segment_gap_ms == 0
+        assert len(provider.speech_requests) == 2
+        assert len(assembly.calls) == 2
     asyncio.run(scenario())

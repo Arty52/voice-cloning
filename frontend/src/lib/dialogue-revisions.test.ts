@@ -35,6 +35,10 @@ describe("dialogue revisions", () => {
   it("detects assembly-only changes", () => {
     expect(dialogueRevisionState({ ...input, naturalHandoffs: true })).toMatchObject({ changedIds: [], spacingChanged: true })
   })
+  it("keeps enabled handoffs current when the configured gap is zero", () => {
+    expect(dialogueRevisionState({ ...input, baseline: { ...baseline, naturalHandoffs: true }, naturalHandoffs: true }).spacingChanged).toBe(false)
+    expect(dialogueRevisionState({ ...input, baseline: { ...baseline, naturalHandoffs: true }, naturalHandoffs: false }).spacingChanged).toBe(true)
+  })
   it("keeps other unsynthesized row edits out of the recording snapshot", () => {
     const draft = { ...snapshot, dialogueBlocks: snapshot.dialogueBlocks.map(b => ({ ...b, text: "Draft edit." })) }
     const revised = revisionScriptSnapshot(snapshot, draft, ["one"])
