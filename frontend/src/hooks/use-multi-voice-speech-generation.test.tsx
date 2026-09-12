@@ -409,7 +409,7 @@ describe("useMultiVoiceSpeechGeneration", () => {
     const persistGeneratedAudio = vi.fn(async () => generatedResult)
     const { result } = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
     await act(async () => { await result.current.generateSpeech(generationInput({ dialogueId: "script", scriptSnapshot: dialogueScriptSnapshot })) })
-    const input = { tuning: { stability: 0.91 }, selectedTuningPresetId: "custom", providerKey: "secret", segments: [{ segmentId: "dialogue-block-1", text: "Changed", voiceId: "villain", voiceSettings: { stability: 0.91 } }], scriptSnapshot: dialogueScriptSnapshot, storageLimitBytes: 100 }
+    const input = { defaultVoice, tuning: { stability: 0.91 }, selectedTuningPresetId: "custom", providerKey: "secret", segments: [{ segmentId: "dialogue-block-1", text: "Changed", voiceId: "villain", voiceSettings: { stability: 0.91 } }], scriptSnapshot: dialogueScriptSnapshot, storageLimitBytes: 100 }
     let pending: Promise<GeneratedResult | null>
     await act(async () => {
       pending = result.current.reviseSpeech(input)
@@ -430,6 +430,7 @@ describe("useMultiVoiceSpeechGeneration", () => {
 
   it.each([true, false])("records current revision tuning provenance without mislabeling mixed takes (uniform=%s)", async (uniform) => {
     const currentTuning = { stability: 0.91 }
+    const currentDefault = { ...defaultVoice, id: "new-default", name: "New Default" }
     const preset = { id: "new-preset", name: "New Preset", providerId: provider.id, voicePresetId: null, settings: currentTuning, createdAt: "now", updatedAt: "now" }
     const revised = { ...dialogueRegeneratedJob, id: "revision-job", segments: dialogueRegeneratedJob.segments.map((segment, index) => uniform || index === 0 ? { ...segment, voiceSettings: currentTuning } : segment) }
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
@@ -441,10 +442,12 @@ describe("useMultiVoiceSpeechGeneration", () => {
     const persistGeneratedAudio = vi.fn(async () => generatedResult)
     const { result } = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
     await act(async () => { await result.current.generateSpeech(generationInput({ dialogueId: "script", scriptSnapshot: dialogueScriptSnapshot })) })
-    await act(async () => { await result.current.reviseSpeech({ tuning: currentTuning, selectedTuningPresetId: preset.id, selectedUserTuningPreset: preset, providerKey: null, segments: [], scriptSnapshot: dialogueScriptSnapshot, storageLimitBytes: 100 }) })
+    await act(async () => { await result.current.reviseSpeech({ defaultVoice: currentDefault, tuning: currentTuning, selectedTuningPresetId: preset.id, selectedUserTuningPreset: preset, providerKey: null, segments: [], scriptSnapshot: dialogueScriptSnapshot, storageLimitBytes: 100 }) })
     expect(result.current.successfulRun?.context.tuning).toEqual(currentTuning)
+    expect(result.current.successfulRun?.context.defaultVoice.id).toBe("new-default")
     expect(result.current.successfulRun?.context.selectedUserTuningPreset).toEqual(preset)
     expect(persistGeneratedAudio).toHaveBeenLastCalledWith(expect.objectContaining({
+      appVoiceId: "new-default",
       tuningMetadata: expect.objectContaining(uniform ? { mode: "userPreset", presetId: preset.id, userPreset: expect.objectContaining({ name: "New Preset" }) } : { mode: "custom", presetId: null, userPreset: null }),
       multiVoiceMetadata: expect.objectContaining({ segments: expect.arrayContaining([expect.objectContaining({ voiceSettings: currentTuning })]) }),
     }), 100)
@@ -471,7 +474,7 @@ describe("useMultiVoiceSpeechGeneration", () => {
       throw new Error("Archive failed")
     })
     let pending!: Promise<GeneratedResult | null>
-    await act(async () => { pending = result.current.reviseSpeech({ tuning: { stability: 0.91 }, selectedTuningPresetId: "custom", providerKey: null, segments: [], scriptSnapshot: dialogueScriptSnapshot, storageLimitBytes: 100 }) })
+    await act(async () => { pending = result.current.reviseSpeech({ defaultVoice, tuning: { stability: 0.91 }, selectedTuningPresetId: "custom", providerKey: null, segments: [], scriptSnapshot: dialogueScriptSnapshot, storageLimitBytes: 100 }) })
     expect(result.current.job?.id).toBe("revision-job")
     expect(result.current.isGenerating).toBe(true)
     expect(result.current.canCancel).toBe(false)

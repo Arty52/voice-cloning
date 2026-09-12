@@ -282,6 +282,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
   }
 
   async function reviseSpeech(input: {
+    defaultVoice: VoiceAsset
     tuning: VoiceTuningValues
     selectedTuningPresetId: string
     selectedUserTuningPreset?: UserTuningPreset | null
@@ -296,6 +297,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
     const runId = startRun({ clearJob: false })
     const context = {
       ...successfulRun.context,
+      defaultVoice: input.defaultVoice,
       tuning: { ...input.tuning },
       selectedTuningPresetId: input.selectedTuningPresetId,
       selectedUserTuningPreset: input.selectedUserTuningPreset ?? null,

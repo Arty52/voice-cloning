@@ -387,6 +387,7 @@ export function useVoiceStudioController() {
       segmentGapMs: naturalHandoffsEnabled ? null : 0,
     })
     const generatedResult = await multiVoiceSpeech.reviseSpeech({
+      defaultVoice: voiceLibrary.selectedVoice!,
       tuning, selectedTuningPresetId, selectedUserTuningPreset,
       naturalHandoffs: naturalHandoffsEnabled,
       providerKey: providerKeys.activeProviderKey,

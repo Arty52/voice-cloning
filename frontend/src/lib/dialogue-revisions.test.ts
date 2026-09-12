@@ -40,8 +40,9 @@ describe("dialogue revisions", () => {
     expect(dialogueRevisionState({ ...input, baseline: { ...baseline, naturalHandoffs: true }, naturalHandoffs: false }).spacingChanged).toBe(true)
   })
   it("keeps other unsynthesized row edits out of the recording snapshot", () => {
-    const draft = { ...snapshot, dialogueBlocks: snapshot.dialogueBlocks.map(b => ({ ...b, text: "Draft edit." })) }
+    const draft = { ...snapshot, sourceVoiceId: "new-default", dialogueBlocks: snapshot.dialogueBlocks.map(b => ({ ...b, text: "Draft edit." })) }
     const revised = revisionScriptSnapshot(snapshot, draft, ["one"])
+    expect(revised.sourceVoiceId).toBe("new-default")
     expect(revised.dialogueBlocks.map(b => b.text)).toEqual(["Draft edit.", "two."])
     expect(snapshot.dialogueBlocks[0].text).toBe("one.")
   })

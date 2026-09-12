@@ -45,6 +45,7 @@ export function revisionScriptSnapshot(base: GeneratedAudioScriptSnapshot, draft
   const draftBlocks = new Map(draft.dialogueBlocks.map(block => [block.id, block]))
   return {
     ...base,
+    sourceVoiceId: draft.sourceVoiceId,
     dialogueBlocks: base.dialogueBlocks.map(block => selected.has(block.id) ? draftBlocks.get(block.id) ?? block : block),
   }
 }
