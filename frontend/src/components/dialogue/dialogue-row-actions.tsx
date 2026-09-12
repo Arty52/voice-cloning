@@ -38,7 +38,7 @@ export function DialogueRowActions({ id, index, state, canRegenerate, onRegenera
       ) : null}
       <Tooltip>
         <TooltipTrigger asChild>
-          <span tabIndex={!canRegenerate ? 0 : undefined}>
+          <span tabIndex={!canRegenerate ? 0 : undefined} role={!canRegenerate ? "group" : undefined} aria-label={!canRegenerate ? `Regenerate Dialogue Row ${index + 1} Unavailable` : undefined}>
             <Button aria-label={`Regenerate Dialogue Row ${index + 1}`} disabled={!canRegenerate} onClick={() => onRegenerate?.(id)} type="button" size="icon" variant="secondary"><RefreshCw aria-hidden="true" /></Button>
           </span>
         </TooltipTrigger>

@@ -23,6 +23,7 @@ export type GenerationBarProps = {
 }
 
 export function GenerationBar({ barRef, canGenerate, canRegenerateAll, isDialogue, isGenerating, isRestoring, error, revision, rowCount, characterCount, pendingStatus, onRegenerateAll, onCancel }: GenerationBarProps) {
+  const regenerateDisabled = Boolean(!canRegenerateAll || isGenerating || isRestoring)
   const changedCount = revision?.changedIds.length ?? 0
   const primaryLabel = !isDialogue ? "Generate" : !revision?.canRevise ? "Generate All" : `Generate Changes${changedCount ? ` (${changedCount})` : ""}`
   const detail = isRestoring ? "Restoring the saved dialogue and recording…" : isGenerating
@@ -44,8 +45,8 @@ export function GenerationBar({ barRef, canGenerate, canRegenerateAll, isDialogu
           </Button>
           <Tooltip>
             <TooltipTrigger asChild>
-              <span tabIndex={!canRegenerateAll ? 0 : undefined}>
-                <Button aria-label="Regenerate All" disabled={!canRegenerateAll || isGenerating || isRestoring} onClick={onRegenerateAll} size="icon" type="button" variant="secondary"><RefreshCw aria-hidden="true" /></Button>
+              <span tabIndex={regenerateDisabled ? 0 : undefined} role={regenerateDisabled ? "group" : undefined} aria-label={regenerateDisabled ? "Regenerate All Unavailable" : undefined}>
+                <Button aria-label="Regenerate All" disabled={regenerateDisabled} onClick={onRegenerateAll} size="icon" type="button" variant="secondary"><RefreshCw aria-hidden="true" /></Button>
               </span>
             </TooltipTrigger>
             <TooltipContent>Regenerate All</TooltipContent>

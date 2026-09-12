@@ -54,4 +54,13 @@ describe("generation bar", () => {
     expect(screen.getAllByText("Queued")).toHaveLength(15)
   })
 
+  it("gives disabled regeneration tooltip targets an accessible name", async () => {
+    const user = userEvent.setup()
+    renderBar({ canGenerate: false, canRegenerateAll: false })
+    const target = screen.getByRole("group", { name: "Regenerate All Unavailable" })
+    await user.tab()
+    expect(target).toHaveFocus()
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Regenerate All")
+  })
+
 })

@@ -24,6 +24,7 @@ describe("dialogue row actions", () => {
     setup({ canRegenerate: false, state: { label: "Generating", hasTake: true, previousTake: true, running: true, error: null } })
     expect(screen.getByRole("button", { name: "Regenerate Dialogue Row 1" })).toBeDisabled()
     expect(screen.getByText("Generating")).toBeVisible()
+    expect(screen.getByRole("group", { name: "Regenerate Dialogue Row 1 Unavailable" })).toHaveAttribute("tabindex", "0")
     expect(screen.queryByRole("status")).not.toBeInTheDocument()
   })
   it("labels unsynthesized edits as the previous take and starts playback only on click", async () => {
