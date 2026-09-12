@@ -129,6 +129,12 @@ def test_revision_api_contract_and_key_privacy(tmp_path):
         assert client.get(f"/api/speech/jobs/{base['id']}").json()["job"]["text"] == "Hello"
         assert client.post(f"/api/speech/jobs/{base['id']}/revisions", json={"segments": [], "segmentGapMs": -1}).status_code == 422
         assert client.post("/api/speech/jobs/missing/revisions", json={"segments": []}).status_code == 404
+        calls_before_spacing = len(provider.speech_requests)
+        spacing = client.post(f"/api/speech/jobs/{base['id']}/revisions", json={"segmentGapMs": 400})
+        assert spacing.status_code == 202
+        assert wait_for_speech_job(client, spacing.json()["job"]["id"])["segmentGapMs"] == 400
+        assert len(provider.speech_requests) == calls_before_spacing
+        assert client.post(f"/api/speech/jobs/{base['id']}/revisions", json={}).status_code == 422
 
 
 def test_failed_and_canceled_revisions_preserve_successful_recording(tmp_path, monkeypatch):
