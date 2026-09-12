@@ -74,6 +74,8 @@ export function buildGeneratedAudioJobTuningMetadata(
   const metadata = buildGeneratedAudioTuningMetadata(input)
   if (!metadata || !input.provider) return metadata
   const defaults = input.provider.tuning.defaultValues
+  // Missing recorded settings do not prove a shared preset: copied legacy rows
+  // may inherit a different baseline tuning than the current revision context.
   const uniform = job.segments.every(segment => segment.voiceSettings != null && voiceTuningValuesEqual(
     { ...defaults, ...segment.voiceSettings }, { ...defaults, ...input.tuning },
   ))

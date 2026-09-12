@@ -69,6 +69,7 @@ const MULTI_VOICE_LABEL = "Multi-Voice"
 
 export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMultiVoiceSpeechGenerationOptions) {
   const [job, setJob] = useState<SpeechJob | null>(null)
+  const [unreconciledRecovery, setUnreconciledRecovery] = useState<DialogueSpeechRecovery | null>(null)
   const [successfulRun, setSuccessfulRun] = useState<SuccessfulSpeechRun | null>(null)
   const [activeContext, setActiveContext] = useState<PersistContext | null>(null)
   const [status, setStatus] = useState<MultiVoiceGenerationStatus>("idle")
@@ -405,6 +406,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
   }
 
   function resetGeneration() {
+    setUnreconciledRecovery(null)
     busyRef.current = false
     runIdRef.current += 1
     updateJob(null)
@@ -416,6 +418,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
 
   async function restoreRecovery(recovery: DialogueSpeechRecovery, providers: VoiceProvider[], archivedItems: GeneratedResult[]) {
     const runId = startRun()
+    setUnreconciledRecovery(recovery)
     setSuccessfulRun(null)
     let restoredResult: GeneratedResult | null = null
     try {
@@ -429,6 +432,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
         setSuccessfulRun({ job: restored, context, resultId: restoredResult?.id })
         lastPersistContextRef.current = context
         updateJob(restored)
+        if (!recovery.active) setUnreconciledRecovery(null)
         if (!restoredResult && !recovery.active) return await persistSuccessfulJob(restored, context, null)
       }
       if (recovery.active) {
@@ -437,6 +441,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
         const context = restoreSpeechContext(recovery.active.context, providers)
         lastPersistContextRef.current = context
         updateJob(restored)
+        setUnreconciledRecovery(null)
         const existing = archivedItems.find(item => item.id === speechResultId(restored))
         if (restored.status === "success" && existing) {
           setSuccessfulRun({ job: restored, context, resultId: existing.id })
@@ -449,6 +454,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
       }
       finishGenerationTimer()
       busyRef.current = false
+      setUnreconciledRecovery(null)
       setStatus(recovery.successful ? "success" : "idle")
       return restoredResult
     } catch (caught) {
@@ -504,6 +510,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
   }
 
   function startRun({ clearJob = true }: { clearJob?: boolean } = {}) {
+    setUnreconciledRecovery(null)
     busyRef.current = true
     const runId = runIdRef.current + 1
     runIdRef.current = runId
@@ -564,7 +571,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
 
   return {
     restoreRecovery,
-    recovery: {
+    recovery: unreconciledRecovery ?? {
       active: status !== "starting" && job && (job.id !== successfulRun?.job.id || job.status !== "success")
         ? storeSpeechRun(job.id, activeContext) : null,
       successful: successfulRun ? storeSpeechRun(successfulRun.job.id, successfulRun.context) : null,

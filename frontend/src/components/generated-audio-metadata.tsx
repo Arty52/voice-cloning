@@ -76,7 +76,7 @@ export function GeneratedAudioMetadata({
           ) : tuningMetadata.mode === "custom" ? (
             <Badge>Custom Settings</Badge>
           ) : null}
-          {tuningMetadata.adjustedSettings.length === 0 && !showMultiVoiceCustomSettings ? (
+          {tuningMetadata.mode !== "custom" && tuningMetadata.adjustedSettings.length === 0 && !showMultiVoiceCustomSettings ? (
             <Badge>Default Settings</Badge>
           ) : null}
           {showMultiVoiceCustomSettings
