@@ -225,6 +225,11 @@ describe("LatestGeneratedAudioPanel pending generation", () => {
     expect(pending).toHaveTextContent("Canceled")
   })
 
+  it("suppresses duplicate progress when dialogue uses the docked live region", () => {
+    renderLatestPanel(<LatestGeneratedAudioPanel showGenerationProgress={false} activeProviderId="elevenlabs" error={null} isDeleteDisabled={false} item={null} onDelete={vi.fn()} onRegenerateSegment={vi.fn()} segmentResultUrls={{}} status="generating" storageError={null} voices={[narrator]} />)
+    expect(screen.queryByRole("status")).not.toBeInTheDocument()
+  })
+
   it("falls back to speech generation copy without a detailed pending model", () => {
     renderLatestPanel(
       <LatestGeneratedAudioPanel

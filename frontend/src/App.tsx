@@ -351,6 +351,7 @@ function AppContents() {
           />
 
           <LatestGeneratedAudioPanel
+            showGenerationProgress={dialogue.mode !== "dialogue"}
             showSegmentControls={dialogue.mode !== "dialogue" || !dialogueRevision.linked}
             activeProviderId={providerKeys.activeProviderId}
             attentionRef={generatedAudioAttentionRef}

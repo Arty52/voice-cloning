@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { DialogueRowActions } from "./dialogue-row-actions"
 import { GenerationBar, type GenerationBarProps } from "./generation-bar"
 
 function renderBar(overrides: Partial<GenerationBarProps> = {}) {
@@ -46,4 +47,11 @@ describe("generation bar", () => {
     await user.click(screen.getByRole("button", { name: "Cancel" }))
     expect(props.onCancel).toHaveBeenCalledTimes(1)
   })
+  it("announces dialogue progress once when sixteen row badges update", () => {
+    renderBar({ isGenerating: true })
+    render(<TooltipProvider>{Array.from({ length: 16 }, (_, index) => <DialogueRowActions key={index} id={`row-${index}`} index={index} canRegenerate={false} state={{ label: index ? "Queued" : "Generating", hasTake: false, previousTake: false, running: true, error: null }} />)}</TooltipProvider>)
+    expect(screen.getAllByRole("status")).toHaveLength(1)
+    expect(screen.getAllByText("Queued")).toHaveLength(15)
+  })
+
 })

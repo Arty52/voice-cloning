@@ -22,7 +22,7 @@ export function DialogueRowActions({ id, index, state, canRegenerate, onRegenera
   const playLabel = `${isPlaying ? "Pause" : "Play"} Dialogue Row ${index + 1}${state.previousTake ? " Previous Take" : ""}`
   return (
     <div className="flex shrink-0 items-center gap-2">
-      <Badge variant={state.previousTake ? "accent" : "secondary"} role="status">
+      <Badge variant={state.previousTake ? "accent" : "secondary"}>
         {state.running ? <Loader2 className="mr-1 size-3 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : null}{state.label}
       </Badge>
       {source && playback ? (

@@ -23,7 +23,8 @@ describe("dialogue row actions", () => {
   it("keeps generation disabled during a run", () => {
     setup({ canRegenerate: false, state: { label: "Generating", hasTake: true, previousTake: true, running: true, error: null } })
     expect(screen.getByRole("button", { name: "Regenerate Dialogue Row 1" })).toBeDisabled()
-    expect(screen.getByRole("status")).toHaveTextContent("Generating")
+    expect(screen.getByText("Generating")).toBeVisible()
+    expect(screen.queryByRole("status")).not.toBeInTheDocument()
   })
   it("labels unsynthesized edits as the previous take and starts playback only on click", async () => {
     const user = userEvent.setup()
