@@ -84,6 +84,13 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
   const generationStartedAtRef = useRef<number | null>(null)
   const lastPersistContextRef = useRef<PersistContext | null>(null)
 
+  const recovery = useMemo(() => (unreconciledRecovery ?? {
+      active: status !== "starting" && job && (job.status === "pending" || job.status === "running" || (job.status === "success" && (!successfulRun || speechResultId(job) !== speechResultId(successfulRun.job))))
+        ? storeSpeechRun(job.id, activeContext) : null,
+      successful: successfulRun ? storeSpeechRun(successfulRun.job.id, successfulRun.context) : null,
+      resultId: successfulRun?.resultId ?? null,
+    } satisfies DialogueSpeechRecovery), [unreconciledRecovery, status, job, successfulRun, activeContext])
+
   const isGenerating = status === "starting" || status === "processing"
   const canCancel = isGenerating && (job?.status === "pending" || job?.status === "running")
   const resultUrl = successfulRun ? api.speechJobResultUrl(successfulRun.job.id) : null
@@ -601,12 +608,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
 
   return {
     restoreRecovery,
-    recovery: unreconciledRecovery ?? {
-      active: status !== "starting" && job && (job.status === "pending" || job.status === "running" || (job.status === "success" && (!successfulRun || speechResultId(job) !== speechResultId(successfulRun.job))))
-        ? storeSpeechRun(job.id, activeContext) : null,
-      successful: successfulRun ? storeSpeechRun(successfulRun.job.id, successfulRun.context) : null,
-      resultId: successfulRun?.resultId ?? null,
-    } satisfies DialogueSpeechRecovery,
+    recovery,
     successfulRun,
     reviseSpeech,
     canCancel,

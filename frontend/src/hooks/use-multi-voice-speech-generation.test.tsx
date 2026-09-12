@@ -378,6 +378,14 @@ describe("useMultiVoiceSpeechGeneration", () => {
     vi.unstubAllGlobals()
   })
 
+  it("keeps recovery references stable across unrelated rerenders", () => {
+    const persistGeneratedAudio = vi.fn(async () => generatedResult)
+    const { result, rerender } = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    const recovery = result.current.recovery
+    rerender()
+    expect(result.current.recovery).toBe(recovery)
+  })
+
   it("restores a successful recording without synthesis or another archive save", async () => {
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => String(input).endsWith("/result") ? okAudio() : okJson({ job: dialogueSuccessJob })))
     const persistGeneratedAudio = vi.fn(async () => generatedResult)
