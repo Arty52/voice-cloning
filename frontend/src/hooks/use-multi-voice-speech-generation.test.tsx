@@ -481,6 +481,20 @@ describe("useMultiVoiceSpeechGeneration", () => {
     expect(reopened.result.current.resultUrl).toBeNull()
   })
 
+  it("retains a newer take of the same job when archive saving fails", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => String(input).endsWith("/result") ? okAudio() :
+      okJson({ job: String(input).includes("/regenerate") ? dialogueRegeneratedJob : dialogueSuccessJob })))
+    const persistGeneratedAudio = vi.fn(async () => generatedResult)
+    const { result } = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await result.current.generateSpeech(generationInput({ dialogueId: "script", scriptSnapshot: dialogueScriptSnapshot })) })
+    persistGeneratedAudio.mockRejectedValueOnce(new Error("Archive unavailable"))
+    await act(async () => { await result.current.regenerateSegment({ providerKey: null, segmentId: "dialogue-block-1" }) })
+    expect(result.current.error).toBe("Archive unavailable")
+    expect(result.current.recovery.active?.jobId).toBe(dialogueRegeneratedJob.id)
+    expect(result.current.recovery.active?.context.synthesizedSegmentIds).toEqual(["dialogue-block-1"])
+    expect(result.current.successfulRun?.job.resultSha256).toBe(dialogueSuccessJob.resultSha256)
+  })
+
   it("reconnects to an accepted job and archives its completed result without resubmission", async () => {
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => String(input).endsWith("/result") ? okAudio() : okJson({ job: dialogueSuccessJob })))
     const persistGeneratedAudio = vi.fn(async () => generatedResult)
