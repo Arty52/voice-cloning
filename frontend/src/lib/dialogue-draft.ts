@@ -3,6 +3,7 @@ import type { GeneratedAudioScriptSnapshot, UserTuningPreset, VoiceTuningValues 
 
 export const DIALOGUE_DRAFT_KEY = "voice-cloning.dialogueDraft.v1"
 export type StoredSpeechContext = {
+  generationStartedAt?: number
   synthesizedSegmentIds?: string[]
   naturalHandoffs?: boolean
   dialogueId: string
@@ -58,7 +59,7 @@ function run(value: unknown): boolean {
 }
 function context(value: unknown): boolean {
   if (!record(value)) return false
-  return (value.synthesizedSegmentIds === undefined || (Array.isArray(value.synthesizedSegmentIds) && value.synthesizedSegmentIds.every(string))) && (value.naturalHandoffs === undefined || typeof value.naturalHandoffs === "boolean") && string(value.dialogueId) && nullableString(value.providerId) && record(value.defaultVoice) && string(value.defaultVoice.id) && string(value.defaultVoice.name) &&
+  return (value.generationStartedAt === undefined || (Number.isFinite(value.generationStartedAt) && Number(value.generationStartedAt) >= 0)) && (value.synthesizedSegmentIds === undefined || (Array.isArray(value.synthesizedSegmentIds) && value.synthesizedSegmentIds.every(string))) && (value.naturalHandoffs === undefined || typeof value.naturalHandoffs === "boolean") && string(value.dialogueId) && nullableString(value.providerId) && record(value.defaultVoice) && string(value.defaultVoice.id) && string(value.defaultVoice.name) &&
     nullableString(value.modelId) && nullableString(value.backendDefaultModelId) && tuning(value.tuning) && snapshot(value.scriptSnapshot) &&
     string(value.selectedTuningPresetId) && Number.isFinite(value.storageLimitBytes) && Number(value.storageLimitBytes) > 0 && preset(value.selectedUserTuningPreset)
 }

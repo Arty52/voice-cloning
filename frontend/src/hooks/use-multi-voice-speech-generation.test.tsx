@@ -524,11 +524,14 @@ describe("useMultiVoiceSpeechGeneration", () => {
   })
 
   it("reconnects to an accepted job and archives its completed result without resubmission", async () => {
+    const clock = vi.spyOn(Date, "now").mockReturnValue(1000)
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => String(input).endsWith("/result") ? okAudio() : okJson({ job: dialogueSuccessJob })))
-    const persistGeneratedAudio = vi.fn(async () => generatedResult)
+    const persistGeneratedAudio = vi.fn(async (_input: import("@/lib/generated-audio-storage").SaveGeneratedAudioInput) => generatedResult)
     const first = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
     await act(async () => { await first.result.current.generateSpeech(generationInput({ dialogueId: "script", scriptSnapshot: dialogueScriptSnapshot })) })
     const active = first.result.current.recovery.successful!
+    expect(active.context.generationStartedAt).toBe(1000)
+    clock.mockReturnValue(6500)
     first.unmount()
     vi.mocked(fetch).mockClear()
     persistGeneratedAudio.mockClear()
@@ -536,6 +539,7 @@ describe("useMultiVoiceSpeechGeneration", () => {
     await act(async () => { await next.result.current.restoreRecovery({ active, successful: null, resultId: null }, [provider], []) })
     expect(vi.mocked(fetch).mock.calls.every(([, init]) => !init?.method || init.method === "GET")).toBe(true)
     expect(persistGeneratedAudio).toHaveBeenCalledTimes(1)
+    expect(persistGeneratedAudio.mock.calls[0][0].generationElapsedMs).toBeGreaterThanOrEqual(5500)
     expect(next.result.current.status).toBe("success")
   })
 

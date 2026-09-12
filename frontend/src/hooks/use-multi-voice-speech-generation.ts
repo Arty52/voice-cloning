@@ -152,6 +152,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
     const runId = startRun()
     const submittedModelId = api.hasModel(input.models, input.selectedModelId) ? input.selectedModelId : null
     const persistContext: PersistContext = {
+      generationStartedAt: Date.now(),
       dialogueId: input.dialogueId,
       providerId: input.providerId,
       naturalHandoffs: input.segmentGapMs !== 0,
@@ -218,6 +219,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
     const runId = startRun({ clearJob: false })
     const nextPersistContext = {
       ...persistContext,
+      generationStartedAt: Date.now(),
       synthesizedSegmentIds: [segmentId],
       storageLimitBytes: storageLimitBytes ?? persistContext.storageLimitBytes,
     }
@@ -262,6 +264,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
     const runId = startRun({ clearJob: false })
     const nextPersistContext = {
       ...persistContext,
+      generationStartedAt: Date.now(),
       synthesizedSegmentIds: activeJob.segments.filter(segment => segment.voiceId === voiceId).map(segment => segment.id),
       storageLimitBytes: storageLimitBytes ?? persistContext.storageLimitBytes,
     }
@@ -298,6 +301,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
     const runId = startRun({ clearJob: false })
     const context = {
       ...successfulRun.context,
+      generationStartedAt: Date.now(),
       synthesizedSegmentIds: input.segments.map(segment => segment.segmentId),
       defaultVoice: input.defaultVoice,
       tuning: { ...input.tuning },
@@ -475,6 +479,12 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
           return restoredResult
         }
         const context = restoreSpeechContext(recovery.active.context, providers)
+        const startedAt = context.generationStartedAt ?? Date.parse(restored.createdAt)
+        if (Number.isFinite(startedAt)) {
+          const elapsed = Math.max(0, Date.now() - startedAt)
+          generationStartedAtRef.current = performance.now() - elapsed
+          setGenerationElapsedMs(elapsed)
+        }
         lastPersistContextRef.current = context
         updateJob(restored)
         setUnreconciledRecovery(null)
