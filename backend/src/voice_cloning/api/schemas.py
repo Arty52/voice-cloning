@@ -96,7 +96,7 @@ class SpeechSegmentReplacementRequest(BaseModel):
 
 
 class CreateSpeechRevisionRequest(BaseModel):
-    segments: list[SpeechSegmentReplacementRequest]
+    segments: list[SpeechSegmentReplacementRequest] = Field(default_factory=list)
     segmentGapMs: int | None = Field(default=None, ge=0)
 
 
