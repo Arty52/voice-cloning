@@ -77,6 +77,9 @@ class SpeechJobService:
             voice_settings=voice_settings,
         )
         effective_segment_gap_ms = self._validate_segment_gap(segment_gap_ms)
+        # Pin the synthesis model before persisting or starting the job. Provider
+        # defaults may change before a restored job is selectively revised.
+        selected_model_id = model_id.strip() if model_id and model_id.strip() else provider.default_model_id
         job_id = uuid4().hex
         job_dir = self._job_dir(job_id)
         job_dir_created = False
@@ -88,7 +91,7 @@ class SpeechJobService:
             default_voice_id=default_voice_id,
             segment_gap_ms=effective_segment_gap_ms,
             provider_id=provider.id,
-            model_id=model_id,
+            model_id=selected_model_id,
             voice_settings=dict(voice_settings) if voice_settings is not None else None,
             segments=resolved_segments,
             created_at=now,
@@ -104,7 +107,7 @@ class SpeechJobService:
                 self._run_job(
                     job_id,
                     provider=provider,
-                    model_id=model_id,
+                    model_id=selected_model_id,
                     provider_key=provider_key,
                 )
             )
@@ -131,6 +134,10 @@ class SpeechJobService:
             raise SpeechJobServiceError("Revisions require a successful speech job.", 409)
         if provider.id != base.provider_id:
             raise SpeechJobServiceError("A revision must use the original provider.", 422)
+        if replacements and not base.model_id:
+            raise SpeechJobServiceError(
+                "The original model is unknown. Generate all rows before revising this recording.", 409
+            )
         try:
             segments = revision_segments(base, replacements, max_text_chars=self.settings.max_text_chars)
         except ValueError as exc:

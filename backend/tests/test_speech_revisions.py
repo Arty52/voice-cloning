@@ -189,14 +189,34 @@ def test_revision_of_restored_persisted_job(tmp_path):
         sessions = create_session_factory(engine)
         service.job_session_factory = sessions
         base = await generate_base(service, provider, 2)
+        original_model_id = provider.default_model_id
+        assert base.model_id == original_model_id
+        provider.bind_settings(replace(service.settings, elevenlabs_model_id="eleven_flash_v2_5"))
+        assert provider.default_model_id != original_model_id
         restored = SpeechJobService(service.settings, service.voice_cache, service.voice_library, assembly, sessions)
         assert restored.get_job(base.id) == base
         revision = await restored.create_revision(base.id, replacements=(replacement(1),), provider=provider, provider_key=None)
         await restored._tasks[revision.id]
         restored._jobs.clear()
         assert restored.get_job(revision.id).status == "success"
+        assert restored.get_job(revision.id).model_id == original_model_id
+        assert provider.speech_requests[-1][3] == original_model_id
         assert restored.get_job(base.id) == base
         engine.dispose()
+    asyncio.run(scenario())
+
+
+def test_legacy_job_without_model_allows_assembly_but_requires_full_generation_for_replacements(tmp_path):
+    async def scenario():
+        service, provider, _ = make_service(tmp_path)
+        base = await generate_base(service, provider, 2)
+        service._jobs[base.id] = replace(base, model_id=None)
+        with pytest.raises(SpeechJobServiceError, match="original model is unknown"):
+            await service.create_revision(base.id, replacements=(replacement(0),), provider=provider, provider_key=None)
+        spacing = await service.create_revision(base.id, replacements=(), provider=provider, provider_key=None, segment_gap_ms=300)
+        await service._tasks[spacing.id]
+        assert service.get_job(spacing.id).status == "success"
+        assert len(provider.speech_requests) == 2
     asyncio.run(scenario())
 
 
