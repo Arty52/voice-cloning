@@ -57,6 +57,7 @@ type RegenerateVoiceInput = {
 }
 
 export type PersistContext = {
+  naturalHandoffs?: boolean
   dialogueId?: string
   backendDefaultModelId: string | null
   defaultVoice: VoiceAsset
@@ -154,6 +155,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
     const submittedModelId = api.hasModel(input.models, input.selectedModelId) ? input.selectedModelId : null
     const persistContext: PersistContext = {
       dialogueId: input.dialogueId,
+      naturalHandoffs: input.segmentGapMs !== 0,
       backendDefaultModelId: input.backendDefaultModelId,
       defaultVoice: input.defaultVoice,
       modelId: submittedModelId,
@@ -280,6 +282,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
   }
 
   async function reviseSpeech(input: {
+    naturalHandoffs?: boolean
     providerKey: string | null
     segments: api.SpeechSegmentReplacement[]
     scriptSnapshot: GeneratedAudioScriptSnapshot
@@ -288,7 +291,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
   }) {
     if (busyRef.current || !successfulRun) return null
     const runId = startRun({ clearJob: false })
-    const context = { ...successfulRun.context, scriptSnapshot: input.scriptSnapshot, storageLimitBytes: input.storageLimitBytes }
+    const context = { ...successfulRun.context, naturalHandoffs: input.naturalHandoffs ?? successfulRun.context.naturalHandoffs, scriptSnapshot: input.scriptSnapshot, storageLimitBytes: input.storageLimitBytes }
     lastPersistContextRef.current = context
     try {
       const payload = await api.createSpeechRevision(successfulRun.job.id, {

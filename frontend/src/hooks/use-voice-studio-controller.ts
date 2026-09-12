@@ -171,6 +171,7 @@ export function useVoiceStudioController() {
   const dialogueBaseline: DialogueBaseline | null = successfulRun?.context.dialogueId && successfulRun.context.scriptSnapshot
     ? {
         dialogueId: successfulRun.context.dialogueId,
+        naturalHandoffs: successfulRun.context.naturalHandoffs,
         job: successfulRun.job,
         providerId: successfulRun.context.provider?.id ?? null,
         modelId: successfulRun.context.modelId ?? successfulRun.context.backendDefaultModelId,
@@ -386,6 +387,7 @@ export function useVoiceStudioController() {
       segmentGapMs: naturalHandoffsEnabled ? null : 0,
     })
     const generatedResult = await multiVoiceSpeech.reviseSpeech({
+      naturalHandoffs: naturalHandoffsEnabled,
       providerKey: providerKeys.activeProviderKey,
       segments: dialogue.segmentBuild.segments.filter(s => selected.has(s.clientSegmentId!)).map(s => ({
         segmentId: s.clientSegmentId!, text: s.text, voiceId: s.voiceId, voiceSettings: s.voiceSettings ?? tuning,

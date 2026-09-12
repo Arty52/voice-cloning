@@ -418,6 +418,7 @@ describe("useMultiVoiceSpeechGeneration", () => {
     expect(result.current.segmentResultUrls["dialogue-block-2"]).toContain("dialogue-job")
     await act(async () => { release!(); await pending! })
     expect(result.current.successfulRun?.job.id).toBe("revision-job")
+    expect(result.current.successfulRun?.context.naturalHandoffs).toBe(true)
     const request = vi.mocked(fetch).mock.calls.find(([path]) => String(path).endsWith("/revisions"))!
     expect(JSON.parse(request[1]!.body as string)).toEqual({ segments: input.segments })
     failRevision = true
