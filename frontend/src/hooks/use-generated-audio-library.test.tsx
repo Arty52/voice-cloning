@@ -652,6 +652,16 @@ describe("useGeneratedAudioLibrary", () => {
     expect((await listGeneratedAudio()).map((record) => record.id)).toContain("conflicting-audio")
   })
 
+  it.each(["delete first", "clear all"])("records browser archive tombstones for %s", async (action) => {
+    const user = userEvent.setup()
+    await saveGeneratedAudio(audioInput({ id: "first" }), 20)
+    render(<GeneratedAudioHarness onSnapshot={() => undefined} />)
+    await waitFor(() => expect(screen.getByTestId("item-count")).toHaveTextContent("1"))
+    await user.click(screen.getByRole("button", { name: new RegExp(action, "i") }))
+    await waitFor(() => expect(screen.getByTestId("item-count")).toHaveTextContent("0"))
+    expect((await readGeneratedAudioArchiveMigrationState()).clearedIds.has("first")).toBe(true)
+  })
+
   it("does not resurrect IndexedDB records after clearing the server archive", async () => {
     const user = userEvent.setup()
     const fetchMock = mockArchive([archiveItem({ id: "persisted-audio" })])

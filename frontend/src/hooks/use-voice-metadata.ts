@@ -148,6 +148,11 @@ export function useVoiceMetadata({ canUseProvider, providerId, providerKey, prov
     modelStatus,
     selectedModelId,
     setSelectedModelId,
+    restoreSelectedModelId: (modelId: string) => setSelectedModelIdState(
+      models.some(model => model.modelId === modelId) ? modelId :
+        models.some(model => model.modelId === backendDefaultModelId) ? backendDefaultModelId! :
+          models[0]?.modelId ?? backendDefaultModelId ?? DEFAULT_MODEL_ID
+    ),
     subscription,
     subscriptionError,
     subscriptionStatus,

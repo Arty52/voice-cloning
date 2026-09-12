@@ -321,6 +321,7 @@ export function useGeneratedAudioLibrary(provider?: VoiceProvider | null) {
 
   async function handleDeleteGeneratedAudio(id: string) {
     if (isTemporaryGeneratedAudioId(id)) {
+      await safeMarkGeneratedAudioArchiveCleared([id])
       removeGeneratedAudioItemFromState(id)
       setGeneratedAudioStorageError(null)
       return
@@ -332,8 +333,8 @@ export function useGeneratedAudioLibrary(provider?: VoiceProvider | null) {
         persistenceModeRef.current === "server"
           ? await deleteGeneratedAudioArchive(id)
           : await deleteGeneratedAudio(id)
+      await safeMarkGeneratedAudioArchiveCleared([id])
       if (persistenceModeRef.current === "server") {
-        await safeMarkGeneratedAudioArchiveCleared([id])
         await refreshServerExportStatus({ silent: true })
       }
       removeGeneratedAudioItemFromState(id)
@@ -363,16 +364,14 @@ export function useGeneratedAudioLibrary(provider?: VoiceProvider | null) {
   async function clearAllGeneratedAudio() {
     const mutationId = startGeneratedAudioMutation("clear")
     try {
+      const browserRecords = await safeListStoredGeneratedAudio()
+      const removedIds = [...generatedAudioItemsRef.current.map(item => item.id), ...browserRecords.map(record => record.id)]
       const usage =
         persistenceModeRef.current === "server"
           ? (await clearGeneratedAudioArchive()).usage
           : await clearGeneratedAudio()
+      await safeMarkGeneratedAudioArchiveCleared(removedIds)
       if (persistenceModeRef.current === "server") {
-        const browserRecords = await safeListStoredGeneratedAudio()
-        await safeMarkGeneratedAudioArchiveCleared([
-          ...generatedAudioItemsRef.current.map((item) => item.id),
-          ...browserRecords.map((record) => record.id),
-        ])
         await refreshServerExportStatus({ silent: true })
       }
       setGeneratedAudioItems((previous) => {

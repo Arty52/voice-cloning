@@ -43,6 +43,7 @@ function VoiceMetadataHarness() {
       <div data-testid="model-error">{metadata.modelError ?? ""}</div>
       <div data-testid="model-status">{metadata.modelStatus}</div>
       <div data-testid="selected-model">{metadata.selectedModelId}</div>
+      <button onClick={() => metadata.restoreSelectedModelId("removed-model")}>Restore Missing Model</button>
       <button onClick={() => metadata.setSelectedModelId(flashModel.modelId)}>Select Flash</button>
     </div>
   )
@@ -105,6 +106,18 @@ describe("useVoiceMetadata", () => {
     localStorage.clear()
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
+  })
+
+  it("restores unavailable models to a valid option without saving preferences", async () => {
+    const user = userEvent.setup()
+    mockMetadataEndpointsWithUnavailableSettings()
+    render(<VoiceMetadataHarness />)
+    await waitFor(() => expect(screen.getByTestId("model-status")).toHaveTextContent("success"))
+    vi.mocked(fetch).mockClear()
+    await user.click(screen.getByRole("button", { name: "Restore Missing Model" }))
+    expect(screen.getByTestId("selected-model")).toHaveTextContent(multilingualModel.modelId)
+    expect(fetch).not.toHaveBeenCalled()
+    expect(localStorage.getItem(BROWSER_SELECTED_MODEL_BY_PROVIDER_KEY)).toBeNull()
   })
 
   it("keeps selected model in browser storage when app settings are unavailable", async () => {

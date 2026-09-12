@@ -1,3 +1,6 @@
+import * as archiveMigration from "@/lib/generated-audio-archive-migration"
+import { markGeneratedAudioArchiveCleared } from "@/lib/generated-audio-archive-migration"
+import { speechResultId } from "@/lib/speech-session"
 import { act, renderHook } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
@@ -375,6 +378,187 @@ describe("useMultiVoiceSpeechGeneration", () => {
     vi.unstubAllGlobals()
   })
 
+  it("keeps recovery references stable across unrelated rerenders", () => {
+    const persistGeneratedAudio = vi.fn(async () => generatedResult)
+    const { result, rerender } = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    const recovery = result.current.recovery
+    rerender()
+    expect(result.current.recovery).toBe(recovery)
+  })
+
+  it("restores a successful recording without synthesis or another archive save", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => String(input).endsWith("/result") ? okAudio() : okJson({ job: dialogueSuccessJob })))
+    const persistGeneratedAudio = vi.fn(async () => generatedResult)
+    const first = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await first.result.current.generateSpeech(generationInput({ dialogueId: "script", scriptSnapshot: dialogueScriptSnapshot })) })
+    const recovery = first.result.current.recovery
+    expect(JSON.stringify(recovery)).not.toContain("browser-secret")
+    expect(JSON.stringify(recovery)).not.toContain("serverKeyConfigured")
+    first.unmount()
+    vi.mocked(fetch).mockClear()
+    persistGeneratedAudio.mockClear()
+    const next = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { expect(await next.result.current.restoreRecovery(recovery, [provider], [generatedResult])).toEqual(generatedResult) })
+    expect(vi.mocked(fetch).mock.calls).toEqual([["/api/speech/jobs/dialogue-job", undefined]])
+    expect(persistGeneratedAudio).not.toHaveBeenCalled()
+    expect(next.result.current.successfulRun?.job.id).toBe("dialogue-job")
+  })
+
+  it.each([true, false])("reconciles a temporary result ID against the stable archive ID (already saved=%s)", async (alreadySaved) => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => String(input).endsWith("/result") ? okAudio() : okJson({ job: dialogueSuccessJob })))
+    const saved = { ...generatedResult, id: speechResultId(dialogueSuccessJob) }
+    const persistGeneratedAudio = vi.fn(async () => ({ ...generatedResult, id: "temporary-result" }))
+    const first = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await first.result.current.generateSpeech(generationInput({ dialogueId: "script", scriptSnapshot: dialogueScriptSnapshot, segmentGapMs: undefined })) })
+    const recovery = first.result.current.recovery
+    expect(recovery.successful?.context.naturalHandoffs).toBe(true)
+    first.unmount()
+    vi.mocked(fetch).mockClear()
+    persistGeneratedAudio.mockClear().mockResolvedValue(saved)
+    const next = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { expect(await next.result.current.restoreRecovery(recovery, [provider], alreadySaved ? [saved] : [])).toEqual(saved) })
+    expect(next.result.current.successfulRun?.resultId).toBe(saved.id)
+    expect(next.result.current.successfulRun?.context.naturalHandoffs).toBe(true)
+    expect(persistGeneratedAudio).toHaveBeenCalledTimes(alreadySaved ? 0 : 1)
+    expect(vi.mocked(fetch).mock.calls.every(([, init]) => !init?.method || init.method === "GET")).toBe(true)
+  })
+
+  it.each(["successful", "active"])("retains all recovery pointers when reconnecting the %s job fails", async (failedReference) => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => String(input).endsWith("/result") ? okAudio() : okJson({ job: dialogueSuccessJob })))
+    const persistGeneratedAudio = vi.fn(async () => generatedResult)
+    const first = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await first.result.current.generateSpeech(generationInput({ dialogueId: "script", scriptSnapshot: dialogueScriptSnapshot })) })
+    const recovery = { ...first.result.current.recovery, active: { ...first.result.current.recovery.successful!, jobId: "active-job" } }
+    first.unmount()
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      if (failedReference === "successful" || String(input).includes("active-job")) throw new Error("Backend unavailable")
+      return okJson({ job: dialogueSuccessJob })
+    })
+    const second = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await second.result.current.restoreRecovery(recovery, [provider], [generatedResult]) })
+    expect(second.result.current.status).toBe("error")
+    expect(second.result.current.recovery).toEqual(recovery)
+    const savedAgain = second.result.current.recovery
+    second.unmount()
+    vi.mocked(fetch).mockClear().mockImplementation(async (input: RequestInfo | URL) => String(input).endsWith("/result") ? okAudio() : okJson({ job: String(input).includes("active-job") ? { ...dialogueRegeneratedJob, id: "active-job" } : dialogueSuccessJob }))
+    const third = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await third.result.current.restoreRecovery(savedAgain, [provider], [generatedResult]) })
+    expect(third.result.current.successfulRun?.job.id).toBe("active-job")
+    expect(third.result.current.recovery.active).toBeNull()
+    expect(vi.mocked(fetch).mock.calls.every(([, init]) => !init?.method || init.method === "GET")).toBe(true)
+  })
+
+  it.each(["error", "canceled", "interrupted"] as const)("drops reconciled %s jobs from active recovery", async (status) => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => String(input).endsWith("/result") ? okAudio() : okJson({ job: dialogueSuccessJob })))
+    const persistGeneratedAudio = vi.fn(async () => generatedResult)
+    const first = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await first.result.current.generateSpeech(generationInput({ dialogueId: "script", scriptSnapshot: dialogueScriptSnapshot })) })
+    const active = first.result.current.recovery.successful!
+    first.unmount()
+    vi.mocked(fetch).mockImplementation(async () => okJson({ job: { ...dialogueSuccessJob, status } }))
+    const next = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await next.result.current.restoreRecovery({ active, successful: null, resultId: null }, [provider], []) })
+    expect(next.result.current.recovery.active).toBeNull()
+    expect(next.result.current.error).toBeTruthy()
+    const saved = next.result.current.recovery
+    next.unmount()
+    vi.mocked(fetch).mockClear()
+    const reopened = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await reopened.result.current.restoreRecovery(saved, [provider], []) })
+    expect(fetch).not.toHaveBeenCalled()
+    expect(reopened.result.current.status).toBe("idle")
+  })
+
+  it.each(["successful", "active"] as const)("does not recreate explicitly deleted %s recordings", async (reference) => {
+    const deletedJob = { ...dialogueSuccessJob, id: `deleted-${reference}` }
+    const saved = { ...generatedResult, id: speechResultId(deletedJob) }
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => String(input).endsWith("/result") ? okAudio() : okJson({ job: deletedJob })))
+    const persistGeneratedAudio = vi.fn(async () => saved)
+    const first = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await first.result.current.generateSpeech(generationInput({ dialogueId: "script", scriptSnapshot: dialogueScriptSnapshot })) })
+    const run = first.result.current.recovery.successful!
+    first.unmount()
+    await markGeneratedAudioArchiveCleared([saved.id])
+    persistGeneratedAudio.mockClear()
+    vi.mocked(fetch).mockClear()
+    const reopened = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await reopened.result.current.restoreRecovery({ successful: reference === "successful" ? run : null,
+      active: reference === "active" ? run : null, resultId: reference === "successful" ? saved.id : null }, [provider], []) })
+    expect(persistGeneratedAudio).not.toHaveBeenCalled()
+    expect(vi.mocked(fetch).mock.calls).toEqual([[`/api/speech/jobs/${deletedJob.id}`, undefined]])
+    expect(reopened.result.current.recovery).toEqual({ successful: null, active: null, resultId: null })
+    expect(reopened.result.current.resultUrl).toBeNull()
+  })
+
+  it("retains a newer take of the same job when archive saving fails", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => String(input).endsWith("/result") ? okAudio() :
+      okJson({ job: String(input).includes("/regenerate") ? dialogueRegeneratedJob : dialogueSuccessJob })))
+    const persistGeneratedAudio = vi.fn(async () => generatedResult)
+    const { result } = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await result.current.generateSpeech(generationInput({ dialogueId: "script", scriptSnapshot: dialogueScriptSnapshot })) })
+    persistGeneratedAudio.mockRejectedValueOnce(new Error("Archive unavailable"))
+    await act(async () => { await result.current.regenerateSegment({ providerKey: null, segmentId: "dialogue-block-1" }) })
+    expect(result.current.error).toBe("Archive unavailable")
+    expect(result.current.recovery.active?.jobId).toBe(dialogueRegeneratedJob.id)
+    expect(result.current.recovery.active?.context.synthesizedSegmentIds).toEqual(["dialogue-block-1"])
+    expect(result.current.successfulRun?.job.resultSha256).toBe(dialogueSuccessJob.resultSha256)
+  })
+
+  it.each([true, false])("reconnects despite unavailable deletion bookkeeping (archived=%s)", async (archived) => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => String(input).endsWith("/result") ? okAudio() : okJson({ job: dialogueSuccessJob })))
+    const persistGeneratedAudio = vi.fn(async () => generatedResult)
+    const first = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await first.result.current.generateSpeech(generationInput({ dialogueId: "script", scriptSnapshot: dialogueScriptSnapshot })) })
+    const recovery = first.result.current.recovery
+    first.unmount()
+    vi.spyOn(archiveMigration, "readGeneratedAudioArchiveMigrationState").mockRejectedValue(new Error("IndexedDB unavailable"))
+    vi.mocked(fetch).mockClear()
+    persistGeneratedAudio.mockClear()
+    const reopened = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await reopened.result.current.restoreRecovery(recovery, [provider], archived ? [generatedResult] : []) })
+    expect(reopened.result.current.successfulRun?.job.id).toBe(dialogueSuccessJob.id)
+    expect(fetch).toHaveBeenCalledWith("/api/speech/jobs/dialogue-job", undefined)
+    expect(persistGeneratedAudio).not.toHaveBeenCalled()
+    expect(reopened.result.current.status).toBe(archived ? "success" : "error")
+    if (!archived) expect(reopened.result.current.error).toContain("deletion history is unavailable")
+  })
+
+  it("reconnects to an accepted job and archives its completed result without resubmission", async () => {
+    const clock = vi.spyOn(Date, "now").mockReturnValue(1000)
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => String(input).endsWith("/result") ? okAudio() : okJson({ job: dialogueSuccessJob })))
+    const persistGeneratedAudio = vi.fn<(input: import("@/lib/generated-audio-storage").SaveGeneratedAudioInput) => Promise<GeneratedResult>>().mockResolvedValue(generatedResult)
+    const first = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await first.result.current.generateSpeech(generationInput({ dialogueId: "script", scriptSnapshot: dialogueScriptSnapshot })) })
+    const active = first.result.current.recovery.successful!
+    expect(active.context.generationStartedAt).toBe(1000)
+    clock.mockReturnValue(6500)
+    first.unmount()
+    vi.mocked(fetch).mockClear()
+    persistGeneratedAudio.mockClear()
+    const next = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await next.result.current.restoreRecovery({ active, successful: null, resultId: null }, [provider], []) })
+    expect(vi.mocked(fetch).mock.calls.every(([, init]) => !init?.method || init.method === "GET")).toBe(true)
+    expect(persistGeneratedAudio).toHaveBeenCalledTimes(1)
+    expect(persistGeneratedAudio.mock.calls[0][0].generationElapsedMs).toBeGreaterThanOrEqual(5500)
+    expect(next.result.current.status).toBe("success")
+  })
+
+  it("uses a stable archive ID and skips a completed save after an uncertain refresh", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => String(input).endsWith("/result") ? okAudio() : okJson({ job: dialogueSuccessJob })))
+    const saved = { ...generatedResult, id: speechResultId(dialogueSuccessJob) }
+    const persistGeneratedAudio = vi.fn(async () => saved)
+    const first = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await first.result.current.generateSpeech(generationInput({ dialogueId: "script", scriptSnapshot: dialogueScriptSnapshot })) })
+    expect(persistGeneratedAudio).toHaveBeenCalledWith(expect.objectContaining({ id: saved.id, createdAt: dialogueSuccessJob.updatedAt }), 100)
+    const active = first.result.current.recovery.successful!
+    first.unmount()
+    persistGeneratedAudio.mockClear()
+    const next = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await next.result.current.restoreRecovery({ active, successful: null, resultId: null }, [provider], [saved]) })
+    expect(persistGeneratedAudio).not.toHaveBeenCalled()
+    expect(next.result.current.successfulRun?.resultId).toBe(saved.id)
+  })
+
   it("snapshots generated text and spacing instead of unrelated draft changes", () => {
     const job = { ...dialogueSuccessJob, segmentGapMs: 0, segments: dialogueSuccessJob.segments.map((segment, index) => index === 0 ? { ...segment, text: "Updated audio." } : segment) }
     const snapshot = refreshScriptSnapshotFromJob(dialogueScriptSnapshot, job)!
@@ -448,6 +632,7 @@ describe("useMultiVoiceSpeechGeneration", () => {
     await act(async () => { await result.current.generateSpeech(generationInput({ dialogueId: "script", scriptSnapshot: dialogueScriptSnapshot })) })
     await act(async () => { await result.current.reviseSpeech({ defaultVoice: currentDefault, tuning: currentTuning, selectedTuningPresetId: preset.id, selectedUserTuningPreset: preset, providerKey: null, segments: [], scriptSnapshot: dialogueScriptSnapshot, storageLimitBytes: 100 }) })
     expect(persistGeneratedAudio).toHaveBeenLastCalledWith(expect.objectContaining({ multiVoiceMetadata: expect.objectContaining({ synthesizedCharacterCount: 0 }) }), 100)
+    expect(result.current.recovery.successful?.context.synthesizedSegmentIds).toEqual([])
     expect(result.current.successfulRun?.context.tuning).toEqual(currentTuning)
     expect(result.current.successfulRun?.context.defaultVoice.id).toBe("new-default")
     expect(result.current.successfulRun?.context.selectedUserTuningPreset).toEqual(preset)

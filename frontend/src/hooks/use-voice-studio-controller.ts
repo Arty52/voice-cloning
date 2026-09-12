@@ -3,6 +3,8 @@ import { type FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState }
 import { DEFAULT_TEXT, MAX_SPEECH_TEXT_LENGTH } from "@/constants"
 import { useConfirmation } from "@/hooks/use-confirmation"
 import { useDialogueScript } from "@/hooks/use-dialogue-script"
+import { useDialogueWorkspace } from "@/hooks/use-dialogue-workspace"
+import type { DialogueDraft } from "@/lib/dialogue-draft"
 import { useGeneratedAudioLibrary } from "@/hooks/use-generated-audio-library"
 import { useProviderKeys } from "@/hooks/use-provider-keys"
 import { useSampleProcessing } from "@/hooks/use-sample-processing"
@@ -70,6 +72,7 @@ const EMPTY_TUNING_METADATA: ProviderTuningMetadata = {
 
 export function useVoiceStudioController() {
   const [text, setText] = useState(DEFAULT_TEXT)
+  const [sourceExpanded, setSourceExpanded] = useState(true)
   const [isCostQuotaExpanded, setIsCostQuotaExpanded] = useState(false)
   const [isSampleProcessingExpanded, setIsSampleProcessingExpanded] = useState(false)
   const [latestGeneratedAudioId, setLatestGeneratedAudioId] = useState<string | null>(null)
@@ -82,6 +85,7 @@ export function useVoiceStudioController() {
   )
   const [naturalHandoffsSaveError, setNaturalHandoffsSaveError] = useState<string | null>(null)
   const [scriptRestoreWarning, setScriptRestoreWarning] = useState<string | null>(null)
+  const [draftProviderId, setDraftProviderId] = useState<string | null>(null)
   const [selectedUserTuningPresetId, setSelectedUserTuningPresetId] = useState<string | null>(null)
   const [textSelection, setTextSelection] = useState({ end: 0, start: 0, text: "" })
   const [voiceAssignments, setVoiceAssignments] = useState<VoiceTextAssignment[]>([])
@@ -124,6 +128,7 @@ export function useVoiceStudioController() {
   const selectedModel = metadata.models.find((model) => model.modelId === metadata.selectedModelId) ?? null
   const providerTuning = providerKeys.activeProvider?.tuning ?? EMPTY_TUNING_METADATA
   const activeProviderId = providerKeys.activeProviderId || null
+  const hasDraftProviderMismatch = Boolean(draftProviderId && draftProviderId !== activeProviderId)
   const effectiveVoiceSettingsByVoiceId = useMemo(
     () => buildEffectiveVoiceSettingsByVoiceId(activeProviderId, providerTuning, voiceLibrary.voices),
     [activeProviderId, providerTuning, voiceLibrary.voices]
@@ -147,6 +152,7 @@ export function useVoiceStudioController() {
       ) ?? null,
     [activeProviderId, selectedUserTuningPresetId, userTuningPresets.presets]
   )
+  const isSelectedUserTuningPresetAvailable = !selectedUserTuningPresetId || selectedUserTuningPreset !== null
   const tuning = useMemo(
     () => (selectedUserTuningPreset ? userPresetValues(providerTuning, selectedUserTuningPreset) : voiceTuning.tuning),
     [providerTuning, selectedUserTuningPreset, voiceTuning.tuning]
@@ -173,7 +179,7 @@ export function useVoiceStudioController() {
         dialogueId: successfulRun.context.dialogueId,
         naturalHandoffs: successfulRun.context.naturalHandoffs,
         job: successfulRun.job,
-        providerId: successfulRun.context.provider?.id ?? null,
+        providerId: successfulRun.context.provider?.id ?? successfulRun.context.providerId ?? null,
         modelId: successfulRun.context.modelId ?? successfulRun.context.backendDefaultModelId,
         tuning: successfulRun.context.tuning,
         scriptSnapshot: successfulRun.context.scriptSnapshot,
@@ -243,10 +249,53 @@ export function useVoiceStudioController() {
     isWithinSpeechTextLimit &&
     voiceLibrary.selectedVoice !== null &&
     providerKeys.canUseProvider &&
+    isSelectedUserTuningPresetAvailable &&
+    !hasDraftProviderMismatch &&
     !isSpeechGenerating &&
     (isDialogueMode
       ? !voiceAssignmentError && dialogue.segmentBuild.segments.length > 0
       : !hasVoiceAssignments || (!assignmentSegments.stale && !voiceAssignmentError && assignmentSegments.segments.length > 0))
+  const workspaceDraft = useMemo<DialogueDraft | null>(() => (isDialogueMode ? {
+      identity: dialogue.identity, sourceText: text, sourceExpanded, blocks: dialogue.blocks,
+      speakerMappings: dialogue.speakerMappings, sourceVoiceId: voiceLibrary.selectedVoiceId || null,
+      providerId: draftProviderId ?? activeProviderId, modelId: metadata.selectedModelId,
+      selectedUserTuningPresetId, naturalHandoffs: naturalHandoffsEnabled,
+      speech: multiVoiceSpeech.recovery,
+    } : null), [
+    isDialogueMode, dialogue.identity, text, sourceExpanded, dialogue.blocks, dialogue.speakerMappings,
+    voiceLibrary.selectedVoiceId, activeProviderId, draftProviderId, metadata.selectedModelId, selectedUserTuningPresetId,
+    naturalHandoffsEnabled, multiVoiceSpeech.recovery,
+  ])
+  const dialogueWorkspace = useDialogueWorkspace({
+    ready: !["idle", "loading"].includes(voiceLibrary.voiceStatus) &&
+      !["idle", "loading"].includes(providerKeys.providerStatus) &&
+      !["idle", "loading"].includes(metadata.modelStatus) &&
+      !["idle", "loading"].includes(generatedAudio.generatedAudioStatus) &&
+      !["idle", "loading"].includes(userTuningPresets.status),
+    draft: workspaceDraft,
+    applyDraft: applyWorkspaceDraft,
+    speech: multiVoiceSpeech, providers: providerKeys.providers ?? [],
+    archivedItems: generatedAudio.generatedAudioItems, onResult: setLatestGeneratedAudioId,
+  })
+
+  function applyWorkspaceDraft(draft: DialogueDraft | null) {
+    setDraftProviderId(draft?.providerId ?? null)
+    setText(draft?.sourceText ?? DEFAULT_TEXT)
+    setSourceExpanded(draft?.sourceExpanded ?? true)
+    setSelectedUserTuningPresetId(draft?.selectedUserTuningPresetId ?? null)
+    setVoiceAssignments([])
+    dialogue.restoreState({
+      blocks: draft?.blocks ?? [], speakerMappings: draft?.speakerMappings ?? [],
+      identity: draft?.identity, mode: draft ? "dialogue" : "range",
+    })
+    if (draft) {
+      voiceLibrary.setSelectedVoiceId(draft.sourceVoiceId ?? "")
+      metadata.restoreSelectedModelId(draft.modelId)
+      handleNaturalHandoffsEnabledChange(draft.naturalHandoffs)
+      setLatestGenerationMode("dialogue")
+    }
+  }
+
   const sectionStatuses = useMemo(
     () =>
       buildWorkflowSectionStatuses({
@@ -381,7 +430,7 @@ export function useVoiceStudioController() {
   }
 
   async function reviseDialogueRows(ids: string[]) {
-    if (!canGenerate || !dialogueRevision.canRevise || !dialogueBaseline) return
+    if (!canGenerate || dialogueWorkspace.isRestoring || !dialogueRevision.canRevise || !dialogueBaseline) return
     if (ids.length === 0 && !dialogueRevision.spacingChanged) return
     const selected = new Set(ids)
     setLatestGenerationMode("dialogue")
@@ -406,7 +455,7 @@ export function useVoiceStudioController() {
   }
 
   async function generateSpeech(forceAll = false) {
-    if (isSpeechGenerating) return
+    if (isSpeechGenerating || dialogueWorkspace.isRestoring || !isSelectedUserTuningPresetAvailable || hasDraftProviderMismatch) return
     if (isDialogueMode) {
       if (!forceAll && dialogueRevision.canRevise) {
         return reviseDialogueRows(dialogueRevision.changedIds)
@@ -746,6 +795,13 @@ export function useVoiceStudioController() {
   }
 
   return {
+    dialogueWorkspace,
+    draftProviderChange: hasDraftProviderMismatch ? {
+      saved: draftProviderId!, current: activeProviderId ?? "Unavailable",
+      onAccept: () => { setDraftProviderId(activeProviderId); setSelectedUserTuningPresetId(null) },
+    } : null,
+    sourceExpanded,
+    setSourceExpanded,
     dialogueRevision,
     dialogueBaseline,
     generateAllSpeech: () => { if (canGenerate) void generateSpeech(true) },
@@ -754,7 +810,7 @@ export function useVoiceStudioController() {
     activeSectionId: workflowNavigation.activeSectionId,
     applyUserTuningPreset,
     archiveStorageError,
-    canGenerate,
+    canGenerate: canGenerate && !dialogueWorkspace.isRestoring,
     cancelGeneration,
     characterCount,
     confirmation,
@@ -801,7 +857,7 @@ export function useVoiceStudioController() {
     setIsSampleProcessingExpanded,
     setNaturalHandoffsEnabled: handleNaturalHandoffsEnabledChange,
     setText: handleTextChange,
-    scriptRestoreWarning,
+    scriptRestoreWarning: !isSelectedUserTuningPresetAvailable ? "The saved tuning preset is unavailable. Select a preset or adjust tuning before generating." : scriptRestoreWarning,
     speech,
     speechError: activeSpeechError,
     speechStatus: activeSpeechStatus,

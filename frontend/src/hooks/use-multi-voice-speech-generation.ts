@@ -1,3 +1,7 @@
+import type { DialogueSpeechRecovery } from "@/lib/dialogue-draft"
+import { storeSpeechRun, restoreSpeechContext, speechResultId, type PersistContext, type SuccessfulSpeechRun } from "@/lib/speech-session"
+
+import { readGeneratedAudioArchiveMigrationState } from "@/lib/generated-audio-archive-migration"
 import { useEffect, useMemo, useRef, useState } from "react"
 
 import { BACKEND_DEFAULT_MODEL_LABEL, CANCELED_GENERATION_MESSAGE } from "@/constants"
@@ -56,22 +60,6 @@ type RegenerateVoiceInput = {
   voiceSettings: VoiceTuningValues
 }
 
-export type PersistContext = {
-  synthesizedSegmentIds?: string[]
-  naturalHandoffs?: boolean
-  dialogueId?: string
-  backendDefaultModelId: string | null
-  defaultVoice: VoiceAsset
-  modelId: string | null
-  provider: VoiceProvider | null
-  scriptSnapshot: GeneratedAudioScriptSnapshot | null
-  selectedTuningPresetId: string
-  selectedUserTuningPreset: UserTuningPreset | null
-  storageLimitBytes: number
-  tuning: VoiceTuningValues
-}
-
-export type SuccessfulSpeechRun = { job: SpeechJob; context: PersistContext }
 
 type UseMultiVoiceSpeechGenerationOptions = {
   persistGeneratedAudio: (input: SaveGeneratedAudioInput, limitBytes: number) => Promise<GeneratedResult>
@@ -83,7 +71,9 @@ const MULTI_VOICE_LABEL = "Multi-Voice"
 
 export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMultiVoiceSpeechGenerationOptions) {
   const [job, setJob] = useState<SpeechJob | null>(null)
+  const [unreconciledRecovery, setUnreconciledRecovery] = useState<DialogueSpeechRecovery | null>(null)
   const [successfulRun, setSuccessfulRun] = useState<SuccessfulSpeechRun | null>(null)
+  const [activeContext, setActiveContext] = useState<PersistContext | null>(null)
   const [status, setStatus] = useState<MultiVoiceGenerationStatus>("idle")
   const [error, setError] = useState<string | null>(null)
   const [generationElapsedMs, setGenerationElapsedMs] = useState<number | null>(null)
@@ -91,8 +81,16 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
   const busyRef = useRef(false)
   const mountedRef = useRef(true)
   const activeJobIdRef = useRef<string | null>(null)
+  const generationStartedAtEpochRef = useRef<number | null>(null)
   const generationStartedAtRef = useRef<number | null>(null)
   const lastPersistContextRef = useRef<PersistContext | null>(null)
+
+  const recovery = useMemo(() => (unreconciledRecovery ?? {
+      active: status !== "starting" && job && (job.status === "pending" || job.status === "running" || (job.status === "success" && (!successfulRun || speechResultId(job) !== speechResultId(successfulRun.job))))
+        ? storeSpeechRun(job.id, activeContext) : null,
+      successful: successfulRun ? storeSpeechRun(successfulRun.job.id, successfulRun.context) : null,
+      resultId: successfulRun?.resultId ?? null,
+    } satisfies DialogueSpeechRecovery), [unreconciledRecovery, status, job, successfulRun, activeContext])
 
   const isGenerating = status === "starting" || status === "processing"
   const canCancel = isGenerating && (job?.status === "pending" || job?.status === "running")
@@ -155,7 +153,9 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
     const runId = startRun()
     const submittedModelId = api.hasModel(input.models, input.selectedModelId) ? input.selectedModelId : null
     const persistContext: PersistContext = {
+      generationStartedAt: generationStartedAtEpochRef.current ?? undefined,
       dialogueId: input.dialogueId,
+      providerId: input.providerId,
       naturalHandoffs: input.segmentGapMs !== 0,
       backendDefaultModelId: input.backendDefaultModelId,
       defaultVoice: input.defaultVoice,
@@ -220,6 +220,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
     const runId = startRun({ clearJob: false })
     const nextPersistContext = {
       ...persistContext,
+      generationStartedAt: generationStartedAtEpochRef.current ?? undefined,
       synthesizedSegmentIds: [segmentId],
       storageLimitBytes: storageLimitBytes ?? persistContext.storageLimitBytes,
     }
@@ -264,6 +265,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
     const runId = startRun({ clearJob: false })
     const nextPersistContext = {
       ...persistContext,
+      generationStartedAt: generationStartedAtEpochRef.current ?? undefined,
       synthesizedSegmentIds: activeJob.segments.filter(segment => segment.voiceId === voiceId).map(segment => segment.id),
       storageLimitBytes: storageLimitBytes ?? persistContext.storageLimitBytes,
     }
@@ -300,6 +302,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
     const runId = startRun({ clearJob: false })
     const context = {
       ...successfulRun.context,
+      generationStartedAt: generationStartedAtEpochRef.current ?? undefined,
       synthesizedSegmentIds: input.segments.map(segment => segment.segmentId),
       defaultVoice: input.defaultVoice,
       tuning: { ...input.tuning },
@@ -422,23 +425,98 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
   }
 
   function resetGeneration() {
+    setUnreconciledRecovery(null)
     busyRef.current = false
     runIdRef.current += 1
     updateJob(null)
+    setSuccessfulRun(null)
     clearGenerationTimer()
     setStatus("idle")
     setError(null)
   }
 
+  async function restoreRecovery(recovery: DialogueSpeechRecovery, providers: VoiceProvider[], archivedItems: GeneratedResult[]) {
+    const runId = startRun()
+    setUnreconciledRecovery(recovery)
+    setSuccessfulRun(null)
+    let restoredResult: GeneratedResult | null = null
+    try {
+      let deletionHistoryAvailable = true
+      const { clearedIds } = await readGeneratedAudioArchiveMigrationState().catch(() => {
+        deletionHistoryAvailable = false
+        return { clearedIds: new Set<string>() }
+      })
+      if (!isActiveRun(runId)) return null
+      if (recovery.successful) {
+        const { job: restored } = await api.fetchSpeechJob(recovery.successful.jobId)
+        if (!isActiveRun(runId)) return null
+        if (restored.status !== "success") throw new Error("The previous recording is unavailable. Generate all rows to make a new recording.")
+        if (clearedIds.has(speechResultId(restored)) || (recovery.resultId && clearedIds.has(recovery.resultId))) {
+          recovery = { ...recovery, successful: null, resultId: null,
+            active: recovery.active?.jobId === restored.id ? null : recovery.active }
+          setUnreconciledRecovery(recovery)
+        } else {
+          const context = restoreSpeechContext(recovery.successful.context, providers)
+          restoredResult = archivedItems.find(item => item.id === speechResultId(restored))
+            ?? archivedItems.find(item => item.id === recovery.resultId) ?? null
+          setSuccessfulRun({ job: restored, context, resultId: restoredResult?.id })
+          lastPersistContextRef.current = context
+          updateJob(restored)
+          if (!recovery.active) setUnreconciledRecovery(null)
+          if (!restoredResult && !recovery.active) {
+            if (!deletionHistoryAvailable) throw new Error("The recording was found, but archive deletion history is unavailable. Automatic archive saving is paused.")
+            return await persistSuccessfulJob(restored, context, null)
+          }
+        }
+      }
+      if (recovery.active) {
+        const { job: restored } = await api.fetchSpeechJob(recovery.active.jobId)
+        if (!isActiveRun(runId)) return null
+        if (restored.status === "success" && clearedIds.has(speechResultId(restored))) {
+          setUnreconciledRecovery(null)
+          finishGenerationTimer()
+          busyRef.current = false
+          setStatus(restoredResult ? "success" : "idle")
+          return restoredResult
+        }
+        const context = restoreSpeechContext(recovery.active.context, providers)
+        startGenerationTimer(context.generationStartedAt ?? Date.parse(restored.createdAt))
+        lastPersistContextRef.current = context
+        updateJob(restored)
+        setUnreconciledRecovery(null)
+        const existing = archivedItems.find(item => item.id === speechResultId(restored))
+        if (restored.status === "success" && existing) {
+          setSuccessfulRun({ job: restored, context, resultId: existing.id })
+          finishGenerationTimer()
+          busyRef.current = false
+          setStatus("success")
+          return existing
+        }
+        if (restored.status === "success" && !deletionHistoryAvailable) throw new Error("The recording was found, but archive deletion history is unavailable. Automatic archive saving is paused.")
+        return await handleJobUpdate(restored, runId, context)
+      }
+      finishGenerationTimer()
+      busyRef.current = false
+      setUnreconciledRecovery(null)
+      setStatus(recovery.successful ? "success" : "idle")
+      return restoredResult
+    } catch (caught) {
+      return failActiveRun(runId, caught, "The saved generation could not be restored. Your dialogue edits are preserved.")
+    }
+  }
+
   async function persistSuccessfulJob(jobUpdate: SpeechJob, persistContext: PersistContext, elapsedMs: number | null) {
+    const runId = runIdRef.current
     try {
       const response = await fetch(api.speechJobResultUrl(jobUpdate.id))
       if (!response.ok) {
         throw new Error(await response.text() || `Request failed with status ${response.status}.`)
       }
       const blob = await response.blob()
-      const createdAt = new Date().toISOString()
+      if (!isActiveRun(runId)) return null
+      const createdAt = jobUpdate.updatedAt
       const input: SaveGeneratedAudioInput = {
+        id: speechResultId(jobUpdate),
         appVoiceId: persistContext.defaultVoice.id,
         blob,
         cacheState: "multi-voice",
@@ -460,19 +538,22 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
         voiceName: MULTI_VOICE_LABEL,
       }
       const result = await persistGeneratedAudio(input, persistContext.storageLimitBytes)
-      setSuccessfulRun({ job: jobUpdate, context: { ...persistContext, scriptSnapshot: input.scriptSnapshot ?? null } })
+      if (!isActiveRun(runId)) return null
+      setSuccessfulRun({ job: jobUpdate, context: { ...persistContext, scriptSnapshot: input.scriptSnapshot ?? null }, resultId: result.id })
       setStatus("success")
       return result
     } catch (caught) {
+      if (!isActiveRun(runId)) return null
       setStatus("error")
       setError(caught instanceof Error ? caught.message : "Unable to save multi-voice generated audio.")
       return null
     } finally {
-      busyRef.current = false
+      if (isActiveRun(runId)) busyRef.current = false
     }
   }
 
   function startRun({ clearJob = true }: { clearJob?: boolean } = {}) {
+    setUnreconciledRecovery(null)
     busyRef.current = true
     const runId = runIdRef.current + 1
     runIdRef.current = runId
@@ -503,11 +584,15 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
   function updateJob(nextJob: SpeechJob | null) {
     activeJobIdRef.current = nextJob?.id ?? null
     setJob(nextJob)
+    setActiveContext(lastPersistContextRef.current)
   }
 
-  function startGenerationTimer() {
-    generationStartedAtRef.current = performance.now()
-    setGenerationElapsedMs(0)
+  function startGenerationTimer(startedAt = Date.now()) {
+    const timestamp = Number.isFinite(startedAt) ? startedAt : Date.now()
+    const elapsed = Math.max(0, Date.now() - timestamp)
+    generationStartedAtEpochRef.current = timestamp
+    generationStartedAtRef.current = performance.now() - elapsed
+    setGenerationElapsedMs(elapsed)
   }
 
   function finishGenerationTimer() {
@@ -526,11 +611,14 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
   }
 
   function clearGenerationTimer() {
+    generationStartedAtEpochRef.current = null
     generationStartedAtRef.current = null
     setGenerationElapsedMs(null)
   }
 
   return {
+    restoreRecovery,
+    recovery,
     successfulRun,
     reviseSpeech,
     canCancel,

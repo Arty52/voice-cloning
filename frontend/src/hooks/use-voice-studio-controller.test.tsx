@@ -1,6 +1,8 @@
-import { act, renderHook } from "@testing-library/react"
+import { act, renderHook, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
+import * as workspace from "@/hooks/use-dialogue-workspace"
+import { DIALOGUE_DRAFT_KEY } from "@/lib/dialogue-draft"
 import type { GeneratedAudioScriptSnapshot, VoiceAsset } from "@/types"
 
 import { useVoiceStudioController } from "./use-voice-studio-controller"
@@ -8,13 +10,15 @@ import { useVoiceStudioController } from "./use-voice-studio-controller"
 const controllerMocks = vi.hoisted(() => ({
   selectedVoiceId: "narrator",
   voiceStatus: "success",
+  presetStatus: "success",
+  providerId: null as string | null,
   voices: [] as VoiceAsset[],
 }))
 
 vi.mock("@/hooks/use-provider-keys", () => ({
   useProviderKeys: () => ({
     activeProvider: null,
-    activeProviderId: null,
+    activeProviderId: controllerMocks.providerId,
     activeProviderKey: null,
     canUseProvider: false,
     keySource: "missing",
@@ -50,9 +54,15 @@ vi.mock("@/hooks/use-voice-library", async () => {
 vi.mock("@/hooks/use-voice-metadata", () => ({
   useVoiceMetadata: () => ({
     backendDefaultModelId: null,
+    modelStatus: "success",
+    restoreSelectedModelId: vi.fn(),
     models: [],
     selectedModelId: "",
   }),
+}))
+
+vi.mock("@/hooks/use-user-tuning-presets", () => ({
+  useUserTuningPresets: () => ({ presets: [], status: controllerMocks.presetStatus }),
 }))
 
 vi.mock("@/hooks/use-generated-audio-library", () => ({
@@ -67,10 +77,6 @@ vi.mock("@/hooks/use-generated-audio-library", () => ({
     persistGeneratedAudio: vi.fn(),
     storageLimitBytes: 100,
   }),
-}))
-
-vi.mock("@/hooks/use-user-tuning-presets", () => ({
-  useUserTuningPresets: () => ({ presets: [] }),
 }))
 
 vi.mock("@/hooks/use-speech-generation", () => ({
@@ -145,6 +151,8 @@ describe("useVoiceStudioController script snapshot restore", () => {
     originalRequestAnimationFrame = window.requestAnimationFrame
     controllerMocks.selectedVoiceId = "narrator"
     controllerMocks.voiceStatus = "success"
+    controllerMocks.presetStatus = "success"
+    controllerMocks.providerId = null
     controllerMocks.voices = [narrator, villain]
     window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
       callback(0)
@@ -153,8 +161,61 @@ describe("useVoiceStudioController script snapshot restore", () => {
   })
 
   afterEach(() => {
+    localStorage.removeItem(DIALOGUE_DRAFT_KEY)
     window.requestAnimationFrame = originalRequestAnimationFrame
     vi.restoreAllMocks()
+  })
+
+  it("waits for presets before restoring and requires a choice if the saved preset disappeared", async () => {
+    controllerMocks.presetStatus = "loading"
+    localStorage.setItem(DIALOGUE_DRAFT_KEY, JSON.stringify({ version: 1, writerId: "saved", revision: "saved", draft: {
+      identity: "script", sourceText: "Narrator: Saved.", sourceExpanded: false,
+      blocks: [{ id: "row-1", speakerLabel: "Narrator", text: "Saved.", voiceId: null }], speakerMappings: [],
+      sourceVoiceId: "narrator", providerId: null, modelId: "", selectedUserTuningPresetId: "missing-preset", naturalHandoffs: false,
+      speech: { active: null, successful: null, resultId: null },
+    } }))
+    const { result, rerender } = renderHook(() => useVoiceStudioController())
+    expect(result.current.dialogueWorkspace.isRestoring).toBe(true)
+    expect(result.current.dialogue.mode).toBe("range")
+    controllerMocks.presetStatus = "success"
+    rerender()
+    await waitFor(() => expect(result.current.dialogueWorkspace.isRestoring).toBe(false))
+    expect(result.current.dialogue.mode).toBe("dialogue")
+    expect(result.current.canGenerate).toBe(false)
+    expect(result.current.scriptRestoreWarning).toContain("saved tuning preset is unavailable")
+  })
+
+  it("keeps the workspace draft stable until an input changes", () => {
+    const workspaceSpy = vi.spyOn(workspace, "useDialogueWorkspace")
+    const { result, rerender } = renderHook(() => useVoiceStudioController())
+    act(() => result.current.dialogue.importFromText("Narrator: Original."))
+    const draft = workspaceSpy.mock.calls.at(-1)![0].draft
+    expect(draft).not.toBeNull()
+    rerender()
+    expect(workspaceSpy.mock.calls.at(-1)![0].draft).toBe(draft)
+    act(() => result.current.dialogue.updateBlockText(result.current.dialogue.blocks[0].id, "Edited."))
+    expect(workspaceSpy.mock.calls.at(-1)![0].draft).not.toBe(draft)
+    expect(workspaceSpy.mock.calls.at(-1)![0].draft?.blocks[0].text).toBe("Edited.")
+  })
+
+  it("preserves the saved provider until the current provider is explicitly chosen", async () => {
+    controllerMocks.providerId = "new-provider"
+    const workspaceSpy = vi.spyOn(workspace, "useDialogueWorkspace")
+    localStorage.setItem(DIALOGUE_DRAFT_KEY, JSON.stringify({ version: 1, writerId: "saved", revision: "saved", draft: {
+      identity: "script", sourceText: "Narrator: Saved.", sourceExpanded: false,
+      blocks: [{ id: "row-1", speakerLabel: "Narrator", text: "Saved.", voiceId: null }], speakerMappings: [],
+      sourceVoiceId: "narrator", providerId: "saved-provider", modelId: "", selectedUserTuningPresetId: null, naturalHandoffs: false,
+      speech: { active: null, successful: null, resultId: null },
+    } }))
+    const { result } = renderHook(() => useVoiceStudioController())
+    await waitFor(() => expect(result.current.dialogueWorkspace.isRestoring).toBe(false))
+    expect(result.current.draftProviderChange).toMatchObject({ saved: "saved-provider", current: "new-provider" })
+    expect(workspaceSpy.mock.calls.at(-1)![0].draft?.providerId).toBe("saved-provider")
+    expect(result.current.canGenerate).toBe(false)
+    act(() => result.current.draftProviderChange!.onAccept())
+    expect(result.current.draftProviderChange).toBeNull()
+    expect(workspaceSpy.mock.calls.at(-1)![0].draft?.providerId).toBe("new-provider")
+    expect(result.current.multiVoiceSpeech.generateSpeech).not.toHaveBeenCalled()
   })
 
   it("restores range text, assignments, source voice, and disabled Natural Handoffs", () => {
