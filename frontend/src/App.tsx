@@ -90,6 +90,7 @@ function AppContents() {
     naturalHandoffsSaveError,
     naturalHandoffsUnsaved,
     multiVoiceSegmentResultUrls,
+    multiVoiceSpeech,
     navigateToSection,
     providerKeys,
     providerTuning,
@@ -293,6 +294,7 @@ function AppContents() {
           <SpeechInputPanel
             generationBar={{
               barRef: generationBar.ref,
+              canCancel: speech.isGenerating || multiVoiceSpeech.canCancel,
               canGenerate: dialogue.mode === "dialogue" ? canGenerateDialogueChanges : canGenerate,
               canRegenerateAll: canGenerate,
               onRegenerateAll: generateAllSpeech,

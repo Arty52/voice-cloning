@@ -54,6 +54,11 @@ describe("generation bar", () => {
     expect(screen.getAllByText("Queued")).toHaveLength(15)
   })
 
+  it("disables cancellation while a completed recording is being saved", () => {
+    renderBar({ isGenerating: true, canCancel: false })
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled()
+  })
+
   it("gives disabled regeneration tooltip targets an accessible name", async () => {
     const user = userEvent.setup()
     renderBar({ canGenerate: false, canRegenerateAll: false })

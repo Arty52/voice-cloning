@@ -8,6 +8,7 @@ import type { GenerationPendingStatus } from "@/types"
 
 export type GenerationBarProps = {
   barRef?: Ref<HTMLDivElement>
+  canCancel?: boolean
   canGenerate: boolean
   canRegenerateAll: boolean
   isDialogue: boolean
@@ -22,7 +23,7 @@ export type GenerationBarProps = {
   onCancel: () => void
 }
 
-export function GenerationBar({ barRef, canGenerate, canRegenerateAll, isDialogue, isGenerating, isRestoring, error, revision, rowCount, characterCount, pendingStatus, onRegenerateAll, onCancel }: GenerationBarProps) {
+export function GenerationBar({ barRef, canCancel = true, canGenerate, canRegenerateAll, isDialogue, isGenerating, isRestoring, error, revision, rowCount, characterCount, pendingStatus, onRegenerateAll, onCancel }: GenerationBarProps) {
   const regenerateDisabled = Boolean(!canRegenerateAll || isGenerating || isRestoring)
   const changedCount = revision?.changedIds.length ?? 0
   const primaryLabel = !isDialogue ? "Generate" : !revision?.canRevise ? "Generate All" : `Generate Changes${changedCount ? ` (${changedCount})` : ""}`
@@ -51,7 +52,7 @@ export function GenerationBar({ barRef, canGenerate, canRegenerateAll, isDialogu
             </TooltipTrigger>
             <TooltipContent>Regenerate All</TooltipContent>
           </Tooltip>
-          {isGenerating && !isRestoring ? <Button onClick={onCancel} type="button" variant="secondary"><X aria-hidden="true" />Cancel</Button> : null}
+          {isGenerating && !isRestoring ? <Button disabled={!canCancel} onClick={onCancel} type="button" variant="secondary"><X aria-hidden="true" />Cancel</Button> : null}
         </div>
       </div>
     </div>
