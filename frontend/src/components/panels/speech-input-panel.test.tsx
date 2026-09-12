@@ -200,8 +200,15 @@ describe("SpeechInputPanel voice assignments", () => {
 
   it("disables unchanged dialogue generation while retaining the full-take action", () => {
     renderPanel({ dialogue: dialogueController({ mode: "dialogue" }), canGenerate: true, canGenerateChanges: false })
-    expect(screen.getByRole("button", { name: "Generate" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Generate All" })).toBeDisabled()
     expect(screen.getByRole("button", { name: "Regenerate All" })).toBeEnabled()
+  })
+
+  it("counts working text separately from source text, excluding blank rows", () => {
+    renderPanel({ text: "Original source text", dialogue: dialogueController({ mode: "dialogue", blocks: [
+      dialogueBlock({ id: "one", text: " Hello " }), dialogueBlock({ id: "two", text: "   " }), dialogueBlock({ id: "three", text: "World!" }),
+    ] }) })
+    expect(screen.getByText("12 Working Characters")).toBeVisible()
   })
 
   it("disables assignment until speakable text is selected", () => {

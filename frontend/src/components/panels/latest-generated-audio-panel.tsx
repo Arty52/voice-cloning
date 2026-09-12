@@ -46,6 +46,8 @@ import type {
 } from "@/types"
 
 type LatestGeneratedAudioPanelProps = {
+  showGenerationProgress?: boolean
+  showSegmentControls?: boolean
   activeProviderId?: string | null
   attentionRef?: RefObject<HTMLElement | null>
   error: string | null
@@ -71,6 +73,8 @@ type LatestGeneratedAudioPanelProps = {
 }
 
 export function LatestGeneratedAudioPanel({
+  showGenerationProgress = true,
+  showSegmentControls = true,
   activeProviderId = null,
   attentionRef,
   error,
@@ -96,7 +100,7 @@ export function LatestGeneratedAudioPanel({
 }: LatestGeneratedAudioPanelProps) {
   const isCanceled = status === "canceled"
   const isGenerating = status === "generating"
-  const visiblePendingStatus = isGenerating ? (generationPendingStatus ?? fallbackGenerationPendingStatus) : null
+  const visiblePendingStatus = isGenerating && showGenerationProgress ? (generationPendingStatus ?? fallbackGenerationPendingStatus) : null
 
   if (!isGenerating && !error && !storageError && !item) {
     return null
@@ -149,7 +153,7 @@ export function LatestGeneratedAudioPanel({
             onViewScriptSnapshot={onViewScriptSnapshot}
             playback={playback}
           />
-          {item.multiVoiceMetadata ? (
+          {item.multiVoiceMetadata && showSegmentControls ? (
             <MultiVoiceSegmentResults
               disabled={isGenerating}
               activeProviderId={activeProviderId}

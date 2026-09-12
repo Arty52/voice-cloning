@@ -617,6 +617,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
   }
 
   return {
+    jobDialogueId: activeContext?.dialogueId ?? null,
     restoreRecovery,
     recovery,
     successfulRun,

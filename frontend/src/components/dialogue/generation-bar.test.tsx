@@ -1,0 +1,82 @@
+import { render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
+import { describe, expect, it, vi } from "vitest"
+import { TooltipProvider } from "@/components/ui/tooltip"
+import { DialogueRowActions } from "./dialogue-row-actions"
+import { GenerationBar, type GenerationBarProps } from "./generation-bar"
+
+function renderBar(overrides: Partial<GenerationBarProps> = {}) {
+  const onRegenerateAll = vi.fn()
+  const onCancel = vi.fn()
+  const props = { canGenerate: true, canRegenerateAll: true, isDialogue: true, isGenerating: false, characterCount: 600, rowCount: 16, onRegenerateAll, onCancel, ...overrides }
+  render(<TooltipProvider><form><GenerationBar {...props} /></form></TooltipProvider>)
+  return props
+}
+const revision = { canRevise: true, changedIds: ["one", "two"], spacingChanged: false, linked: true, fullGenerationReason: null }
+
+describe("generation bar", () => {
+  it("starts with Generate All and exposes an icon-only Regenerate All action", async () => {
+    const user = userEvent.setup()
+    const props = renderBar()
+    expect(screen.getByRole("button", { name: "Generate All" })).toBeEnabled()
+    const icon = screen.getByRole("button", { name: "Regenerate All" })
+    expect(icon).toHaveTextContent("")
+    await user.click(icon)
+    expect(props.onRegenerateAll).toHaveBeenCalledTimes(1)
+  })
+  it("names the icon-only retry action appropriately outside dialogue mode", async () => {
+    const user = userEvent.setup()
+    const props = renderBar({ isDialogue: false })
+    const retry = screen.getByRole("button", { name: "Retry" })
+    expect(retry).toHaveTextContent("")
+    await user.hover(retry)
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Retry")
+    await user.click(retry)
+    expect(props.onRegenerateAll).toHaveBeenCalledOnce()
+  })
+
+  it("shows the affected count and disables the current draft", () => {
+    renderBar({ revision })
+    expect(screen.getByRole("button", { name: "Generate Changes (2)" })).toBeEnabled()
+  })
+  it("keeps a new take available when everything is current", () => {
+    renderBar({ revision: { ...revision, changedIds: [] }, canGenerate: false })
+    expect(screen.getByRole("button", { name: "Generate Changes" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Regenerate All" })).toBeEnabled()
+    expect(screen.getByRole("status")).toHaveTextContent("All rows are up to date.")
+  })
+  it("explains incompatible settings beside Generate All", () => {
+    renderBar({ revision: { ...revision, canRevise: false, fullGenerationReason: "The model changed. Generate all rows." } })
+    expect(screen.getByRole("button", { name: "Generate All" })).toBeEnabled()
+    expect(screen.getByRole("status")).toHaveTextContent("The model changed.")
+  })
+  it("locks generation and keeps cancellation accessible during a run", async () => {
+    const user = userEvent.setup()
+    const props = renderBar({ isGenerating: true })
+    expect(screen.getByRole("button", { name: "Generating..." })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Regenerate All" })).toBeDisabled()
+    await user.click(screen.getByRole("button", { name: "Cancel" }))
+    expect(props.onCancel).toHaveBeenCalledTimes(1)
+  })
+  it("announces dialogue progress once when sixteen row badges update", () => {
+    renderBar({ isGenerating: true })
+    render(<TooltipProvider>{Array.from({ length: 16 }, (_, index) => <DialogueRowActions key={index} id={`row-${index}`} index={index} canRegenerate={false} state={{ label: index ? "Queued" : "Generating", hasTake: false, previousTake: false, running: true, error: null }} />)}</TooltipProvider>)
+    expect(screen.getAllByRole("status")).toHaveLength(1)
+    expect(screen.getAllByText("Queued")).toHaveLength(15)
+  })
+
+  it("disables cancellation while a completed recording is being saved", () => {
+    renderBar({ isGenerating: true, canCancel: false })
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled()
+  })
+
+  it("gives disabled regeneration tooltip targets an accessible name", async () => {
+    const user = userEvent.setup()
+    renderBar({ canGenerate: false, canRegenerateAll: false })
+    const target = screen.getByRole("group", { name: "Regenerate All Unavailable" })
+    await user.tab()
+    expect(target).toHaveFocus()
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Regenerate All")
+  })
+
+})

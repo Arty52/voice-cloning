@@ -1,5 +1,6 @@
 import { type FormEvent, useRef, useState } from "react"
 
+import { useElementHeight } from "@/hooks/use-element-height"
 import { DialogueDraftNotice } from "@/components/dialogue/dialogue-draft-notice"
 import { AppHeader } from "@/components/app-header"
 import { ConfirmationDialog } from "@/components/dialogs/confirmation-dialog"
@@ -42,6 +43,7 @@ function App() {
 }
 
 function AppContents() {
+  const generationBar = useElementHeight()
   const [scriptSnapshotDialog, setScriptSnapshotDialog] = useState<GeneratedAudioScriptSnapshot | null>(null)
   const [prepareAudioWorkflow, setPrepareAudioWorkflow] = useState<PrepareAudioWorkflow | null>(null)
   const [generatedAudioAttentionSignal, setGeneratedAudioAttentionSignal] = useState(0)
@@ -62,7 +64,16 @@ function AppContents() {
     confirmation,
     dialogue,
     dialogueSpeechSegmentCount,
+    importDialogue,
+    sourceExpanded,
+    setSourceExpanded,
+    sourceError,
+    dialogueRowStates,
     dialogueWorkspace,
+    isDialogueConnecting,
+    dialogueRevision,
+    regenerateDialogueRow,
+    regenerateDialogueVoiceRows,
     draftProviderChange,
     effectiveVoiceSettingsByVoiceId,
     estimatedCredits,
@@ -82,6 +93,7 @@ function AppContents() {
     naturalHandoffsSaveError,
     naturalHandoffsUnsaved,
     multiVoiceSegmentResultUrls,
+    multiVoiceSpeech,
     navigateToSection,
     providerKeys,
     providerTuning,
@@ -171,7 +183,7 @@ function AppContents() {
     if (!canGenerate) {
       return
     }
-    setGeneratedAudioAttentionSignal((currentSignal) => currentSignal + 1)
+    if (dialogue.mode !== "dialogue") setGeneratedAudioAttentionSignal((currentSignal) => currentSignal + 1)
     handleGenerate()
   }
 
@@ -283,6 +295,30 @@ function AppContents() {
         <WorkflowSectionPanel activeSectionId={activeSectionId} id="generate">
           <DialogueDraftNotice providerChange={draftProviderChange} conflict={dialogueWorkspace.conflict} error={dialogueWorkspace.error} disabled={isSpeechGenerating || dialogueWorkspace.isRestoring} onKeepCurrent={dialogueWorkspace.keepCurrent} onUseSaved={dialogueWorkspace.useSaved} />
           <SpeechInputPanel
+            generationBar={{
+              barRef: generationBar.ref,
+              canCancel: speech.isGenerating || multiVoiceSpeech.canCancel,
+              canGenerate: dialogue.mode === "dialogue" ? canGenerateDialogueChanges : canGenerate,
+              canRegenerateAll: canGenerate,
+              onRegenerateAll: generateAllSpeech,
+              revision: dialogueRevision,
+              isRestoring: isDialogueConnecting,
+              pendingStatus: generationPendingStatus,
+              error: speechError,
+            }}
+            sourceExpanded={sourceExpanded}
+            onSourceExpandedChange={setSourceExpanded}
+            onImportDialogue={importDialogue}
+            sourceError={sourceError}
+            dialogueActions={{
+              rowStates: dialogueRowStates,
+              canRegenerate: canGenerate && dialogueRevision.canRevise,
+              onRegenerate: regenerateDialogueRow,
+              onRegenerateVoiceRows: regenerateDialogueVoiceRows,
+              onSaveVoiceTuning: (voiceId, settings) => { void saveGeneratedSegmentTuningToVoice(voiceId, settings) },
+              isSavingVoiceTuning: voiceLibrary.isUpdatingVoice,
+              playback: generatedAudioPlayback,
+            }}
             assignmentError={voiceAssignmentError}
             assignmentSpeechSegmentCount={voiceAssignmentSpeechSegmentCount}
             assignments={voiceAssignments}
@@ -322,6 +358,8 @@ function AppContents() {
           />
 
           <LatestGeneratedAudioPanel
+            showGenerationProgress={dialogue.mode !== "dialogue"}
+            showSegmentControls={dialogue.mode !== "dialogue" || !dialogueRevision.linked}
             activeProviderId={providerKeys.activeProviderId}
             attentionRef={generatedAudioAttentionRef}
             error={speechError}
@@ -351,6 +389,7 @@ function AppContents() {
             tuning={tuning}
             voices={voiceLibrary.voices}
           />
+          <div aria-hidden="true" style={{ height: generationBar.height }} />
         </WorkflowSectionPanel>
 
         <WorkflowSectionPanel activeSectionId={activeSectionId} id="archive">

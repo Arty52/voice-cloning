@@ -255,3 +255,22 @@ audio {
 .dialogue-speaker-5 {
   border-left-color: color-mix(in oklch, var(--dialogue-speaker-color) 48%, var(--border));
 }
+
+/* Radix measures content height and keeps closing content mounted for the animation. */
+.dialogue-source-content[data-state="open"] {
+  animation: dialogue-source-open 200ms ease-out;
+}
+.dialogue-source-content[data-state="closed"] {
+  animation: dialogue-source-close 200ms ease-in;
+}
+@keyframes dialogue-source-open {
+  from { height: 0; opacity: 0; }
+  to { height: var(--radix-collapsible-content-height); opacity: 1; }
+}
+@keyframes dialogue-source-close {
+  from { height: var(--radix-collapsible-content-height); opacity: 1; }
+  to { height: 0; opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dialogue-source-content { animation: none !important; }
+}
