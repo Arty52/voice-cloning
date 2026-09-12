@@ -198,6 +198,12 @@ describe("SpeechInputPanel voice assignments", () => {
     expect(props.onGenerate).not.toHaveBeenCalled()
   })
 
+  it("disables unchanged dialogue generation while retaining the full-take action", () => {
+    renderPanel({ dialogue: dialogueController({ mode: "dialogue" }), canGenerate: true, canGenerateChanges: false })
+    expect(screen.getByRole("button", { name: "Generate" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Regenerate All" })).toBeEnabled()
+  })
+
   it("disables assignment until speakable text is selected", () => {
     renderPanel()
 
