@@ -289,7 +289,7 @@ function AppContents() {
         </WorkflowSectionPanel>
 
         <WorkflowSectionPanel activeSectionId={activeSectionId} id="generate">
-          <DialogueDraftNotice conflict={dialogueWorkspace.conflict} error={dialogueWorkspace.error} disabled={isSpeechGenerating} onKeepCurrent={dialogueWorkspace.keepCurrent} onUseSaved={dialogueWorkspace.useSaved} />
+          <DialogueDraftNotice conflict={dialogueWorkspace.conflict} error={dialogueWorkspace.error} disabled={isSpeechGenerating || dialogueWorkspace.isRestoring} onKeepCurrent={dialogueWorkspace.keepCurrent} onUseSaved={dialogueWorkspace.useSaved} />
           <SpeechInputPanel
             generationBar={{
               barRef: generationBar.ref,

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { DIALOGUE_DRAFT_KEY, parseDialogueDraft, readDialogueDraft, type DialogueDraft, type DialogueDraftEnvelope } from "@/lib/dialogue-draft"
 
 export function useDialogueDraftStorage(draft: DialogueDraft | null, initialRead?: ReturnType<typeof readDialogueDraft>) {
@@ -7,15 +7,17 @@ export function useDialogueDraftStorage(draft: DialogueDraft | null, initialRead
   const [conflict, setConflict] = useState<{ envelope: DialogueDraftEnvelope | null } | null>(null)
   const [writerId] = useState(() => crypto.randomUUID())
   const seenRevision = useRef(initial.envelope?.revision ?? null)
-  const savedJson = useRef(JSON.stringify(initial.envelope?.draft ?? null))
+  const [initialSerialized] = useState(() => JSON.stringify(initial.envelope?.draft ?? null))
+  const savedJson = useRef(initialSerialized)
   const pending = useRef(draft)
   const paused = useRef(false)
   const mounted = useRef(true)
-  const serialized = JSON.stringify(draft)
+  const serialized = useMemo(() => JSON.stringify(draft), [draft])
+  const pendingJson = useRef(serialized)
 
   function flush(force = false) {
     const next = pending.current
-    if (!next || paused.current || (!force && JSON.stringify(next) === savedJson.current)) return
+    if (!next || paused.current || (!force && pendingJson.current === savedJson.current)) return
     try {
       const current = force ? null : parseDialogueDraft(localStorage.getItem(DIALOGUE_DRAFT_KEY))
       if (!force && (current?.revision ?? null) !== seenRevision.current && current?.writerId !== writerId) {
@@ -26,14 +28,14 @@ export function useDialogueDraftStorage(draft: DialogueDraft | null, initialRead
       const envelope: DialogueDraftEnvelope = { version: 1, writerId, revision: crypto.randomUUID(), draft: next }
       localStorage.setItem(DIALOGUE_DRAFT_KEY, JSON.stringify(envelope))
       seenRevision.current = envelope.revision
-      savedJson.current = JSON.stringify(next)
+      savedJson.current = pendingJson.current
       if (mounted.current) setError(null)
     } catch {
       if (mounted.current) setError("This dialogue could not be saved locally. Keep this tab open to preserve your edits.")
     }
   }
   const flushRef = useRef(flush)
-  useEffect(() => { pending.current = draft; flushRef.current = flush })
+  useEffect(() => { pending.current = draft; pendingJson.current = serialized; flushRef.current = flush })
   useEffect(() => {
     const timer = window.setTimeout(() => flushRef.current(), 250)
     return () => window.clearTimeout(timer)

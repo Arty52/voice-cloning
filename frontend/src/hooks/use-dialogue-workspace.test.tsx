@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { useDialogueWorkspace } from "./use-dialogue-workspace"
-import { DIALOGUE_DRAFT_KEY, type DialogueDraft } from "@/lib/dialogue-draft"
+import { DIALOGUE_DRAFT_KEY, parseDialogueDraft, type DialogueDraft } from "@/lib/dialogue-draft"
 import type { useMultiVoiceSpeechGeneration } from "./use-multi-voice-speech-generation"
 
 const draft: DialogueDraft = {
@@ -36,4 +36,10 @@ describe("dialogue workspace recovery", () => {
     expect(result.current.isRestoring).toBe(false)
     expect(applyDraft).not.toHaveBeenCalled()
   })
+  it("flushes a new workspace while metadata is still loading", () => {
+    renderHook(() => useDialogueWorkspace({ draft, ready: false, applyDraft: vi.fn(), speech: {} as ReturnType<typeof useMultiVoiceSpeechGeneration>, providers: [], archivedItems: [], onResult: vi.fn() }))
+    act(() => { window.dispatchEvent(new Event("pagehide")) })
+    expect(parseDialogueDraft(localStorage.getItem(DIALOGUE_DRAFT_KEY))?.draft).toEqual(draft)
+  })
+
 })
