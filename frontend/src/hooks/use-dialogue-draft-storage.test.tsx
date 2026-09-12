@@ -69,4 +69,16 @@ describe("dialogue draft storage", () => {
     act(() => { window.dispatchEvent(new StorageEvent("storage", { key: DIALOGUE_DRAFT_KEY, newValue: other })) })
     act(() => { expect(result.current.acceptSaved()).toEqual(otherDraft) })
   })
+  it("reuses the serialized draft for unchanged renders and flush comparisons", () => {
+    const stringify = vi.spyOn(JSON, "stringify")
+    const { rerender } = renderHook(() => useDialogueDraftStorage(draft))
+    const draftSerializations = () => stringify.mock.calls.filter(([value]) => value === draft).length
+    expect(draftSerializations()).toBe(1)
+    rerender()
+    act(() => { window.dispatchEvent(new Event("pagehide")) })
+    act(() => { vi.advanceTimersByTime(300) })
+    expect(draftSerializations()).toBe(1)
+    expect(parseDialogueDraft(localStorage.getItem(DIALOGUE_DRAFT_KEY))?.draft).toEqual(draft)
+  })
+
 })
