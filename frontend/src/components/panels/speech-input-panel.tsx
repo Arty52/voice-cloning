@@ -41,6 +41,7 @@ type SpeechInputPanelProps = {
   assignments: VoiceTextAssignment[]
   assignmentsStale: boolean
   canGenerate: boolean
+  canGenerateChanges?: boolean
   characterCount: number
   dialogue: DialogueScriptController
   dialogueSpeechSegmentCount: number | null
@@ -87,6 +88,7 @@ export function SpeechInputPanel({
   assignments,
   assignmentsStale,
   canGenerate,
+  canGenerateChanges = canGenerate,
   characterCount,
   dialogue,
   dialogueSpeechSegmentCount,
@@ -367,7 +369,7 @@ export function SpeechInputPanel({
       ) : null}
 
       <GenerationBar
-        canGenerate={canGenerate}
+        canGenerate={isDialogueMode ? canGenerateChanges : canGenerate}
         canRegenerateAll={canGenerate}
         isDialogue={isDialogueMode}
         isGenerating={isGenerating}
@@ -377,6 +379,7 @@ export function SpeechInputPanel({
         onCancel={onCancelGeneration}
         {...generationBar}
       />
+
 
     </form>
   )

@@ -55,6 +55,7 @@ function AppContents() {
     archiveStorageError,
     assignVoiceToSelection,
     canGenerate,
+    canGenerateDialogueChanges,
     generateAllSpeech,
     cancelGeneration,
     characterCount,
@@ -70,7 +71,6 @@ function AppContents() {
     dialogueRowStates,
     dialogueWorkspace,
     isDialogueConnecting,
-    canGenerateDialogueChanges,
     dialogueRevision,
     regenerateDialogueRow,
     regenerateDialogueVoiceRows,
@@ -323,6 +323,7 @@ function AppContents() {
             assignments={voiceAssignments}
             assignmentsStale={voiceAssignmentsStale}
             canGenerate={canGenerate}
+            canGenerateChanges={canGenerateDialogueChanges}
             characterCount={characterCount}
             dialogue={dialogue}
             dialogueSpeechSegmentCount={dialogueSpeechSegmentCount}
