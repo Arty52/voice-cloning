@@ -483,6 +483,33 @@ describe("useMultiVoiceSpeechGeneration", () => {
     expect(result.current.resultUrl).toBe("/api/speech/jobs/dialogue-job/result")
   })
 
+  it.each(["segment", "voice"])("regenerates the displayed successful recording after a later request fails (%s)", async (kind) => {
+    let failCreation = false
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input)
+      if (path === "/api/speech/jobs") {
+        if (failCreation) throw new Error("Creation failed")
+        return okJson({ job: successJob }, 202)
+      }
+      if (path.endsWith("/regenerate")) return okJson({ job: regeneratedJob }, 202)
+      return okAudio()
+    }))
+    const persistGeneratedAudio = vi.fn(async () => generatedResult)
+    const { result } = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await result.current.generateSpeech(generationInput()) })
+    failCreation = true
+    await act(async () => { await result.current.generateSpeech(generationInput({ tuning: { stability: 0.99 } })) })
+    expect(result.current.job).toBeNull()
+    await act(async () => {
+      if (kind === "segment") await result.current.regenerateSegment({ providerKey: null, segmentId: "segment-one" })
+      else await result.current.regenerateVoiceSegments({ providerKey: null, voiceId: "narrator", voiceSettings: { stability: 0.8 } })
+    })
+    expect(result.current.status).toBe("success")
+    const request = vi.mocked(fetch).mock.calls.find(([path]) => String(path).endsWith("/regenerate"))!
+    expect(String(request[0])).toContain("/api/speech/jobs/job-1/")
+    expect(result.current.successfulRun?.context.tuning).toEqual(generationInput().tuning)
+  })
+
   it("creates, polls, and persists a successful multi-voice speech job", async () => {
     vi.stubGlobal(
       "fetch",
