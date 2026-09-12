@@ -1,5 +1,5 @@
 import { RefreshCw, Save, SlidersHorizontal, UserPlus, X } from "lucide-react"
-import { type KeyboardEvent } from "react"
+import { useMemo, type KeyboardEvent } from "react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { ActionMenu } from "@/components/ui/action-menu"
@@ -66,6 +66,14 @@ export function DialogueEditor({
   voices,
   ...actions
 }: DialogueEditorProps) {
+  const workingCharacterCount = useMemo(() => {
+    let count = 0
+    for (const row of dialogue.blocks) {
+      const length = row.text.trim().length
+      if (length) count += length + (count ? 1 : 0)
+    }
+    return count
+  }, [dialogue.blocks])
   const selectedRowsLabel = formatCount(dialogue.selectedBlockCount, "Selected Row")
   const canAssignRows = dialogue.selectedBlockCount > 0 && voices.length > 0 && !isGenerating
   const assignRowsDisabledReason = getAssignRowsDisabledReason({
@@ -81,7 +89,7 @@ export function DialogueEditor({
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-sm font-medium">Dialogue Rows</h3>
             <Badge>{formatCount(dialogue.blocks.length, "Row")}</Badge>
-            <span className="text-xs text-muted-foreground">{dialogue.blocks.map(row => row.text.trim()).filter(Boolean).join("\n").length.toLocaleString()} Working Characters</span>
+            <span className="text-xs text-muted-foreground">{workingCharacterCount.toLocaleString()} Working Characters</span>
             {dialogueSpeechSegmentCount === null ? null : (
               <Badge variant="secondary">{formatCount(dialogueSpeechSegmentCount, "Speech Segment")}</Badge>
             )}
