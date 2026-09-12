@@ -14,13 +14,20 @@ const envelope = (value = draft, writerId = "other") => JSON.stringify({ version
 
 describe("dialogue draft storage", () => {
   beforeEach(() => { localStorage.clear(); vi.useFakeTimers() })
-  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
+  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
   it("restores original source and unsynthesized edits after remount", () => {
     const first = renderHook(() => useDialogueDraftStorage(draft))
     act(() => { vi.advanceTimersByTime(300) })
     first.unmount()
     const next = renderHook(() => useDialogueDraftStorage(null))
     expect(next.result.current.initialDraft).toEqual(draft)
+  })
+  it("saves on HTTP LAN hosts without randomUUID", () => {
+    vi.stubGlobal("crypto", { randomUUID: undefined })
+    const { result } = renderHook(() => useDialogueDraftStorage(draft))
+    act(() => { vi.advanceTimersByTime(300) })
+    expect(parseDialogueDraft(localStorage.getItem(DIALOGUE_DRAFT_KEY))?.draft).toEqual(draft)
+    expect(result.current.error).toBeNull()
   })
   it("flushes edits on page hide before the debounce", () => {
     renderHook(() => useDialogueDraftStorage(draft))
