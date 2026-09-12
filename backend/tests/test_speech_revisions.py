@@ -206,6 +206,26 @@ def test_revision_of_restored_persisted_job(tmp_path):
     asyncio.run(scenario())
 
 
+def test_revision_directory_collision_preserves_existing_files(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    async def scenario():
+        service, provider, _ = make_service(tmp_path)
+        base = await generate_base(service, provider, 2)
+        existing = service.jobs_dir / "existing-job"
+        existing.mkdir()
+        marker = existing / "keep.txt"
+        marker.write_text("Existing job data")
+        monkeypatch.setattr("voice_cloning.services.speech_jobs.uuid4", lambda: SimpleNamespace(hex=existing.name))
+        with pytest.raises(FileExistsError):
+            await service.create_revision(base.id, replacements=(replacement(0),), provider=provider, provider_key=None)
+        assert marker.read_text() == "Existing job data"
+        assert list(existing.iterdir()) == [marker]
+        assert len(provider.speech_requests) == 2
+        assert list(service._jobs) == [base.id]
+    asyncio.run(scenario())
+
+
 def test_legacy_job_without_model_allows_assembly_but_requires_full_generation_for_replacements(tmp_path):
     async def scenario():
         service, provider, _ = make_service(tmp_path)

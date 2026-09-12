@@ -164,15 +164,19 @@ class SpeechJobService:
             error=None, created_at=now, updated_at=now,
         )
         job_dir = self._job_dir(job_id)
+        job_dir_created = False
         try:
-            (job_dir / SEGMENTS_DIR_NAME).mkdir(parents=True, exist_ok=False)
+            job_dir.mkdir(parents=True, exist_ok=False)
+            job_dir_created = True
+            (job_dir / SEGMENTS_DIR_NAME).mkdir(exist_ok=False)
             for segment in segments:
                 if segment.status == "success":
                     shutil.copyfile(self._segment_path(base_job_id, segment.id), self._segment_path(job_id, segment.id))
             # Stage all files before inserting the job. A failed transaction leaves no revision files.
             self._persist_job(job)
         except Exception:
-            shutil.rmtree(job_dir, ignore_errors=True)
+            if job_dir_created:
+                shutil.rmtree(job_dir, ignore_errors=True)
             raise
         self._jobs[job_id] = job
         self._tasks[job_id] = asyncio.create_task(
