@@ -150,6 +150,7 @@ export function useVoiceStudioController() {
       ) ?? null,
     [activeProviderId, selectedUserTuningPresetId, userTuningPresets.presets]
   )
+  const isSelectedUserTuningPresetAvailable = !selectedUserTuningPresetId || selectedUserTuningPreset !== null
   const tuning = useMemo(
     () => (selectedUserTuningPreset ? userPresetValues(providerTuning, selectedUserTuningPreset) : voiceTuning.tuning),
     [providerTuning, selectedUserTuningPreset, voiceTuning.tuning]
@@ -246,6 +247,7 @@ export function useVoiceStudioController() {
     isWithinSpeechTextLimit &&
     voiceLibrary.selectedVoice !== null &&
     providerKeys.canUseProvider &&
+    isSelectedUserTuningPresetAvailable &&
     !isSpeechGenerating &&
     (isDialogueMode
       ? !voiceAssignmentError && dialogue.segmentBuild.segments.length > 0
@@ -254,7 +256,8 @@ export function useVoiceStudioController() {
     ready: !["idle", "loading"].includes(voiceLibrary.voiceStatus) &&
       !["idle", "loading"].includes(providerKeys.providerStatus) &&
       !["idle", "loading"].includes(metadata.modelStatus) &&
-      !["idle", "loading"].includes(generatedAudio.generatedAudioStatus),
+      !["idle", "loading"].includes(generatedAudio.generatedAudioStatus) &&
+      !["idle", "loading"].includes(userTuningPresets.status),
     draft: isDialogueMode ? {
       identity: dialogue.identity, sourceText: text, sourceExpanded, blocks: dialogue.blocks,
       speakerMappings: dialogue.speakerMappings, sourceVoiceId: voiceLibrary.selectedVoiceId || null,
@@ -443,7 +446,7 @@ export function useVoiceStudioController() {
   }
 
   async function generateSpeech(forceAll = false) {
-    if (isSpeechGenerating || dialogueWorkspace.isRestoring) return
+    if (isSpeechGenerating || dialogueWorkspace.isRestoring || !isSelectedUserTuningPresetAvailable) return
     if (isDialogueMode) {
       if (!forceAll && dialogueRevision.canRevise) {
         return reviseDialogueRows(dialogueRevision.changedIds)
@@ -841,7 +844,7 @@ export function useVoiceStudioController() {
     setIsSampleProcessingExpanded,
     setNaturalHandoffsEnabled: handleNaturalHandoffsEnabledChange,
     setText: handleTextChange,
-    scriptRestoreWarning,
+    scriptRestoreWarning: !isSelectedUserTuningPresetAvailable ? "The saved tuning preset is unavailable. Select a preset or adjust tuning before generating." : scriptRestoreWarning,
     speech,
     speechError: activeSpeechError,
     speechStatus: activeSpeechStatus,
