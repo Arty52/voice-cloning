@@ -1,3 +1,4 @@
+import * as archiveMigration from "@/lib/generated-audio-archive-migration"
 import { markGeneratedAudioArchiveCleared } from "@/lib/generated-audio-archive-migration"
 import { speechResultId } from "@/lib/speech-session"
 import { act, renderHook } from "@testing-library/react"
@@ -377,6 +378,14 @@ describe("useMultiVoiceSpeechGeneration", () => {
     vi.unstubAllGlobals()
   })
 
+  it("keeps recovery references stable across unrelated rerenders", () => {
+    const persistGeneratedAudio = vi.fn(async () => generatedResult)
+    const { result, rerender } = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    const recovery = result.current.recovery
+    rerender()
+    expect(result.current.recovery).toBe(recovery)
+  })
+
   it("restores a successful recording without synthesis or another archive save", async () => {
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => String(input).endsWith("/result") ? okAudio() : okJson({ job: dialogueSuccessJob })))
     const persistGeneratedAudio = vi.fn(async () => generatedResult)
@@ -493,6 +502,25 @@ describe("useMultiVoiceSpeechGeneration", () => {
     expect(result.current.recovery.active?.jobId).toBe(dialogueRegeneratedJob.id)
     expect(result.current.recovery.active?.context.synthesizedSegmentIds).toEqual(["dialogue-block-1"])
     expect(result.current.successfulRun?.job.resultSha256).toBe(dialogueSuccessJob.resultSha256)
+  })
+
+  it.each([true, false])("reconnects despite unavailable deletion bookkeeping (archived=%s)", async (archived) => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => String(input).endsWith("/result") ? okAudio() : okJson({ job: dialogueSuccessJob })))
+    const persistGeneratedAudio = vi.fn(async () => generatedResult)
+    const first = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await first.result.current.generateSpeech(generationInput({ dialogueId: "script", scriptSnapshot: dialogueScriptSnapshot })) })
+    const recovery = first.result.current.recovery
+    first.unmount()
+    vi.spyOn(archiveMigration, "readGeneratedAudioArchiveMigrationState").mockRejectedValue(new Error("IndexedDB unavailable"))
+    vi.mocked(fetch).mockClear()
+    persistGeneratedAudio.mockClear()
+    const reopened = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await reopened.result.current.restoreRecovery(recovery, [provider], archived ? [generatedResult] : []) })
+    expect(reopened.result.current.successfulRun?.job.id).toBe(dialogueSuccessJob.id)
+    expect(fetch).toHaveBeenCalledWith("/api/speech/jobs/dialogue-job", undefined)
+    expect(persistGeneratedAudio).not.toHaveBeenCalled()
+    expect(reopened.result.current.status).toBe(archived ? "success" : "error")
+    if (!archived) expect(reopened.result.current.error).toContain("deletion history is unavailable")
   })
 
   it("reconnects to an accepted job and archives its completed result without resubmission", async () => {

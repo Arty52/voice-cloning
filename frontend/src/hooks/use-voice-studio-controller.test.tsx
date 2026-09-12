@@ -1,6 +1,7 @@
-import { act, renderHook } from "@testing-library/react"
+import { act, renderHook, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
+import { DIALOGUE_DRAFT_KEY } from "@/lib/dialogue-draft"
 import type { GeneratedAudioScriptSnapshot, VoiceAsset } from "@/types"
 
 import { useVoiceStudioController } from "./use-voice-studio-controller"
@@ -8,6 +9,7 @@ import { useVoiceStudioController } from "./use-voice-studio-controller"
 const controllerMocks = vi.hoisted(() => ({
   selectedVoiceId: "narrator",
   voiceStatus: "success",
+  presetStatus: "success",
   voices: [] as VoiceAsset[],
 }))
 
@@ -50,9 +52,15 @@ vi.mock("@/hooks/use-voice-library", async () => {
 vi.mock("@/hooks/use-voice-metadata", () => ({
   useVoiceMetadata: () => ({
     backendDefaultModelId: null,
+    modelStatus: "success",
+    restoreSelectedModelId: vi.fn(),
     models: [],
     selectedModelId: "",
   }),
+}))
+
+vi.mock("@/hooks/use-user-tuning-presets", () => ({
+  useUserTuningPresets: () => ({ presets: [], status: controllerMocks.presetStatus }),
 }))
 
 vi.mock("@/hooks/use-generated-audio-library", () => ({
@@ -145,6 +153,7 @@ describe("useVoiceStudioController script snapshot restore", () => {
     originalRequestAnimationFrame = window.requestAnimationFrame
     controllerMocks.selectedVoiceId = "narrator"
     controllerMocks.voiceStatus = "success"
+    controllerMocks.presetStatus = "success"
     controllerMocks.voices = [narrator, villain]
     window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
       callback(0)
@@ -153,6 +162,7 @@ describe("useVoiceStudioController script snapshot restore", () => {
   })
 
   afterEach(() => {
+    localStorage.removeItem(DIALOGUE_DRAFT_KEY)
     window.requestAnimationFrame = originalRequestAnimationFrame
     vi.restoreAllMocks()
   })
@@ -185,6 +195,26 @@ describe("useVoiceStudioController script snapshot restore", () => {
     expect(result.current.dialogue.speakerMappings[0].voiceId).toBe("narrator")
     expect(result.current.dialogue.identity).not.toBe(identity)
     expect(result.current.sourceExpanded).toBe(false)
+  })
+
+  it("waits for presets before restoring and requires a choice if the saved preset disappeared", async () => {
+    controllerMocks.presetStatus = "loading"
+    localStorage.setItem(DIALOGUE_DRAFT_KEY, JSON.stringify({ version: 1, writerId: "saved", revision: "saved", draft: {
+      identity: "script", sourceText: "Narrator: Saved.", sourceExpanded: false,
+      blocks: [{ id: "row-1", speakerLabel: "Narrator", text: "Saved.", voiceId: null }], speakerMappings: [],
+      sourceVoiceId: "narrator", providerId: null, modelId: "", selectedUserTuningPresetId: "missing-preset", naturalHandoffs: false,
+      speech: { active: null, successful: null, resultId: null },
+    } }))
+    const { result, rerender } = renderHook(() => useVoiceStudioController())
+    expect(result.current.dialogueWorkspace.error).toBeNull()
+    expect(result.current.dialogueWorkspace.isRestoring).toBe(true)
+    expect(result.current.dialogue.mode).toBe("range")
+    controllerMocks.presetStatus = "success"
+    rerender()
+    await waitFor(() => expect(result.current.dialogueWorkspace.isRestoring).toBe(false))
+    expect(result.current.dialogue.mode).toBe("dialogue")
+    expect(result.current.canGenerate).toBe(false)
+    expect(result.current.scriptRestoreWarning).toContain("saved tuning preset is unavailable")
   })
 
   it("restores range text, assignments, source voice, and disabled Natural Handoffs", () => {
