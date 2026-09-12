@@ -24,6 +24,7 @@ export type GenerationBarProps = {
 }
 
 export function GenerationBar({ barRef, canCancel = true, canGenerate, canRegenerateAll, isDialogue, isGenerating, isRestoring, error, revision, rowCount, characterCount, pendingStatus, onRegenerateAll, onCancel }: GenerationBarProps) {
+  const regenerateLabel = isDialogue ? "Regenerate All" : "Retry"
   const regenerateDisabled = Boolean(!canRegenerateAll || isGenerating || isRestoring)
   const changedCount = revision?.changedIds.length ?? 0
   const primaryLabel = !isDialogue ? "Generate" : !revision?.canRevise ? "Generate All" : `Generate Changes${changedCount ? ` (${changedCount})` : ""}`
@@ -46,11 +47,11 @@ export function GenerationBar({ barRef, canCancel = true, canGenerate, canRegene
           </Button>
           <Tooltip>
             <TooltipTrigger asChild>
-              <span tabIndex={regenerateDisabled ? 0 : undefined} role={regenerateDisabled ? "group" : undefined} aria-label={regenerateDisabled ? "Regenerate All Unavailable" : undefined}>
-                <Button aria-label="Regenerate All" disabled={regenerateDisabled} onClick={onRegenerateAll} size="icon" type="button" variant="secondary"><RefreshCw aria-hidden="true" /></Button>
+              <span tabIndex={regenerateDisabled ? 0 : undefined} role={regenerateDisabled ? "group" : undefined} aria-label={regenerateDisabled ? `${regenerateLabel} Unavailable` : undefined}>
+                <Button aria-label={regenerateLabel} disabled={regenerateDisabled} onClick={onRegenerateAll} size="icon" type="button" variant="secondary"><RefreshCw aria-hidden="true" /></Button>
               </span>
             </TooltipTrigger>
-            <TooltipContent>Regenerate All</TooltipContent>
+            <TooltipContent>{regenerateLabel}</TooltipContent>
           </Tooltip>
           {isGenerating && !isRestoring ? <Button disabled={!canCancel} onClick={onCancel} type="button" variant="secondary"><X aria-hidden="true" />Cancel</Button> : null}
         </div>

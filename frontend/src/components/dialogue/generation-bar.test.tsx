@@ -24,6 +24,17 @@ describe("generation bar", () => {
     await user.click(icon)
     expect(props.onRegenerateAll).toHaveBeenCalledTimes(1)
   })
+  it("names the icon-only retry action appropriately outside dialogue mode", async () => {
+    const user = userEvent.setup()
+    const props = renderBar({ isDialogue: false })
+    const retry = screen.getByRole("button", { name: "Retry" })
+    expect(retry).toHaveTextContent("")
+    await user.hover(retry)
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Retry")
+    await user.click(retry)
+    expect(props.onRegenerateAll).toHaveBeenCalledOnce()
+  })
+
   it("shows the affected count and disables the current draft", () => {
     renderBar({ revision })
     expect(screen.getByRole("button", { name: "Generate Changes (2)" })).toBeEnabled()
