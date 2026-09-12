@@ -32,7 +32,7 @@ export function useDialogueScript({
   voices,
 }: UseDialogueScriptOptions) {
   const [mode, setMode] = useState<DialogueInputMode>("range")
-  const [identity, setIdentity] = useState<string>(() => crypto.randomUUID())
+  const [identity, setIdentity] = useState<string>(() => window.crypto.randomUUID())
   const [blocks, setBlocks] = useState<MultiVoiceScriptBlock[]>([])
   const [speakerMappings, setSpeakerMappings] = useState<SpeakerVoiceMapping[]>([])
   const [selectedBlockIds, setSelectedBlockIds] = useState<Set<string>>(() => new Set())
@@ -62,7 +62,7 @@ export function useDialogueScript({
   function importFromText(text: string) {
     const nextBlocks = parseSpeakerLabeledScript(text)
     if (nextBlocks.length === 0) return false
-    setIdentity(crypto.randomUUID())
+    setIdentity(window.crypto.randomUUID())
     setBlocks(nextBlocks)
     setSpeakerMappings((current) => mergeSpeakerMappings(current, uniqueSpeakerLabels(nextBlocks)))
     setSelectedBlockIds(new Set())
@@ -71,7 +71,7 @@ export function useDialogueScript({
   }
 
   function restoreState({ blocks, identity, mode = "dialogue", speakerMappings }: RestoreDialogueScriptStateInput) {
-    setIdentity(identity ?? crypto.randomUUID())
+    setIdentity(identity ?? window.crypto.randomUUID())
     setBlocks(blocks.map(copyBlock))
     setSpeakerMappings(speakerMappings.map(copySpeakerMapping))
     setSelectedBlockIds(new Set())
