@@ -43,6 +43,7 @@ type SpeechInputPanelProps = {
   assignments: VoiceTextAssignment[]
   assignmentsStale: boolean
   canGenerate: boolean
+  canGenerateChanges?: boolean
   characterCount: number
   dialogue: DialogueScriptController
   dialogueSpeechSegmentCount: number | null
@@ -83,6 +84,7 @@ export function SpeechInputPanel({
   assignments,
   assignmentsStale,
   canGenerate,
+  canGenerateChanges = canGenerate,
   characterCount,
   dialogue,
   dialogueSpeechSegmentCount,
@@ -357,8 +359,9 @@ export function SpeechInputPanel({
             </SelectContent>
           </Select>
         </Field>
-        <div className="flex flex-wrap gap-2">
-          <Button disabled={!canGenerate} type="submit">
+        <div className="flex flex-wrap items-center gap-2">
+          {isDialogueMode && canGenerate && !canGenerateChanges ? <span className="text-sm text-muted-foreground">All rows are up to date.</span> : null}
+          <Button disabled={!(isDialogueMode ? canGenerateChanges : canGenerate)} type="submit">
             {isGenerating ? (
               <Loading aria-hidden="true" size="sm" />
             ) : (
