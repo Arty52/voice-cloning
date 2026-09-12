@@ -19,7 +19,7 @@ export function useDialogueWorkspace(options: Options) {
   const [initial] = useState(readDialogueDraft)
   const [hydrated, setHydrated] = useState(initial.envelope === null)
   const [isRestoring, setIsRestoring] = useState(false)
-  const storage = useDialogueDraftStorage(hydrated && options.ready && !isRestoring ? options.draft : null, initial)
+  const storage = useDialogueDraftStorage(hydrated && !isRestoring ? options.draft : null, initial)
   const latest = useRef(options)
   const started = useRef(false)
   const restoreVersion = useRef(0)
