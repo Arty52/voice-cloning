@@ -57,6 +57,7 @@ type RegenerateVoiceInput = {
 }
 
 export type PersistContext = {
+  synthesizedSegmentIds?: string[]
   naturalHandoffs?: boolean
   dialogueId?: string
   backendDefaultModelId: string | null
@@ -219,6 +220,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
     const runId = startRun({ clearJob: false })
     const nextPersistContext = {
       ...persistContext,
+      synthesizedSegmentIds: [segmentId],
       storageLimitBytes: storageLimitBytes ?? persistContext.storageLimitBytes,
     }
     lastPersistContextRef.current = nextPersistContext
@@ -262,6 +264,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
     const runId = startRun({ clearJob: false })
     const nextPersistContext = {
       ...persistContext,
+      synthesizedSegmentIds: activeJob.segments.filter(segment => segment.voiceId === voiceId).map(segment => segment.id),
       storageLimitBytes: storageLimitBytes ?? persistContext.storageLimitBytes,
     }
     lastPersistContextRef.current = nextPersistContext
@@ -297,6 +300,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
     const runId = startRun({ clearJob: false })
     const context = {
       ...successfulRun.context,
+      synthesizedSegmentIds: input.segments.map(segment => segment.segmentId),
       defaultVoice: input.defaultVoice,
       tuning: { ...input.tuning },
       selectedTuningPresetId: input.selectedTuningPresetId,
@@ -443,7 +447,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
         createdAt,
         generationElapsedMs: elapsedMs,
         modelId: persistContext.modelId || persistContext.backendDefaultModelId || BACKEND_DEFAULT_MODEL_LABEL,
-        multiVoiceMetadata: buildGeneratedAudioMultiVoiceMetadata(jobUpdate, persistContext.provider),
+        multiVoiceMetadata: buildGeneratedAudioMultiVoiceMetadata(jobUpdate, persistContext.provider, persistContext.synthesizedSegmentIds),
         requestId: null,
         scriptSnapshot: refreshScriptSnapshotFromJob(persistContext.scriptSnapshot, jobUpdate),
         tuningMetadata: buildGeneratedAudioJobTuningMetadata(jobUpdate, {
