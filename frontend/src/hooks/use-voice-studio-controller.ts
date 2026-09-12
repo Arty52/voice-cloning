@@ -19,6 +19,7 @@ import { useVoiceSampleInput } from "@/hooks/use-voice-sample-input"
 import { useVoiceTuning } from "@/hooks/use-voice-tuning"
 import { useWorkflowNavigation } from "@/hooks/use-workflow-navigation"
 import { buildDialogueScriptSnapshot, buildRangeScriptSnapshot } from "@/lib/generated-audio-script-snapshot"
+import { dialogueRevisionCharacterCount, dialogueRevisionState, revisionScriptSnapshot, type DialogueBaseline } from "@/lib/dialogue-revisions"
 import { isTemporaryGeneratedAudioId } from "@/lib/generated-audio-view-model"
 import { isAppSettingsUnavailableError, loadAppSettings, saveAppSettings } from "@/lib/app-settings-api"
 import { formatBytes, formatNumber } from "@/lib/formatters"
@@ -166,6 +167,23 @@ export function useVoiceStudioController() {
   const archiveStorageError = latestStorageError ? null : generatedAudio.generatedAudioStorageError
   const result = latestGeneratedAudioItem ?? generatedAudio.generatedAudioItems[0] ?? null
   const isDialogueMode = dialogue.mode === "dialogue"
+  const successfulRun = multiVoiceSpeech.successfulRun
+  const dialogueBaseline: DialogueBaseline | null = successfulRun?.context.dialogueId && successfulRun.context.scriptSnapshot
+    ? {
+        dialogueId: successfulRun.context.dialogueId,
+        naturalHandoffs: successfulRun.context.naturalHandoffs,
+        job: successfulRun.job,
+        providerId: successfulRun.context.provider?.id ?? null,
+        modelId: successfulRun.context.modelId ?? successfulRun.context.backendDefaultModelId,
+        tuning: successfulRun.context.tuning,
+        scriptSnapshot: successfulRun.context.scriptSnapshot,
+      }
+    : null
+  const dialogueRevision = dialogueRevisionState({
+    dialogueId: dialogue.identity, baseline: dialogueBaseline, segments: dialogue.segmentBuild.segments,
+    providerId: activeProviderId, modelId: selectedModel?.modelId ?? metadata.backendDefaultModelId,
+    tuning, defaults: providerTuning.defaultValues, naturalHandoffs: naturalHandoffsEnabled,
+  })
   const dialogueText = dialogue.segmentBuild.text
   const characterCount = useMemo(
     () => (isDialogueMode ? dialogueText.trim().length : text.trim().length),
@@ -213,7 +231,11 @@ export function useVoiceStudioController() {
       })
     : null
   const modelMultiplier = selectedModel?.characterCostMultiplier ?? null
-  const estimatedCredits = modelMultiplier === null ? characterCount : Math.ceil(characterCount * modelMultiplier)
+  const estimatedCharacterCount = isDialogueMode && dialogueRevision.canRevise
+    ? dialogueRevisionCharacterCount(dialogue.segmentBuild.segments, dialogueRevision.changedIds) : characterCount
+  const estimatedCredits = modelMultiplier === null ? estimatedCharacterCount : Math.ceil(estimatedCharacterCount * modelMultiplier)
+  const fullGenerationEstimate = isDialogueMode && dialogueRevision.canRevise
+    ? { characterCount, credits: modelMultiplier === null ? characterCount : Math.ceil(characterCount * modelMultiplier) } : undefined
   const hasModelRate = modelMultiplier !== null
   const isWithinSpeechTextLimit = characterCount <= MAX_SPEECH_TEXT_LENGTH
   const canGenerate =
@@ -358,10 +380,40 @@ export function useVoiceStudioController() {
     }
   }
 
-  async function generateSpeech() {
+  async function reviseDialogueRows(ids: string[]) {
+    if (!canGenerate || !dialogueRevision.canRevise || !dialogueBaseline) return
+    if (ids.length === 0 && !dialogueRevision.spacingChanged) return
+    const selected = new Set(ids)
+    setLatestGenerationMode("dialogue")
+    const draft = buildDialogueScriptSnapshot({
+      dialogueBlocks: dialogue.blocks, speakerMappings: dialogue.speakerMappings,
+      sourceVoiceId: voiceLibrary.selectedVoice?.id, text: dialogue.segmentBuild.text,
+      segmentGapMs: naturalHandoffsEnabled ? null : 0,
+    })
+    const generatedResult = await multiVoiceSpeech.reviseSpeech({
+      defaultVoice: voiceLibrary.selectedVoice!,
+      tuning, selectedTuningPresetId, selectedUserTuningPreset,
+      naturalHandoffs: naturalHandoffsEnabled,
+      providerKey: providerKeys.activeProviderKey,
+      segments: dialogue.segmentBuild.segments.filter(s => selected.has(s.clientSegmentId!)).map(s => ({
+        segmentId: s.clientSegmentId!, text: s.text, voiceId: s.voiceId, voiceSettings: s.voiceSettings ?? tuning,
+      })),
+      segmentGapMs: dialogueRevision.spacingChanged ? (naturalHandoffsEnabled ? null : 0) : undefined,
+      scriptSnapshot: revisionScriptSnapshot(dialogueBaseline.scriptSnapshot, draft, ids),
+      storageLimitBytes: generatedAudio.storageLimitBytes,
+    })
+    if (generatedResult) setLatestGeneratedAudioId(generatedResult.id)
+  }
+
+  async function generateSpeech(forceAll = false) {
+    if (isSpeechGenerating) return
     if (isDialogueMode) {
+      if (!forceAll && dialogueRevision.canRevise) {
+        return reviseDialogueRows(dialogueRevision.changedIds)
+      }
       setLatestGenerationMode("dialogue")
       const generatedResult = await multiVoiceSpeech.generateSpeech({
+        dialogueId: dialogue.identity,
         backendDefaultModelId: metadata.backendDefaultModelId,
         canUseProvider: providerKeys.canUseProvider,
         defaultVoice: voiceLibrary.selectedVoice,
@@ -694,6 +746,11 @@ export function useVoiceStudioController() {
   }
 
   return {
+    dialogueRevision,
+    dialogueBaseline,
+    generateAllSpeech: () => { if (canGenerate) void generateSpeech(true) },
+    regenerateDialogueRow: (rowId: string) => { void reviseDialogueRows([rowId]) },
+    canGenerateDialogueChanges: canGenerate && (!dialogueRevision.canRevise || dialogueRevision.changedIds.length > 0 || dialogueRevision.spacingChanged),
     activeSectionId: workflowNavigation.activeSectionId,
     applyUserTuningPreset,
     archiveStorageError,
@@ -705,6 +762,8 @@ export function useVoiceStudioController() {
     dialogueSpeechSegmentCount,
     effectiveVoiceSettingsByVoiceId,
     estimatedCredits,
+    estimatedCharacterCount,
+    fullGenerationEstimate,
     generatedAudio,
     handleGenerate,
     handleStorageLimitChange,

@@ -379,6 +379,7 @@ describe("buildGeneratedAudioMultiVoiceMetadata", () => {
     }
 
     expect(buildGeneratedAudioMultiVoiceMetadata(job)).toEqual({
+      synthesizedCharacterCount: 25,
       jobId: "job-1",
       resultSha256: "combined-hash",
       segmentCount: 3,

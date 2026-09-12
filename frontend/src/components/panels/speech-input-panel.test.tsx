@@ -189,6 +189,21 @@ function dialogueBlock(overrides: Partial<MultiVoiceScriptBlock> = {}): MultiVoi
 }
 
 describe("SpeechInputPanel voice assignments", () => {
+  it("exposes full dialogue regeneration independently of the primary action", async () => {
+    const user = userEvent.setup()
+    const onRegenerateAll = vi.fn()
+    const props = renderPanel({ dialogue: dialogueController({ mode: "dialogue" }), onRegenerateAll })
+    await user.click(screen.getByRole("button", { name: "Regenerate All" }))
+    expect(onRegenerateAll).toHaveBeenCalledOnce()
+    expect(props.onGenerate).not.toHaveBeenCalled()
+  })
+
+  it("disables unchanged dialogue generation while retaining the full-take action", () => {
+    renderPanel({ dialogue: dialogueController({ mode: "dialogue" }), canGenerate: true, canGenerateChanges: false })
+    expect(screen.getByRole("button", { name: "Generate" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Regenerate All" })).toBeEnabled()
+  })
+
   it("disables assignment until speakable text is selected", () => {
     renderPanel()
 

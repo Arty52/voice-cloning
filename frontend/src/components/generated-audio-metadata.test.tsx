@@ -4,6 +4,12 @@ import { describe, expect, it } from "vitest"
 import { GeneratedAudioMetadata } from "./generated-audio-metadata"
 
 describe("GeneratedAudioMetadata", () => {
+  it("does not label a mixed or unknown custom recording as default settings", () => {
+    render(<GeneratedAudioMetadata generationElapsedMs={null} tuningMetadata={{ adjustedSettings: [], mode: "custom", presetId: null, presetLabel: null, providerId: "test", providerLabel: "Test" }} />)
+    expect(screen.getByText("Custom Settings")).toBeInTheDocument()
+    expect(screen.queryByText("Default Settings")).not.toBeInTheDocument()
+  })
+
   it("shows user tuning preset provenance when a snapshot is present", () => {
     render(
       <GeneratedAudioMetadata

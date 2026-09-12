@@ -43,6 +43,7 @@ type SpeechInputPanelProps = {
   assignments: VoiceTextAssignment[]
   assignmentsStale: boolean
   canGenerate: boolean
+  canGenerateChanges?: boolean
   characterCount: number
   dialogue: DialogueScriptController
   dialogueSpeechSegmentCount: number | null
@@ -55,6 +56,7 @@ type SpeechInputPanelProps = {
   onCancelGeneration: () => void
   onClearAssignments: () => void
   onEditAssignmentVoice: (assignmentId: string, voice: VoiceAsset) => void
+  onRegenerateAll?: () => void
   onGenerate: (event?: FormEvent<HTMLFormElement>) => void
   onNaturalHandoffsEnabledChange: (enabled: boolean) => void
   onSaveNaturalHandoffsDefault?: () => void
@@ -82,6 +84,7 @@ export function SpeechInputPanel({
   assignments,
   assignmentsStale,
   canGenerate,
+  canGenerateChanges = canGenerate,
   characterCount,
   dialogue,
   dialogueSpeechSegmentCount,
@@ -95,6 +98,7 @@ export function SpeechInputPanel({
   onClearAssignments,
   onEditAssignmentVoice,
   onGenerate,
+  onRegenerateAll,
   onNaturalHandoffsEnabledChange,
   onSaveNaturalHandoffsDefault = noopSaveNaturalHandoffsDefault,
   onRemoveAssignment,
@@ -355,8 +359,9 @@ export function SpeechInputPanel({
             </SelectContent>
           </Select>
         </Field>
-        <div className="flex flex-wrap gap-2">
-          <Button disabled={!canGenerate} type="submit">
+        <div className="flex flex-wrap items-center gap-2">
+          {isDialogueMode && canGenerate && !canGenerateChanges ? <span className="text-sm text-muted-foreground">All rows are up to date.</span> : null}
+          <Button disabled={!(isDialogueMode ? canGenerateChanges : canGenerate)} type="submit">
             {isGenerating ? (
               <Loading aria-hidden="true" size="sm" />
             ) : (
@@ -364,9 +369,9 @@ export function SpeechInputPanel({
             )}
             {isGenerating ? "Generating..." : "Generate"}
           </Button>
-          <Button disabled={!canGenerate} onClick={() => onGenerate()} type="button" variant="secondary">
+          <Button disabled={!canGenerate} onClick={() => isDialogueMode && onRegenerateAll ? onRegenerateAll() : onGenerate()} type="button" variant="secondary">
             <RefreshCw aria-hidden="true" />
-            Retry
+            {isDialogueMode ? "Regenerate All" : "Retry"}
           </Button>
           {isGenerating ? (
             <Button

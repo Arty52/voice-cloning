@@ -11,7 +11,7 @@ import type {
   VoiceProvider,
   VoiceTuningValues,
 } from "@/types"
-import { resolveNominalTuningValue, tuningControlValuesEqual } from "@/lib/voice-tuning"
+import { resolveNominalTuningValue, tuningControlValuesEqual, voiceTuningValuesEqual } from "@/lib/voice-tuning"
 
 export type GeneratedAudioMultiVoiceTuningSegment = Pick<
   GeneratedAudioMultiVoiceSegmentMetadata,
@@ -66,9 +66,26 @@ export function buildGeneratedAudioTuningMetadata({
   }
 }
 
+/** A recording only names a shared preset when every recorded segment uses it. */
+export function buildGeneratedAudioJobTuningMetadata(
+  job: SpeechJob,
+  input: BuildGeneratedAudioTuningMetadataInput,
+): GeneratedAudioTuningMetadata | null {
+  const metadata = buildGeneratedAudioTuningMetadata(input)
+  if (!metadata || !input.provider) return metadata
+  const defaults = input.provider.tuning.defaultValues
+  // Missing recorded settings do not prove a shared preset: copied legacy rows
+  // may inherit a different baseline tuning than the current revision context.
+  const uniform = job.segments.every(segment => segment.voiceSettings != null && voiceTuningValuesEqual(
+    { ...defaults, ...segment.voiceSettings }, { ...defaults, ...input.tuning },
+  ))
+  return uniform ? metadata : { ...metadata, mode: "custom", presetId: null, presetLabel: null, userPreset: null, adjustedSettings: [] }
+}
+
 export function buildGeneratedAudioMultiVoiceMetadata(
   job: SpeechJob,
-  provider?: VoiceProvider | null
+  provider?: VoiceProvider | null,
+  synthesizedSegmentIds?: string[]
 ): GeneratedAudioMultiVoiceMetadata {
   const voiceCounts = new Map<string, { segmentCount: number; voiceId: string; voiceName: string }>()
   for (const segment of job.segments) {
@@ -86,6 +103,8 @@ export function buildGeneratedAudioMultiVoiceMetadata(
   const tuningSummaries = provider ? buildGeneratedAudioMultiVoiceTuningSummaries(job.segments, provider) : []
 
   return {
+    synthesizedCharacterCount: job.segments.filter(segment => synthesizedSegmentIds === undefined || synthesizedSegmentIds.includes(segment.id))
+      .reduce((total, segment) => total + (segment.characterCount ?? segment.text.length), 0),
     jobId: job.id,
     resultSha256: job.resultSha256,
     segmentCount: job.segments.length,

@@ -52,6 +52,8 @@ function AppContents() {
     archiveStorageError,
     assignVoiceToSelection,
     canGenerate,
+    canGenerateDialogueChanges,
+    generateAllSpeech,
     cancelGeneration,
     characterCount,
     clearUserTuningPresetSelection,
@@ -61,6 +63,8 @@ function AppContents() {
     dialogueSpeechSegmentCount,
     effectiveVoiceSettingsByVoiceId,
     estimatedCredits,
+    estimatedCharacterCount,
+    fullGenerationEstimate,
     generatedAudio,
     generationPendingStatus,
     handleGenerate,
@@ -280,6 +284,7 @@ function AppContents() {
             assignments={voiceAssignments}
             assignmentsStale={voiceAssignmentsStale}
             canGenerate={canGenerate}
+            canGenerateChanges={canGenerateDialogueChanges}
             characterCount={characterCount}
             dialogue={dialogue}
             dialogueSpeechSegmentCount={dialogueSpeechSegmentCount}
@@ -290,6 +295,7 @@ function AppContents() {
             onClearAssignments={clearVoiceAssignments}
             onEditAssignmentVoice={updateVoiceAssignment}
             onGenerate={handleGenerateWithAttention}
+            onRegenerateAll={generateAllSpeech}
             onNaturalHandoffsEnabledChange={setNaturalHandoffsEnabled}
             onSaveNaturalHandoffsDefault={saveNaturalHandoffsDefault}
             onRemoveAssignment={removeVoiceAssignment}
@@ -395,7 +401,8 @@ function AppContents() {
           />
 
           <CostQuotaPanel
-            characterCount={characterCount}
+            characterCount={estimatedCharacterCount}
+            fullGenerationEstimate={fullGenerationEstimate}
             estimatedCredits={estimatedCredits}
             hasModelRate={hasModelRate}
             isCollapsible={false}
