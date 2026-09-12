@@ -77,10 +77,6 @@ vi.mock("@/hooks/use-generated-audio-library", () => ({
   }),
 }))
 
-vi.mock("@/hooks/use-user-tuning-presets", () => ({
-  useUserTuningPresets: () => ({ presets: [] }),
-}))
-
 vi.mock("@/hooks/use-speech-generation", () => ({
   useSpeechGeneration: () => ({
     cancelGeneration: vi.fn(),
