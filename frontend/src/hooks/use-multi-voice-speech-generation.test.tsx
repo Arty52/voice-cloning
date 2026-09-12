@@ -413,6 +413,31 @@ describe("useMultiVoiceSpeechGeneration", () => {
     expect(vi.mocked(fetch).mock.calls.every(([, init]) => !init?.method || init.method === "GET")).toBe(true)
   })
 
+  it.each(["successful", "active"])("retains all recovery pointers when reconnecting the %s job fails", async (failedReference) => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => String(input).endsWith("/result") ? okAudio() : okJson({ job: dialogueSuccessJob })))
+    const persistGeneratedAudio = vi.fn(async () => generatedResult)
+    const first = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await first.result.current.generateSpeech(generationInput({ dialogueId: "script", scriptSnapshot: dialogueScriptSnapshot })) })
+    const recovery = { ...first.result.current.recovery, active: { ...first.result.current.recovery.successful!, jobId: "active-job" } }
+    first.unmount()
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      if (failedReference === "successful" || String(input).includes("active-job")) throw new Error("Backend unavailable")
+      return okJson({ job: dialogueSuccessJob })
+    })
+    const second = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await second.result.current.restoreRecovery(recovery, [provider], [generatedResult]) })
+    expect(second.result.current.status).toBe("error")
+    expect(second.result.current.recovery).toEqual(recovery)
+    const savedAgain = second.result.current.recovery
+    second.unmount()
+    vi.mocked(fetch).mockClear().mockImplementation(async (input: RequestInfo | URL) => String(input).endsWith("/result") ? okAudio() : okJson({ job: String(input).includes("active-job") ? { ...dialogueRegeneratedJob, id: "active-job" } : dialogueSuccessJob }))
+    const third = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await third.result.current.restoreRecovery(savedAgain, [provider], [generatedResult]) })
+    expect(third.result.current.successfulRun?.job.id).toBe("active-job")
+    expect(third.result.current.recovery.active).toBeNull()
+    expect(vi.mocked(fetch).mock.calls.every(([, init]) => !init?.method || init.method === "GET")).toBe(true)
+  })
+
   it("reconnects to an accepted job and archives its completed result without resubmission", async () => {
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => String(input).endsWith("/result") ? okAudio() : okJson({ job: dialogueSuccessJob })))
     const persistGeneratedAudio = vi.fn(async () => generatedResult)
