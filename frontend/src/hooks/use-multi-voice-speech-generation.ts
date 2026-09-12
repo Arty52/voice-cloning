@@ -93,17 +93,17 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
   const lastPersistContextRef = useRef<PersistContext | null>(null)
 
   const isGenerating = status === "starting" || status === "processing"
-  const canCancel = isGenerating && job !== null
-  const resultUrl = job?.status === "success" ? api.speechJobResultUrl(job.id) : null
+  const canCancel = isGenerating && (job?.status === "pending" || job?.status === "running")
+  const resultUrl = successfulRun ? api.speechJobResultUrl(successfulRun.job.id) : null
   const segmentResultUrls = useMemo(() => {
-    const playableJob = job?.status === "success" ? job : successfulRun?.job
+    const playableJob = successfulRun?.job
     if (!playableJob) {
       return {}
     }
     return Object.fromEntries(
       playableJob.segments.map((segment) => [segment.id, api.speechJobSegmentResultUrl(playableJob.id, segment.id)])
     ) as Record<string, string>
-  }, [job, successfulRun])
+  }, [successfulRun])
 
   useEffect(() => {
     mountedRef.current = true
@@ -305,7 +305,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
   async function handleJobUpdate(jobUpdate: SpeechJob, runId: number, persistContext: PersistContext) {
     if (jobUpdate.status === "success") {
       const elapsedMs = finishGenerationTimer()
-      setStatus("success")
+      setStatus("processing")
       setError(null)
       return persistSuccessfulJob(jobUpdate, persistContext, elapsedMs)
     }
@@ -337,7 +337,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
         updateJob(payload.job)
         if (payload.job.status === "success") {
           const elapsedMs = finishGenerationTimer()
-          setStatus("success")
+          setStatus("processing")
           setError(null)
           return persistSuccessfulJob(payload.job, persistContext, elapsedMs)
         }
@@ -367,7 +367,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
   async function cancelGeneration() {
     const activeJobId = activeJobIdRef.current
     const activeRunId = runIdRef.current
-    if (!activeJobId || !isGenerating) {
+    if (!activeJobId || !canCancel) {
       return
     }
     try {
@@ -379,7 +379,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
       updateJob(payload.job)
       const elapsedMs = finishGenerationTimer()
       if (payload.job.status === "success") {
-        setStatus("success")
+        setStatus("processing")
         setError(null)
         const persistContext = lastPersistContextRef.current
         return persistContext ? persistSuccessfulJob(payload.job, persistContext, elapsedMs) : null
@@ -441,6 +441,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
       }
       const result = await persistGeneratedAudio(input, persistContext.storageLimitBytes)
       setSuccessfulRun({ job: jobUpdate, context: { ...persistContext, scriptSnapshot: input.scriptSnapshot ?? null } })
+      setStatus("success")
       return result
     } catch (caught) {
       setStatus("error")

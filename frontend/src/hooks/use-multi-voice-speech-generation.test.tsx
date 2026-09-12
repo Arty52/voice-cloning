@@ -418,6 +418,39 @@ describe("useMultiVoiceSpeechGeneration", () => {
     expect(persistGeneratedAudio).toHaveBeenCalledTimes(2)
   })
 
+  it.each(["fetch", "archive"])("keeps previous playback and editing locked until revision saving completes (%s failure)", async (failure) => {
+    let release!: () => void
+    const revised = { ...dialogueRegeneratedJob, id: "revision-job" }
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input)
+      if (path === "/api/speech/jobs") return okJson({ job: dialogueSuccessJob }, 202)
+      if (path.endsWith("/revisions")) return okJson({ job: revised }, 202)
+      if (path === "/api/speech/jobs/revision-job/result" && failure === "fetch") {
+        await new Promise<void>(resolve => { release = resolve })
+        throw new Error("Download failed")
+      }
+      return okAudio()
+    }))
+    const persistGeneratedAudio = vi.fn(async () => generatedResult)
+    const { result } = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await result.current.generateSpeech(generationInput({ dialogueId: "script", scriptSnapshot: dialogueScriptSnapshot })) })
+    if (failure === "archive") persistGeneratedAudio.mockImplementationOnce(async () => {
+      await new Promise<void>(resolve => { release = resolve })
+      throw new Error("Archive failed")
+    })
+    let pending!: Promise<GeneratedResult | null>
+    await act(async () => { pending = result.current.reviseSpeech({ providerKey: null, segments: [], scriptSnapshot: dialogueScriptSnapshot, storageLimitBytes: 100 }) })
+    expect(result.current.job?.id).toBe("revision-job")
+    expect(result.current.isGenerating).toBe(true)
+    expect(result.current.canCancel).toBe(false)
+    expect(result.current.segmentResultUrls["dialogue-block-1"]).toContain("/dialogue-job/")
+    await act(async () => { release(); await pending })
+    expect(result.current.status).toBe("error")
+    expect(result.current.successfulRun?.job.id).toBe("dialogue-job")
+    expect(result.current.segmentResultUrls["dialogue-block-1"]).toContain("/dialogue-job/")
+    expect(result.current.resultUrl).toBe("/api/speech/jobs/dialogue-job/result")
+  })
+
   it("creates, polls, and persists a successful multi-voice speech job", async () => {
     vi.stubGlobal(
       "fetch",
