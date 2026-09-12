@@ -255,3 +255,16 @@ def test_handoff_revision_can_restore_configured_default_without_synthesis(tmp_p
         assert service.get_job(revised.id).segment_gap_ms == service.settings.speech_job_segment_gap_ms
         assert len(provider.speech_requests) == 2
     asyncio.run(scenario())
+
+
+def test_explicit_handoff_mode_change_reassembles_with_zero_default_gap(tmp_path):
+    async def scenario():
+        service, provider, assembly = make_service(tmp_path)
+        service.settings = replace(service.settings, speech_job_segment_gap_ms=0)
+        base = await generate_base(service, provider, 2)
+        revised = await service.create_revision(base.id, replacements=(), provider=provider, provider_key=None, use_default_gap=True)
+        await service._tasks[revised.id]
+        assert service.get_job(revised.id).segment_gap_ms == 0
+        assert len(provider.speech_requests) == 2
+        assert len(assembly.calls) == 2
+    asyncio.run(scenario())

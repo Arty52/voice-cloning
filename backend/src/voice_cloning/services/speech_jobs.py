@@ -143,7 +143,7 @@ class SpeechJobService:
         except ValueError as exc:
             raise SpeechJobServiceError(str(exc), 422) from exc
         gap = self._validate_segment_gap(segment_gap_ms) if use_default_gap or segment_gap_ms is not None else base.segment_gap_ms
-        if not replacements and gap == base.segment_gap_ms:
+        if not replacements and segment_gap_ms is None and not use_default_gap:
             raise SpeechJobServiceError("Choose a segment or change the handoff spacing.", 422)
         # Resolve every replacement before creating files or making provider calls.
         segments = tuple(
