@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils"
 import type { AsyncStatus, GeneratedResult, ModelOption, ProviderLink, SubscriptionResponse } from "@/types"
 
 type CostQuotaPanelProps = {
+  fullGenerationEstimate?: { characterCount: number; credits: number }
   characterCount: number
   estimatedCredits: number
   hasModelRate: boolean
@@ -31,6 +32,7 @@ type CostQuotaPanelProps = {
 }
 
 export function CostQuotaPanel({
+  fullGenerationEstimate,
   characterCount,
   estimatedCredits,
   hasModelRate,
@@ -88,10 +90,11 @@ export function CostQuotaPanel({
         ) : null}
       </div>
 
+      {fullGenerationEstimate ? <p className="mb-3 text-xs text-muted-foreground">Regenerate All uses {formatNumber(fullGenerationEstimate.characterCount)} characters (~{formatNumber(fullGenerationEstimate.credits)} credits).</p> : null}
       <div className="grid gap-3 border-y border-border py-3 sm:grid-cols-3 sm:divide-x sm:divide-border">
         <MetricTile
           icon={<BarChart3 aria-hidden="true" className="size-4" />}
-          label="Estimate"
+          label={fullGenerationEstimate ? "Generate Changes" : "Estimate"}
           value={`~${formatNumber(estimatedCredits)}`}
         />
         <MetricTile icon={<Gauge aria-hidden="true" className="size-4" />} label="Quota" value={quotaStatus} />

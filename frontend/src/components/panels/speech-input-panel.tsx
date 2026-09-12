@@ -55,6 +55,7 @@ type SpeechInputPanelProps = {
   onCancelGeneration: () => void
   onClearAssignments: () => void
   onEditAssignmentVoice: (assignmentId: string, voice: VoiceAsset) => void
+  onRegenerateAll?: () => void
   onGenerate: (event?: FormEvent<HTMLFormElement>) => void
   onNaturalHandoffsEnabledChange: (enabled: boolean) => void
   onSaveNaturalHandoffsDefault?: () => void
@@ -95,6 +96,7 @@ export function SpeechInputPanel({
   onClearAssignments,
   onEditAssignmentVoice,
   onGenerate,
+  onRegenerateAll,
   onNaturalHandoffsEnabledChange,
   onSaveNaturalHandoffsDefault = noopSaveNaturalHandoffsDefault,
   onRemoveAssignment,
@@ -364,9 +366,9 @@ export function SpeechInputPanel({
             )}
             {isGenerating ? "Generating..." : "Generate"}
           </Button>
-          <Button disabled={!canGenerate} onClick={() => onGenerate()} type="button" variant="secondary">
+          <Button disabled={!canGenerate} onClick={() => isDialogueMode && onRegenerateAll ? onRegenerateAll() : onGenerate()} type="button" variant="secondary">
             <RefreshCw aria-hidden="true" />
-            Retry
+            {isDialogueMode ? "Regenerate All" : "Retry"}
           </Button>
           {isGenerating ? (
             <Button
