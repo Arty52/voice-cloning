@@ -556,6 +556,10 @@ describe("useMultiVoiceSpeechGeneration", () => {
     expect(result.current.segmentResultUrls["dialogue-block-2"]).toContain("dialogue-job")
     await act(async () => { release!(); await pending! })
     expect(result.current.successfulRun?.job.id).toBe("revision-job")
+    expect(persistGeneratedAudio).toHaveBeenLastCalledWith(expect.objectContaining({
+      characterCount: revised.segments.reduce((sum, segment) => sum + (segment.characterCount ?? segment.text.length), 0),
+      multiVoiceMetadata: expect.objectContaining({ synthesizedCharacterCount: revised.segments[0].characterCount }),
+    }), 100)
     expect(result.current.successfulRun?.context.naturalHandoffs).toBe(true)
     const request = vi.mocked(fetch).mock.calls.find(([path]) => String(path).endsWith("/revisions"))!
     expect(JSON.parse(request[1]!.body as string)).toEqual({ segments: input.segments })
@@ -581,6 +585,8 @@ describe("useMultiVoiceSpeechGeneration", () => {
     const { result } = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
     await act(async () => { await result.current.generateSpeech(generationInput({ dialogueId: "script", scriptSnapshot: dialogueScriptSnapshot })) })
     await act(async () => { await result.current.reviseSpeech({ defaultVoice: currentDefault, tuning: currentTuning, selectedTuningPresetId: preset.id, selectedUserTuningPreset: preset, providerKey: null, segments: [], scriptSnapshot: dialogueScriptSnapshot, storageLimitBytes: 100 }) })
+    expect(persistGeneratedAudio).toHaveBeenLastCalledWith(expect.objectContaining({ multiVoiceMetadata: expect.objectContaining({ synthesizedCharacterCount: 0 }) }), 100)
+    expect(result.current.recovery.successful?.context.synthesizedSegmentIds).toEqual([])
     expect(result.current.successfulRun?.context.tuning).toEqual(currentTuning)
     expect(result.current.successfulRun?.context.defaultVoice.id).toBe("new-default")
     expect(result.current.successfulRun?.context.selectedUserTuningPreset).toEqual(preset)

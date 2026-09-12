@@ -508,6 +508,7 @@ export type GeneratedAudioMultiVoiceTuningSummary = {
 }
 
 export type GeneratedAudioMultiVoiceMetadata = {
+  synthesizedCharacterCount?: number
   jobId: string
   resultSha256: string | null
   segmentCount: number
