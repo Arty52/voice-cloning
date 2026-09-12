@@ -252,19 +252,24 @@ export function useVoiceStudioController() {
     (isDialogueMode
       ? !voiceAssignmentError && dialogue.segmentBuild.segments.length > 0
       : !hasVoiceAssignments || (!assignmentSegments.stale && !voiceAssignmentError && assignmentSegments.segments.length > 0))
+  const workspaceDraft = useMemo<DialogueDraft | null>(() => (isDialogueMode ? {
+      identity: dialogue.identity, sourceText: text, sourceExpanded, blocks: dialogue.blocks,
+      speakerMappings: dialogue.speakerMappings, sourceVoiceId: voiceLibrary.selectedVoiceId || null,
+      providerId: activeProviderId, modelId: metadata.selectedModelId,
+      selectedUserTuningPresetId, naturalHandoffs: naturalHandoffsEnabled,
+      speech: multiVoiceSpeech.recovery,
+    } : null), [
+    isDialogueMode, dialogue.identity, text, sourceExpanded, dialogue.blocks, dialogue.speakerMappings,
+    voiceLibrary.selectedVoiceId, activeProviderId, metadata.selectedModelId, selectedUserTuningPresetId,
+    naturalHandoffsEnabled, multiVoiceSpeech.recovery,
+  ])
   const dialogueWorkspace = useDialogueWorkspace({
     ready: !["idle", "loading"].includes(voiceLibrary.voiceStatus) &&
       !["idle", "loading"].includes(providerKeys.providerStatus) &&
       !["idle", "loading"].includes(metadata.modelStatus) &&
       !["idle", "loading"].includes(generatedAudio.generatedAudioStatus) &&
       !["idle", "loading"].includes(userTuningPresets.status),
-    draft: isDialogueMode ? {
-      identity: dialogue.identity, sourceText: text, sourceExpanded, blocks: dialogue.blocks,
-      speakerMappings: dialogue.speakerMappings, sourceVoiceId: voiceLibrary.selectedVoiceId || null,
-      providerId: activeProviderId, modelId: metadata.selectedModelId,
-      selectedUserTuningPresetId, naturalHandoffs: naturalHandoffsEnabled,
-      speech: multiVoiceSpeech.recovery,
-    } : null,
+    draft: workspaceDraft,
     applyDraft: applyWorkspaceDraft,
     speech: multiVoiceSpeech, providers: providerKeys.providers ?? [],
     archivedItems: generatedAudio.generatedAudioItems, onResult: setLatestGeneratedAudioId,
