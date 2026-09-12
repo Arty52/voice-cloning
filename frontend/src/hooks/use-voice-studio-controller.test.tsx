@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
+import * as workspace from "@/hooks/use-dialogue-workspace"
 import { DIALOGUE_DRAFT_KEY } from "@/lib/dialogue-draft"
 import type { GeneratedAudioScriptSnapshot, VoiceAsset } from "@/types"
 
@@ -211,6 +212,19 @@ describe("useVoiceStudioController script snapshot restore", () => {
     expect(result.current.dialogue.mode).toBe("dialogue")
     expect(result.current.canGenerate).toBe(false)
     expect(result.current.scriptRestoreWarning).toContain("saved tuning preset is unavailable")
+  })
+
+  it("keeps the workspace draft stable until an input changes", () => {
+    const workspaceSpy = vi.spyOn(workspace, "useDialogueWorkspace")
+    const { result, rerender } = renderHook(() => useVoiceStudioController())
+    act(() => result.current.dialogue.importFromText("Narrator: Original."))
+    const draft = workspaceSpy.mock.calls.at(-1)![0].draft
+    expect(draft).not.toBeNull()
+    rerender()
+    expect(workspaceSpy.mock.calls.at(-1)![0].draft).toBe(draft)
+    act(() => result.current.dialogue.updateBlockText(result.current.dialogue.blocks[0].id, "Edited."))
+    expect(workspaceSpy.mock.calls.at(-1)![0].draft).not.toBe(draft)
+    expect(workspaceSpy.mock.calls.at(-1)![0].draft?.blocks[0].text).toBe("Edited.")
   })
 
   it("restores range text, assignments, source voice, and disabled Natural Handoffs", () => {
