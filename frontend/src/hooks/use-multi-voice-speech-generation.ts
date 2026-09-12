@@ -4,7 +4,7 @@ import { BACKEND_DEFAULT_MODEL_LABEL, CANCELED_GENERATION_MESSAGE } from "@/cons
 import * as api from "@/lib/api"
 import {
   buildGeneratedAudioMultiVoiceMetadata,
-  buildGeneratedAudioTuningMetadata,
+  buildGeneratedAudioJobTuningMetadata,
 } from "@/lib/generated-audio-metadata"
 import type { SaveGeneratedAudioInput } from "@/lib/generated-audio-storage"
 import type { SpeechJobSegmentDraft } from "@/lib/voice-assignments"
@@ -282,6 +282,9 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
   }
 
   async function reviseSpeech(input: {
+    tuning: VoiceTuningValues
+    selectedTuningPresetId: string
+    selectedUserTuningPreset?: UserTuningPreset | null
     naturalHandoffs?: boolean
     providerKey: string | null
     segments: api.SpeechSegmentReplacement[]
@@ -291,7 +294,15 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
   }) {
     if (busyRef.current || !successfulRun) return null
     const runId = startRun({ clearJob: false })
-    const context = { ...successfulRun.context, naturalHandoffs: input.naturalHandoffs ?? successfulRun.context.naturalHandoffs, scriptSnapshot: input.scriptSnapshot, storageLimitBytes: input.storageLimitBytes }
+    const context = {
+      ...successfulRun.context,
+      tuning: { ...input.tuning },
+      selectedTuningPresetId: input.selectedTuningPresetId,
+      selectedUserTuningPreset: input.selectedUserTuningPreset ?? null,
+      naturalHandoffs: input.naturalHandoffs ?? successfulRun.context.naturalHandoffs,
+      scriptSnapshot: input.scriptSnapshot,
+      storageLimitBytes: input.storageLimitBytes,
+    }
     lastPersistContextRef.current = context
     try {
       const payload = await api.createSpeechRevision(successfulRun.job.id, {
@@ -433,7 +444,7 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
         multiVoiceMetadata: buildGeneratedAudioMultiVoiceMetadata(jobUpdate, persistContext.provider),
         requestId: null,
         scriptSnapshot: refreshScriptSnapshotFromJob(persistContext.scriptSnapshot, jobUpdate),
-        tuningMetadata: buildGeneratedAudioTuningMetadata({
+        tuningMetadata: buildGeneratedAudioJobTuningMetadata(jobUpdate, {
           provider: persistContext.provider,
           selectedPresetId: persistContext.selectedTuningPresetId,
           tuning: persistContext.tuning,

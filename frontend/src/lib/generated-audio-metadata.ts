@@ -11,7 +11,7 @@ import type {
   VoiceProvider,
   VoiceTuningValues,
 } from "@/types"
-import { resolveNominalTuningValue, tuningControlValuesEqual } from "@/lib/voice-tuning"
+import { resolveNominalTuningValue, tuningControlValuesEqual, voiceTuningValuesEqual } from "@/lib/voice-tuning"
 
 export type GeneratedAudioMultiVoiceTuningSegment = Pick<
   GeneratedAudioMultiVoiceSegmentMetadata,
@@ -64,6 +64,20 @@ export function buildGeneratedAudioTuningMetadata({
         }
       : null,
   }
+}
+
+/** A recording only names a shared preset when every recorded segment uses it. */
+export function buildGeneratedAudioJobTuningMetadata(
+  job: SpeechJob,
+  input: BuildGeneratedAudioTuningMetadataInput,
+): GeneratedAudioTuningMetadata | null {
+  const metadata = buildGeneratedAudioTuningMetadata(input)
+  if (!metadata || !input.provider) return metadata
+  const defaults = input.provider.tuning.defaultValues
+  const uniform = job.segments.every(segment => segment.voiceSettings != null && voiceTuningValuesEqual(
+    { ...defaults, ...segment.voiceSettings }, { ...defaults, ...input.tuning },
+  ))
+  return uniform ? metadata : { ...metadata, mode: "custom", presetId: null, presetLabel: null, userPreset: null, adjustedSettings: [] }
 }
 
 export function buildGeneratedAudioMultiVoiceMetadata(
