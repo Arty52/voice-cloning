@@ -383,6 +383,15 @@ describe("useMultiVoiceSpeechGeneration", () => {
     expect(snapshot.segmentGapMs).toBe(0)
   })
 
+  it("snapshots actual speaker mappings, including mixed voices after a partial revision", () => {
+    const snapshot = refreshScriptSnapshotFromJob(dialogueScriptSnapshot, dialogueRegeneratedJob)!
+    expect(snapshot.speakerMappings).toContainEqual({ speakerLabel: "Narrator", voiceId: "villain" })
+    const sharedSpeaker = { ...dialogueScriptSnapshot, dialogueBlocks: dialogueScriptSnapshot.dialogueBlocks.map(block => ({ ...block, speakerLabel: "Same Speaker" })) }
+    const mixed = refreshScriptSnapshotFromJob(sharedSpeaker, dialogueSuccessJob)!
+    expect(mixed.speakerMappings).toEqual([{ speakerLabel: "Same Speaker", voiceId: null }])
+    expect(mixed.dialogueBlocks.map(block => block.voiceId)).toEqual(["narrator", "villain"])
+  })
+
   it("revises selected rows, rejects overlapping actions, and retains a successful baseline on failure", async () => {
     let failRevision = false
     let release: (() => void) | null = null

@@ -558,21 +558,24 @@ export function refreshScriptSnapshotFromJob(
     }
   }
 
+  const dialogueBlocks = scriptSnapshot.dialogueBlocks.map((block) => {
+    const segment = segmentsById.get(block.id)
+    return segment
+      ? { ...block, text: segment.text.trim(), voiceId: segment.voiceId, voiceName: segment.voiceName,
+          voiceSettings: segment.voiceSettings ? { ...segment.voiceSettings } : null }
+      : block
+  })
+  const speakerLabels = [...new Set(dialogueBlocks.flatMap(block => block.speakerLabel ? [block.speakerLabel] : []))]
   return {
     ...scriptSnapshot,
     text: job.segments.map(segment => segment.text).join(""),
     segmentGapMs: job.segmentGapMs,
-    dialogueBlocks: scriptSnapshot.dialogueBlocks.map((block) => {
-      const segment = segmentsById.get(block.id)
-      return segment
-        ? {
-              ...block,
-              text: segment.text.trim(),
-            voiceId: segment.voiceId,
-            voiceName: segment.voiceName,
-            voiceSettings: segment.voiceSettings ? { ...segment.voiceSettings } : null,
-          }
-        : block
+    dialogueBlocks,
+    // A partial revision can leave one speaker with multiple recorded voices.
+    // Each block retains its actual voice; never claim a single mapping in that case.
+    speakerMappings: speakerLabels.map(speakerLabel => {
+      const voices = new Set(dialogueBlocks.filter(block => block.speakerLabel === speakerLabel).map(block => block.voiceId))
+      return { speakerLabel, voiceId: voices.size === 1 ? [...voices][0] : null }
     }),
   }
 }
