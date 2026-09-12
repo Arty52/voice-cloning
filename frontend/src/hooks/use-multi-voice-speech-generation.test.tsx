@@ -438,6 +438,27 @@ describe("useMultiVoiceSpeechGeneration", () => {
     expect(vi.mocked(fetch).mock.calls.every(([, init]) => !init?.method || init.method === "GET")).toBe(true)
   })
 
+  it.each(["error", "canceled", "interrupted"] as const)("drops reconciled %s jobs from active recovery", async (status) => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => String(input).endsWith("/result") ? okAudio() : okJson({ job: dialogueSuccessJob })))
+    const persistGeneratedAudio = vi.fn(async () => generatedResult)
+    const first = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await first.result.current.generateSpeech(generationInput({ dialogueId: "script", scriptSnapshot: dialogueScriptSnapshot })) })
+    const active = first.result.current.recovery.successful!
+    first.unmount()
+    vi.mocked(fetch).mockImplementation(async () => okJson({ job: { ...dialogueSuccessJob, status } }))
+    const next = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await next.result.current.restoreRecovery({ active, successful: null, resultId: null }, [provider], []) })
+    expect(next.result.current.recovery.active).toBeNull()
+    expect(next.result.current.error).toBeTruthy()
+    const saved = next.result.current.recovery
+    next.unmount()
+    vi.mocked(fetch).mockClear()
+    const reopened = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await reopened.result.current.restoreRecovery(saved, [provider], []) })
+    expect(fetch).not.toHaveBeenCalled()
+    expect(reopened.result.current.status).toBe("idle")
+  })
+
   it("reconnects to an accepted job and archives its completed result without resubmission", async () => {
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => String(input).endsWith("/result") ? okAudio() : okJson({ job: dialogueSuccessJob })))
     const persistGeneratedAudio = vi.fn(async () => generatedResult)
