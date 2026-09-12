@@ -394,6 +394,25 @@ describe("useMultiVoiceSpeechGeneration", () => {
     expect(next.result.current.successfulRun?.job.id).toBe("dialogue-job")
   })
 
+  it.each([true, false])("reconciles a temporary result ID against the stable archive ID (already saved=%s)", async (alreadySaved) => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => String(input).endsWith("/result") ? okAudio() : okJson({ job: dialogueSuccessJob })))
+    const saved = { ...generatedResult, id: speechResultId(dialogueSuccessJob) }
+    const persistGeneratedAudio = vi.fn(async () => ({ ...generatedResult, id: "temporary-result" }))
+    const first = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { await first.result.current.generateSpeech(generationInput({ dialogueId: "script", scriptSnapshot: dialogueScriptSnapshot, segmentGapMs: undefined })) })
+    const recovery = first.result.current.recovery
+    expect(recovery.successful?.context.naturalHandoffs).toBe(true)
+    first.unmount()
+    vi.mocked(fetch).mockClear()
+    persistGeneratedAudio.mockClear().mockResolvedValue(saved)
+    const next = renderHook(() => useMultiVoiceSpeechGeneration({ persistGeneratedAudio }))
+    await act(async () => { expect(await next.result.current.restoreRecovery(recovery, [provider], alreadySaved ? [saved] : [])).toEqual(saved) })
+    expect(next.result.current.successfulRun?.resultId).toBe(saved.id)
+    expect(next.result.current.successfulRun?.context.naturalHandoffs).toBe(true)
+    expect(persistGeneratedAudio).toHaveBeenCalledTimes(alreadySaved ? 0 : 1)
+    expect(vi.mocked(fetch).mock.calls.every(([, init]) => !init?.method || init.method === "GET")).toBe(true)
+  })
+
   it("reconnects to an accepted job and archives its completed result without resubmission", async () => {
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => String(input).endsWith("/result") ? okAudio() : okJson({ job: dialogueSuccessJob })))
     const persistGeneratedAudio = vi.fn(async () => generatedResult)

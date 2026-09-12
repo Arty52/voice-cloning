@@ -424,10 +424,12 @@ export function useMultiVoiceSpeechGeneration({ persistGeneratedAudio }: UseMult
         if (!isActiveRun(runId)) return null
         if (restored.status !== "success") throw new Error("The previous recording is unavailable. Generate all rows to make a new recording.")
         const context = restoreSpeechContext(recovery.successful.context, providers)
-        restoredResult = archivedItems.find(item => item.id === recovery.resultId) ?? null
-        setSuccessfulRun({ job: restored, context, resultId: recovery.resultId ?? undefined })
+        restoredResult = archivedItems.find(item => item.id === speechResultId(restored))
+          ?? archivedItems.find(item => item.id === recovery.resultId) ?? null
+        setSuccessfulRun({ job: restored, context, resultId: restoredResult?.id })
         lastPersistContextRef.current = context
         updateJob(restored)
+        if (!restoredResult && !recovery.active) return await persistSuccessfulJob(restored, context, null)
       }
       if (recovery.active) {
         const { job: restored } = await api.fetchSpeechJob(recovery.active.jobId)
