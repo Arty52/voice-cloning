@@ -18,6 +18,7 @@ from .models import (
     SpeakerTranscriptWord,
 )
 from .samples import load_sample_file
+from .transcript_timing import is_valid_time_range
 from .services.sample_processing import (
     DEFAULT_ISOLATION_PROCESSING_PRESET_ID,
     DEFAULT_TRIM_SILENCE_PROCESSING_PRESET_ID,
@@ -657,27 +658,49 @@ def _parse_diarization_turn(raw_turn: object) -> _DiarizationTurn | None:
 def _transcribed_words(segments: object) -> tuple[_TranscribedWord, ...]:
     words: list[_TranscribedWord] = []
     for segment in segments:
-        segment_words = getattr(segment, "words", None)
-        if segment_words is not None:
-            parsed_words = [_transcribed_word_from_object(word) for word in segment_words]
+        segment_words = [
+            word for word in (getattr(segment, "words", None) or ()) if _transcription_text(word)
+        ]
+        parsed_words = [_transcribed_word_from_object(word) for word in segment_words]
+        if parsed_words and all(word is not None for word in parsed_words):
             words.extend(word for word in parsed_words if word is not None)
             continue
-        parsed_segment = _transcribed_word_from_object(segment, has_word_alignment=False)
-        if parsed_segment is not None:
-            words.append(parsed_segment)
-    words.sort(key=lambda word: (word.start_seconds, word.end_seconds))
+        # One unusable word must not silently delete text from the transcript.
+        text = _transcription_text(segment) or _join_word_texts(
+            [_transcription_text(word) for word in segment_words]
+        )
+        if not text:
+            continue
+        parsed_segment = _transcribed_word_from_object(segment, has_word_alignment=False, text=text)
+        if parsed_segment is None:
+            raise SampleProcessingServiceError(
+                "Whisper transcription has no usable timing for a passage.", 502,
+            )
+        words.append(parsed_segment)
+    # Timestamp sorting can reorder the spoken text when model alignment is bad.
     return tuple(words)
+
+
+def _transcription_text(value: object) -> str:
+    text = getattr(value, "word", getattr(value, "text", ""))
+    return text.strip() if isinstance(text, str) else ""
 
 
 def _transcribed_word_from_object(
     value: object,
     *,
     has_word_alignment: bool = True,
+    text: str | None = None,
 ) -> _TranscribedWord | None:
-    text = str(getattr(value, "word", getattr(value, "text", ""))).strip()
+    text = _transcription_text(value) if text is None else text
     start_seconds = _optional_float(getattr(value, "start", None))
     end_seconds = _optional_float(getattr(value, "end", None))
-    if not text or start_seconds is None or end_seconds is None or end_seconds <= start_seconds:
+    if (
+        not text
+        or start_seconds is None
+        or end_seconds is None
+        or not is_valid_time_range(start_seconds, end_seconds)
+    ):
         return None
     return _TranscribedWord(
         text=text,
@@ -838,7 +861,11 @@ def _overlap_seconds(first_start: float, first_end: float, second_start: float, 
 
 
 def _join_words(words: list[_TranscribedWord]) -> str:
-    text = " ".join(word.text.strip() for word in words if word.text.strip())
+    return _join_word_texts([word.text for word in words])
+
+
+def _join_word_texts(words: list[str]) -> str:
+    text = " ".join(word.strip() for word in words if word.strip())
     for punctuation in (".", ",", "?", "!", ";", ":"):
         text = text.replace(f" {punctuation}", punctuation)
     return text
