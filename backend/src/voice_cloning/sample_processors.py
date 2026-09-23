@@ -18,7 +18,7 @@ from .models import (
     SpeakerTranscriptWord,
 )
 from .samples import load_sample_file
-from .transcript_timing import is_valid_time_range
+from .transcript_timing import has_valid_word_timing, is_valid_time_range
 from .services.sample_processing import (
     DEFAULT_ISOLATION_PROCESSING_PRESET_ID,
     DEFAULT_TRIM_SILENCE_PROCESSING_PRESET_ID,
@@ -776,12 +776,23 @@ def _transcript_items_from_words(
         if not current_words or current_speaker_id is None:
             return
         item_id = f"item-{len(items) + 1}"
+        start_seconds = min(word.start_seconds for word in current_words)
+        end_seconds = max(word.end_seconds for word in current_words)
+        if not is_valid_time_range(start_seconds, end_seconds):
+            raise SampleProcessingServiceError(
+                "Whisper transcription has no usable timing for a passage.", 502,
+            )
+        has_word_alignment = all(word.has_word_alignment for word in current_words) and has_valid_word_timing(
+            start_seconds,
+            end_seconds,
+            ((word.start_seconds, word.end_seconds) for word in current_words),
+        )
         items.append(
             SpeakerTranscriptItem(
                 id=item_id,
                 text=_join_words(current_words),
-                start_seconds=current_words[0].start_seconds,
-                end_seconds=current_words[-1].end_seconds,
+                start_seconds=start_seconds,
+                end_seconds=end_seconds,
                 speaker_id=current_speaker_id,
                 words=(
                     tuple(
@@ -793,7 +804,7 @@ def _transcript_items_from_words(
                         )
                         for index, word in enumerate(current_words)
                     )
-                    if all(word.has_word_alignment for word in current_words)
+                    if has_word_alignment
                     else None
                 ),
             )
@@ -805,7 +816,11 @@ def _transcript_items_from_words(
         speaker_label = _speaker_label_for_range(word.start_seconds, word.end_seconds, turns)
         speaker_id = resolve_speaker(speaker_label)
         gap_seconds = word.start_seconds - current_words[-1].end_seconds if current_words else 0
-        if current_speaker_id != speaker_id or gap_seconds > 0.8:
+        # Keep a segment-level fallback from disabling its neighbors' word timing.
+        fallback_boundary = bool(current_words) and (
+            not word.has_word_alignment or not current_words[-1].has_word_alignment
+        )
+        if current_speaker_id != speaker_id or gap_seconds > 0.8 or fallback_boundary:
             flush()
             current_speaker_id = speaker_id
         current_words.append(word)
