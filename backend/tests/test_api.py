@@ -3987,6 +3987,33 @@ def test_sample_processing_speaker_separation_rejects_duplicate_speaker_transcri
     assert job["error"] == "Speaker separation speaker references duplicate transcript items."
 
 
+@pytest.mark.parametrize(
+    ("start", "end"),
+    [(float("nan"), 1.0), (0.0, float("nan")), (0.0, float("inf")),
+     (-1.0, 1.0), (1.0, 1.0), (2.0, 1.0)],
+)
+def test_sample_processing_rejects_invalid_passage_timing(
+    tmp_path: Path, start: float, end: float,
+) -> None:
+    class InvalidPassageProcessor(FakeSpeakerSeparationProcessor):
+        async def process(self, request: SampleProcessingRequest) -> SpeakerSeparationResult:
+            result = await super().process(request)
+            item = replace(result.transcript.items[0], start_seconds=start, end_seconds=end)
+            return replace(result, transcript=replace(result.transcript, items=(item, *result.transcript.items[1:])))
+
+    app = create_app(settings=make_settings(tmp_path), sample_processor=InvalidPassageProcessor())
+    with TestClient(app) as client:
+        create = client.post(
+            "/api/sample-processing/jobs",
+            data={"operationId": "separateSpeakers"},
+            files={"sourceFile": ("conversation.wav", b"speaker-source", "audio/wav")},
+        )
+        job = wait_for_processing_job(client, create.json()["job"]["id"], status="error")
+
+    assert job["error"] == "Speaker separation transcript timing is invalid."
+    assert job["result"] is None
+
+
 def test_sample_processing_speaker_separation_rejects_invalid_word_alignment(tmp_path: Path) -> None:
     settings = make_settings(tmp_path)
     app = create_app(settings=settings, sample_processor=InvalidSpeakerTranscriptWordAlignmentProcessor())

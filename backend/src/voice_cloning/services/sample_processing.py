@@ -45,6 +45,7 @@ from ..models import (
 from ..persistence.database import SessionFactory, unit_of_work
 from ..persistence.jobs import SqlAlchemySampleProcessingJobRepository
 from ..samples import load_sample_file, sample_hash, save_sample_file, save_uploaded_sample_stream, slugify_voice_name
+from ..transcript_timing import has_valid_word_timing, is_valid_time_range
 from .cancellation import cancel_and_drain_task
 from .media_commands import (
     positive_float_from_payload as _positive_float_from_payload,
@@ -2136,9 +2137,8 @@ class SampleProcessingService:
         for item in result.transcript.items:
             if not item.id or item.id in item_ids or item.speaker_id not in known_speaker_ids:
                 raise SampleProcessingServiceError("Speaker separation transcript is invalid.", 500)
-            if item.start_seconds < 0 or item.end_seconds <= item.start_seconds:
+            if not is_valid_time_range(item.start_seconds, item.end_seconds):
                 raise SampleProcessingServiceError("Speaker separation transcript timing is invalid.", 500)
-            previous_word_end_seconds = item.start_seconds
             for word in item.words or ():
                 if (
                     not word.id.strip()
@@ -2147,16 +2147,13 @@ class SampleProcessingService:
                     or not word.text.strip()
                 ):
                     raise SampleProcessingServiceError("Speaker separation word alignment is invalid.", 500)
-                if (
-                    not math.isfinite(word.start_seconds)
-                    or not math.isfinite(word.end_seconds)
-                    or word.start_seconds < previous_word_end_seconds
-                    or word.end_seconds <= word.start_seconds
-                    or word.end_seconds > item.end_seconds
-                ):
-                    raise SampleProcessingServiceError("Speaker separation word alignment timing is invalid.", 500)
                 word_ids.add(word.id)
-                previous_word_end_seconds = word.end_seconds
+            if not has_valid_word_timing(
+                item.start_seconds,
+                item.end_seconds,
+                ((word.start_seconds, word.end_seconds) for word in item.words or ()),
+            ):
+                raise SampleProcessingServiceError("Speaker separation word alignment timing is invalid.", 500)
             item_ids.add(item.id)
             speaker_id_by_item_id[item.id] = item.speaker_id
         for speaker in result.speakers:
