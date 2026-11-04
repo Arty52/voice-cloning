@@ -72,9 +72,23 @@ def main():
             token = (root/'token').read_text().strip()
             request = urllib.request.Request('http://127.0.0.1:6421/v1/shutdown', method='POST', headers={'Authorization':'Bearer '+token})
             with urllib.request.urlopen(request, timeout=5) as response:
-                print('Worker stopping.' if response.status==200 else 'Worker stop failed.')
+                if response.status != 200:
+                    parser.error('Worker rejected shutdown; check worker.log.')
         except OSError:
             parser.error('Could not confirm worker shutdown. Check token initialization, worker availability, and retry.')
+        # Shutdown is scheduled after the HTTP response. Wait for the listener
+        # to close so an immediate start cannot reuse a disappearing worker.
+        for _ in range(50):
+            try:
+                with socket.create_connection(('127.0.0.1',6421),timeout=.2):
+                    pass
+            except ConnectionRefusedError:
+                print('Worker stopped.')
+                return
+            except OSError:
+                pass
+            time.sleep(.1)
+        parser.error('Shutdown was requested but the worker port is still unavailable for restart; check worker.log.')
 
 def live_capabilities(root: Path):
     try:
