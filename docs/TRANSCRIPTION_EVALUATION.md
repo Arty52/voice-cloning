@@ -1,0 +1,13 @@
+# Local Transcription Evaluation
+
+Keep the corpus and generated reports under ignored `storage/transcription-evaluation/`. Never commit recordings, reference transcripts, or raw model output. Run with `PYTHONPATH=transcription/src .venv/bin/python -m voice_transcription.evaluate MANIFEST --mode baseline --output REPORT` to measure the existing `medium/cpu/int8` ASR baseline. The baseline command requires faster-whisper in that environment. Use `--mode evaluate` for captured native-worker or Meetily output. Model downloads must be prepared before timed runs.
+
+A manifest is a JSON object with `schema_version: 1`, `configuration` (engine, model, revision, device, application version), and `recordings`. Each recording has an opaque `id`, `category`, `audio`, `reference`, `duration_seconds`, `language`, `condition` (`cold` or `warm`), and, for evaluation, `hypothesis`. Paths are relative to the manifest. Use opaque identifiers rather than filenames or personal names.
+
+Reference and hypothesis JSON contain `text`, optional `words` (text, start_seconds, end_seconds, optional speaker_label), and optional `turns` (start_seconds, end_seconds, speaker_label). Hypotheses also contain independently measured `asr_seconds` and `total_seconds`. References can list `names` and `numbers` for term recall. Invalid word alignment must set `has_word_alignment: false` and is excluded from timing comparisons. Annotate short excerpts carefully; do not treat model-generated text as reviewed ground truth.
+
+Word error rate uses case-folded word tokens, retaining apostrophes and ignoring punctuation. Empty-reference recordings report insertion counts rather than a misleading WER. Speaker error uses optimal anonymous-speaker matching over complete annotated timelines (up to eight speakers), with no forgiveness collar and overlaps included. Timestamp p95 uses exact matching word blocks; report matching coverage alongside it. Names/numbers report missing terms separately. Also manually audit chunk seams, legitimate repetitions, and speaker changes.
+
+Reports contain aggregate per-clip metrics, configuration, host platform, and process peak RSS. Peak RSS is a process lifetime maximum, not combined worker memory. Measure combined parent/child RSS separately during native benchmarks. Missing annotation metrics remain null and cannot establish qualification.
+
+Compare the same corpus for every engine and the Meetily import workflow. Record application version, model revision/quantization, language, preprocessing, hardware, power mode, and cold/warm state. Include narration, accents, interviews, meetings, terminology, noise, silence, overlap, and complete 30-minute/two-hour files. ASR-only timings must not be presented as end-to-end timings.
