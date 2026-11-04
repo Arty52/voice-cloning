@@ -2151,12 +2151,12 @@ class SampleProcessingService:
         speaker_ids = [speaker.id for speaker in result.speakers]
         if (not speaker_ids and result.kind != "transcript") or len(speaker_ids) != len(set(speaker_ids)):
             raise SampleProcessingServiceError("Speaker separation result has invalid speakers.", 500)
-        known_speaker_ids = set(speaker_ids)
+        known_speaker_ids: set[str | None] = set(speaker_ids)
         if result.kind == "transcript":
             known_speaker_ids.add(None)
         item_ids: set[str] = set()
         word_ids: set[str] = set()
-        speaker_id_by_item_id: dict[str, str] = {}
+        speaker_id_by_item_id: dict[str, str | None] = {}
         for item in result.transcript.items:
             if not item.id or item.id in item_ids or item.speaker_id not in known_speaker_ids:
                 raise SampleProcessingServiceError("Speaker separation transcript is invalid.", 500)
