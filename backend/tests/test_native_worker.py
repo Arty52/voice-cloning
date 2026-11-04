@@ -49,3 +49,42 @@ def test_cancel_kills_inference_process_and_cleans_audio(tmp_path):
         assert not source.exists()
         assert manager.active is None
     asyncio.run(run())
+
+
+def partial_process(stage, incoming, outgoing):
+    while True:
+        job_id, *_ = incoming.get()
+        if stage == 'diarization':
+            outgoing.put((job_id,stage,'error','model unavailable',.1))
+        else:
+            outgoing.put((job_id,stage,'success',{'words':[], 'text':'retained'},.1))
+
+
+def test_partial_failure_preserves_text_and_supports_warm_reuse(tmp_path):
+    async def run():
+        manager=JobManager(tmp_path,process_target=partial_process)
+        try:
+            for i in range(2):
+                source=tmp_path/f'{i}.wav'; source.write_bytes(wav())
+                manager.start(str(i)*32,source,{'detectSpeakers':True})
+                await asyncio.wait_for(manager.task,10)
+                job=manager.jobs[str(i)*32]
+                assert job['status']=='success'
+                assert job['result']['text']=='retained'
+                assert job['result']['diarization'] is None
+                assert job['result']['warnings']
+                assert len(manager.workers)==2
+        finally:
+            await manager.stop_workers()
+    asyncio.run(run())
+
+
+def test_cancel_before_task_starts(tmp_path):
+    async def run():
+        source=tmp_path/'source.wav'; source.write_bytes(wav())
+        manager=JobManager(tmp_path,process_target=slow_process)
+        manager.start('b'*32,source,{'detectSpeakers':False})
+        await manager.cancel('b'*32)
+        assert manager.active is None
+        assert not source.exists()
+    asyncio.run(run())

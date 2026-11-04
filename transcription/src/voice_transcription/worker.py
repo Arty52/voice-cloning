@@ -46,6 +46,7 @@ class JobManager:
         self.jobs = {}
         self.active = None
         self.task = None
+        self.source = None
         self.context = mp.get_context('spawn')
         self.workers = {}
         self.outgoing = self.context.Queue()
@@ -76,6 +77,7 @@ class JobManager:
     def start(self, job_id, source, options):
         self.jobs[job_id] = {'id':job_id, 'status':'running', 'stages':{}, 'result':None, 'error':None}
         self.active = job_id
+        self.source = source
         self.task = asyncio.create_task(self._run(job_id, source, options))
         return self.jobs[job_id]
 
@@ -93,10 +95,21 @@ class JobManager:
             pending = set(stages)
             while pending:
                 if time.perf_counter()-started > self.timeout:
-                    raise TimeoutError()
-                for stage in pending:
+                    if 'transcription' not in results:
+                        raise TimeoutError()
+                    await self.stop_workers()
+                    warnings.append('Speaker detection timed out. Transcript text is available without speaker assignments.')
+                    job['stages']['diarization'] = {'status':'error', 'elapsedSeconds':time.perf_counter()-started}
+                    break
+                for stage in tuple(pending):
                     if not self.workers[stage][0].is_alive():
-                        raise RuntimeError('worker exited')
+                        if stage == 'transcription':
+                            raise RuntimeError('worker exited')
+                        pending.remove(stage)
+                        warnings.append('Speaker detection stopped unexpectedly. Transcript text is available without speaker assignments.')
+                        job['stages'][stage] = {'status':'error', 'elapsedSeconds':time.perf_counter()-started}
+                if not pending:
+                    break
                 try:
                     event_id, stage, status, value, elapsed = self.outgoing.get_nowait()
                 except queue.Empty:
@@ -132,7 +145,14 @@ class JobManager:
     async def cancel(self, job_id):
         if self.active == job_id and self.task is not None:
             self.task.cancel()
-            await self.task
+            try:
+                await self.task
+            except asyncio.CancelledError:
+                await self.stop_workers()
+                if self.source is not None:
+                    self.source.unlink(missing_ok=True)
+                self.active = None
+                self.jobs[job_id].update(status='canceled', error='Transcription was canceled.')
         return self.jobs[job_id]
 
 
