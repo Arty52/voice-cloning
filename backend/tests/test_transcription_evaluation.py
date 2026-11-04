@@ -35,3 +35,16 @@ def test_report_has_no_transcript_or_paths(tmp_path):
     assert 'private content' not in result
     assert str(tmp_path) not in result
     assert 'reference.json' not in result
+    assert json.loads(result)['recordings'][0]['total_seconds'] is None
+    assert json.loads(result)['recordings'][0]['corpus_fingerprint'] is None
+
+
+def test_corpus_fingerprint_tracks_content_not_location(tmp_path):
+    from voice_transcription.evaluate import _fingerprint
+    audio,reference=tmp_path/'audio',tmp_path/'reference'
+    audio.write_bytes(b'audio');reference.write_text('reference')
+    first=_fingerprint(audio,reference)
+    moved=tmp_path/'moved';audio.rename(moved)
+    assert _fingerprint(moved,reference)==first
+    reference.write_text('corrected')
+    assert _fingerprint(moved,reference)!=first

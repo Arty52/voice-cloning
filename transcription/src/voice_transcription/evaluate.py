@@ -1,6 +1,7 @@
 """Local corpus evaluation. Reports exclude audio paths and transcript content."""
 from __future__ import annotations
 import argparse
+import hashlib
 from dataclasses import asdict
 from difflib import SequenceMatcher
 import itertools
@@ -110,8 +111,14 @@ def run_manifest(manifest_path: Path, mode: str, output: Path) -> dict:
             elapsed = hypothesis.get('asr_seconds')
         records.append({'id': entry['id'], 'category': entry['category'], 'duration_seconds': entry['duration_seconds'],
                         'condition': entry.get('condition', 'cold'), 'asr_seconds': elapsed,
-                        'total_seconds': hypothesis.get('total_seconds', elapsed), **evaluate(reference, hypothesis)})
-    report = {'schema_version':1, 'configuration': manifest.get('configuration', {}) if mode != 'baseline' else
+                        'total_seconds': hypothesis.get('total_seconds'),
+                        'corpus_fingerprint': _fingerprint(base/entry['audio'], base/entry['reference']) if entry.get('audio') else None,
+                        'synthetic':bool(entry.get('synthetic', False)),
+                        'peak_rss_bytes':hypothesis.get('peak_rss_bytes'),
+                        'boundary_omissions':hypothesis.get('boundary_omissions'),
+                        'boundary_duplicates':hypothesis.get('boundary_duplicates'), **evaluate(reference, hypothesis)})
+    report = {'schema_version':1, 'reviewed_corpus':manifest.get('reviewed_corpus') is True,
+              'configuration': {k:v for k,v in manifest.get('configuration', {}).items() if k in ('engine','model','revision','device','compute_type','application_version','language','power_mode','preprocessing')} if mode != 'baseline' else
               {'engine':'faster-whisper', 'model':'medium', 'device':'cpu', 'compute_type':'int8'},
               'hardware': {'system': platform.system(), 'machine': platform.machine(), 'processor': platform.processor()},
               'process_peak_rss_bytes': resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * (1 if platform.system()=='Darwin' else 1024),
@@ -128,6 +135,16 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     run_manifest(args.manifest, args.mode, args.output)
+
+
+
+def _fingerprint(audio: Path, reference: Path) -> str:
+    digest=hashlib.sha256()
+    for path in (audio,reference):
+        digest.update(str(path.stat().st_size).encode()+b':')
+        with path.open('rb') as handle:
+            while chunk:=handle.read(1024*1024): digest.update(chunk)
+    return digest.hexdigest()
 
 if __name__ == '__main__':
     main()
