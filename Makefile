@@ -85,6 +85,7 @@ smoke-live:
 clean-cache:
 	rm -f storage/voice-cache.json
 
+MODEL ?= parakeet-mlx
 WORKER_PYTHON ?= python3.12
 WORKER_ROOT ?= $(CURDIR)/storage/transcription-worker
 WORKER_ENV := .venv-transcription
