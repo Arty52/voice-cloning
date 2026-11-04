@@ -1,0 +1,412 @@
+{
+  "schema_version": 1,
+  "recorded_on": "2026-11-04",
+  "qualification": "incomplete",
+  "default_engine_id": "faster-whisper",
+  "hardware": {
+    "processor": "Apple M2 Max",
+    "memory_bytes": 103079215104,
+    "system": "macOS",
+    "version": "26.6.2",
+    "architecture": "arm64",
+    "power_mode": "automatic (powermode 0); power source not controlled"
+  },
+  "smoke_input": {
+    "source": "https://github.com/ggml-org/whisper.cpp/blob/master/samples/jfk.wav",
+    "sha256": "59dfb9a4acb36fe2a2affc14bacbee2920ff435cb13cc314a08c13f66ba7860e",
+    "duration_seconds": 11.0,
+    "reference_words": 22
+  },
+  "models": [
+    {
+      "engine": "parakeet-mlx",
+      "repository": "mlx-community/parakeet-tdt-0.6b-v2",
+      "revision": "8ae155301e23d820d82aa60d24817c900e69e487",
+      "device": "apple-gpu"
+    },
+    {
+      "engine": "whisper-mlx",
+      "repository": "mlx-community/whisper-large-v3-mlx",
+      "revision": "49e6aa286ad60c14352c404340ded53710378a11",
+      "device": "apple-gpu"
+    }
+  ],
+  "diarization_model": {
+    "repository": "pyannote/speaker-diarization-community-1",
+    "revision": "3533c8cf8e369892e6b79ff1bf80f7b0286a54ee",
+    "device": "cpu"
+  },
+  "short_clip_direct_inference": [
+    {
+      "engine": "faster-whisper",
+      "condition": "cold",
+      "asr_seconds": 4.945099959848449,
+      "process_peak_rss_bytes": 1836068864,
+      "reference_words": 22,
+      "word_errors": 0,
+      "wer": 0.0,
+      "silence_insertions": 0,
+      "names_errors": 0,
+      "names_count": 0,
+      "numbers_errors": 0,
+      "numbers_count": 0,
+      "timestamp_p95_seconds": null,
+      "timestamp_matched_words": 0,
+      "annotated_words": 0,
+      "speaker_word_errors": 0,
+      "speaker_matched_words": 0,
+      "diarization": null
+    },
+    {
+      "engine": "faster-whisper",
+      "condition": "warm",
+      "asr_seconds": 3.1057168759871274,
+      "process_peak_rss_bytes": 1836068864,
+      "reference_words": 22,
+      "word_errors": 0,
+      "wer": 0.0,
+      "silence_insertions": 0,
+      "names_errors": 0,
+      "names_count": 0,
+      "numbers_errors": 0,
+      "numbers_count": 0,
+      "timestamp_p95_seconds": null,
+      "timestamp_matched_words": 0,
+      "annotated_words": 0,
+      "speaker_word_errors": 0,
+      "speaker_matched_words": 0,
+      "diarization": null
+    },
+    {
+      "engine": "parakeet-mlx",
+      "condition": "cold",
+      "reference_words": 22,
+      "word_errors": 0,
+      "wer": 0.0,
+      "silence_insertions": 0,
+      "names_errors": 0,
+      "names_count": 0,
+      "numbers_errors": 0,
+      "numbers_count": 0,
+      "timestamp_p95_seconds": null,
+      "timestamp_matched_words": 0,
+      "annotated_words": 0,
+      "speaker_word_errors": 0,
+      "speaker_matched_words": 0,
+      "diarization": null,
+      "asr_seconds": 16.49660029169172
+    },
+    {
+      "engine": "parakeet-mlx",
+      "condition": "warm",
+      "reference_words": 22,
+      "word_errors": 0,
+      "wer": 0.0,
+      "silence_insertions": 0,
+      "names_errors": 0,
+      "names_count": 0,
+      "numbers_errors": 0,
+      "numbers_count": 0,
+      "timestamp_p95_seconds": null,
+      "timestamp_matched_words": 0,
+      "annotated_words": 0,
+      "speaker_word_errors": 0,
+      "speaker_matched_words": 0,
+      "diarization": null,
+      "asr_seconds": 0.22835862543433905
+    },
+    {
+      "engine": "whisper-mlx",
+      "condition": "cold",
+      "reference_words": 22,
+      "word_errors": 0,
+      "wer": 0.0,
+      "silence_insertions": 0,
+      "names_errors": 0,
+      "names_count": 0,
+      "numbers_errors": 0,
+      "numbers_count": 0,
+      "timestamp_p95_seconds": null,
+      "timestamp_matched_words": 0,
+      "annotated_words": 0,
+      "speaker_word_errors": 0,
+      "speaker_matched_words": 0,
+      "diarization": null,
+      "asr_seconds": 18.81697158329189
+    },
+    {
+      "engine": "whisper-mlx",
+      "condition": "warm",
+      "reference_words": 22,
+      "word_errors": 0,
+      "wer": 0.0,
+      "silence_insertions": 0,
+      "names_errors": 0,
+      "names_count": 0,
+      "numbers_errors": 0,
+      "numbers_count": 0,
+      "timestamp_p95_seconds": null,
+      "timestamp_matched_words": 0,
+      "annotated_words": 0,
+      "speaker_word_errors": 0,
+      "speaker_matched_words": 0,
+      "diarization": null,
+      "asr_seconds": 1.0036926669999957
+    }
+  ],
+  "meetily_gui_import": {
+    "engine": "meetily-parakeet",
+    "application_version": "0.4.1",
+    "model": "parakeet-tdt-0.6b-v3-int8",
+    "language": "auto",
+    "observed_import_upper_bound_seconds": 3.646,
+    "asr_seconds": null,
+    "total_seconds": null,
+    "workflow": "GUI file import",
+    "note": "Completion observed at next UI snapshot; not a precise ASR or end-to-end timing measurement.",
+    "reference_words": 22,
+    "word_errors": 0,
+    "wer": 0.0,
+    "silence_insertions": 0,
+    "names_errors": 0,
+    "names_count": 0,
+    "numbers_errors": 0,
+    "numbers_count": 0,
+    "timestamp_p95_seconds": null,
+    "timestamp_matched_words": 0,
+    "annotated_words": 0,
+    "speaker_word_errors": 0,
+    "speaker_matched_words": 0,
+    "diarization": null
+  },
+  "final_worker_with_speakers": [
+    {
+      "condition": "cold",
+      "engine": "parakeet-mlx",
+      "asr_seconds": 1.795853666961193,
+      "worker_seconds": 19.98802891653031,
+      "http_seconds": 20.190723833628,
+      "total_seconds": null,
+      "peak_rss_bytes": 3399122944,
+      "stages": {
+        "transcription": {
+          "status": "success",
+          "elapsedSeconds": 1.795853666961193
+        },
+        "diarization": {
+          "status": "success",
+          "elapsedSeconds": 19.77715391665697
+        }
+      },
+      "warnings": [],
+      "reference_words": 22,
+      "word_errors": 0,
+      "wer": 0.0,
+      "silence_insertions": 0,
+      "names_errors": 0,
+      "names_count": 0,
+      "numbers_errors": 0,
+      "numbers_count": 0,
+      "timestamp_p95_seconds": null,
+      "timestamp_matched_words": 0,
+      "annotated_words": 0,
+      "speaker_word_errors": 0,
+      "speaker_matched_words": 0,
+      "diarization": null
+    },
+    {
+      "condition": "warm",
+      "engine": "parakeet-mlx",
+      "asr_seconds": 0.3505690414458513,
+      "worker_seconds": 0.6671342924237251,
+      "http_seconds": 0.7955866670235991,
+      "total_seconds": null,
+      "peak_rss_bytes": 3401695232,
+      "stages": {
+        "transcription": {
+          "status": "success",
+          "elapsedSeconds": 0.3505690414458513
+        },
+        "diarization": {
+          "status": "success",
+          "elapsedSeconds": 0.6249135844409466
+        }
+      },
+      "warnings": [],
+      "reference_words": 22,
+      "word_errors": 0,
+      "wer": 0.0,
+      "silence_insertions": 0,
+      "names_errors": 0,
+      "names_count": 0,
+      "numbers_errors": 0,
+      "numbers_count": 0,
+      "timestamp_p95_seconds": null,
+      "timestamp_matched_words": 0,
+      "annotated_words": 0,
+      "speaker_word_errors": 0,
+      "speaker_matched_words": 0,
+      "diarization": null
+    }
+  ],
+  "final_api_with_speakers": {
+    "speaker_count": 1,
+    "engine": "parakeet-mlx",
+    "model": "mlx-community/parakeet-tdt-0.6b-v2",
+    "revision": "8ae155301e23d820d82aa60d24817c900e69e487",
+    "device": "apple-gpu",
+    "language": "en",
+    "asr_seconds": 0.3321286253631115,
+    "warnings": [],
+    "diarizationDevice": "cpu",
+    "diarizationModel": "pyannote/speaker-diarization-community-1",
+    "diarizationRevision": "3533c8cf8e369892e6b79ff1bf80f7b0286a54ee",
+    "speakerDetectionRequested": true,
+    "speakerDetectionSucceeded": true,
+    "total_seconds": 1.2444266248494387,
+    "stages": {
+      "normalization": {
+        "status": "success",
+        "elapsedSeconds": 0.030105166137218475
+      },
+      "transcription": {
+        "status": "success",
+        "elapsedSeconds": 0.3321286253631115
+      },
+      "diarization": {
+        "status": "success",
+        "elapsedSeconds": 0.6289617083966732
+      },
+      "speakerAudio": {
+        "status": "success",
+        "elapsedSeconds": 0.19142312556505203
+      }
+    }
+  },
+  "synthetic_stress": [
+    {
+      "engine": "parakeet-mlx",
+      "duration_seconds": 180,
+      "synthetic": true,
+      "condition": "warm-process",
+      "status": "success",
+      "http_seconds": 2.0373372500762343,
+      "stages": {
+        "transcription": {
+          "status": "success",
+          "elapsedSeconds": 1.7429412910714746
+        }
+      },
+      "word_count": 0,
+      "expected_words_approx": 0,
+      "invalid_timestamps": 0,
+      "nonmonotonic_starts": 0,
+      "last_end_seconds": 0
+    },
+    {
+      "engine": "parakeet-mlx",
+      "duration_seconds": 1800,
+      "synthetic": true,
+      "condition": "warm-process",
+      "status": "success",
+      "http_seconds": 28.247857624664903,
+      "stages": {
+        "transcription": {
+          "status": "success",
+          "elapsedSeconds": 27.361126749776304
+        }
+      },
+      "word_count": 3600,
+      "expected_words_approx": 3600.0,
+      "invalid_timestamps": 0,
+      "nonmonotonic_starts": 0,
+      "last_end_seconds": 1799.92
+    },
+    {
+      "engine": "parakeet-mlx",
+      "duration_seconds": 7200,
+      "synthetic": true,
+      "condition": "warm-process",
+      "status": "success",
+      "http_seconds": 95.85289762541652,
+      "stages": {
+        "transcription": {
+          "status": "success",
+          "elapsedSeconds": 94.7025432093069
+        }
+      },
+      "word_count": 14402,
+      "expected_words_approx": 14400.0,
+      "invalid_timestamps": 0,
+      "nonmonotonic_starts": 0,
+      "last_end_seconds": 7199.92
+    },
+    {
+      "engine": "whisper-mlx",
+      "duration_seconds": 180,
+      "synthetic": true,
+      "condition": "warm-process",
+      "status": "success",
+      "http_seconds": 1.0247033750638366,
+      "stages": {
+        "transcription": {
+          "status": "success",
+          "elapsedSeconds": 0.8030451666563749
+        }
+      },
+      "word_count": 0,
+      "expected_words_approx": 0,
+      "invalid_timestamps": 0,
+      "nonmonotonic_starts": 0,
+      "last_end_seconds": 0
+    },
+    {
+      "engine": "whisper-mlx",
+      "duration_seconds": 1800,
+      "synthetic": true,
+      "condition": "warm-process",
+      "status": "success",
+      "http_seconds": 183.01810991670936,
+      "stages": {
+        "transcription": {
+          "status": "success",
+          "elapsedSeconds": 182.65474920906126
+        }
+      },
+      "word_count": 3629,
+      "expected_words_approx": 3600.0,
+      "invalid_timestamps": 0,
+      "nonmonotonic_starts": 0,
+      "last_end_seconds": 1799.98
+    },
+    {
+      "engine": "whisper-mlx",
+      "duration_seconds": 7200,
+      "synthetic": true,
+      "condition": "warm-process",
+      "status": "success",
+      "http_seconds": 726.7514410000294,
+      "stages": {
+        "transcription": {
+          "status": "success",
+          "elapsedSeconds": 725.4577240422368
+        }
+      },
+      "word_count": 14506,
+      "expected_words_approx": 14400.0,
+      "invalid_timestamps": 0,
+      "nonmonotonic_starts": 0,
+      "last_end_seconds": 7199.98
+    }
+  ],
+  "limitations": [
+    "No reviewed user corpus was available. Public short-clip correctness is not a quality qualification.",
+    "Direct native cold timings include imports and model load; CPU cold excludes dependency imports. Do not compare these cold numbers as equivalent.",
+    "One cold and one warm short-clip observation per engine; no confidence intervals or controlled power/background workloads.",
+    "Meetily timing is a GUI observation upper bound, not measured ASR or comparable total latency.",
+    "Synthetic repetition counts do not distinguish omissions from insertions and do not replace seam audits or realistic long recordings.",
+    "No reviewed speaker or word-timing annotations; DER and timestamp accuracy remain unmeasured.",
+    "RSS samples cover worker and children only, exclude API and FFmpeg, and may miss peaks. CPU peak is a single-process lifetime maximum. Long-run pipeline memory was not measured.",
+    "No complete CPU/native/Meetily real-corpus end-to-end comparison. Default promotion remains blocked."
+  ]
+}
