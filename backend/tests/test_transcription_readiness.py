@@ -12,7 +12,7 @@ def test_cpu_readiness_requires_registered_processor_but_not_speaker_credentials
     monkeypatch.setattr(NativeWorkerClient,'capabilities',unavailable)
     settings=make_settings(tmp_path)
     disabled=asyncio.run(engine_metadata(settings))
-    assert not disabled['engines'][0]['ready']
+    assert disabled['engines'][0]['ready']
     enabled=asyncio.run(engine_metadata(replace(settings,sample_processing_enable_diarization=True,sample_processing_hf_token='')))
     assert enabled['engines'][0]['ready']
     assert enabled['defaultEngineId']=='faster-whisper'

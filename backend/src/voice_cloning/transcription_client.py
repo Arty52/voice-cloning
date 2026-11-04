@@ -100,12 +100,11 @@ class NativeWorkerClient:
 
 
 async def engine_metadata(settings: Settings):
-    configured=bool(settings.sample_processing_enable_diarization or settings.transcription_worker_url)
-    cpu_ready=configured and importlib.util.find_spec('faster_whisper') is not None
+    cpu_ready=importlib.util.find_spec('faster_whisper') is not None
     engines=[{'id':'faster-whisper','label':'Whisper CPU','model':settings.sample_processing_whisper_model,
               'device':'cpu' if settings.sample_processing_whisper_device=='cpu' else settings.sample_processing_whisper_device,
               'languages':list(CPU_LANGUAGES),'ready':cpu_ready,
-              'unavailableReason':None if cpu_ready else 'Enable local transcription and install backend[diarization] for the CPU engine.'}]
+              'unavailableReason':None if cpu_ready else 'Install backend[diarization] for the CPU engine.'}]
     native = None
     reason='Configure and start the native Mac worker.'
     try:

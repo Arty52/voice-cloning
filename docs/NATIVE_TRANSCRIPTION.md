@@ -14,7 +14,7 @@ make worker-start
 make worker-doctor
 ```
 
-Setup creates `.venv-transcription/` and a private random token in `storage/transcription-worker/token` with mode 0600. Models, download caches, temporary audio, and logs remain under that ignored runtime directory. Model preparation is explicit and pinned to the revisions in `transcription/src/voice_transcription/catalog.py`. Start does not download models. Doctor reports preparation and live authenticated worker availability separately. Model switching releases the previous ASR model from the supervised process.
+The native worker uses Python 3.12 in `.venv-transcription/`; the backend development environment remains separate in `.venv/`. Setup creates `.venv-transcription/` and a private random token in `storage/transcription-worker/token` with mode 0600. Models, download caches, temporary audio, and logs remain under that ignored runtime directory. Model preparation is explicit and pinned to the revisions in `transcription/src/voice_transcription/catalog.py`. Start does not download models. Doctor reports preparation and live authenticated worker availability separately. Model switching releases the previous ASR model from the supervised process.
 
 For optional speaker detection, accept the Hugging Face conditions for `pyannote/speaker-diarization-community-1`, supply an authorized token through `HF_TOKEN` in the shell environment, and run:
 
@@ -45,9 +45,9 @@ Open **Transcript**, choose an engine and language, and leave **Detect Speakers*
 
 Cancel terminates the native inference children and releases the active job slot. Failed or canceled attempts retain the selected upload for **Retry Transcript**. An engine failure never silently switches engines. If a process crashes, retry after refreshing availability; if necessary run `make worker-stop` then `make worker-start`. Inspect the ignored `storage/transcription-worker/worker.log` for local diagnostics.
 
-Choose **Whisper CPU** to switch back. Saved transcripts keep their original engine metadata and remain editable; engine selection affects the next job. CPU transcription requires the existing `backend[diarization]` dependencies (`INSTALL_DIARIZATION=1` for Docker) and local transcription enabled via worker configuration or `SAMPLE_PROCESSING_ENABLE_DIARIZATION=1`. Keep `SAMPLE_PROCESSING_WHISPER_MODEL=medium`, `SAMPLE_PROCESSING_WHISPER_DEVICE=cpu`, and `SAMPLE_PROCESSING_WHISPER_COMPUTE_TYPE=int8` for the baseline.
+Choose **Whisper CPU** to switch back. Saved transcripts keep their original engine metadata and remain editable; engine selection affects the next job. CPU transcription requires the existing `backend[diarization]` dependencies (`INSTALL_DIARIZATION=1` for Docker). Keep `SAMPLE_PROCESSING_WHISPER_MODEL=medium`, `SAMPLE_PROCESSING_WHISPER_DEVICE=cpu`, and `SAMPLE_PROCESSING_WHISPER_COMPUTE_TYPE=int8` for the baseline.
 
-To disable native integration, clear both `TRANSCRIPTION_WORKER_*` entries, keep `SAMPLE_PROCESSING_ENABLE_DIARIZATION=1` for CPU transcription, recreate the API, and run `make worker-stop`. Do not delete PostgreSQL volumes, source audio, or saved job JSON. No database schema migration is introduced. Legacy `separateSpeakers` jobs and Prepare Audio remain supported.
+To disable native integration, clear both `TRANSCRIPTION_WORKER_*` entries, recreate the API, and run `make worker-stop`. Do not delete PostgreSQL volumes, source audio, or saved job JSON. No database schema migration is introduced. Legacy `separateSpeakers` jobs and Prepare Audio remain supported.
 
 ## Qualification Status
 
