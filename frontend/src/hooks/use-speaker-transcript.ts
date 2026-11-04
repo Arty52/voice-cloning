@@ -45,7 +45,7 @@ export function useSpeakerTranscript({
   const speakerSaveRequestIdRef = useRef(0)
 
   const speakerSeparationResult =
-    job?.status === "success" && isSpeakerSeparationResult(job.result) ? job.result : null
+    job?.status === "success" && isTranscriptResult(job.result) ? job.result : null
   const isSpeakerSeparationJob = speakerSeparationResult !== null
   const unsavedTranscriptItemIds = useMemo(() => {
     if (!speakerSeparationResult) {
@@ -198,7 +198,7 @@ export function useSpeakerTranscript({
   }
 
   async function patchSpeakerAssignments(request: api.UpdateSpeakerAssignmentsRequest) {
-    if (!job || job.status !== "success" || !isSpeakerSeparationResult(job.result)) {
+    if (!job || job.status !== "success" || !isTranscriptResult(job.result)) {
       return
     }
     const activeJobId = job.id
@@ -244,7 +244,7 @@ export function useSpeakerTranscript({
 
   async function saveTranscriptItems(itemIds = unsavedTranscriptItemIds) {
     const result = job?.result ?? null
-    if (!job || job.status !== "success" || !isSpeakerSeparationResult(result)) {
+    if (!job || job.status !== "success" || !isTranscriptResult(result)) {
       return
     }
     const uniqueItemIds = uniqueIds(itemIds).filter((itemId) =>
@@ -275,7 +275,7 @@ export function useSpeakerTranscript({
         return
       }
       onJobUpdate(payload.job)
-      if (isSpeakerSeparationResult(payload.job.result)) {
+      if (isTranscriptResult(payload.job.result)) {
         const responseTexts = new Map(
           payload.job.result.transcript.items.map((item) => [item.id, item.text])
         )
@@ -321,7 +321,7 @@ export function useSpeakerTranscript({
 
   async function handleSaveSpeakerVoices(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault()
-    if (!job || job.status !== "success" || !isSpeakerSeparationResult(job.result)) {
+    if (!job || job.status !== "success" || !isTranscriptResult(job.result)) {
       return
     }
     const activeJobId = job.id
@@ -403,7 +403,7 @@ export function useSpeakerTranscript({
 
 export type SpeakerTranscriptController = ReturnType<typeof useSpeakerTranscript>
 
-function isSpeakerSeparationResult(result: SampleProcessingJob["result"]): result is SpeakerSeparationResult {
+function isTranscriptResult(result: SampleProcessingJob["result"]): result is SpeakerSeparationResult {
   return Boolean(result && "kind" in result && (result.kind === "speakerSeparation" || result.kind === "transcript"))
 }
 
