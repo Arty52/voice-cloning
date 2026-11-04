@@ -116,6 +116,8 @@ class Settings:
     sample_processing_enable_diarization: bool = False
     sample_processing_pyannote_model: str = "pyannote/speaker-diarization-community-1"
     sample_processing_hf_token: str = ""
+    transcription_worker_url: str = ""
+    transcription_worker_token_path: str = ""
     sample_processing_whisper_model: str = "medium"
     sample_processing_whisper_device: str = "cpu"
     sample_processing_whisper_compute_type: str = "int8"
@@ -195,6 +197,8 @@ class Settings:
                 os.getenv("SAMPLE_PROCESSING_HF_TOKEN", "").strip()
                 or os.getenv("HF_TOKEN", "").strip()
             ),
+            transcription_worker_url=os.getenv("TRANSCRIPTION_WORKER_URL", "").strip(),
+            transcription_worker_token_path=os.getenv("TRANSCRIPTION_WORKER_TOKEN_PATH", "").strip(),
             sample_processing_whisper_model=os.getenv("SAMPLE_PROCESSING_WHISPER_MODEL", "medium").strip()
             or "medium",
             sample_processing_whisper_device=os.getenv("SAMPLE_PROCESSING_WHISPER_DEVICE", "cpu").strip()

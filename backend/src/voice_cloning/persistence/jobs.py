@@ -254,6 +254,8 @@ def _sample_processing_job_from_payload(payload: Mapping[str, Any]) -> SamplePro
         ),
         active_progress_phase_id=_optional_str(payload.get("active_progress_phase_id")),
         source_selection=_source_selection_from_payload(payload.get("source_selection")),
+        transcription_options=dict(payload["transcription_options"]) if isinstance(payload.get("transcription_options"), Mapping) else None,
+        transcription_progress=dict(payload["transcription_progress"]) if isinstance(payload.get("transcription_progress"), Mapping) else None,
     )
 
 
@@ -316,9 +318,10 @@ def _source_range_from_payload(payload: Mapping[str, Any]) -> SampleProcessingSo
 def _sample_processing_result_from_payload(value: Any) -> SampleProcessingJobResult | None:
     if not isinstance(value, Mapping):
         return None
-    if value.get("kind") == "speakerSeparation":
+    if value.get("kind") in {"speakerSeparation", "transcript"}:
         return SpeakerSeparationResult(
-            kind="speakerSeparation",
+            kind=value["kind"],
+            metadata=dict(value["metadata"]) if isinstance(value.get("metadata"), Mapping) else None,
             speakers=tuple(_speaker_from_payload(item) for item in _mapping_items(value.get("speakers"))),
             transcript=SpeakerSeparationTranscript(
                 items=tuple(
@@ -359,7 +362,7 @@ def _transcript_item_from_payload(payload: Mapping[str, Any]) -> SpeakerTranscri
         text=str(payload["text"]),
         start_seconds=float(payload["start_seconds"]),
         end_seconds=float(payload["end_seconds"]),
-        speaker_id=str(payload["speaker_id"]),
+        speaker_id=_optional_str(payload.get("speaker_id")),
         words=(
             tuple(_transcript_word_from_payload(word) for word in _mapping_items(words_payload))
             if words_payload is not None
