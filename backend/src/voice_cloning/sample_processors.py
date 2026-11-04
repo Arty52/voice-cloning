@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 from dataclasses import dataclass, replace
 import importlib
 import os
@@ -364,7 +365,7 @@ class DiarizationSampleProcessor:
 
 def create_sample_processor(
     settings: Settings,
-) -> DemucsSampleProcessor | FFmpegSampleProcessor | DiarizationSampleProcessor | CompositeSampleProcessor | UnavailableSampleProcessor:
+) -> SampleProcessor:
     processors: list[SampleProcessor] = []
     if settings.sample_processing_engine == "demucs":
         processors.append(DemucsSampleProcessor(settings))
@@ -372,13 +373,13 @@ def create_sample_processor(
         processors.append(FFmpegSampleProcessor(settings))
     if settings.sample_processing_enable_diarization:
         processors.append(DiarizationSampleProcessor(settings))
-    if settings.sample_processing_enable_diarization or settings.transcription_worker_url:
+    if settings.sample_processing_enable_diarization or settings.transcription_worker_url or importlib.util.find_spec('faster_whisper') is not None:
         from .transcription_processor import TranscriptionSampleProcessor
         processors.append(TranscriptionSampleProcessor(settings))
     if not processors:
         return UnavailableSampleProcessor()
     if len(processors) == 1:
-        return processors[0]  # type: ignore[return-value]
+        return processors[0]
     return CompositeSampleProcessor(tuple(processors))
 
 

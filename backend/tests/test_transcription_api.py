@@ -84,3 +84,14 @@ def test_cpu_speaker_failure_preserves_text_without_credentials(tmp_path):
     assert result['warnings']
     assert stages['diarization']['status']=='error'
     assert 'diarization' not in result
+
+
+def test_cpu_only_installation_registers_transcription_without_speaker_flag(tmp_path,monkeypatch):
+    import voice_cloning.sample_processors as processors
+    from voice_cloning.transcription_client import engine_metadata
+    settings=replace(make_settings(tmp_path),sample_processing_enable_diarization=False,transcription_worker_url='')
+    monkeypatch.setattr(processors.importlib.util,'find_spec',lambda name:object() if name=='faster_whisper' else None)
+    processor=processors.create_sample_processor(settings)
+    assert 'transcribe' in {operation.id for operation in processor.operations()}
+    assert 'separateSpeakers' not in {operation.id for operation in processor.operations()}
+    assert asyncio.run(engine_metadata(settings))['engines'][0]['ready']
