@@ -37,7 +37,8 @@ export function TranscriptionControls({ settings, disabled }: { settings: Transc
           <FieldLabel htmlFor="transcription-speakers">Detect Speakers</FieldLabel>
         </div>
         <FieldDescription>
-          {settings.options.detectSpeakers && settings.options.engineId !== "faster-whisper" && !settings.nativeDiarizationReady
+          {!settings.options.detectSpeakers ? "Text-only transcription. Speaker detection is off."
+            : settings.options.engineId !== "faster-whisper" && !settings.nativeDiarizationReady
             ? "Speaker detection is not prepared. Text will remain available if detection fails."
             : "Speaker detection uses CPU. Turn it off for text-only transcription."}
         </FieldDescription>

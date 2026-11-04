@@ -64,7 +64,7 @@ export function SpeakerTranscriptWorkspace({
   const [isSpeakerSaveDialogOpen, setSpeakerSaveDialogOpen] = useState(false)
   const [exportFormat, setExportFormat] = useState<TranscriptExportFormat>("markdown")
   const [includeStartTimes, setIncludeStartTimes] = useState(false)
-  const speakerResult = controller.speakerSeparationResult
+  const speakerResult = controller.transcriptResult
   const speakerLabels = useMemo(
     () => Object.fromEntries((speakerResult?.speakers ?? []).map((speaker) => [speaker.id, speaker.label])),
     [speakerResult],

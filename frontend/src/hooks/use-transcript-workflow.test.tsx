@@ -354,7 +354,7 @@ describe("useTranscriptWorkflow", () => {
     const { result } = renderTranscriptWorkflow()
 
     await waitFor(() => expect(result.current.status).toBe("success"))
-    expect(result.current.speakerTranscript.speakerSeparationResult).toEqual(speakerResult)
+    expect(result.current.speakerTranscript.transcriptResult).toEqual(speakerResult)
     expect(window.localStorage.getItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY)).toBe("transcript-job-1")
   })
 
@@ -717,7 +717,7 @@ it("submits MLX text-only choices without a CPU estimate and restores the new jo
   await act(async () => result.current.handleStartTranscription())
   expect(api.createSampleProcessingJob).toHaveBeenCalledWith({ operationId: "transcribe", transcriptionEngineId: "parakeet-mlx", language: "en", detectSpeakers: false, sourceFile })
   expect(result.current.timingDiagnostic).toBeNull()
-  expect(result.current.speakerTranscript.speakerSeparationResult?.transcript.items[0].speakerId).toBeNull()
+  expect(result.current.speakerTranscript.transcriptResult?.transcript.items[0].speakerId).toBeNull()
   expect(result.current.speakerTranscript.canSaveSelectedSpeakers).toBe(false)
   unmount()
   vi.mocked(api.fetchSampleProcessingJob).mockResolvedValue({ job: completed })
