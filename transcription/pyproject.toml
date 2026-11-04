@@ -1,0 +1,13 @@
+[build-system]
+requires = ["hatchling>=1.28"]
+build-backend = "hatchling.build"
+
+[project]
+name = "voice-transcription"
+version = "0.1.0"
+requires-python = ">=3.12"
+description = "Local transcription contracts, evaluation, and native inference worker."
+dependencies = []
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/voice_transcription"]
