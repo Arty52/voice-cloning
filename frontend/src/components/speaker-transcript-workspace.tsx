@@ -275,7 +275,7 @@ export function SpeakerTranscriptWorkspace({
                     const speakerIndex = speakerIndexForItem(speakerResult, item)
                     const speaker = item.speakerId === null ? undefined : speakerResult.speakers[speakerIndex]
                     const isSelected = controller.selectedTranscriptItemIds.includes(item.id)
-                    const isHoveredSpeaker = hoveredSpeakerId === item.speakerId
+                    const isHoveredSpeaker = item.speakerId !== null && hoveredSpeakerId === item.speakerId
                     const draftText = controller.transcriptTextDrafts[item.id] ?? item.text
                     const isDirty = controller.unsavedTranscriptItemIds.includes(item.id)
                     return (
@@ -624,11 +624,11 @@ function TranscriptExportCard({
 
 function speakerIndexForItem(result: SpeakerSeparationResult, item: SpeakerTranscriptItem) {
   const index = result.speakers.findIndex((speaker) => speaker.id === item.speakerId)
-  return index >= 0 ? index : 0
+  return index
 }
 
 function speakerStyle(index: number): CSSProperties {
   return {
-    "--speaker-color": SPEAKER_COLORS[index % SPEAKER_COLORS.length],
+    "--speaker-color": index < 0 ? "var(--foreground)" : SPEAKER_COLORS[index % SPEAKER_COLORS.length],
   } as CSSProperties
 }
