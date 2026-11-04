@@ -68,6 +68,8 @@ def merge_overlap(previous, current, overlap_start, overlap_end):
     for i,a in left:
         for j,b in right:
             if (a.has_word_alignment and b.has_word_alignment and normalize(a) and normalize(a)==normalize(b)
+                and previous[i+1].has_word_alignment and current[j+1].has_word_alignment
+                and normalize(previous[i+1])
                 and normalize(previous[i+1])==normalize(current[j+1])
                 and abs(a.start_seconds-b.start_seconds) <= .6
                 and abs(previous[i+1].start_seconds-current[j+1].start_seconds) <= .6):

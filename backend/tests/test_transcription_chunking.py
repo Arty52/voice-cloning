@@ -48,3 +48,12 @@ def test_malformed_parakeet_word_only_falls_back_its_sentence():
     assert [w.text for w in words]==['Good','words.','Keep this.']
     assert words[-1].start_seconds==2. and not words[-1].has_word_alignment
     assert words[0].has_word_alignment
+
+
+@pytest.mark.parametrize('second', [Word('...', 111, 111.2), Word('fallback', 111, 111.2, False)])
+def test_overlap_anchor_requires_two_aligned_lexical_words(second):
+    from voice_transcription.chunking import merge_overlap
+    left=[Word('anchor',110,110.5),second,Word('keep',112,112.2)]
+    right=[Word('anchor',110,110.5),second,Word('new',113,113.2)]
+    merged=merge_overlap(left,right,110,115)
+    assert [word.text for word in merged]==['anchor',second.text,'keep','new']
