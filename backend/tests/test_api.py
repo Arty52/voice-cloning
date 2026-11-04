@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import sys
 import time
+from types import SimpleNamespace
 from typing import Callable, get_args
 
 import pytest
@@ -4446,6 +4447,111 @@ def test_diarization_processor_omits_word_alignment_for_segment_timing_fallback(
     ]
     assert restored_response.status_code == 200
     assert restored_response.json()["job"]["result"]["transcript"]["items"] == job["result"]["transcript"]["items"]
+
+
+@pytest.mark.parametrize("bad_alignment", ["overlap", "missing_word_timing"])
+def test_diarization_timing_fallback_survives_reload_and_speaker_reassignment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bad_alignment: str,
+) -> None:
+    class LongRecordingPipeline(FakePyannotePipeline):
+        def __call__(self, path: str):
+            return [
+                (FakeDiarizationSegment(1190, 1205), "A"),
+                (FakeDiarizationSegment(1205, 1210), "B"),
+            ]
+
+    class UnreliableWhisperModel(FakeWhisperModel):
+        def transcribe(self, path: str, *, word_timestamps: bool):
+            second_start = 1200.4 if bad_alignment == "overlap" else 1200.6
+            return ([
+                FakeWhisperSegment([FakeWhisperWord("Before.", 1198, 1198.4)]),
+                SimpleNamespace(text="Keep everything.", start=1200, end=1200.8, words=[
+                    FakeWhisperWord("Keep", 1200, 1200.8),
+                    FakeWhisperWord("everything.", second_start, 1200.6),
+                ]),
+                FakeWhisperSegment([FakeWhisperWord("After.", 1202, 1202.4)]),
+                FakeWhisperSegment([FakeWhisperWord("Other speaker.", 1206, 1206.5)]),
+            ], object())
+
+    monkeypatch.setattr(
+        sample_processors_module, "_load_diarization_dependencies",
+        lambda: sample_processors_module._DiarizationDependencies(
+            pipeline_class=LongRecordingPipeline, whisper_model_class=UnreliableWhisperModel,
+        ),
+    )
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'jobs.sqlite'}"
+    engine = create_database_engine(database_url)
+    Base.metadata.create_all(engine)
+    settings = replace(
+        make_settings(tmp_path), database_url=database_url,
+        sample_processing_enable_diarization=True, sample_processing_hf_token="hf_test",
+        sample_processing_ffmpeg_command=str(ffmpeg_fake_command(tmp_path / "ffmpeg-fake", output=b"fake-wav")),
+    )
+    with TestClient(create_app(settings=settings)) as client:
+        create = client.post(
+            "/api/sample-processing/jobs", data={"operationId": "separateSpeakers"},
+            files={"sourceFile": ("long-recording.wav", b"speaker-source", "audio/wav")},
+        )
+        job = wait_for_processing_job(client, create.json()["job"]["id"])
+
+    items = job["result"]["transcript"]["items"]
+    assert job["status"] == "success"
+    assert [item["text"] for item in items] == ["Before.", "Keep everything.", "After.", "Other speaker."]
+    assert ["words" in item for item in items] == [True, False, True, True]
+    assert (items[1]["startSeconds"], items[1]["endSeconds"]) == (1200, 1200.8)
+
+    with TestClient(create_app(settings=settings)) as client:
+        restored = client.get(f"/api/sample-processing/jobs/{job['id']}")
+        assert restored.json()["job"]["result"] == job["result"]
+        assert client.get(f"/api/sample-processing/jobs/{job['id']}/source").content == b"speaker-source"
+        for speaker in job["result"]["speakers"]:
+            audio = client.get(f"/api/sample-processing/jobs/{job['id']}/speakers/{speaker['id']}/result")
+            assert audio.status_code == 200
+            assert audio.content == b"fake-wav"
+        updated = client.patch(
+            f"/api/sample-processing/jobs/{job['id']}/speaker-assignments",
+            json={"transcriptAssignments": [{"itemId": items[1]["id"], "speakerId": "speaker-2"}]},
+        )
+        assert updated.status_code == 200
+        updated_result = updated.json()["job"]["result"]
+        assert updated_result["transcript"]["items"] == [
+            items[0], {**items[1], "speakerId": "speaker-2"}, *items[2:],
+        ]
+
+    with TestClient(create_app(settings=settings)) as client:
+        assert client.get(f"/api/sample-processing/jobs/{job['id']}").json()["job"]["result"] == updated_result
+
+
+def test_diarization_unusable_passage_fails_before_speaker_audio_generation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class UnusableTimingWhisperModel(FakeWhisperModel):
+        def transcribe(self, path: str, *, word_timestamps: bool):
+            return ([SimpleNamespace(text="Missing timing.", words=[FakeWhisperWord("Missing timing.", 0, 0)])], object())
+
+    async def unexpected_speaker_streams(*args, **kwargs):
+        pytest.fail("Speaker streams must not be generated for an unusable passage")
+
+    monkeypatch.setattr(sample_processors_module.DiarizationSampleProcessor, "_attach_speaker_streams", unexpected_speaker_streams)
+    monkeypatch.setattr(
+        sample_processors_module, "_load_diarization_dependencies",
+        lambda: sample_processors_module._DiarizationDependencies(
+            pipeline_class=FakePyannotePipeline, whisper_model_class=UnusableTimingWhisperModel,
+        ),
+    )
+    settings = replace(
+        make_settings(tmp_path), sample_processing_enable_diarization=True,
+        sample_processing_hf_token="hf_test",
+        sample_processing_ffmpeg_command=str(ffmpeg_fake_command(tmp_path / "ffmpeg-fake", output=b"fake-wav")),
+    )
+    with TestClient(create_app(settings=settings)) as client:
+        create = client.post(
+            "/api/sample-processing/jobs", data={"operationId": "separateSpeakers"},
+            files={"sourceFile": ("conversation.wav", b"speaker-source", "audio/wav")},
+        )
+        job = wait_for_processing_job(client, create.json()["job"]["id"], status="error")
+    assert job["error"] == "Whisper transcription has no usable timing for a passage."
+    assert job["result"] is None
 
 
 def test_diarization_processor_rejects_oversized_speaker_stream(
