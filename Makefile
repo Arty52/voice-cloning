@@ -84,3 +84,21 @@ smoke-live:
 
 clean-cache:
 	rm -f storage/voice-cache.json
+
+WORKER_PYTHON ?= python3.12
+WORKER_ROOT ?= $(CURDIR)/storage/transcription-worker
+WORKER_ENV := .venv-transcription
+
+.PHONY: worker-setup worker-start worker-stop worker-doctor worker-prepare
+worker-setup:
+	$(WORKER_PYTHON) -m venv $(WORKER_ENV)
+	$(WORKER_ENV)/bin/python -m pip install -e 'transcription[worker,mac]'
+	$(WORKER_ENV)/bin/python -m voice_transcription.cli init --root '$(WORKER_ROOT)'
+worker-start:
+	$(WORKER_ENV)/bin/python -m voice_transcription.cli start --root '$(WORKER_ROOT)'
+worker-stop:
+	$(WORKER_ENV)/bin/python -m voice_transcription.cli stop --root '$(WORKER_ROOT)'
+worker-doctor:
+	$(WORKER_ENV)/bin/python -m voice_transcription.cli doctor --root '$(WORKER_ROOT)'
+worker-prepare:
+	$(WORKER_ENV)/bin/python -m voice_transcription.cli prepare --root '$(WORKER_ROOT)' --model '$(MODEL)'
