@@ -726,3 +726,17 @@ it("submits MLX text-only choices without a CPU estimate and restores the new jo
   expect(restored.result.current.job?.transcriptionOptions).toEqual(options)
   expect(restored.result.current.processingEstimateRangeSeconds).toBeNull()
 })
+
+
+it("omits the combined CPU estimate when speaker detection is off", () => {
+  const options = {engineId: "faster-whisper", language: "en", detectSpeakers: true}
+  const transcription = {options, engines: [], status: "success" as const, ready: true, unavailableReason: null,
+    nativeDiarizationReady: false, selectedEngine: undefined, selectEngine: vi.fn(), selectLanguage: vi.fn(),
+    setDetectSpeakers: vi.fn(), refresh: vi.fn()}
+  const {result,rerender} = renderTranscriptWorkflow({transcription})
+  act(()=>result.current.handleSourceFileSelect(new File(["audio"],"clip.wav")))
+  expect(result.current.preStartEstimateRangeSeconds).not.toBeNull()
+  options.detectSpeakers=false
+  rerender()
+  expect(result.current.preStartEstimateRangeSeconds).toBeNull()
+})

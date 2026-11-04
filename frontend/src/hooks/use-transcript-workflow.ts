@@ -96,15 +96,16 @@ export function useTranscriptWorkflow({
     onVoiceSaved,
   })
   const isNative = transcription?.options.engineId !== undefined && transcription.options.engineId !== "faster-whisper"
+  const detectSpeakers = transcription?.options.detectSpeakers ?? true
   const preStartEstimateRangeSeconds = useMemo(
     () =>
-      isNative ? null : estimateSampleProcessingDurationRangeSeconds({
+      isNative || !detectSpeakers ? null : estimateSampleProcessingDurationRangeSeconds({
         cleanVoice: false,
-        detectSpeakers: true,
+        detectSpeakers,
         sourceSizeBytes: sourceFile?.size ?? null,
         trimCandidates: false,
       }),
-    [sourceFile?.size, isNative]
+    [sourceFile?.size, isNative, detectSpeakers]
   )
 
   const isProcessing = status === "restoring" || status === "starting" || status === "processing"
@@ -123,7 +124,7 @@ export function useTranscriptWorkflow({
   const canCancel =
     (status === "starting" || status === "processing") && activeJobIdRef.current !== null
   const processingEstimateRangeSeconds =
-    isProcessing && timingDiagnostic && (!job?.transcriptionOptions || job.transcriptionOptions.engineId === "faster-whisper")
+    isProcessing && timingDiagnostic && job?.transcriptionOptions?.detectSpeakers !== false && (!job?.transcriptionOptions || job.transcriptionOptions.engineId === "faster-whisper")
       ? {
           minSeconds: timingDiagnostic.estimateMinSeconds,
           maxSeconds: timingDiagnostic.estimateMaxSeconds,
