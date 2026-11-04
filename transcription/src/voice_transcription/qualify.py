@@ -21,7 +21,16 @@ def qualify(baseline: dict, candidate: dict) -> dict:
             reasons.append(reason)
     def indexed(report):
         records = report.get('recordings', [])
-        index = {(row['id'], row.get('condition')): row for row in records}
+        if not isinstance(records, list):
+            require(False, 'Recordings must be a list of measurement objects.')
+            return {}
+        index = {}
+        for row in records:
+            if (not isinstance(row, dict) or not isinstance(row.get('id'), str) or not row['id'].strip()
+                    or row.get('condition') not in ('cold', 'warm')):
+                require(False, 'Each recording requires a non-empty ID and a cold or warm condition.')
+                continue
+            index[(row['id'], row['condition'])] = row
         require(len(index) == len(records), 'Duplicate recording IDs and conditions.')
         return index
     old, new = indexed(baseline), indexed(candidate)

@@ -59,3 +59,12 @@ def test_missing_or_regressed_measurements_keep_default(change):
 def test_null_measurements_fail_closed(metric):
     b,c=reports();c['recordings'][0][metric]=None
     assert not qualify(b,c)['eligible']
+
+
+@pytest.mark.parametrize('rows', [None,{},[None],[{}],[{'id':[]}],[{'id':'','condition':'cold'}],
+    [{'id':'clip','condition':[]}],[{'id':'clip','condition':'hot'}]])
+def test_malformed_recording_index_fails_closed(rows):
+    b,c=reports();c['recordings']=rows
+    result=qualify(b,c)
+    assert not result['eligible'] and result['reasons']
+    assert result['default_engine_id']=='faster-whisper'
