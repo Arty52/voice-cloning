@@ -726,3 +726,20 @@ it("submits MLX text-only choices without a CPU estimate and restores the new jo
   expect(restored.result.current.job?.transcriptionOptions).toEqual(options)
   expect(restored.result.current.processingEstimateRangeSeconds).toBeNull()
 })
+
+
+it("retains the selected file after a failed job so an explicit retry uses the same engine", async () => {
+  const sourceFile = new File(["audio"], "retry.wav")
+  vi.mocked(api.createSampleProcessingJob).mockResolvedValue({ job: buildJob("error", { operationId: "transcribe" }) })
+  const { result } = renderTranscriptWorkflow()
+  act(() => result.current.handleSourceFileSelect(sourceFile))
+  await act(async () => result.current.handleStartTranscription())
+  expect(result.current.status).toBe("error")
+  expect(result.current.sourceFile).toBe(sourceFile)
+  expect(result.current.canStart).toBe(true)
+  vi.mocked(api.createSampleProcessingJob).mockResolvedValue({ job: buildJob("success", { id: "retry-success", operationId: "transcribe" }) })
+  await act(async () => result.current.handleStartTranscription())
+  expect(api.createSampleProcessingJob).toHaveBeenLastCalledWith(expect.objectContaining({ sourceFile, transcriptionEngineId: "faster-whisper" }))
+  expect(result.current.status).toBe("success")
+  expect(result.current.sourceFile).toBeNull()
+})

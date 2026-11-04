@@ -215,7 +215,6 @@ export function useTranscriptWorkflow({
       if (!isActiveRun(runId)) {
         return
       }
-      setSourceFile(null)
       if (applyJob(payload.job)) {
         return
       }
@@ -384,6 +383,7 @@ export function useTranscriptWorkflow({
     const elapsedMs = elapsedMsFromJob(nextJob)
     setProcessingElapsedMs(elapsedMs)
     if (nextJob.status === "success") {
+      setSourceFile(null)
       finishTimingDiagnostic("success", elapsedMs, completedAtFromJob(nextJob))
       setStatus("success")
       setError(null)
