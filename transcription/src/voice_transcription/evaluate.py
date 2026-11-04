@@ -10,8 +10,15 @@ import math
 from pathlib import Path
 import platform
 import re
-import resource
 import time
+
+
+def process_peak_rss_bytes():
+    try:
+        import resource
+    except ImportError:
+        return None
+    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * (1 if platform.system() == 'Darwin' else 1024)
 
 
 def tokens(text: str) -> list[str]:
@@ -103,7 +110,7 @@ def run_manifest(manifest_path: Path, mode: str, output: Path) -> dict:
         reference = json.loads((base / entry['reference']).read_text())
         started = time.perf_counter()
         if transcriber:
-            words = transcriber.transcribe(base / entry['audio'], entry.get('language', 'en'))
+            words = transcriber.transcribe(base / entry['audio'], None if entry.get('language') in (None, 'auto') else entry['language'])
             hypothesis = {'text': ' '.join(w.text for w in words), 'words': [asdict(w) for w in words]}
             elapsed = time.perf_counter()-started
         else:
@@ -121,7 +128,7 @@ def run_manifest(manifest_path: Path, mode: str, output: Path) -> dict:
               'configuration': {k:v for k,v in manifest.get('configuration', {}).items() if k in ('engine','model','revision','device','compute_type','application_version','language','power_mode','preprocessing')} if mode != 'baseline' else
               {'engine':'faster-whisper', 'model':'medium', 'device':'cpu', 'compute_type':'int8'},
               'hardware': {'system': platform.system(), 'machine': platform.machine(), 'processor': platform.processor()},
-              'process_peak_rss_bytes': resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * (1 if platform.system()=='Darwin' else 1024),
+              'process_peak_rss_bytes': process_peak_rss_bytes(),
               'recordings': records}
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, indent=2)+'\n')

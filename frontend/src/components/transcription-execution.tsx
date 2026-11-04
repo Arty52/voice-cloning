@@ -12,8 +12,8 @@ export function TranscriptionExecution({ job }: { job: SampleProcessingJob }) {
   return (
     <div className="flex basis-full flex-col gap-2">
       <div className="flex flex-wrap gap-2">
-        {metadata?.device ? <Badge>ASR: {metadata.device === "apple-gpu" ? "Apple GPU" : metadata.device === "cpu" ? "CPU" : metadata.device}</Badge> : null}
-        {metadata?.diarizationDevice ? <Badge>Speaker Detection: CPU</Badge> : null}
+        {metadata?.device ? <Badge>ASR: {deviceLabel(metadata.device)}</Badge> : null}
+        {metadata?.diarizationDevice ? <Badge>Speaker Detection: {deviceLabel(metadata.diarizationDevice)}</Badge> : null}
         {result ? <Badge variant="secondary">{result.speakers.length ? `${result.speakers.length} Speakers` : "Unassigned Speakers"}</Badge> : null}
       </div>
       <ul aria-label="Measured Processing Stages" className="flex flex-wrap gap-3 text-sm text-muted-foreground">
@@ -22,4 +22,8 @@ export function TranscriptionExecution({ job }: { job: SampleProcessingJob }) {
       {metadata?.warnings?.map((warning, index) => <Alert key={index}><AlertTitle>Transcript Notice</AlertTitle><AlertDescription>{warning}</AlertDescription></Alert>)}
     </div>
   )
+}
+
+function deviceLabel(device: string) {
+  return device === "apple-gpu" ? "Apple GPU" : device === "cpu" ? "CPU" : device
 }

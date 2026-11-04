@@ -16,6 +16,7 @@ import uuid
 import wave
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from .catalog import capabilities, model_for
+from .contracts import InferenceError
 
 MAX_AUDIO_BYTES = 1_000_000_000
 JOB_ID = re.compile(r'^[a-f0-9]{32}$')
@@ -32,12 +33,13 @@ def inference_process(stage, incoming, outgoing):
         if message is None:
             return
         job_id, source, root, options = message
+        started = time.perf_counter()
         try:
-            started = time.perf_counter()
             result = inference.run(stage, Path(source), Path(root), options)
             outgoing.put((job_id, stage, 'success', result, time.perf_counter()-started))
-        except Exception:
-            outgoing.put((job_id, stage, 'error', f'{stage.capitalize()} inference failed; check model preparation and worker installation.', 0.))
+        except Exception as exc:
+            message = str(exc) if isinstance(exc, InferenceError) else f'{stage.capitalize()} inference failed; check model preparation and worker installation.'
+            outgoing.put((job_id, stage, 'error', message, time.perf_counter()-started))
 
 
 class JobManager:
@@ -129,7 +131,7 @@ class JobManager:
                 if status == 'success':
                     results[stage] = value
                 elif stage == 'transcription':
-                    raise RuntimeError(value)
+                    raise InferenceError(value)
                 else:
                     warnings.append('Speaker detection failed. Transcript text is available without speaker assignments.')
             job.update(status='success', result={**results['transcription'],
@@ -141,7 +143,7 @@ class JobManager:
             job.update(status='canceled', error='Transcription was canceled.')
         except Exception as exc:
             await self.stop_workers()
-            job.update(status='error', error='Transcription timed out.' if isinstance(exc, TimeoutError) else 'Native transcription failed. Check worker status and prepared models.')
+            job.update(status='error', error=str(exc) if isinstance(exc, InferenceError) else 'Transcription timed out.' if isinstance(exc, TimeoutError) else 'Native transcription failed. Check worker status and prepared models.')
         finally:
             source.unlink(missing_ok=True)
             self.active = None
@@ -174,7 +176,10 @@ class JobManager:
 
 def create_app(root: Path, *, manager=None, capability_reader=capabilities):
     root.mkdir(parents=True, exist_ok=True)
-    token = (root/'token').read_text().strip()
+    try:
+        token = (root/'token').read_text().strip()
+    except OSError as exc:
+        raise ValueError('Initialize a worker authentication token first.') from exc
     if len(token) < 32:
         raise ValueError('Initialize a worker authentication token first.')
     jobs = manager or JobManager(root)
@@ -222,7 +227,8 @@ def create_app(root: Path, *, manager=None, capability_reader=capabilities):
         if jobs.active is not None:
             raise HTTPException(409, 'The native worker is busy.')
         info = capability_reader(root)
-        if not next(x for x in info['engines'] if x['id'] == engineId)['ready']:
+        entry = next((x for x in info.get('engines', []) if x.get('id') == engineId), None)
+        if entry is None or entry.get('ready') is not True:
             raise HTTPException(503, 'Prepare the selected model before transcription.')
         if request.headers.get('content-type', '').split(';')[0] != 'audio/wav':
             raise HTTPException(415, 'Upload normalized mono 16 kHz PCM WAV audio.')

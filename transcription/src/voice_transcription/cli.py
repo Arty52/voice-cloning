@@ -41,7 +41,11 @@ def main():
     elif args.command == 'serve':
         import uvicorn
         from .worker import create_app
-        uvicorn.run(create_app(root), host='127.0.0.1', port=6421, access_log=False)
+        try:
+            app = create_app(root)
+        except ValueError:
+            parser.error('Run init first to create a valid worker authentication token.')
+        uvicorn.run(app, host='127.0.0.1', port=6421, access_log=False)
     elif args.command == 'start':
         if not (root/'token').is_file():
             parser.error('Run init first.')
@@ -64,9 +68,13 @@ def main():
             time.sleep(.1)
         parser.error('Worker startup is not yet confirmed; check doctor and worker.log before retrying.')
     elif args.command == 'stop':
-        request = urllib.request.Request('http://127.0.0.1:6421/v1/shutdown', method='POST', headers={'Authorization':'Bearer '+(root/'token').read_text().strip()})
-        with urllib.request.urlopen(request, timeout=5) as response:
-            print('Worker stopping.' if response.status==200 else 'Worker stop failed.')
+        try:
+            token = (root/'token').read_text().strip()
+            request = urllib.request.Request('http://127.0.0.1:6421/v1/shutdown', method='POST', headers={'Authorization':'Bearer '+token})
+            with urllib.request.urlopen(request, timeout=5) as response:
+                print('Worker stopping.' if response.status==200 else 'Worker stop failed.')
+        except OSError:
+            parser.error('Could not confirm worker shutdown. Check token initialization, worker availability, and retry.')
 
 def live_capabilities(root: Path):
     try:

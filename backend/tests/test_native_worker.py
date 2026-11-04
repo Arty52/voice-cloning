@@ -135,3 +135,28 @@ def test_worker_crash_fails_job_and_a_fresh_process_can_run_next_job(tmp_path):
         assert manager.jobs['e'*32]['status']=='success'
         await manager.stop_workers()
     asyncio.run(run())
+
+
+def test_missing_token_and_missing_engine_have_actionable_failures(tmp_path):
+    import pytest
+    with pytest.raises(ValueError,match='Initialize'):
+        create_app(tmp_path)
+    (tmp_path/'token').write_text(TOKEN)
+    with TestClient(create_app(tmp_path,capability_reader=lambda root:{'engines':[]})) as client:
+        client.headers['Authorization']='Bearer '+TOKEN
+        assert client.post('/v1/jobs?engineId=parakeet-mlx',content=wav(),headers={'Content-Type':'audio/wav'}).status_code==503
+        assert client.app.state.jobs.active is None
+
+
+def test_inference_errors_preserve_safe_details_and_elapsed_time(monkeypatch,tmp_path):
+    import queue
+    from voice_transcription import native,worker
+    from voice_transcription.contracts import InferenceError
+    class FailedInference:
+        def run(self,*args): raise InferenceError('Prepare the selected model first.')
+    monkeypatch.setattr(native,'NativeInference',FailedInference)
+    incoming,outgoing=queue.Queue(),queue.Queue()
+    incoming.put(('job',str(tmp_path/'audio'),str(tmp_path),{}));incoming.put(None)
+    worker.inference_process('transcription',incoming,outgoing)
+    event=outgoing.get_nowait()
+    assert event[2]=='error' and event[3]=='Prepare the selected model first.' and event[4]>0

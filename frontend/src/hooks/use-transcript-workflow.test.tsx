@@ -743,3 +743,17 @@ it("retains the selected file after a failed job so an explicit retry uses the s
   expect(result.current.status).toBe("success")
   expect(result.current.sourceFile).toBeNull()
 })
+
+
+it("omits the combined CPU estimate when speaker detection is off", () => {
+  const options = {engineId: "faster-whisper", language: "en", detectSpeakers: true}
+  const transcription = {options, engines: [], status: "success" as const, ready: true, unavailableReason: null,
+    nativeDiarizationReady: false, selectedEngine: undefined, selectEngine: vi.fn(), selectLanguage: vi.fn(),
+    setDetectSpeakers: vi.fn(), refresh: vi.fn()}
+  const {result,rerender} = renderTranscriptWorkflow({transcription})
+  act(()=>result.current.handleSourceFileSelect(new File(["audio"],"clip.wav")))
+  expect(result.current.preStartEstimateRangeSeconds).not.toBeNull()
+  options.detectSpeakers=false
+  rerender()
+  expect(result.current.preStartEstimateRangeSeconds).toBeNull()
+})

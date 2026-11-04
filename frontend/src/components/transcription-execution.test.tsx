@@ -16,3 +16,11 @@ it("shows actual devices and failed speaker detection without hiding successful 
   expect(screen.getByText("Speaker Detection: Failed · 2.0s")).toBeVisible()
   expect(screen.getByText(/Transcript text is available/)).toBeVisible()
 })
+
+
+it("uses the reported speaker execution device", () => {
+  const job = {result: {kind: "transcript", speakers: [], transcript: {items: []}, metadata: {diarizationDevice: "cuda"}}} as unknown as SampleProcessingJob
+  render(<TranscriptionExecution job={job} />)
+  expect(screen.getByText("Speaker Detection: cuda")).toBeVisible()
+  expect(screen.queryByText("Speaker Detection: CPU")).not.toBeInTheDocument()
+})
