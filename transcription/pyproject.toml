@@ -14,7 +14,7 @@ packages = ["src/voice_transcription"]
 
 [project.optional-dependencies]
 worker = ["fastapi>=0.124,<1", "uvicorn>=0.38,<1"]
-mac = ["parakeet-mlx==0.7.0", "mlx-whisper==0.4.3", "huggingface-hub>=0.30,<2", "soundfile>=0.13,<1", "numpy>=2.2,<3", "silero-vad>=6,<7", "pyannote.audio>=4.0.5,<5"]
+mac = ["torch>=2.8,<3", "parakeet-mlx==0.7.0", "mlx-whisper==0.4.3", "huggingface-hub>=0.30,<2", "soundfile>=0.13,<1", "numpy>=2.2,<3", "silero-vad>=6,<7", "pyannote.audio>=4.0.5,<5"]
 
 [project.scripts]
 voice-transcription-worker = "voice_transcription.cli:main"
