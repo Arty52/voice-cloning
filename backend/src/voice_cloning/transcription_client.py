@@ -41,6 +41,8 @@ class NativeWorkerClient:
             raise SampleProcessingServiceError('Native worker token file is unavailable.', 503) from exc
         if len(token)<32:
             raise SampleProcessingServiceError('Native worker token is invalid.', 503)
+        # These are per-chunk network inactivity limits, not the job duration.
+        # Inference is asynchronous; uploads stream and status requests return promptly.
         return httpx.AsyncClient(base_url=self.settings.transcription_worker_url.rstrip('/'),
             headers={'Authorization':'Bearer '+token}, timeout=httpx.Timeout(30.,connect=3.), trust_env=False)
 
