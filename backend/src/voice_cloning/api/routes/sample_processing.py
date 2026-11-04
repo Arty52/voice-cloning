@@ -81,9 +81,16 @@ def create_sample_processing_router(sample_processing: SampleProcessingService) 
             recommended_workflow_order=sample_processing.recommended_workflow_order(),
         )
 
+    @router.get("/api/transcription/engines")
+    async def transcription_engines() -> dict[str, object]:
+        from ...transcription_client import engine_metadata
+        return await engine_metadata(sample_processing.settings)
+
     @router.post("/api/sample-processing/jobs", status_code=202)
     async def create_sample_processing_job(
         operationId: str | None = Form(None),
+        transcriptionEngineId: str | None = Form(None),
+        language: str | None = Form(None),
         processingPresetId: str | None = Form(None),
         sourceVoiceId: str | None = Form(None),
         sourcePreference: str = Form("original"),
@@ -100,6 +107,8 @@ def create_sample_processing_router(sample_processing: SampleProcessingService) 
         try:
             job = await sample_processing.create_job(
                 operation_id=operationId,
+                transcription_engine_id=transcriptionEngineId,
+                language=language,
                 processing_preset_id=processingPresetId,
                 source_voice_id=sourceVoiceId,
                 source_preference=sourcePreference,

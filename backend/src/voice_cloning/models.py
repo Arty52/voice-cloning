@@ -7,7 +7,7 @@ from typing import Literal
 VoiceSampleMode = Literal["excerpt", "sourceWindow"]
 VoicePresetId = Literal["standardNarration", "animatedDialogue"]
 DEFAULT_VOICE_PRESET_ID: VoicePresetId = "standardNarration"
-SampleProcessingOperationId = Literal["prepareVoice", "isolateVoice", "trimSilence", "separateSpeakers"]
+SampleProcessingOperationId = Literal["prepareVoice", "isolateVoice", "trimSilence", "separateSpeakers", "transcribe"]
 SampleProcessingPresetId = Literal["fast", "balanced", "clean", "maxIsolation", "trimLight", "trimBalanced", "trimAggressive"]
 SampleProcessingSourcePreference = Literal["original", "active"]
 SampleProcessingMediaKind = Literal["audio", "video"]
@@ -229,7 +229,7 @@ class SpeakerTranscriptItem:
     text: str
     start_seconds: float
     end_seconds: float
-    speaker_id: str
+    speaker_id: str | None
     words: tuple[SpeakerTranscriptWord, ...] | None = None
 
 
@@ -249,9 +249,10 @@ class SpeakerSeparationSpeaker:
 
 @dataclass(frozen=True)
 class SpeakerSeparationResult:
-    kind: Literal["speakerSeparation"]
+    kind: Literal["speakerSeparation", "transcript"]
     speakers: tuple[SpeakerSeparationSpeaker, ...]
     transcript: SpeakerSeparationTranscript
+    metadata: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -340,6 +341,8 @@ class SampleProcessingJob:
     progress_phases: tuple[SampleProcessingProgressPhase, ...] = ()
     active_progress_phase_id: str | None = None
     source_selection: SampleProcessingSourceSelection | None = None
+    transcription_options: dict[str, object] | None = None
+    transcription_progress: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)

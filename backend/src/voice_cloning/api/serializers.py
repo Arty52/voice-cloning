@@ -402,6 +402,7 @@ def sample_processing_media_source_chapter_payload(
 def sample_processing_job_payload(job: SampleProcessingJob) -> dict[str, object]:
     return {
         "id": job.id,
+        **({"transcriptionOptions": job.transcription_options, "transcriptionProgress": job.transcription_progress} if job.transcription_options is not None else {}),
         "operationId": job.operation_id,
         "operationLabel": _job_operation_label(job),
         "status": job.status,
@@ -552,6 +553,7 @@ def sample_processing_audio_result_payload(result: SampleProcessingResult) -> di
 def speaker_separation_result_payload(result: SpeakerSeparationResult) -> dict[str, object]:
     return {
         "kind": result.kind,
+        **({"metadata": result.metadata} if result.metadata is not None else {}),
         "speakers": [speaker_separation_speaker_payload(speaker) for speaker in result.speakers],
         "transcript": speaker_separation_transcript_payload(result.transcript),
     }
