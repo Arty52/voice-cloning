@@ -12,6 +12,7 @@ from .normalize import transcribed_words, diarization_turns
 
 
 def prepare(root: Path, engine_id: str):
+    configure_runtime(root)
     from huggingface_hub import snapshot_download
     if engine_id == 'diarization':
         repo, revision = DIARIZATION_REPO, DIARIZATION_REVISION
@@ -37,6 +38,7 @@ class NativeInference:
         self.pipeline = None
 
     def run(self, stage: str, source: Path, root: Path, options: dict):
+        configure_runtime(root)
         if stage == 'diarization':
             return self.diarize(source, root)
         return self.transcribe(source, root, options)
@@ -48,6 +50,8 @@ class NativeInference:
         if self.pipeline is None:
             from pyannote.audio import Pipeline
             self.pipeline = Pipeline.from_pretrained(str(path))
+            import torch
+            self.pipeline.to(torch.device('cpu'))
         output = self.pipeline(str(source))
         regular = diarization_turns(output)
         exclusive = diarization_turns(getattr(output, 'exclusive_speaker_diarization', output))
@@ -109,3 +113,13 @@ class NativeInference:
                 'engine':model.id, 'model':model.repository, 'revision':model.revision,
                 'device':'apple-gpu', 'language':options['language'], 'duration_seconds':duration,
                 'warnings':['Some passages use segment timing because word alignment was unavailable.'] if any(not w.has_word_alignment for w in all_words) else []}
+
+
+def configure_runtime(root: Path):
+    # All downloadable/runtime caches stay inside the ignored worker root.
+    os.environ['HF_HOME'] = str(root/'hf-cache')
+    os.environ['HF_HUB_CACHE'] = str(root/'hf-cache'/'hub')
+    os.environ['TORCH_HOME'] = str(root/'torch-cache')
+    os.environ['MPLCONFIGDIR'] = str(root/'matplotlib-cache')
+    os.environ['HF_HUB_DISABLE_TELEMETRY'] = '1'
+    os.environ['PYANNOTE_METRICS_ENABLED'] = '0'
