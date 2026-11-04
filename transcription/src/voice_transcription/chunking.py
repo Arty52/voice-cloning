@@ -37,3 +37,52 @@ def parakeet_words(tokens):
 
 def _word(parts):
     return Word(''.join(x.text for x in parts).strip(), parts[0].start, parts[-1].end)
+
+
+def parakeet_segments(result):
+    """Contain a malformed subword's fallback to its sentence, not its whole chunk."""
+    from types import SimpleNamespace
+    for sentence in result.sentences:
+        words = parakeet_words(sentence.tokens)
+        yield SimpleNamespace(text=sentence.text, start=sentence.start, end=sentence.end,
+            words=[SimpleNamespace(word=w.text, start=w.start_seconds, end=w.end_seconds) for w in words])
+
+
+def merge_overlap(previous, current, overlap_start, overlap_end):
+    """Choose one shared acoustic/text anchor, allowing small alignment drift.
+
+    Match two consecutive words at the same source time. Repeated phrases at
+    different times are never collapsed. Fall back to timestamp ownership when
+    the overlap contains no shared speech, keeping segment fallbacks whole.
+    """
+    import re
+    if not previous:
+        return list(current)
+    if not current:
+        return list(previous)
+    midpoint = (overlap_start+overlap_end)/2
+    normalize = lambda word: re.sub(r'\W+', '', word.text.casefold())
+    candidates = []
+    left = [(i,w) for i,w in enumerate(previous[:-1]) if overlap_start <= w.start_seconds < overlap_end]
+    right = [(j,w) for j,w in enumerate(current[:-1]) if overlap_start <= w.start_seconds < overlap_end]
+    for i,a in left:
+        for j,b in right:
+            if (a.has_word_alignment and b.has_word_alignment and normalize(a) and normalize(a)==normalize(b)
+                and normalize(previous[i+1])==normalize(current[j+1])
+                and abs(a.start_seconds-b.start_seconds) <= .6
+                and abs(previous[i+1].start_seconds-current[j+1].start_seconds) <= .6):
+                candidates.append((abs(previous[i+1].end_seconds-midpoint), i+2, j+2))
+    if candidates:
+        _, i, j = min(candidates)
+        return list(previous[:i])+list(current[j:])
+    cut = midpoint
+    # A fallback sentence is indivisible: don't let a midpoint split duplicate
+    # its prefix/suffix from the neighboring chunk.
+    for word in previous:
+        if not word.has_word_alignment and word.start_seconds < cut < word.end_seconds:
+            cut = word.end_seconds
+    for word in current:
+        if not word.has_word_alignment and word.start_seconds < cut < word.end_seconds:
+            cut = word.start_seconds
+    return [w for w in previous if (w.start_seconds+w.end_seconds)/2 < cut] + [
+        w for w in current if (w.start_seconds+w.end_seconds)/2 >= cut]
