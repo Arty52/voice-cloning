@@ -13,6 +13,8 @@ import {
 } from "@/lib/transcript-timing-diagnostics"
 import type { AsyncStatus, SampleProcessingJob, VoiceAsset } from "@/types"
 
+import type { TranscriptionSettingsController } from "./use-transcription-settings"
+
 import { useSpeakerTranscript } from "./use-speaker-transcript"
 
 export type TranscriptWorkflowStatus =
@@ -25,6 +27,7 @@ export type TranscriptWorkflowStatus =
   | "canceled"
 
 type UseTranscriptWorkflowOptions = {
+  transcription?: TranscriptionSettingsController
   availabilityError: string | null
   availabilityStatus: AsyncStatus
   diarizationAvailable: boolean
@@ -45,6 +48,7 @@ export const TRANSCRIPT_AUDIO_ACCEPT = ".mp3,.wav,.m4a,.m4b,.aac,.ogg,.flac,audi
 const SUPPORTED_AUDIO_EXTENSIONS = new Set(["aac", "flac", "m4a", "m4b", "mp3", "ogg", "wav"])
 
 export function useTranscriptWorkflow({
+  transcription,
   availabilityError,
   availabilityStatus,
   diarizationAvailable,
@@ -91,15 +95,17 @@ export function useTranscriptWorkflow({
     onJobUpdate: updateJob,
     onVoiceSaved,
   })
+  const isNative = transcription?.options.engineId !== undefined && transcription.options.engineId !== "faster-whisper"
+  const detectSpeakers = transcription?.options.detectSpeakers ?? true
   const preStartEstimateRangeSeconds = useMemo(
     () =>
-      estimateSampleProcessingDurationRangeSeconds({
+      isNative || !detectSpeakers ? null : estimateSampleProcessingDurationRangeSeconds({
         cleanVoice: false,
-        detectSpeakers: true,
+        detectSpeakers,
         sourceSizeBytes: sourceFile?.size ?? null,
         trimCandidates: false,
       }),
-    [sourceFile?.size]
+    [sourceFile?.size, isNative, detectSpeakers]
   )
 
   const isProcessing = status === "restoring" || status === "starting" || status === "processing"
@@ -112,20 +118,19 @@ export function useTranscriptWorkflow({
     job?.status === "success" && !isProcessing && !isClearingTranscript && !hasSpeakerMutationInFlight
   const canStart =
     sourceFile !== null &&
-    availabilityStatus === "success" &&
-    diarizationAvailable &&
+    (transcription ? transcription.ready : availabilityStatus === "success" && diarizationAvailable) &&
     !isProcessing &&
     !isClearingTranscript
   const canCancel =
     (status === "starting" || status === "processing") && activeJobIdRef.current !== null
   const processingEstimateRangeSeconds =
-    isProcessing && timingDiagnostic
+    isProcessing && timingDiagnostic && job?.transcriptionOptions?.detectSpeakers !== false && (!job?.transcriptionOptions || job.transcriptionOptions.engineId === "faster-whisper")
       ? {
           minSeconds: timingDiagnostic.estimateMinSeconds,
           maxSeconds: timingDiagnostic.estimateMaxSeconds,
         }
       : null
-  const unavailableReason =
+  const unavailableReason = transcription ? transcription.unavailableReason :
     availabilityStatus === "error"
       ? availabilityError || "Transcript processing options are unavailable."
       : availabilityStatus === "success" && !diarizationAvailable
@@ -184,24 +189,28 @@ export function useTranscriptWorkflow({
 
   async function handleStartTranscription(event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault()
-    if (!canStart || !sourceFile || !preStartEstimateRangeSeconds) {
+    if (!canStart || !sourceFile) {
       return
     }
 
     const runId = runIdRef.current + 1
     runIdRef.current = runId
-    const startedTimingDiagnostic = startTranscriptTimingDiagnostic({
+    const startedAt = Date.now()
+    const startedTimingDiagnostic = preStartEstimateRangeSeconds ? startTranscriptTimingDiagnostic({
       estimate: preStartEstimateRangeSeconds,
       sourceFile,
-    })
-    timingDiagnosticIdRef.current = startedTimingDiagnostic.id
+    }) : null
+    timingDiagnosticIdRef.current = startedTimingDiagnostic?.id ?? null
     setTimingDiagnostic(startedTimingDiagnostic)
     setStatus("starting")
     setError(null)
     setProcessingElapsedMs(0)
     try {
       const payload = await api.createSampleProcessingJob({
-        operationId: "separateSpeakers",
+        operationId: "transcribe",
+        transcriptionEngineId: transcription?.options.engineId ?? "faster-whisper",
+        language: transcription?.options.language ?? "en",
+        detectSpeakers: transcription?.options.detectSpeakers ?? true,
         sourceFile,
       })
       if (!isActiveRun(runId)) {
@@ -221,7 +230,7 @@ export function useTranscriptWorkflow({
       setError(caught instanceof Error ? caught.message : "Unable to start transcript processing.")
       finishTimingDiagnostic(
         "error",
-        Math.max(0, Date.now() - Date.parse(startedTimingDiagnostic.createdAt))
+        Math.max(0, Date.now() - startedAt)
       )
     }
   }
@@ -301,7 +310,7 @@ export function useTranscriptWorkflow({
       if (!isActiveRun(runId)) {
         return
       }
-      if (payload.job.operationId !== "separateSpeakers") {
+      if (payload.job.operationId !== "separateSpeakers" && payload.job.operationId !== "transcribe") {
         finishTimingDiagnostic("incomplete", null)
         clearStoredLatestTranscriptJob(jobId)
         setStatus("idle")
@@ -445,6 +454,7 @@ export function useTranscriptWorkflow({
   }
 
   return {
+    transcription,
     canCancel,
     canClearTranscript,
     canStart,

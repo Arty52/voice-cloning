@@ -176,7 +176,7 @@ const prepareOnlyProcessingOptions: SampleProcessingOptionsResponse = {
   ],
 }
 
-const speakerSeparationResult: SpeakerSeparationResult = {
+const transcriptResult: SpeakerSeparationResult = {
   kind: "speakerSeparation",
   speakers: [
     {
@@ -259,7 +259,7 @@ const speakerJob: SampleProcessingJobResponse = {
     createdAt: "2026-06-23T00:00:00+00:00",
     updatedAt: "2026-06-23T00:00:01+00:00",
     error: null,
-    result: speakerSeparationResult,
+    result: transcriptResult,
   },
 }
 
@@ -561,22 +561,22 @@ const reassignedSpeakerJob: SampleProcessingJobResponse = {
   job: {
     ...speakerJob.job,
     result: {
-      ...speakerSeparationResult,
+      ...transcriptResult,
       speakers: [
         {
-          ...speakerSeparationResult.speakers[0],
+          ...transcriptResult.speakers[0],
           transcriptItemIds: ["item-1", "item-2"],
         },
         {
-          ...speakerSeparationResult.speakers[1],
+          ...transcriptResult.speakers[1],
           transcriptItemIds: [],
         },
       ],
       transcript: {
         items: [
-          speakerSeparationResult.transcript.items[0],
+          transcriptResult.transcript.items[0],
           {
-            ...speakerSeparationResult.transcript.items[1],
+            ...transcriptResult.transcript.items[1],
             speakerId: "speaker-1",
           },
         ],
@@ -1089,7 +1089,7 @@ describe("useSampleProcessing stacked workflow state", () => {
       await result.current.handleStartProcessing(formEvent())
     })
 
-    expect(result.current.isSpeakerSeparationJob).toBe(true)
+    expect(result.current.isTranscriptJob).toBe(true)
     expect(result.current.resultUrl).toBeNull()
     expect(result.current.speakerSourceUrl).toBe("/api/sample-processing/jobs/job-1/source")
     expect(result.current.speakerResultUrls["speaker-1"]).toBe(
@@ -1396,7 +1396,7 @@ describe("useSampleProcessing speaker separation state", () => {
       await result.current.handleStartProcessing(formEvent())
     })
 
-    expect(result.current.isSpeakerSeparationJob).toBe(true)
+    expect(result.current.isTranscriptJob).toBe(true)
     expect(result.current.resultUrl).toBeNull()
     expect(result.current.speakerSourceUrl).toBe("/api/sample-processing/jobs/job-1/source")
     expect(result.current.speakerResultUrls).toEqual({
@@ -1425,7 +1425,7 @@ describe("useSampleProcessing speaker separation state", () => {
     })
     expect(result.current.assignmentStatus).toBe("success")
     expect(result.current.selectedTranscriptItemIds).toEqual(["item-2"])
-    expect(result.current.speakerSeparationResult?.transcript.items[1].speakerId).toBe("speaker-1")
+    expect(result.current.transcriptResult?.transcript.items[1].speakerId).toBe("speaker-1")
   })
 
   it("ignores stale speaker assignment responses after reset", async () => {
@@ -1476,7 +1476,7 @@ describe("useSampleProcessing speaker separation state", () => {
       await assignmentPromise
     })
 
-    expect(result.current.speakerSeparationResult).toBeNull()
+    expect(result.current.transcriptResult).toBeNull()
     expect(result.current.assignmentStatus).toBe("idle")
     expect(result.current.selectedTranscriptItemIds).toEqual([])
   })
@@ -1529,7 +1529,7 @@ describe("useSampleProcessing speaker separation state", () => {
       result.current.setOperationId("isolateVoice")
     })
 
-    expect(result.current.speakerSeparationResult).toBeNull()
+    expect(result.current.transcriptResult).toBeNull()
     expect(result.current.selectedSpeakerIds).toEqual([])
     expect(result.current.speakerNameAssignments).toEqual({})
   })
@@ -1582,6 +1582,6 @@ describe("useSampleProcessing speaker separation state", () => {
 
     expect(onVoiceSaved).not.toHaveBeenCalled()
     expect(result.current.speakerSaveStatus).toBe("idle")
-    expect(result.current.speakerSeparationResult).toBeNull()
+    expect(result.current.transcriptResult).toBeNull()
   })
 })

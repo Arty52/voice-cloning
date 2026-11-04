@@ -1023,6 +1023,11 @@ function mockFetch() {
         models: [multilingualModel, flashModel],
       })
     }
+    if (path === "/api/transcription/engines" && !init) {
+      return okJson({ defaultEngineId: "faster-whisper", nativeDiarizationReady: false, engines: [
+        { id: "faster-whisper", label: "Whisper CPU", model: "medium", device: "cpu", languages: ["en", "auto"], ready: true, unavailableReason: null },
+      ] })
+    }
     if (path === "/api/sample-processing/options" && !init) {
       return okJson(sampleProcessingOptions)
     }
@@ -1098,6 +1103,11 @@ function mockFetchWithProviders(
         defaultModelId: "eleven_multilingual_v2",
         models: [multilingualModel, flashModel],
       })
+    }
+    if (path === "/api/transcription/engines" && !init) {
+      return okJson({ defaultEngineId: "faster-whisper", nativeDiarizationReady: false, engines: [
+        { id: "faster-whisper", label: "Whisper CPU", model: "medium", device: "cpu", languages: ["en", "auto"], ready: true, unavailableReason: null },
+      ] })
     }
     if (path === "/api/sample-processing/options" && !init) {
       return okJson(sampleProcessingOptions)
@@ -1230,7 +1240,7 @@ describe("App", () => {
     expect(workflowNav.queryByRole("button", { name: "Transcript" })).not.toBeInTheDocument()
     const featureNav = within(screen.getByRole("navigation", { name: "Feature Sections" }))
     expect(featureNav.getByRole("button", { name: "Transcript" })).toBeInTheDocument()
-    expect(await featureNav.findByText("Unavailable")).toBeInTheDocument()
+    expect(await featureNav.findByText("Available")).toBeInTheDocument()
     expect(document.querySelector('[data-section-id="overview"]')).not.toHaveClass("hidden")
     expect(document.querySelector('[data-section-id="voices"]')).toHaveClass("hidden")
     expect(document.querySelector('[data-section-id="provider"]')).toHaveClass("hidden")
@@ -1607,7 +1617,12 @@ describe("App", () => {
             models: [multilingualModel, flashModel],
           })
         }
-        if (path === "/api/sample-processing/options" && !init) {
+        if (path === "/api/transcription/engines" && !init) {
+      return okJson({ defaultEngineId: "faster-whisper", nativeDiarizationReady: false, engines: [
+        { id: "faster-whisper", label: "Whisper CPU", model: "medium", device: "cpu", languages: ["en", "auto"], ready: true, unavailableReason: null },
+      ] })
+    }
+    if (path === "/api/sample-processing/options" && !init) {
           return okJson(sampleProcessingOptions)
         }
         if (path === "/api/speech/jobs" && init?.method === "POST") {
@@ -2477,7 +2492,12 @@ describe("App", () => {
       "fetch",
       vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
         const path = String(input).split("?")[0]
-        if (path === "/api/sample-processing/options" && !init) {
+        if (path === "/api/transcription/engines" && !init) {
+      return okJson({ defaultEngineId: "faster-whisper", nativeDiarizationReady: false, engines: [
+        { id: "faster-whisper", label: "Whisper CPU", model: "medium", device: "cpu", languages: ["en", "auto"], ready: true, unavailableReason: null },
+      ] })
+    }
+    if (path === "/api/sample-processing/options" && !init) {
           return okJson({
             ...sampleProcessingOptions,
             engine: "demucs+ffmpeg",
@@ -2526,7 +2546,12 @@ describe("App", () => {
       "fetch",
       vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
         const path = String(input).split("?")[0]
-        if (path === "/api/sample-processing/options" && !init) {
+        if (path === "/api/transcription/engines" && !init) {
+      return okJson({ defaultEngineId: "faster-whisper", nativeDiarizationReady: false, engines: [
+        { id: "faster-whisper", label: "Whisper CPU", model: "medium", device: "cpu", languages: ["en", "auto"], ready: true, unavailableReason: null },
+      ] })
+    }
+    if (path === "/api/sample-processing/options" && !init) {
           return okJson({
             ...sampleProcessingOptions,
             recommendedWorkflowOrder: ["prepareVoice", ...sampleProcessingOptions.recommendedWorkflowOrder],
@@ -2603,7 +2628,12 @@ describe("App", () => {
       "fetch",
       vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
         const path = String(input).split("?")[0]
-        if (path === "/api/sample-processing/options" && !init) {
+        if (path === "/api/transcription/engines" && !init) {
+      return okJson({ defaultEngineId: "faster-whisper", nativeDiarizationReady: false, engines: [
+        { id: "faster-whisper", label: "Whisper CPU", model: "medium", device: "cpu", languages: ["en", "auto"], ready: true, unavailableReason: null },
+      ] })
+    }
+    if (path === "/api/sample-processing/options" && !init) {
           return okJson({
             ...sampleProcessingOptions,
             recommendedWorkflowOrder: ["prepareVoice", ...sampleProcessingOptions.recommendedWorkflowOrder],
@@ -2867,7 +2897,12 @@ describe("App", () => {
       "fetch",
       vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
         const path = String(input).split("?")[0]
-        if (path === "/api/sample-processing/options" && !init) {
+        if (path === "/api/transcription/engines" && !init) {
+      return okJson({ defaultEngineId: "faster-whisper", nativeDiarizationReady: false, engines: [
+        { id: "faster-whisper", label: "Whisper CPU", model: "medium", device: "cpu", languages: ["en", "auto"], ready: true, unavailableReason: null },
+      ] })
+    }
+    if (path === "/api/sample-processing/options" && !init) {
           return okJson({
             engine: null,
             operations: sampleProcessingOptions.operations.map((operation) => ({ ...operation, enabled: false })),
@@ -2913,7 +2948,12 @@ describe("App", () => {
       "fetch",
       vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
         const path = String(input).split("?")[0]
-        if (path === "/api/sample-processing/options" && !init) {
+        if (path === "/api/transcription/engines" && !init) {
+      return okJson({ defaultEngineId: "faster-whisper", nativeDiarizationReady: false, engines: [
+        { id: "faster-whisper", label: "Whisper CPU", model: "medium", device: "cpu", languages: ["en", "auto"], ready: true, unavailableReason: null },
+      ] })
+    }
+    if (path === "/api/sample-processing/options" && !init) {
           return okJson({
             engine: "fake",
             operations: sampleProcessingOptions.operations.map((operation) => {
@@ -3089,7 +3129,12 @@ describe("App", () => {
       "fetch",
       vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
         const path = String(input).split("?")[0]
-        if (path === "/api/sample-processing/options" && !init) {
+        if (path === "/api/transcription/engines" && !init) {
+      return okJson({ defaultEngineId: "faster-whisper", nativeDiarizationReady: false, engines: [
+        { id: "faster-whisper", label: "Whisper CPU", model: "medium", device: "cpu", languages: ["en", "auto"], ready: true, unavailableReason: null },
+      ] })
+    }
+    if (path === "/api/sample-processing/options" && !init) {
           return okJson({
             engine: "pyannote-community-1+faster-whisper",
             operations: sampleProcessingOptions.operations.map((operation) =>
@@ -3249,7 +3294,12 @@ describe("App", () => {
       "fetch",
       vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
         const path = String(input).split("?")[0]
-        if (path === "/api/sample-processing/options" && !init) {
+        if (path === "/api/transcription/engines" && !init) {
+      return okJson({ defaultEngineId: "faster-whisper", nativeDiarizationReady: false, engines: [
+        { id: "faster-whisper", label: "Whisper CPU", model: "medium", device: "cpu", languages: ["en", "auto"], ready: true, unavailableReason: null },
+      ] })
+    }
+    if (path === "/api/sample-processing/options" && !init) {
           return okJson({
             engine: "pyannote-community-1+faster-whisper",
             operations: sampleProcessingOptions.operations.map((operation) =>
@@ -3318,7 +3368,9 @@ describe("App", () => {
       ([url, init]) => String(url) === "/api/sample-processing/jobs" && init?.method === "POST"
     )
     const jobForm = jobCall?.[1]?.body as FormData
-    expect(jobForm.get("operationId")).toBe("separateSpeakers")
+    expect(jobForm.get("operationId")).toBe("transcribe")
+    expect(jobForm.get("transcriptionEngineId")).toBe("faster-whisper")
+    expect(jobForm.get("detectSpeakers")).toBe("true")
     expect(jobForm.get("sourceFile")).toEqual(sourceFile)
     expect(jobForm.has("sourceRanges")).toBe(false)
     expect(jobForm.has("sourceMediaId")).toBe(false)

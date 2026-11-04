@@ -127,7 +127,7 @@ afterEach(() => {
 })
 
 describe("useTranscriptWorkflow", () => {
-  it("submits the complete selected audio file directly to speaker separation", async () => {
+  it("submits the complete file with compatibility transcription options", async () => {
     const sourceFile = new File(["complete audio"], "roundtable.m4a", { type: "audio/mp4" })
     const completedJob = buildJob("success")
     vi.mocked(api.createSampleProcessingJob).mockResolvedValue({ job: completedJob })
@@ -141,7 +141,10 @@ describe("useTranscriptWorkflow", () => {
     await act(async () => result.current.handleStartTranscription())
 
     expect(api.createSampleProcessingJob).toHaveBeenCalledWith({
-      operationId: "separateSpeakers",
+      operationId: "transcribe",
+      transcriptionEngineId: "faster-whisper",
+      language: "en",
+      detectSpeakers: true,
       sourceFile,
     })
     expect(result.current.status).toBe("success")
@@ -351,7 +354,7 @@ describe("useTranscriptWorkflow", () => {
     const { result } = renderTranscriptWorkflow()
 
     await waitFor(() => expect(result.current.status).toBe("success"))
-    expect(result.current.speakerTranscript.speakerSeparationResult).toEqual(speakerResult)
+    expect(result.current.speakerTranscript.transcriptResult).toEqual(speakerResult)
     expect(window.localStorage.getItem(LATEST_TRANSCRIPT_JOB_STORAGE_KEY)).toBe("transcript-job-1")
   })
 
@@ -695,4 +698,45 @@ describe("useTranscriptWorkflow", () => {
     expect(result.current.validationError).toBeNull()
     expect(result.current.canStart).toBe(true)
   })
+})
+
+
+it("submits MLX text-only choices without a CPU estimate and restores the new job kind", async () => {
+  const options = { engineId: "parakeet-mlx", language: "en", detectSpeakers: false }
+  const completed = buildJob("success", { operationId: "transcribe", transcriptionOptions: options,
+    result: { kind: "transcript", speakers: [], transcript: { items: [{ id: "text", text: "Faithful words.", speakerId: null, startSeconds: 0, endSeconds: 1 }] } } })
+  vi.mocked(api.createSampleProcessingJob).mockResolvedValue({ job: completed })
+  const transcription = { options, engines: [], status: "success" as const, ready: true, unavailableReason: null,
+    nativeDiarizationReady: false, selectedEngine: undefined, selectEngine: vi.fn(), selectLanguage: vi.fn(),
+    setDetectSpeakers: vi.fn(), refresh: vi.fn() }
+  const { result, unmount } = renderTranscriptWorkflow({ transcription, diarizationAvailable: false })
+  const sourceFile = new File(["audio"], "narration.wav")
+  act(() => result.current.handleSourceFileSelect(sourceFile))
+  expect(result.current.canStart).toBe(true)
+  expect(result.current.preStartEstimateRangeSeconds).toBeNull()
+  await act(async () => result.current.handleStartTranscription())
+  expect(api.createSampleProcessingJob).toHaveBeenCalledWith({ operationId: "transcribe", transcriptionEngineId: "parakeet-mlx", language: "en", detectSpeakers: false, sourceFile })
+  expect(result.current.timingDiagnostic).toBeNull()
+  expect(result.current.speakerTranscript.transcriptResult?.transcript.items[0].speakerId).toBeNull()
+  expect(result.current.speakerTranscript.canSaveSelectedSpeakers).toBe(false)
+  unmount()
+  vi.mocked(api.fetchSampleProcessingJob).mockResolvedValue({ job: completed })
+  const restored = renderTranscriptWorkflow({ transcription })
+  await waitFor(() => expect(restored.result.current.status).toBe("success"))
+  expect(restored.result.current.job?.transcriptionOptions).toEqual(options)
+  expect(restored.result.current.processingEstimateRangeSeconds).toBeNull()
+})
+
+
+it("omits the combined CPU estimate when speaker detection is off", () => {
+  const options = {engineId: "faster-whisper", language: "en", detectSpeakers: true}
+  const transcription = {options, engines: [], status: "success" as const, ready: true, unavailableReason: null,
+    nativeDiarizationReady: false, selectedEngine: undefined, selectEngine: vi.fn(), selectLanguage: vi.fn(),
+    setDetectSpeakers: vi.fn(), refresh: vi.fn()}
+  const {result,rerender} = renderTranscriptWorkflow({transcription})
+  act(()=>result.current.handleSourceFileSelect(new File(["audio"],"clip.wav")))
+  expect(result.current.preStartEstimateRangeSeconds).not.toBeNull()
+  options.detectSpeakers=false
+  rerender()
+  expect(result.current.preStartEstimateRangeSeconds).toBeNull()
 })

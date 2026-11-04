@@ -29,7 +29,7 @@ export function formatTranscript({
   )
   const dialogueLines = chronologicalTranscriptItems(result.transcript.items).map((item) => {
     const timestamp = includeStartTimes ? `[${formatTranscriptTimestamp(item.startSeconds)}] ` : ""
-    const speakerName = speakerNamesById.get(item.speakerId) ?? "Speaker"
+    const speakerName = item.speakerId === null ? "Unassigned" : speakerNamesById.get(item.speakerId) ?? "Speaker"
     if (format === "markdown") {
       return `${timestamp}**${escapeMarkdownStrong(speakerName)}:** ${item.text}`
     }

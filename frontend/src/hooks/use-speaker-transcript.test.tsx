@@ -212,7 +212,7 @@ describe("useSpeakerTranscript", () => {
     })
 
     expect(onJobUpdate).not.toHaveBeenCalled()
-    expect(result.current.speakerSeparationResult).toBeNull()
+    expect(result.current.transcriptResult).toBeNull()
     expect(result.current.transcriptTextDrafts).toEqual({})
   })
 })

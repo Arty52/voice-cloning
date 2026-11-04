@@ -64,7 +64,7 @@ export function SpeakerTranscriptWorkspace({
   const [isSpeakerSaveDialogOpen, setSpeakerSaveDialogOpen] = useState(false)
   const [exportFormat, setExportFormat] = useState<TranscriptExportFormat>("markdown")
   const [includeStartTimes, setIncludeStartTimes] = useState(false)
-  const speakerResult = controller.speakerSeparationResult
+  const speakerResult = controller.transcriptResult
   const speakerLabels = useMemo(
     () => Object.fromEntries((speakerResult?.speakers ?? []).map((speaker) => [speaker.id, speaker.label])),
     [speakerResult],
@@ -140,8 +140,8 @@ export function SpeakerTranscriptWorkspace({
     <Card aria-label="Speaker Transcript Workspace" className="p-3 shadow-none sm:p-3">
       <CardHeader className="flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <CardTitle>Speaker Streams</CardTitle>
-          <CardDescription>{speakerResult.speakers.length} Voices Detected</CardDescription>
+          <CardTitle>{speakerResult.speakers.length ? "Speaker Streams" : "Text Transcript"}</CardTitle>
+          <CardDescription>{speakerResult.speakers.length ? `${speakerResult.speakers.length} Voices Detected` : "No speaker assignments are available. Corrections, exports, and original audio playback remain available."}</CardDescription>
         </div>
         <SpeakerSaveDialog
           controller={controller}
@@ -186,7 +186,7 @@ export function SpeakerTranscriptWorkspace({
           </CardContent>
         </Card>
 
-        <div className="grid items-stretch gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+        <div className={cn("grid items-stretch gap-3", speakerResult.speakers.length > 0 && "lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]")}>
           <div className="flex flex-col gap-3">
             {speakerResult.speakers.map((speaker, index) => {
               const checkboxId = `speaker-save-${job.id}-${speaker.id}`
@@ -273,9 +273,9 @@ export function SpeakerTranscriptWorkspace({
                 >
                   {speakerResult.transcript.items.map((item) => {
                     const speakerIndex = speakerIndexForItem(speakerResult, item)
-                    const speaker = speakerResult.speakers[speakerIndex]
+                    const speaker = item.speakerId === null ? undefined : speakerResult.speakers[speakerIndex]
                     const isSelected = controller.selectedTranscriptItemIds.includes(item.id)
-                    const isHoveredSpeaker = hoveredSpeakerId === item.speakerId
+                    const isHoveredSpeaker = item.speakerId !== null && hoveredSpeakerId === item.speakerId
                     const draftText = controller.transcriptTextDrafts[item.id] ?? item.text
                     const isDirty = controller.unsavedTranscriptItemIds.includes(item.id)
                     return (
@@ -315,7 +315,7 @@ export function SpeakerTranscriptWorkspace({
                           data-transcript-selection-workspace={controller.transcriptSelectionSurfaceId}
                         >
                           <PopoverHeader>
-                            <PopoverTitle>{speaker?.label ?? "Speaker"}</PopoverTitle>
+                            <PopoverTitle>{speaker?.label ?? "Unassigned"}</PopoverTitle>
                           </PopoverHeader>
                           <div className="mt-3 flex flex-col gap-3">
                             <Button onClick={() => playback.playTranscriptItem(item)} size="sm" type="button" variant="secondary">
@@ -377,7 +377,7 @@ export function SpeakerTranscriptWorkspace({
                               </Field>
                             ) : null}
                             <Field>
-                              <FieldLabel>Assign Text To Speaker</FieldLabel>
+                              <FieldLabel>{speakerResult.speakers.length ? "Assign Text To Speaker" : "No Speaker Assignments"}</FieldLabel>
                               <div className="grid grid-cols-2 gap-2">
                                 {speakerResult.speakers.map((targetSpeaker, targetIndex) => (
                                   <Button
@@ -624,11 +624,11 @@ function TranscriptExportCard({
 
 function speakerIndexForItem(result: SpeakerSeparationResult, item: SpeakerTranscriptItem) {
   const index = result.speakers.findIndex((speaker) => speaker.id === item.speakerId)
-  return index >= 0 ? index : 0
+  return index
 }
 
 function speakerStyle(index: number): CSSProperties {
   return {
-    "--speaker-color": SPEAKER_COLORS[index % SPEAKER_COLORS.length],
+    "--speaker-color": index < 0 ? "var(--foreground)" : SPEAKER_COLORS[index % SPEAKER_COLORS.length],
   } as CSSProperties
 }

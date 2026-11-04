@@ -180,7 +180,7 @@ export function useSampleProcessing({ onVoiceSaved, selectedVoice, voices }: Use
   const isPreparedSamplesJob = preparedSamplesResult !== null
   const canSave =
     job?.status === "success" &&
-    !speakerTranscript.isSpeakerSeparationJob &&
+    !speakerTranscript.isTranscriptJob &&
     !isPreparedSamplesJob &&
     saveName.trim().length > 0 &&
     saveStatus !== "loading" &&

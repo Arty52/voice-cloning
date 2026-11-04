@@ -7,7 +7,7 @@ export type VoiceSampleInputMode = "upload" | "record"
 export type VoiceSampleMode = "excerpt" | "sourceWindow"
 export type VoicePresetId = "standardNarration" | "animatedDialogue"
 export type ProviderKeySource = "browser" | "server" | "missing"
-export type SampleProcessingOperationId = "prepareVoice" | "isolateVoice" | "trimSilence" | "separateSpeakers"
+export type SampleProcessingOperationId = "prepareVoice" | "isolateVoice" | "trimSilence" | "separateSpeakers" | "transcribe"
 export type SampleProcessingPresetId =
   | "fast"
   | "balanced"
@@ -226,7 +226,7 @@ export type SpeakerTranscriptItem = {
   text: string
   startSeconds: number
   endSeconds: number
-  speakerId: string
+  speakerId: string | null
   words?: SpeakerTranscriptWord[]
 }
 
@@ -243,7 +243,8 @@ export type SpeakerSeparationTranscript = {
 }
 
 export type SpeakerSeparationResult = {
-  kind: "speakerSeparation"
+  kind: "speakerSeparation" | "transcript"
+  metadata?: TranscriptionMetadata
   speakers: SpeakerSeparationSpeaker[]
   transcript: SpeakerSeparationTranscript
 }
@@ -317,7 +318,47 @@ export type SampleProcessingProgressPhase = {
   detail: string | null
 }
 
+export type TranscriptionOptions = {
+  engineId: string
+  language: string
+  detectSpeakers: boolean
+}
+
+export type TranscriptionStage = { status: "running" | "success" | "error"; elapsedSeconds?: number }
+export type TranscriptionMetadata = {
+  engine?: string
+  model?: string
+  revision?: string
+  device?: string
+  language?: string
+  asr_seconds?: number
+  total_seconds?: number
+  diarizationDevice?: string | null
+  speakerDetectionRequested?: boolean
+  speakerDetectionSucceeded?: boolean
+  warnings?: string[]
+  stages?: Record<string, TranscriptionStage>
+}
+
+export type TranscriptionEngine = {
+  id: string
+  label: string
+  model: string
+  device: string
+  languages: string[]
+  ready: boolean
+  unavailableReason: string | null
+}
+
+export type TranscriptionEnginesResponse = {
+  defaultEngineId: string
+  engines: TranscriptionEngine[]
+  nativeDiarizationReady: boolean
+}
+
 export type SampleProcessingJob = {
+  transcriptionOptions?: TranscriptionOptions | null
+  transcriptionProgress?: Record<string, TranscriptionStage> | null
   id: string
   operationId: SampleProcessingOperationId
   operationLabel: string

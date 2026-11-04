@@ -219,7 +219,7 @@ describe("SampleProcessingPanel ranked candidates", () => {
       sourceUploadKind: "audio",
       sourceVoices: [],
       sourceVoiceId: "",
-      speakerSeparationResult: null,
+      transcriptResult: null,
       speakerSourceUrl: null,
       status: "success",
     } as unknown as SampleProcessingController
@@ -369,7 +369,7 @@ describe("SampleProcessingPanel ranked candidates", () => {
       sourceUploadKind: "audio",
       sourceVoices: [],
       sourceVoiceId: "",
-      speakerSeparationResult: null,
+      transcriptResult: null,
       speakerSourceUrl: null,
       status: "idle",
     } as unknown as SampleProcessingController
@@ -478,7 +478,7 @@ describe("SampleProcessingPanel ranked candidates", () => {
       sourceUploadKind: "audio",
       sourceVoices: [],
       sourceVoiceId: "",
-      speakerSeparationResult: null,
+      transcriptResult: null,
       speakerSourceUrl: null,
       status: "idle",
     } as unknown as SampleProcessingController
@@ -616,7 +616,7 @@ describe("SampleProcessingPanel ranked candidates", () => {
       sourceUploadKind: "video",
       sourceVoices: [],
       sourceVoiceId: "",
-      speakerSeparationResult: null,
+      transcriptResult: null,
       speakerSourceUrl: null,
       status: "idle",
     } as unknown as SampleProcessingController
