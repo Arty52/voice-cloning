@@ -28,7 +28,7 @@ def _parse_diarization_turn(raw_turn: object) -> Turn | None:
         return None
     start_seconds = _optional_float(getattr(segment, "start", None))
     end_seconds = _optional_float(getattr(segment, "end", None))
-    if start_seconds is None or end_seconds is None or end_seconds <= start_seconds:
+    if start_seconds is None or end_seconds is None or not is_valid_time_range(start_seconds, end_seconds):
         return None
     return Turn(
         start_seconds=start_seconds,
