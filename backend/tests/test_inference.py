@@ -23,3 +23,9 @@ def test_exclusive_turns_do_not_replace_regular_extraction_turns():
     result = PyannoteDiarizer(factory, "model", "test-token").diarize(Path("audio.wav"))
     assert result.turns[0].end_seconds == 2.
     assert result.exclusive_turns[0].end_seconds == 1.
+
+
+@pytest.mark.parametrize('start,end',[(-1.,1.),(float('nan'),1.),(0.,float('inf'))])
+def test_invalid_diarization_ranges_are_not_attributed(start,end):
+    from voice_transcription.normalize import diarization_turns
+    assert diarization_turns([(SimpleNamespace(start=start,end=end),'a')])==()
