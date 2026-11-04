@@ -404,7 +404,7 @@ export function useSpeakerTranscript({
 export type SpeakerTranscriptController = ReturnType<typeof useSpeakerTranscript>
 
 function isSpeakerSeparationResult(result: SampleProcessingJob["result"]): result is SpeakerSeparationResult {
-  return Boolean(result && "kind" in result && result.kind === "speakerSeparation")
+  return Boolean(result && "kind" in result && (result.kind === "speakerSeparation" || result.kind === "transcript"))
 }
 
 function uniqueIds(ids: string[]) {

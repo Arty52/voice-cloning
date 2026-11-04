@@ -8,6 +8,7 @@ import type { DialogueDraft } from "@/lib/dialogue-draft"
 import { useGeneratedAudioLibrary } from "@/hooks/use-generated-audio-library"
 import { useProviderKeys } from "@/hooks/use-provider-keys"
 import { useSampleProcessing } from "@/hooks/use-sample-processing"
+import { useTranscriptionSettings } from "@/hooks/use-transcription-settings"
 import { useTranscriptWorkflow } from "@/hooks/use-transcript-workflow"
 import { useUserTuningPresets } from "@/hooks/use-user-tuning-presets"
 import {
@@ -121,7 +122,9 @@ export function useVoiceStudioController() {
     selectedVoice: voiceLibrary.selectedVoice,
     voices: voiceLibrary.voices,
   })
+  const transcriptionSettings = useTranscriptionSettings()
   const transcript = useTranscriptWorkflow({
+    transcription: transcriptionSettings,
     availabilityError: sampleProcessing.optionsError,
     availabilityStatus: sampleProcessing.optionsStatus,
     diarizationAvailable: sampleProcessing.canDetectSpeakers,

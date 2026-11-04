@@ -1697,6 +1697,8 @@ function operationCardCopy(operationId: SampleProcessingOperationId) {
         description: "Remove long quiet stretches so the sample starts, ends, and flows cleanly.",
         title: "Tighten Pauses",
       }
+    case "transcribe":
+      return { description: "Transcribe a complete recording with optional speaker detection.", title: "Transcribe" }
     case "separateSpeakers":
       return {
         description: "Find each speaker in a conversation and create separate voice streams.",

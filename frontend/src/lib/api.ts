@@ -45,6 +45,8 @@ export type CreateSampleProcessingJobRequest = {
   cleanVoice?: boolean | null
   detectSpeakers?: boolean | null
   isolationPresetId?: SampleProcessingPresetId | null
+  transcriptionEngineId?: string
+  language?: string
   operationId?: SampleProcessingOperationId
   processingPresetId?: SampleProcessingPresetId | null
   sourceFile?: File | null
@@ -296,7 +298,15 @@ export function sampleProcessingSourceMediaUrl(sourceId: string) {
   return `/api/sample-processing/sources/${encodeURIComponent(sourceId)}/media`
 }
 
+export async function fetchTranscriptionEngines(): Promise<import("@/types").TranscriptionEnginesResponse> {
+  const response = await fetch("/api/transcription/engines")
+  if (!response.ok) throw new Error(await readError(response))
+  return response.json()
+}
+
 export async function createSampleProcessingJob({
+  transcriptionEngineId,
+  language,
   cleanVoice,
   detectSpeakers,
   isolationPresetId,
@@ -329,6 +339,8 @@ export async function createSampleProcessingJob({
     }
     formData.append("operationId", singleOperationId)
   }
+  if (transcriptionEngineId) formData.append("transcriptionEngineId", transcriptionEngineId)
+  if (language) formData.append("language", language)
   if (processingPresetId) {
     formData.append("processingPresetId", processingPresetId)
   }

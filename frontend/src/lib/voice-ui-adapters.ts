@@ -105,6 +105,9 @@ export function speakerSeparationToTranscriptDocument(
     id: speaker.id,
     label: speaker.assignedName?.trim() || speaker.label.trim() || `Speaker ${index + 1}`,
   }))
+  if (result.transcript.items.some((item) => item.speakerId === null)) {
+    speakers.push({ id: "unassigned", label: "Unassigned" })
+  }
   const segments = result.transcript.items
     .map((item, index) => ({ index, item }))
     .sort(
@@ -118,7 +121,7 @@ export function speakerSeparationToTranscriptDocument(
       return {
         endSeconds: item.endSeconds,
         id: item.id,
-        speakerId: item.speakerId,
+        speakerId: item.speakerId ?? "unassigned",
         startSeconds: item.startSeconds,
         text: item.text,
         ...(words ? { words } : {}),

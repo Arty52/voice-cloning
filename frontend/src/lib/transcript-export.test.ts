@@ -108,3 +108,10 @@ describe("downloadTranscript", () => {
     expect(revokeObjectUrl).toHaveBeenCalledWith("blob:transcript")
   })
 })
+
+
+it("exports text-only transcripts with an explicit unassigned speaker", () => {
+  const text = formatTranscript({ format: "text", sourceName: "narration.wav", includeStartTimes: true,
+    result: { kind: "transcript", speakers: [], transcript: { items: [{ id: "1", text: "Again again.", startSeconds: 1, endSeconds: 2, speakerId: null }] } } })
+  expect(text).toContain("[00:00:01] Unassigned: Again again.")
+})
