@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Local FastAPI proxy for provider-backed voice cloning."
 requires-python = ">=3.14"
 dependencies = [
+  "voice-transcription>=0.1.0",
   "alembic>=1.17.0",
   "fastapi>=0.124.0",
   "httpx>=0.28.1",
@@ -37,7 +38,7 @@ packages = ["src/voice_cloning"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "../transcription/src"]
 markers = [
   "postgres: tests that require a running PostgreSQL database",
 ]

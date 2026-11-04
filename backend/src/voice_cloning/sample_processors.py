@@ -7,6 +7,10 @@ import os
 from pathlib import Path
 from typing import Any, Awaitable, TypeVar
 
+from voice_transcription.contracts import InferenceError, Turn as _DiarizationTurn, Word as _TranscribedWord
+from voice_transcription.legacy import FasterWhisperTranscriber, PyannoteDiarizer
+from voice_transcription.normalize import transcribed_words
+
 from .config import Settings
 from .models import (
     SampleProcessingOperation,
@@ -224,8 +228,8 @@ class DiarizationSampleProcessor:
         self.settings = settings
         os.environ.setdefault("PYANNOTE_METRICS_ENABLED", "0")
         self._lock = asyncio.Lock()
-        self._pipeline: Any | None = None
-        self._whisper_model: Any | None = None
+        self._diarizer: PyannoteDiarizer | None = None
+        self._transcriber: FasterWhisperTranscriber | None = None
 
     @property
     def engine_name(self) -> str:
@@ -287,52 +291,29 @@ class DiarizationSampleProcessor:
     def _diarize(self, normalized_path: Path) -> tuple["_DiarizationTurn", ...]:
         if not self.settings.sample_processing_hf_token:
             raise SampleProcessingServiceError("Hugging Face token is required for speaker diarization.", 503)
-        os.environ.setdefault("PYANNOTE_METRICS_ENABLED", "0")
-        dependencies = _load_diarization_dependencies()
-        if self._pipeline is None:
-            try:
-                self._pipeline = dependencies.pipeline_class.from_pretrained(
-                    self.settings.sample_processing_pyannote_model,
-                    token=self.settings.sample_processing_hf_token,
-                )
-            except Exception as exc:
-                raise SampleProcessingServiceError(
-                    "pyannote diarization model could not be loaded. Accept model conditions and check the Hugging Face token.",
-                    503,
-                ) from exc
-            if self._pipeline is None:
-                raise SampleProcessingServiceError(
-                    "pyannote diarization model could not be loaded. Accept model conditions and check the Hugging Face token.",
-                    503,
-                )
+        if self._diarizer is None:
+            self._diarizer = PyannoteDiarizer(
+                _load_diarization_dependencies().pipeline_class,
+                self.settings.sample_processing_pyannote_model,
+                self.settings.sample_processing_hf_token,
+            )
         try:
-            diarization = self._pipeline(str(normalized_path))
-        except Exception as exc:
-            raise SampleProcessingServiceError("Speaker diarization failed.", 502) from exc
-        turns = _diarization_turns(diarization)
-        if not turns:
-            raise SampleProcessingServiceError("Speaker diarization did not detect any speakers.", 422)
-        return turns
+            return self._diarizer.diarize(normalized_path).turns
+        except InferenceError as exc:
+            raise SampleProcessingServiceError(exc.detail, exc.status_code) from exc
 
     def _transcribe(self, normalized_path: Path) -> tuple["_TranscribedWord", ...]:
-        dependencies = _load_diarization_dependencies()
-        if self._whisper_model is None:
-            try:
-                self._whisper_model = dependencies.whisper_model_class(
-                    self.settings.sample_processing_whisper_model,
-                    device=self.settings.sample_processing_whisper_device,
-                    compute_type=self.settings.sample_processing_whisper_compute_type,
-                )
-            except Exception as exc:
-                raise SampleProcessingServiceError(
-                    "Whisper transcription model could not be loaded. Check the configured model and local cache.",
-                    503,
-                ) from exc
+        if self._transcriber is None:
+            self._transcriber = FasterWhisperTranscriber(
+                _load_diarization_dependencies().whisper_model_class,
+                self.settings.sample_processing_whisper_model,
+                self.settings.sample_processing_whisper_device,
+                self.settings.sample_processing_whisper_compute_type,
+            )
         try:
-            segments, _ = self._whisper_model.transcribe(str(normalized_path), word_timestamps=True)
-        except Exception as exc:
-            raise SampleProcessingServiceError("Whisper transcription failed.", 502) from exc
-        return _transcribed_words(segments)
+            return self._transcriber.transcribe(normalized_path)
+        except InferenceError as exc:
+            raise SampleProcessingServiceError(exc.detail, exc.status_code) from exc
 
     async def _attach_speaker_streams(
         self,
@@ -580,21 +561,6 @@ class _DiarizationDependencies:
     whisper_model_class: Any
 
 
-@dataclass(frozen=True)
-class _DiarizationTurn:
-    start_seconds: float
-    end_seconds: float
-    speaker_label: str
-
-
-@dataclass(frozen=True)
-class _TranscribedWord:
-    text: str
-    start_seconds: float
-    end_seconds: float
-    has_word_alignment: bool = True
-
-
 def _load_diarization_dependencies() -> _DiarizationDependencies:
     try:
         pyannote_audio = importlib.import_module("pyannote.audio")
@@ -620,94 +586,11 @@ def _required_diarization_symbol(module: Any, name: str) -> Any:
         ) from exc
 
 
-def _diarization_turns(diarization: Any) -> tuple[_DiarizationTurn, ...]:
-    annotation = getattr(diarization, "speaker_diarization", diarization)
-    if hasattr(annotation, "itertracks"):
-        raw_turns = annotation.itertracks(yield_label=True)
-    else:
-        raw_turns = annotation
-    turns: list[_DiarizationTurn] = []
-    for raw_turn in raw_turns:
-        parsed = _parse_diarization_turn(raw_turn)
-        if parsed is not None:
-            turns.append(parsed)
-    turns.sort(key=lambda turn: (turn.start_seconds, turn.end_seconds, turn.speaker_label))
-    return tuple(turns)
-
-
-def _parse_diarization_turn(raw_turn: object) -> _DiarizationTurn | None:
-    if not isinstance(raw_turn, tuple):
-        return None
-    if len(raw_turn) == 3:
-        segment, _, speaker_label = raw_turn
-    elif len(raw_turn) == 2:
-        segment, speaker_label = raw_turn
-    else:
-        return None
-    start_seconds = _optional_float(getattr(segment, "start", None))
-    end_seconds = _optional_float(getattr(segment, "end", None))
-    if start_seconds is None or end_seconds is None or end_seconds <= start_seconds:
-        return None
-    return _DiarizationTurn(
-        start_seconds=start_seconds,
-        end_seconds=end_seconds,
-        speaker_label=str(speaker_label),
-    )
-
-
 def _transcribed_words(segments: object) -> tuple[_TranscribedWord, ...]:
-    words: list[_TranscribedWord] = []
-    for segment in segments:
-        segment_words = [
-            word for word in (getattr(segment, "words", None) or ()) if _transcription_text(word)
-        ]
-        parsed_words = [_transcribed_word_from_object(word) for word in segment_words]
-        if parsed_words and all(word is not None for word in parsed_words):
-            words.extend(word for word in parsed_words if word is not None)
-            continue
-        # One unusable word must not silently delete text from the transcript.
-        text = _transcription_text(segment) or _join_word_texts(
-            [_transcription_text(word) for word in segment_words]
-        )
-        if not text:
-            continue
-        parsed_segment = _transcribed_word_from_object(segment, has_word_alignment=False, text=text)
-        if parsed_segment is None:
-            raise SampleProcessingServiceError(
-                "Whisper transcription has no usable timing for a passage.", 502,
-            )
-        words.append(parsed_segment)
-    # Timestamp sorting can reorder the spoken text when model alignment is bad.
-    return tuple(words)
-
-
-def _transcription_text(value: object) -> str:
-    text = getattr(value, "word", getattr(value, "text", ""))
-    return text.strip() if isinstance(text, str) else ""
-
-
-def _transcribed_word_from_object(
-    value: object,
-    *,
-    has_word_alignment: bool = True,
-    text: str | None = None,
-) -> _TranscribedWord | None:
-    text = _transcription_text(value) if text is None else text
-    start_seconds = _optional_float(getattr(value, "start", None))
-    end_seconds = _optional_float(getattr(value, "end", None))
-    if (
-        not text
-        or start_seconds is None
-        or end_seconds is None
-        or not is_valid_time_range(start_seconds, end_seconds)
-    ):
-        return None
-    return _TranscribedWord(
-        text=text,
-        start_seconds=start_seconds,
-        end_seconds=end_seconds,
-        has_word_alignment=has_word_alignment,
-    )
+    try:
+        return transcribed_words(segments)
+    except InferenceError as exc:
+        raise SampleProcessingServiceError(exc.detail, exc.status_code) from exc
 
 
 def _speaker_separation_result_from_words(

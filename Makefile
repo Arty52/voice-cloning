@@ -27,7 +27,7 @@ setup: install-backend install-frontend
 install-backend:
 	$(PYTHON) -m venv $(VENV_DIR)
 	$(VENV_PYTHON) -m pip install --upgrade pip
-	$(VENV_PYTHON) -m pip install -e "backend[dev]"
+	$(VENV_PYTHON) -m pip install -e transcription -e "backend[dev]"
 
 install-backend-processing: install-backend
 	$(VENV_PYTHON) -m pip install -e "backend[dev,sample-processing]"

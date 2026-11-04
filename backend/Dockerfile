@@ -9,6 +9,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+COPY transcription /app/transcription
+
 COPY backend/pyproject.toml /app/backend/pyproject.toml
 COPY backend/alembic.ini /app/backend/alembic.ini
 COPY backend/alembic /app/backend/alembic
@@ -23,6 +25,7 @@ RUN if [ "$INSTALL_SAMPLE_PROCESSING" = "1" ]; then \
       && apt-get install -y --no-install-recommends cargo gcc libopus-dev pkg-config; \
     fi \
     && python -m pip install --no-cache-dir --upgrade pip \
+    && python -m pip install --no-cache-dir -e /app/transcription \
     && if [ "$INSTALL_SAMPLE_PROCESSING" = "1" ] || [ "$INSTALL_DIARIZATION" = "1" ]; then \
       python -m pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch torchaudio torchcodec; \
     fi \
