@@ -284,6 +284,8 @@ function transcriptActionLabel(status: TranscriptWorkflowController["status"]) {
       return "Starting Transcript"
     case "processing":
       return "Creating Transcript"
+    case "error":
+      return "Retry Transcript"
     default:
       return "Create Transcript"
   }

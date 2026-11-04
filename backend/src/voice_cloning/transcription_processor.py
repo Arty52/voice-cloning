@@ -48,15 +48,18 @@ class TranscriptionSampleProcessor(DiarizationSampleProcessor):
                 raise SampleProcessingServiceError('Transcription engine returned an invalid result.',502) from exc
             metadata={key:data[key] for key in ('engine','model','revision','device','language','asr_seconds','warnings') if key in data}
             metadata['diarizationDevice']='cpu' if turns else None
+            metadata['diarizationModel']=diarization.get('model') if diarization else None
+            metadata['diarizationRevision']=diarization.get('revision') if diarization else None
             metadata['speakerDetectionRequested']=options['detectSpeakers']
             metadata['speakerDetectionSucceeded']=bool(turns)
             if turns and words:
                 # Stable IDs come from regular turns; exclusive output only assigns words.
                 result=_speaker_separation_result_from_words(turns,words,attribution_turns=exclusive)
+                audio_started=time.perf_counter()
                 report({'speakerAudio':{'status':'running'}})
                 result=await self._attach_speaker_streams(normalized,request.job_dir,result,
                     speaker_ranges_by_id=_speaker_turn_ranges_by_id(turns),max_output_bytes=request.max_output_bytes)
-                report({'speakerAudio':{'status':'success'}})
+                report({'speakerAudio':{'status':'success','elapsedSeconds':time.perf_counter()-audio_started}})
             else:
                 items=_transcript_items_from_words(words,(Turn(0.,max((w.end_seconds for w in words),default=1.),'unknown'),),lambda _: 'unassigned') if words else []
                 result=SpeakerSeparationResult(kind='transcript',speakers=(),
@@ -84,11 +87,13 @@ class TranscriptionSampleProcessor(DiarizationSampleProcessor):
             started=time.perf_counter()
             report({'diarization':{'status':'running'}})
             try:
+                if not self.settings.sample_processing_hf_token and self._diarizer is None:
+                    raise InferenceError('Speaker credentials are unavailable.',503)
                 if self._diarizer is None:
                     from pyannote.audio import Pipeline
                     self._diarizer=PyannoteDiarizer(Pipeline,self.settings.sample_processing_pyannote_model,self.settings.sample_processing_hf_token)
                 result=await asyncio.wait_for(asyncio.to_thread(self._diarizer.diarize,normalized),self.settings.sample_processing_timeout_seconds)
-                data['diarization']={'turns':[asdict(t) for t in result.turns],'exclusive_turns':[asdict(t) for t in result.exclusive_turns]}
+                data['diarization']={'model':self.settings.sample_processing_pyannote_model, 'turns':[asdict(t) for t in result.turns],'exclusive_turns':[asdict(t) for t in result.exclusive_turns]}
                 report({'diarization':{'status':'success','elapsedSeconds':time.perf_counter()-started}})
             except (ImportError,InferenceError,TimeoutError):
                 data['warnings'].append('Speaker detection failed. Transcript text is available without speaker assignments.')

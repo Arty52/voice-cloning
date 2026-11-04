@@ -35,6 +35,21 @@ def test_report_has_no_transcript_or_paths(tmp_path):
     assert 'private content' not in result
     assert str(tmp_path) not in result
     assert 'reference.json' not in result
+    assert json.loads(result)['recordings'][0]['total_seconds'] is None
+    assert json.loads(result)['recordings'][0]['corpus_fingerprint'] is None
+
+
+def test_corpus_fingerprint_tracks_content_not_location(tmp_path):
+    from voice_transcription.evaluate import _fingerprint
+    audio,reference=tmp_path/'audio',tmp_path/'reference'
+    audio.write_bytes(b'audio');reference.write_text('reference')
+    first=_fingerprint(audio,reference)
+    moved=tmp_path/'moved';audio.rename(moved)
+    assert _fingerprint(moved,reference)==first
+    reference.write_text('corrected')
+    assert _fingerprint(moved,reference)!=first
+
+
 
 
 def test_memory_metric_is_optional_without_unix_resource(monkeypatch):
@@ -54,6 +69,7 @@ def test_baseline_language_auto_and_configuration_redaction(tmp_path, monkeypatc
         transcribe=lambda path, language: languages.append(language) or ()))
     (tmp_path/'reference.json').write_text('{"text":""}')
     (tmp_path/'hypothesis.json').write_text('{"text":""}')
+    (tmp_path/'clip.wav').write_bytes(b'audio')
     rows=[dict(id=str(i), category='silence', reference='reference.json', audio='clip.wav',
                hypothesis='hypothesis.json', duration_seconds=1, **options)
           for i,options in enumerate(({}, {'language':'auto'}, {'language':'fr'}))]

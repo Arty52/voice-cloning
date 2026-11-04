@@ -194,3 +194,7 @@ make smoke-live
 ## License
 
 MIT
+
+### Native Apple Silicon Transcription
+
+Uploaded recordings can use opt-in Parakeet MLX (English) or Whisper Large V3 MLX (multilingual), with optional CPU speaker detection. The compatibility CPU engine remains the default pending reviewed-corpus qualification. See [Native Setup And Rollback](docs/NATIVE_TRANSCRIPTION.md), [Evaluation](docs/TRANSCRIPTION_EVALUATION.md), and [M2 Max Qualification](docs/benchmarks/M2_MAX_TRANSCRIPTION.md).

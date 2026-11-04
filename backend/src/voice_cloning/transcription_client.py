@@ -106,7 +106,7 @@ async def engine_metadata(settings: Settings):
     engines=[{'id':'faster-whisper','label':'Whisper CPU','model':settings.sample_processing_whisper_model,
               'device':'cpu' if settings.sample_processing_whisper_device=='cpu' else settings.sample_processing_whisper_device,
               'languages':list(CPU_LANGUAGES),'ready':cpu_ready,
-              'unavailableReason':None if cpu_ready else 'Install backend[diarization] for CPU transcription.'}]
+              'unavailableReason':None if cpu_ready else 'Install backend[diarization] for the CPU engine.'}]
     native = None
     reason='Configure and start the native Mac worker.'
     try:

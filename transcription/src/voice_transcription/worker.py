@@ -44,6 +44,7 @@ class JobManager:
     def __init__(self, root: Path, *, process_target=inference_process, timeout=1800):
         self.root, self.process_target, self.timeout = root, process_target, timeout
         self.jobs = {}
+        self.uploads = {}
         self.active = None
         self.task = None
         self.source = None
@@ -55,6 +56,11 @@ class JobManager:
         previous = self.workers.get(stage)
         if previous is not None and previous[0].is_alive():
             return previous
+        if previous is not None:
+            previous[0].join()
+            previous[0].close()
+            previous[1].cancel_join_thread()
+            previous[1].close()
         incoming = self.context.Queue()
         process = self.context.Process(target=self.process_target, args=(stage, incoming, self.outgoing), daemon=True)
         process.start()
@@ -72,7 +78,11 @@ class JobManager:
                 process.kill()
                 await asyncio.to_thread(process.join, 2)
             incoming.close()
-        # Late events are ignored using the job ID; active job IDs are never reused.
+        # Killing a writer can leave a multiprocessing pipe mid-message. A new
+        # generation must never consume the terminated processes' queue.
+        self.outgoing.cancel_join_thread()
+        self.outgoing.close()
+        self.outgoing = self.context.Queue()
 
     def start(self, job_id, source, options):
         self.jobs[job_id] = {'id':job_id, 'status':'running', 'stages':{}, 'result':None, 'error':None}
@@ -126,7 +136,7 @@ class JobManager:
                 else:
                     warnings.append('Speaker detection failed. Transcript text is available without speaker assignments.')
             job.update(status='success', result={**results['transcription'],
-                'diarization':results.get('diarization'), 'warnings':warnings,
+                'diarization':results.get('diarization'), 'warnings':results['transcription'].get('warnings', [])+warnings,
                 'total_seconds':time.perf_counter()-started,
                 'asr_seconds':job['stages']['transcription']['elapsedSeconds']})
         except asyncio.CancelledError:
@@ -143,6 +153,15 @@ class JobManager:
                 del self.jobs[next(iter(self.jobs))]
 
     async def cancel(self, job_id):
+        upload = self.uploads.get(job_id)
+        if upload is not None and not upload.done() and self.jobs[job_id]['status'] == 'uploading':
+            upload.cancel()
+            try:
+                await upload
+            except asyncio.CancelledError:
+                pass
+            self.jobs[job_id].update(status='canceled', error='Transcription was canceled during upload.')
+            return self.jobs[job_id]
         if self.active == job_id and self.task is not None:
             self.task.cancel()
             try:
@@ -201,7 +220,10 @@ def create_app(root: Path, *, manager=None, capability_reader=capabilities):
         job_id = idempotency_key or uuid.uuid4().hex
         if not JOB_ID.fullmatch(job_id):
             raise HTTPException(422, 'Invalid job identifier.')
+        options = {'engineId':engineId, 'language':language, 'detectSpeakers':detectSpeakers}
         if job_id in jobs.jobs:
+            if jobs.jobs[job_id].get('options') != options:
+                raise HTTPException(409, 'This job identifier belongs to different settings.')
             return jobs.jobs[job_id]
         if jobs.active is not None:
             raise HTTPException(409, 'The native worker is busy.')
@@ -213,6 +235,8 @@ def create_app(root: Path, *, manager=None, capability_reader=capabilities):
             raise HTTPException(415, 'Upload normalized mono 16 kHz PCM WAV audio.')
         jobs.active = job_id  # Reserve before awaiting upload chunks.
         source = spool/f'{job_id}.wav'
+        jobs.jobs[job_id] = {'id':job_id, 'status':'uploading', 'stages':{}, 'result':None, 'error':None, 'options':options}
+        jobs.uploads[job_id] = asyncio.current_task()
         try:
             size = 0
             with source.open('xb') as handle:
@@ -228,11 +252,20 @@ def create_app(root: Path, *, manager=None, capability_reader=capabilities):
                 valid = False
             if not valid:
                 raise HTTPException(422, 'Expected non-empty mono 16 kHz PCM16 WAV audio.')
-            return jobs.start(job_id, source, {'engineId':engineId, 'language':language, 'detectSpeakers':detectSpeakers})
-        except BaseException:
+            jobs.uploads.pop(job_id, None)
+            result = jobs.start(job_id, source, options)
+            result['options'] = options
+            return result
+        except BaseException as exc:
             jobs.active = None
             source.unlink(missing_ok=True)
+            if isinstance(exc, asyncio.CancelledError):
+                jobs.jobs[job_id].update(status='canceled', error='Transcription was canceled during upload.')
+            else:
+                jobs.jobs.pop(job_id, None)
             raise
+        finally:
+            jobs.uploads.pop(job_id, None)
 
     def get_job(job_id):
         if job_id not in jobs.jobs:

@@ -6,12 +6,13 @@ from pathlib import Path
 import tempfile
 from types import SimpleNamespace
 from .catalog import DIARIZATION_REPO, DIARIZATION_REVISION, model_for, model_path, ready
-from .chunking import windows, owned_words, parakeet_words
+from .chunking import windows, owned_words, parakeet_segments, merge_overlap
 from .contracts import InferenceError
 from .normalize import transcribed_words, diarization_turns
 
 
 def prepare(root: Path, engine_id: str):
+    configure_runtime(root)
     from huggingface_hub import snapshot_download
     if engine_id == 'diarization':
         repo, revision = DIARIZATION_REPO, DIARIZATION_REVISION
@@ -37,6 +38,7 @@ class NativeInference:
         self.pipeline = None
 
     def run(self, stage: str, source: Path, root: Path, options: dict):
+        configure_runtime(root)
         if stage == 'diarization':
             return self.diarize(source, root)
         return self.transcribe(source, root, options)
@@ -48,6 +50,8 @@ class NativeInference:
         if self.pipeline is None:
             from pyannote.audio import Pipeline
             self.pipeline = Pipeline.from_pretrained(str(path))
+            import torch
+            self.pipeline.to(torch.device('cpu'))
         output = self.pipeline(str(source))
         regular = diarization_turns(output)
         exclusive = diarization_turns(getattr(output, 'exclusive_speaker_diarization', output))
@@ -77,9 +81,11 @@ class NativeInference:
         if self.vad is None:
             self.vad = load_silero_vad()
         all_words = []
+        previous_end = 0.
+        chunk_length, overlap = (120., 15.) if model.id == "parakeet-mlx" else (30., 5.)
         with sf.SoundFile(source) as audio:
             duration = len(audio)/audio.samplerate
-            for start, end, keep_start, keep_end in windows(duration):
+            for start, end, _, _ in windows(duration, chunk_length, overlap):
                 audio.seek(round(start*16000))
                 chunk = audio.read(round((end-start)*16000), dtype='float32')
                 # Only skip chunks confidently containing no speech; never concatenate
@@ -92,18 +98,28 @@ class NativeInference:
                     with tempfile.NamedTemporaryFile(suffix='.wav', dir=source.parent) as part:
                         sf.write(part.name, chunk, 16000, subtype='PCM_16')
                         result = self.model.transcribe(part.name)
-                    words = tuple(parakeet_words(result.tokens))
-                    # Preserve whole passages when one subword has unusable alignment.
-                    segments = [SimpleNamespace(text=result.text, start=0., end=end-start,
-                        words=[SimpleNamespace(word=w.text, start=w.start_seconds, end=w.end_seconds) for w in words])]
+                    segments = list(parakeet_segments(result))
                 else:
                     import mlx_whisper
                     result = mlx_whisper.transcribe(chunk, path_or_hf_repo=str(path),
                         language=None if options['language']=='auto' else options['language'],
-                        word_timestamps=True, verbose=False)
+                        word_timestamps=True, verbose=False, condition_on_previous_text=False, compression_ratio_threshold=None)
                     segments = [SimpleNamespace(**{**s, 'words':[SimpleNamespace(**w) for w in s.get('words', [])]}) for s in result['segments']]
                 words = transcribed_words(segments)
-                all_words.extend(owned_words(words, start, keep_start, keep_end, duration))
+                shifted = list(owned_words(words, start, start, end, duration))
+                all_words = merge_overlap(all_words, shifted, start, previous_end) if start < previous_end else all_words + shifted
+                previous_end = end
         return {'words':[asdict(w) for w in all_words], 'text':' '.join(w.text for w in all_words),
                 'engine':model.id, 'model':model.repository, 'revision':model.revision,
-                'device':'apple-gpu', 'language':options['language'], 'duration_seconds':duration}
+                'device':'apple-gpu', 'language':options['language'], 'duration_seconds':duration,
+                'warnings':['Some passages use segment timing because word alignment was unavailable.'] if any(not w.has_word_alignment for w in all_words) else []}
+
+
+def configure_runtime(root: Path):
+    # All downloadable/runtime caches stay inside the ignored worker root.
+    os.environ['HF_HOME'] = str(root/'hf-cache')
+    os.environ['HF_HUB_CACHE'] = str(root/'hf-cache'/'hub')
+    os.environ['TORCH_HOME'] = str(root/'torch-cache')
+    os.environ['MPLCONFIGDIR'] = str(root/'matplotlib-cache')
+    os.environ['HF_HUB_DISABLE_TELEMETRY'] = '1'
+    os.environ['PYANNOTE_METRICS_ENABLED'] = '0'

@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "eligible": false,
+  "default_engine_id": "faster-whisper",
+  "reasons": [
+    "Reviewed reference transcripts are required.",
+    "Required recording categories are missing.",
+    "Short excerpts, a 30-minute recording, and a two-hour recording are required.",
+    "Measured end-to-end timings are required; ASR time is not a total-time substitute.",
+    "Measured pipeline peak memory is missing.",
+    "Chunk-boundary audits are missing.",
+    "boundary_omissions is missing or regresses.",
+    "boundary_duplicates is missing or regresses.",
+    "Timestamp accuracy is missing or regresses.",
+    "Timestamp annotation or matching coverage is missing or regresses.",
+    "technical-names is missing or regresses by more than one percentage point.",
+    "accented-english is missing or regresses by more than one percentage point.",
+    "background-noise is missing or regresses by more than one percentage point.",
+    "overlapping-speech is missing or regresses by more than one percentage point.",
+    "interview is missing or regresses by more than one percentage point.",
+    "multi-speaker is missing or regresses by more than one percentage point.",
+    "Warm total processing time must improve."
+  ],
+  "baseline_wer": 0.0,
+  "candidate_wer": 0.0,
+  "warm_asr_speedup": 13.600173280426965
+}
