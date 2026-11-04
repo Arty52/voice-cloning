@@ -35,3 +35,32 @@ def test_report_has_no_transcript_or_paths(tmp_path):
     assert 'private content' not in result
     assert str(tmp_path) not in result
     assert 'reference.json' not in result
+
+
+def test_memory_metric_is_optional_without_unix_resource(monkeypatch):
+    import sys
+    from voice_transcription.evaluate import process_peak_rss_bytes
+    monkeypatch.setitem(sys.modules, 'resource', None)
+    assert process_peak_rss_bytes() is None
+
+
+def test_baseline_language_auto_and_configuration_redaction(tmp_path, monkeypatch):
+    import sys
+    from types import SimpleNamespace
+    from voice_transcription import legacy
+    languages=[]
+    monkeypatch.setitem(sys.modules, 'faster_whisper', SimpleNamespace(WhisperModel=object))
+    monkeypatch.setattr(legacy, 'FasterWhisperTranscriber', lambda *args: SimpleNamespace(
+        transcribe=lambda path, language: languages.append(language) or ()))
+    (tmp_path/'reference.json').write_text('{"text":""}')
+    (tmp_path/'hypothesis.json').write_text('{"text":""}')
+    rows=[dict(id=str(i), category='silence', reference='reference.json', audio='clip.wav',
+               hypothesis='hypothesis.json', duration_seconds=1, **options)
+          for i,options in enumerate(({}, {'language':'auto'}, {'language':'fr'}))]
+    manifest={'schema_version':1,'configuration':{'engine':'test','token':'private-secret'},'recordings':rows}
+    path=tmp_path/'manifest.json';path.write_text(json.dumps(manifest))
+    run_manifest(path,'baseline',tmp_path/'report.json')
+    assert languages==[None,None,'fr']
+    result=run_manifest(path,'evaluate',tmp_path/'report.json')
+    assert result['configuration']=={'engine':'test'}
+    assert 'private-secret' not in (tmp_path/'report.json').read_text()
