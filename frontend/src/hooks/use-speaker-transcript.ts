@@ -44,17 +44,17 @@ export function useSpeakerTranscript({
   const transcriptSaveInFlightRef = useRef(false)
   const speakerSaveRequestIdRef = useRef(0)
 
-  const speakerSeparationResult =
+  const transcriptResult =
     job?.status === "success" && isTranscriptResult(job.result) ? job.result : null
-  const isSpeakerSeparationJob = speakerSeparationResult !== null
+  const isTranscriptJob = transcriptResult !== null
   const unsavedTranscriptItemIds = useMemo(() => {
-    if (!speakerSeparationResult) {
+    if (!transcriptResult) {
       return []
     }
-    return speakerSeparationResult.transcript.items
+    return transcriptResult.transcript.items
       .filter((item) => (transcriptTextDrafts[item.id] ?? item.text) !== (savedTranscriptTexts[item.id] ?? item.text))
       .map((item) => item.id)
-  }, [savedTranscriptTexts, speakerSeparationResult, transcriptTextDrafts])
+  }, [savedTranscriptTexts, transcriptResult, transcriptTextDrafts])
   const hasUnsavedTranscriptChanges = unsavedTranscriptItemIds.length > 0
   const canSaveTranscript =
     hasUnsavedTranscriptChanges &&
@@ -62,17 +62,17 @@ export function useSpeakerTranscript({
     transcriptSaveStatus !== "loading"
   const canSaveSelectedSpeakers =
     job?.status === "success" &&
-    isSpeakerSeparationJob &&
+    isTranscriptJob &&
     selectedSpeakerIds.length > 0 &&
     selectedSpeakerIds.every((speakerId) => (speakerNameAssignments[speakerId] ?? "").trim().length > 0) &&
     speakerSaveStatus !== "loading" &&
     speakerSaveStatus !== "success"
   const speakerSourceUrl =
-    job?.status === "success" && isSpeakerSeparationJob ? api.sampleProcessingSourceUrl(job.id) : null
+    job?.status === "success" && isTranscriptJob ? api.sampleProcessingSourceUrl(job.id) : null
   const speakerResultUrls =
-    job?.status === "success" && speakerSeparationResult !== null
+    job?.status === "success" && transcriptResult !== null
       ? (Object.fromEntries(
-          speakerSeparationResult.speakers.map((speaker) => [
+          transcriptResult.speakers.map((speaker) => [
             speaker.id,
             api.sampleProcessingSpeakerResultUrl(job.id, speaker.id),
           ])
@@ -115,7 +115,7 @@ export function useSpeakerTranscript({
   }, [selectedTranscriptItemIds.length, transcriptSelectionSurfaceId])
 
   useEffect(() => {
-    if (!job || speakerSeparationResult === null) {
+    if (!job || transcriptResult === null) {
       if (stateJobIdRef.current !== null) {
         assignmentRequestIdRef.current += 1
         transcriptSaveRequestIdRef.current += 1
@@ -145,17 +145,17 @@ export function useSpeakerTranscript({
     setSelectedTranscriptItemIds([])
     setSpeakerNameAssignments(
       Object.fromEntries(
-        speakerSeparationResult.speakers.map((speaker) => [speaker.id, speaker.assignedName ?? speaker.label])
+        transcriptResult.speakers.map((speaker) => [speaker.id, speaker.assignedName ?? speaker.label])
       )
     )
     setSpeakerVoicePresetIds(
       Object.fromEntries(
-        speakerSeparationResult.speakers.map((speaker) => [speaker.id, defaultVoicePresetId])
+        transcriptResult.speakers.map((speaker) => [speaker.id, defaultVoicePresetId])
       ) as Record<string, VoicePresetId>
     )
-    setSelectedSpeakerIds(speakerSeparationResult.speakers.map((speaker) => speaker.id))
+    setSelectedSpeakerIds(transcriptResult.speakers.map((speaker) => speaker.id))
     const transcriptTexts = Object.fromEntries(
-      speakerSeparationResult.transcript.items.map((item) => [item.id, item.text])
+      transcriptResult.transcript.items.map((item) => [item.id, item.text])
     )
     setTranscriptTextDrafts(transcriptTexts)
     setSavedTranscriptTexts(transcriptTexts)
@@ -165,7 +165,7 @@ export function useSpeakerTranscript({
     setTranscriptSaveError(null)
     setSpeakerSaveStatus("idle")
     setSpeakerSaveError(null)
-  }, [defaultVoicePresetId, job, speakerSeparationResult])
+  }, [defaultVoicePresetId, job, transcriptResult])
 
   function handleTranscriptSelectionChange(itemIds: string[]) {
     setSelectedTranscriptItemIds(uniqueIds(itemIds))
@@ -381,7 +381,7 @@ export function useSpeakerTranscript({
     handleTranscriptSelectionChange,
     handleTranscriptTextChange,
     hasUnsavedTranscriptChanges,
-    isSpeakerSeparationJob,
+    isTranscriptJob,
     saveTranscriptItems,
     selectedSpeakerIds,
     selectedTranscriptItemIds,
@@ -390,7 +390,7 @@ export function useSpeakerTranscript({
     speakerResultUrls,
     speakerSaveError,
     speakerSaveStatus,
-    speakerSeparationResult,
+    transcriptResult,
     speakerSourceUrl,
     speakerVoicePresetIds,
     transcriptSaveError,
