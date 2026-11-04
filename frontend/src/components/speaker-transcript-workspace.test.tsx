@@ -74,8 +74,8 @@ const voicePresets = [
   { id: "animatedDialogue" as const, label: "Animated Dialogue", description: "Expressive dialogue." },
 ]
 
-function Workspace() {
-  const [activeJob, setActiveJob] = useState(job)
+function Workspace({ initialJob = job }: { initialJob?: SampleProcessingJob }) {
+  const [activeJob, setActiveJob] = useState(initialJob)
   const controller = useSpeakerTranscript({
     job: activeJob,
     onJobUpdate: setActiveJob,
@@ -297,4 +297,27 @@ describe("SpeakerTranscriptWorkspace", () => {
       }),
     ).toBeVisible()
   })
+})
+
+
+it("edits an unassigned transcript and keeps speaker extraction disabled", async () => {
+  const user = userEvent.setup()
+  const textResult: SpeakerSeparationResult = { kind: "transcript", speakers: [],
+    transcript: { items: [{ ...speakerResult.transcript.items[0], speakerId: null }] } }
+  const textJob: SampleProcessingJob = { ...job, operationId: "transcribe", result: textResult }
+  const save = vi.spyOn(api, "updateSampleProcessingTranscriptItems").mockResolvedValue({ job: {
+    ...textJob, result: { ...textResult, transcript: { items: [{ ...textResult.transcript.items[0], text: "Corrected words.", words: undefined }] } },
+  } })
+  render(<PlaybackControllerProvider><Workspace initialJob={textJob} /></PlaybackControllerProvider>)
+  expect(screen.getByText("Text Transcript")).toBeVisible()
+  expect(screen.getByRole("button", { name: "Add Selected Voices" })).toBeDisabled()
+  expect(screen.getByRole("button", { name: "Export Transcript" })).toBeEnabled()
+  expect(screen.getByRole("button", { name: /Seek to Unassigned at/ })).toBeEnabled()
+  await user.click(screen.getByRole("button", { name: "Hello there." }))
+  const input = screen.getByLabelText("Dialogue Text")
+  await user.clear(input)
+  await user.type(input, "Corrected words.")
+  await user.click(screen.getByRole("button", { name: "Save Correction" }))
+  await waitFor(() => expect(save).toHaveBeenCalled())
+  expect(screen.queryByLabelText("Assign Name")).not.toBeInTheDocument()
 })

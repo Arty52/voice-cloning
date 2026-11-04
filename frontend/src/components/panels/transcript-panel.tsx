@@ -1,6 +1,8 @@
 import { Ban, FileAudio, MessageSquareText, Sparkles, Trash2 } from "lucide-react"
 import { useState } from "react"
 
+import { TranscriptionControls } from "@/components/transcription-controls"
+import { TranscriptionExecution } from "@/components/transcription-execution"
 import { MediaFileDropZone } from "@/components/media-file-drop-zone"
 import { ProcessingTimeEstimate } from "@/components/processing-time-estimate"
 import { SpeakerTranscriptWorkspace } from "@/components/speaker-transcript-workspace"
@@ -77,6 +79,7 @@ export function TranscriptPanel({ transcript, voicePresets }: TranscriptPanelPro
 
           <form className="flex flex-col gap-4" onSubmit={transcript.handleStartTranscription}>
             <FieldGroup aria-busy={transcript.isProcessing || transcript.isClearingTranscript}>
+              {transcript.transcription ? <TranscriptionControls settings={transcript.transcription} disabled={transcript.isProcessing || transcript.isClearingTranscript} /> : null}
               <MediaFileDropZone
                 accept={TRANSCRIPT_AUDIO_ACCEPT}
                 ariaLabel="Transcript Audio Drop Zone"
@@ -89,8 +92,7 @@ export function TranscriptPanel({ transcript, voicePresets }: TranscriptPanelPro
                 selectedLabel="Audio Ready"
               />
               <FieldDescription>
-                Language and speaker count are detected automatically by the local FFmpeg, pyannote, and faster-whisper
-                pipeline.
+                Transcription runs locally. Speaker detection is optional, and the selected engine is never changed after a failure.
               </FieldDescription>
               {transcript.preStartEstimateRangeSeconds && transcript.sourceFile && !transcript.isProcessing ? (
                 <ProcessingTimeEstimate
@@ -127,6 +129,7 @@ export function TranscriptPanel({ transcript, voicePresets }: TranscriptPanelPro
                     isProcessing={transcript.isProcessing}
                     jobStatus={transcript.job.status}
                   />
+                  {transcript.job.operationId === "transcribe" ? <TranscriptionExecution job={transcript.job} /> : null}
                   {activePhase ? <Badge variant="accent">{activePhase.label}</Badge> : null}
                   {transcript.job.result && "kind" in transcript.job.result && transcript.job.result.kind === "speakerSeparation" ? (
                     <Badge variant="secondary">{transcript.job.result.speakers.length} Speakers</Badge>
