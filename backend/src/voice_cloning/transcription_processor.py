@@ -57,14 +57,12 @@ class TranscriptionSampleProcessor(DiarizationSampleProcessor):
                 result=await self._attach_speaker_streams(normalized,request.job_dir,result,
                     speaker_ranges_by_id=_speaker_turn_ranges_by_id(turns),max_output_bytes=request.max_output_bytes)
                 report({'speakerAudio':{'status':'success'}})
-                result=replace(result,kind='transcript',metadata=metadata)
             else:
                 items=_transcript_items_from_words(words,(Turn(0.,max((w.end_seconds for w in words),default=1.),'unknown'),),lambda _: 'unassigned') if words else []
                 result=SpeakerSeparationResult(kind='transcript',speakers=(),
-                    transcript=SpeakerSeparationTranscript(tuple(replace(item,speaker_id=None) for item in items)),metadata=metadata)
-            metadata['total_seconds']=time.perf_counter()-started
-            metadata['stages']=dict(progress)
-            return result
+                    transcript=SpeakerSeparationTranscript(tuple(replace(item,speaker_id=None) for item in items)))
+            return replace(result,kind='transcript',metadata={**metadata,
+                'total_seconds':time.perf_counter()-started,'stages':dict(progress)})
 
     async def _cpu(self, normalized, options, report):
         try:
