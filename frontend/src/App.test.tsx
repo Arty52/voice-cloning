@@ -1240,7 +1240,7 @@ describe("App", () => {
     expect(workflowNav.queryByRole("button", { name: "Transcript" })).not.toBeInTheDocument()
     const featureNav = within(screen.getByRole("navigation", { name: "Feature Sections" }))
     expect(featureNav.getByRole("button", { name: "Transcript" })).toBeInTheDocument()
-    expect(await featureNav.findByText("Ready")).toBeInTheDocument()
+    expect(await featureNav.findByText("Available")).toBeInTheDocument()
     expect(document.querySelector('[data-section-id="overview"]')).not.toHaveClass("hidden")
     expect(document.querySelector('[data-section-id="voices"]')).toHaveClass("hidden")
     expect(document.querySelector('[data-section-id="provider"]')).toHaveClass("hidden")
