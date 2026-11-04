@@ -32,6 +32,12 @@ def qualify(baseline: dict, candidate: dict) -> dict:
     require(baseline.get('configuration', {}).get('engine') == 'faster-whisper' and
             baseline.get('configuration', {}).get('model') == 'medium' and
             baseline.get('configuration', {}).get('compute_type') == 'int8', 'Expected the medium/int8 compatibility baseline.')
+    bconfig, cconfig = baseline.get('configuration', {}), candidate.get('configuration', {})
+    require(bconfig.get('language') == cconfig.get('language') == 'en', 'Matched English language settings are required.')
+    require(bool(baseline.get('hardware')) and baseline.get('hardware') == candidate.get('hardware'), 'Matched recorded hardware is required.')
+    for setting in ('preprocessing', 'power_mode'):
+        require(bool(bconfig.get(setting)) and bconfig.get(setting) == cconfig.get(setting), f'Matched {setting} settings are required.')
+    require(bool(cconfig.get('revision')), 'The candidate model revision must be recorded.')
     require(CATEGORIES <= {row.get('category') for row in new.values()}, 'Required recording categories are missing.')
     durations = [row['duration_seconds'] for row in new.values() if number(row.get('duration_seconds'))]
     require(any(1800 <= d < 3600 for d in durations) and any(d >= 7200 for d in durations) and any(0 < d <= 120 for d in durations),

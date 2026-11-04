@@ -15,6 +15,9 @@ def reports():
                 diarization={'rate':.05},speaker_matched_words=100,speaker_word_errors=2))
     baseline={'reviewed_corpus':True,'configuration':{'engine':'faster-whisper','model':'medium','compute_type':'int8'},'recordings':rows}
     candidate=deepcopy(baseline);candidate['configuration']={'engine':'parakeet-mlx'}
+    for report in (baseline, candidate):
+        report['hardware']={'system':'Darwin','processor':'Apple M2 Max','memory_bytes':96*1024**3}
+        report['configuration'].update(language='en',power_mode='automatic-ac',preprocessing='mono-16khz-pcm16',revision='prepared-revision')
     for row in candidate['recordings']:row.update(asr_seconds=10,total_seconds=29)
     return baseline,candidate
 
@@ -27,6 +30,11 @@ def test_complete_evidence_is_required_for_promotion():
 
 @pytest.mark.parametrize('change',[
     lambda c:c.pop('reviewed_corpus'),
+    lambda c:c.pop('hardware'),
+    lambda c:c['configuration'].pop('revision'),
+    lambda c:c['configuration'].update(language='auto'),
+    lambda c:c['configuration'].update(preprocessing='other'),
+    lambda c:c['configuration'].update(power_mode='low-power'),
     lambda c:c['recordings'][0].update(corpus_fingerprint='different'),
     lambda c:c['recordings'][0].update(total_seconds=None),
     lambda c:c['recordings'][0].update(synthetic=True),
