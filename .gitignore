@@ -15,3 +15,6 @@ storage/*
 assets/voices/**/*
 !assets/voices/README.md
 !assets/voices/.gitkeep
+.venv
+.venv-transcription/
+frontend/node_modules
