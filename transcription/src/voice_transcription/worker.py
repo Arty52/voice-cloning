@@ -154,7 +154,7 @@ class JobManager:
 
     async def cancel(self, job_id):
         upload = self.uploads.get(job_id)
-        if upload is not None:
+        if upload is not None and not upload.done() and self.jobs[job_id]['status'] == 'uploading':
             upload.cancel()
             try:
                 await upload
@@ -252,6 +252,7 @@ def create_app(root: Path, *, manager=None, capability_reader=capabilities):
                 valid = False
             if not valid:
                 raise HTTPException(422, 'Expected non-empty mono 16 kHz PCM16 WAV audio.')
+            jobs.uploads.pop(job_id, None)
             result = jobs.start(job_id, source, options)
             result['options'] = options
             return result

@@ -178,3 +178,22 @@ def test_replacing_dead_worker_reaps_process_and_closes_handles(tmp_path):
     assert replacement[0] is context.Process.return_value
     replacement[0].start.assert_called_once_with()
     manager.outgoing.close()
+
+
+def test_stale_upload_entry_does_not_bypass_inference_cancellation(tmp_path):
+    from unittest.mock import Mock
+    async def run():
+        source=tmp_path/'source.wav';source.write_bytes(wav())
+        manager=JobManager(tmp_path,process_target=slow_process)
+        job_id='f'*32
+        manager.start(job_id,source,{'detectSpeakers':False})
+        await asyncio.sleep(.2)
+        process=manager.workers['transcription'][0]
+        stale_upload=Mock();stale_upload.done.return_value=False
+        manager.uploads[job_id]=stale_upload
+        await manager.cancel(job_id)
+        stale_upload.cancel.assert_not_called()
+        assert not process.is_alive()
+        assert manager.jobs[job_id]['status']=='canceled'
+        assert manager.active is None and not source.exists()
+    asyncio.run(run())
