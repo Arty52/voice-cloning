@@ -356,10 +356,9 @@ class DiarizationSampleProcessor:
                     ),
                 )
             )
-        return SpeakerSeparationResult(
-            kind="speakerSeparation",
+        return replace(
+            result,
             speakers=tuple(speakers),
-            transcript=result.transcript,
         )
 
 
@@ -373,6 +372,9 @@ def create_sample_processor(
         processors.append(FFmpegSampleProcessor(settings))
     if settings.sample_processing_enable_diarization:
         processors.append(DiarizationSampleProcessor(settings))
+    if settings.sample_processing_enable_diarization or settings.transcription_worker_url:
+        from .transcription_processor import TranscriptionSampleProcessor
+        processors.append(TranscriptionSampleProcessor(settings))
     if not processors:
         return UnavailableSampleProcessor()
     if len(processors) == 1:
@@ -596,6 +598,8 @@ def _transcribed_words(segments: object) -> tuple[_TranscribedWord, ...]:
 def _speaker_separation_result_from_words(
     turns: tuple[_DiarizationTurn, ...],
     words: tuple[_TranscribedWord, ...],
+    *,
+    attribution_turns: tuple[_DiarizationTurn, ...] | None = None,
 ) -> SpeakerSeparationResult:
     speaker_ids = _speaker_ids_by_diarization_label(turns)
     speaker_labels = {
@@ -606,7 +610,7 @@ def _speaker_separation_result_from_words(
     def resolve_speaker(original_label: str) -> str:
         return speaker_ids[original_label]
 
-    items = _transcript_items_from_words(words, turns, resolve_speaker)
+    items = _transcript_items_from_words(words, attribution_turns or turns, resolve_speaker)
     if not items:
         items = _fallback_transcript_items_from_turns(turns, resolve_speaker)
 

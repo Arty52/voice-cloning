@@ -184,6 +184,8 @@ class SampleProcessingRequest:
     processing_preset_label: str | None = None
     max_output_bytes: int | None = None
     source_selection: SampleProcessingSourceSelection | None = None
+    transcription_options: dict[str, object] | None = None
+    report_transcription_progress: object = None
 
 
 @dataclass(frozen=True)
@@ -421,7 +423,15 @@ class SampleProcessingService:
         trim_candidates: bool | None = None,
         isolation_preset_id: str | None = None,
         trim_preset_id: str | None = None,
+        transcription_engine_id: str | None = None,
+        language: str | None = None,
     ) -> SampleProcessingJob:
+        transcription_options = None
+        if operation_id == "transcribe":
+            from ..transcription_client import validate_options
+            transcription_options = validate_options(transcription_engine_id, language, detect_speakers)
+            if workflow_steps is not None:
+                raise SampleProcessingServiceError("Transcription cannot be used inside a processing stack.", 422)
         resolved_source_preference = _normalize_source_preference(source_preference)
         if operation_id == "prepareVoice":
             if workflow_steps is not None:
@@ -491,6 +501,7 @@ class SampleProcessingService:
                 workflow_mode=workflow_mode,
                 steps=job_steps,
                 source_selection=source_selection,
+                transcription_options=transcription_options,
             )
             self._jobs[job_id] = job
             self._persist_job(job)
@@ -505,6 +516,7 @@ class SampleProcessingService:
                 processing_preset_id=first_step.processing_preset_id,
                 processing_preset_label=first_step.processing_preset_label,
                 source_selection=source_selection,
+                transcription_options=transcription_options,
             )
             self._tasks[job_id] = asyncio.create_task(self._run_job(job_id, request, resolved_steps))
             return job
@@ -1407,6 +1419,8 @@ class SampleProcessingService:
                     processing_preset_id=workflow_step.processing_preset_id,
                     processing_preset_label=workflow_step.processing_preset_label,
                     max_output_bytes=self.settings.max_source_upload_bytes,
+                    transcription_options=initial_request.transcription_options,
+                    report_transcription_progress=lambda progress: self._update_job(job_id, transcription_progress=progress),
                 )
                 try:
                     processed_result = await self.processor.process(request)
@@ -1991,6 +2005,12 @@ class SampleProcessingService:
         processing_preset_id: str | None,
         workflow_steps: tuple[SampleProcessingWorkflowStepInput, ...] | None,
     ) -> tuple[ResolvedSampleProcessingWorkflowStep, ...]:
+        if operation_id == "transcribe" and workflow_steps is None:
+            if processing_preset_id:
+                raise SampleProcessingServiceError("Transcription does not accept a processing preset.", 422)
+            return (ResolvedSampleProcessingWorkflowStep(operation=self._enabled_operation("transcribe")),)
+        if workflow_steps is not None and any(step.operation_id == "transcribe" for step in workflow_steps):
+            raise SampleProcessingServiceError("Transcription cannot be used inside a processing stack.", 422)
         if workflow_steps is None:
             if not operation_id:
                 raise SampleProcessingServiceError("Operation is required.", 422)
@@ -2025,7 +2045,8 @@ class SampleProcessingService:
         )
 
     def _enabled_operation(self, operation_id: SampleProcessingOperationId) -> SampleProcessingOperation:
-        for operation in self.operations():
+        operations = self.processor.operations() if operation_id == "transcribe" else self.operations()
+        for operation in operations:
             if operation.id == operation_id:
                 if operation.enabled:
                     return operation
@@ -2125,12 +2146,14 @@ class SampleProcessingService:
         return path
 
     def _validate_speaker_separation_result(self, result: SpeakerSeparationResult) -> None:
-        if result.kind != "speakerSeparation":
+        if result.kind not in {"speakerSeparation", "transcript"}:
             raise SampleProcessingServiceError("Speaker separation result kind is invalid.", 500)
         speaker_ids = [speaker.id for speaker in result.speakers]
-        if not speaker_ids or len(speaker_ids) != len(set(speaker_ids)):
+        if (not speaker_ids and result.kind != "transcript") or len(speaker_ids) != len(set(speaker_ids)):
             raise SampleProcessingServiceError("Speaker separation result has invalid speakers.", 500)
         known_speaker_ids = set(speaker_ids)
+        if result.kind == "transcript":
+            known_speaker_ids.add(None)
         item_ids: set[str] = set()
         word_ids: set[str] = set()
         speaker_id_by_item_id: dict[str, str] = {}
@@ -3242,7 +3265,8 @@ def apply_speaker_assignment_metadata(
     )
     item_ids_by_speaker_id: dict[str, list[str]] = {speaker.id: [] for speaker in result.speakers}
     for item in updated_items:
-        item_ids_by_speaker_id[item.speaker_id].append(item.id)
+        if item.speaker_id is not None:
+            item_ids_by_speaker_id[item.speaker_id].append(item.id)
     updated_speakers: list[SpeakerSeparationSpeaker] = []
     for speaker in result.speakers:
         assigned_name = speaker.assigned_name
@@ -3256,8 +3280,8 @@ def apply_speaker_assignment_metadata(
                 transcript_item_ids=tuple(item_ids_by_speaker_id[speaker.id]),
             )
         )
-    return SpeakerSeparationResult(
-        kind="speakerSeparation",
+    return replace(
+        result,
         speakers=tuple(updated_speakers),
         transcript=SpeakerSeparationTranscript(items=updated_items),
     )
@@ -3288,9 +3312,8 @@ def apply_transcript_text_updates(
         else item
         for item in result.transcript.items
     )
-    return SpeakerSeparationResult(
-        kind="speakerSeparation",
-        speakers=result.speakers,
+    return replace(
+        result,
         transcript=SpeakerSeparationTranscript(items=updated_items),
     )
 
