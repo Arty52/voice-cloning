@@ -160,3 +160,21 @@ def test_inference_errors_preserve_safe_details_and_elapsed_time(monkeypatch,tmp
     worker.inference_process('transcription',incoming,outgoing)
     event=outgoing.get_nowait()
     assert event[2]=='error' and event[3]=='Prepare the selected model first.' and event[4]>0
+
+
+def test_replacing_dead_worker_reaps_process_and_closes_handles(tmp_path):
+    from unittest.mock import Mock
+    manager=JobManager(tmp_path)
+    previous_process,previous_queue=Mock(),Mock()
+    previous_process.is_alive.return_value=False
+    context=Mock()
+    manager.workers['diarization']=(previous_process,previous_queue)
+    manager.context=context
+    replacement=manager._worker('diarization')
+    previous_process.join.assert_called_once_with()
+    previous_process.close.assert_called_once_with()
+    previous_queue.cancel_join_thread.assert_called_once_with()
+    previous_queue.close.assert_called_once_with()
+    assert replacement[0] is context.Process.return_value
+    replacement[0].start.assert_called_once_with()
+    manager.outgoing.close()

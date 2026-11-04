@@ -59,6 +59,9 @@ class JobManager:
         if previous is not None and previous[0].is_alive():
             return previous
         if previous is not None:
+            previous[0].join()
+            previous[0].close()
+            previous[1].cancel_join_thread()
             previous[1].close()
         incoming = self.context.Queue()
         process = self.context.Process(target=self.process_target, args=(stage, incoming, self.outgoing), daemon=True)
