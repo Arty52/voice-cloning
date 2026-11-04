@@ -57,3 +57,17 @@ def test_overlap_anchor_requires_two_aligned_lexical_words(second):
     right=[Word('anchor',110,110.5),second,Word('new',113,113.2)]
     merged=merge_overlap(left,right,110,115)
     assert [word.text for word in merged]==['anchor',second.text,'keep','new']
+
+
+@pytest.mark.parametrize('drift', [0., -.04, .04])
+@pytest.mark.parametrize('prefix_missing', [False, True])
+def test_rapid_repetitions_match_the_same_acoustic_occurrence(drift, prefix_missing):
+    from voice_transcription.chunking import merge_overlap
+    left=[Word('yes',112+i*.2,112.1+i*.2) for i in range(5)]
+    right=[Word(w.text,w.start_seconds+drift,w.end_seconds+drift) for w in left[int(prefix_missing):]]
+    merged=merge_overlap(left,right,105,120)
+    assert len(merged)==len(left)
+    assert [w.text for w in merged]==['yes']*5
+    assert all(abs(expected.start_seconds-actual.start_seconds)<=abs(drift)+1e-9
+               for expected,actual in zip(left,merged))
+    assert all(a.start_seconds<b.start_seconds for a,b in zip(merged,merged[1:]))

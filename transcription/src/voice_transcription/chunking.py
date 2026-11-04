@@ -73,9 +73,15 @@ def merge_overlap(previous, current, overlap_start, overlap_end):
                 and normalize(previous[i+1])==normalize(current[j+1])
                 and abs(a.start_seconds-b.start_seconds) <= .6
                 and abs(previous[i+1].start_seconds-current[j+1].start_seconds) <= .6):
-                candidates.append((abs(previous[i+1].end_seconds-midpoint), i+2, j+2))
+                # Repeated phrases can produce several text matches inside the
+                # tolerance. Prefer the same acoustic occurrence before choosing
+                # a convenient splice position near the overlap midpoint.
+                timing_error = sum(abs(getattr(left_word, field)-getattr(right_word, field))
+                    for left_word, right_word in ((a,b), (previous[i+1],current[j+1]))
+                    for field in ('start_seconds','end_seconds'))
+                candidates.append((timing_error, abs(previous[i+1].end_seconds-midpoint), i+2, j+2))
     if candidates:
-        _, i, j = min(candidates)
+        _, _, i, j = min(candidates)
         return list(previous[:i])+list(current[j:])
     cut = midpoint
     # A fallback sentence is indivisible: don't let a midpoint split duplicate
